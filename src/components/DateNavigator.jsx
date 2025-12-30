@@ -1,18 +1,14 @@
 import { useState } from 'react';
-import { toDateInputValue } from '../utils/dateUtils';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 const MAX_DAYS = 21; // 3 weeks max
 
 export default function DateNavigator({ startDate, endDate, onStartDateChange, onEndDateChange }) {
   const [error, setError] = useState('');
 
-  const toInputDate = (date) => {
-    return date.toISOString().split('T')[0];
-  };
-
-  const handleStartChange = (e) => {
-    const newStart = new Date(e.target.value + 'T00:00:00');
-    if (isNaN(newStart.getTime())) return;
+  const handleStartChange = (date) => {
+    if (!date) return;
 
     setError('');
 
@@ -20,20 +16,19 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
     const currentRange = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
     const rangeToUse = Math.min(currentRange, MAX_DAYS - 1);
 
-    const newEnd = new Date(newStart);
+    const newEnd = new Date(date);
     newEnd.setDate(newEnd.getDate() + rangeToUse);
 
-    onStartDateChange(newStart);
+    onStartDateChange(date);
     onEndDateChange(newEnd);
   };
 
-  const handleEndChange = (e) => {
-    const newEnd = new Date(e.target.value + 'T00:00:00');
-    if (isNaN(newEnd.getTime())) return;
+  const handleEndChange = (date) => {
+    if (!date) return;
 
-    const daysDiff = Math.floor((newEnd - startDate) / (1000 * 60 * 60 * 24)) + 1;
+    const daysDiff = Math.floor((date - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
-    if (newEnd < startDate) {
+    if (date < startDate) {
       setError('End date must be after start date');
       return;
     }
@@ -44,8 +39,11 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
     }
 
     setError('');
-    onEndDateChange(newEnd);
+    onEndDateChange(date);
   };
+
+  const maxEndDate = new Date(startDate);
+  maxEndDate.setDate(maxEndDate.getDate() + MAX_DAYS - 1);
 
   const shiftRange = (days) => {
     const newStart = new Date(startDate);
@@ -96,20 +94,26 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
 
         {/* Date range inputs */}
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={toInputDate(startDate)}
+          <DatePicker
+            selected={startDate}
             onChange={handleStartChange}
-            className="px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            selectsStart
+            startDate={startDate}
+            endDate={endDate}
+            dateFormat="MMM d, yyyy"
+            className="w-32 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <span className="text-gray-500">to</span>
-          <input
-            type="date"
-            value={toInputDate(endDate)}
-            min={toInputDate(startDate)}
-            max={toInputDate(new Date(startDate.getTime() + (MAX_DAYS - 1) * 24 * 60 * 60 * 1000))}
+          <DatePicker
+            selected={endDate}
             onChange={handleEndChange}
-            className="px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            selectsEnd
+            startDate={startDate}
+            endDate={endDate}
+            minDate={startDate}
+            maxDate={maxEndDate}
+            dateFormat="MMM d, yyyy"
+            className="w-32 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <span className="text-sm text-gray-500">({daysDiff} days)</span>
         </div>
