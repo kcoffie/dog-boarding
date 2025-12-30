@@ -3,13 +3,14 @@ import { useData } from '../context/DataContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function SettingsPage() {
-  const { settings, updateSettings, addEmployee, deleteEmployee, nightAssignments } = useData();
+  const { settings, updateSettings, addEmployee, deleteEmployee, reorderEmployees, nightAssignments } = useData();
 
   const [netPercentage, setNetPercentage] = useState(settings.netPercentage);
   const [percentageError, setPercentageError] = useState('');
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [employeeError, setEmployeeError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, employeeName: '', hasAssignments: false });
+  const [draggedIndex, setDraggedIndex] = useState(null);
 
   const handlePercentageChange = (e) => {
     const value = e.target.value;
@@ -58,6 +59,22 @@ export default function SettingsPage() {
 
   const handleCancelDelete = () => {
     setDeleteConfirm({ isOpen: false, employeeName: '', hasAssignments: false });
+  };
+
+  const handleDragStart = (e, index) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    reorderEmployees(draggedIndex, index);
+    setDraggedIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
   };
 
   return (
@@ -132,9 +149,21 @@ export default function SettingsPage() {
           <p className="text-gray-500 text-center py-4">No employees added yet</p>
         ) : (
           <ul className="divide-y divide-gray-200">
-            {settings.employees.map((employee) => (
-              <li key={employee} className="flex items-center justify-between py-3">
-                <span className="text-gray-900">{employee}</span>
+            {settings.employees.map((employee, index) => (
+              <li
+                key={employee}
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
+                className={`flex items-center justify-between py-3 cursor-grab active:cursor-grabbing ${
+                  draggedIndex === index ? 'opacity-50 bg-blue-50' : ''
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-400 select-none">⋮⋮</span>
+                  <span className="text-gray-900">{employee}</span>
+                </div>
                 <button
                   onClick={() => handleDeleteClick(employee)}
                   className="text-red-600 hover:text-red-800 text-sm font-medium"
