@@ -3,7 +3,7 @@ import Papa from 'papaparse';
 import { useData } from '../context/DataContext';
 
 export default function DogCsvImport({ onClose }) {
-  const { dogs, addDog } = useData();
+  const { dogs, addDogs } = useData();
   const fileInputRef = useRef(null);
 
   const [parsedData, setParsedData] = useState([]);
@@ -79,7 +79,7 @@ export default function DogCsvImport({ onClose }) {
   };
 
   const handleImport = () => {
-    parsedData.forEach(dog => addDog(dog));
+    addDogs(parsedData);
     onClose();
   };
 
