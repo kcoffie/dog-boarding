@@ -97,8 +97,9 @@ export default function DogsPage() {
     }
   };
 
+  const trimmedSearch = searchTerm.trim().toLowerCase();
   const filteredAndSortedDogs = [...dogs]
-    .filter(dog => dog.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter(dog => (dog.name || '').toLowerCase().includes(trimmedSearch))
     .sort((a, b) => {
       let aVal = a[sortColumn];
       let bVal = b[sortColumn];
