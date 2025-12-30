@@ -20,6 +20,59 @@ export default function EmployeeTotals({ startDate }) {
     return gross * (settings.netPercentage / 100);
   };
 
+  // Format a single date for display
+  const formatShortDate = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00');
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Format dates into ranges (e.g., "Jan 15-17, Jan 20, Jan 25-27")
+  const formatDateRanges = (dateStrings) => {
+    if (dateStrings.length === 0) return '';
+
+    // Sort dates chronologically
+    const sorted = [...dateStrings].sort();
+    const ranges = [];
+    let rangeStart = sorted[0];
+    let rangeEnd = sorted[0];
+
+    for (let i = 1; i < sorted.length; i++) {
+      const prevDate = new Date(rangeEnd + 'T00:00:00');
+      const currDate = new Date(sorted[i] + 'T00:00:00');
+      const diffDays = (currDate - prevDate) / (1000 * 60 * 60 * 24);
+
+      if (diffDays === 1) {
+        // Consecutive day, extend the range
+        rangeEnd = sorted[i];
+      } else {
+        // Gap found, save current range and start new one
+        ranges.push({ start: rangeStart, end: rangeEnd });
+        rangeStart = sorted[i];
+        rangeEnd = sorted[i];
+      }
+    }
+    // Don't forget the last range
+    ranges.push({ start: rangeStart, end: rangeEnd });
+
+    // Format ranges into strings
+    return ranges.map(({ start, end }) => {
+      const startDate = new Date(start + 'T00:00:00');
+      const endDate = new Date(end + 'T00:00:00');
+
+      if (start === end) {
+        return formatShortDate(start);
+      }
+
+      // Same month - show "Jan 15-17"
+      if (startDate.getMonth() === endDate.getMonth()) {
+        return `${startDate.toLocaleDateString('en-US', { month: 'short' })} ${startDate.getDate()}-${endDate.getDate()}`;
+      }
+
+      // Different months - show "Jan 30 - Feb 2"
+      return `${formatShortDate(start)} - ${formatShortDate(end)}`;
+    }).join(', ');
+  };
+
   // Calculate totals per employee for the displayed date range
   const employeeTotals = {};
 
@@ -28,10 +81,11 @@ export default function EmployeeTotals({ startDate }) {
     if (assignment && assignment.employeeName) {
       const net = calculateDayNet(dateStr);
       if (!employeeTotals[assignment.employeeName]) {
-        employeeTotals[assignment.employeeName] = { nights: 0, earnings: 0 };
+        employeeTotals[assignment.employeeName] = { nights: 0, earnings: 0, dates: [] };
       }
       employeeTotals[assignment.employeeName].nights += 1;
       employeeTotals[assignment.employeeName].earnings += net;
+      employeeTotals[assignment.employeeName].dates.push(dateStr);
     }
   }
 
@@ -67,6 +121,10 @@ export default function EmployeeTotals({ startDate }) {
                 <span className="font-medium text-green-600">
                   {formatCurrency(employeeTotals[name].earnings)}
                 </span>
+              </div>
+              <div className="mt-2 pt-2 border-t border-gray-200">
+                <span className="text-gray-500">Dates: </span>
+                <span className="text-gray-700">{formatDateRanges(employeeTotals[name].dates)}</span>
               </div>
             </div>
           </div>
