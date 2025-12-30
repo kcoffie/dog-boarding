@@ -22,7 +22,7 @@ export default function MatrixPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Boarding Matrix</h1>
+      <h1 className="text-2xl font-bold mb-6">Q</h1>
       <DateNavigator
         startDate={startDate}
         endDate={endDate}
