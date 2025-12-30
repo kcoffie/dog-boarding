@@ -1,3 +1,12 @@
+// Format name in title case (chester -> Chester)
+export function formatName(name) {
+  if (!name) return '';
+  return name
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 // Format date for display
 export function formatDate(dateString) {
   const date = new Date(dateString);
