@@ -1,5 +1,6 @@
 import { useData } from '../context/DataContext';
 import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent } from '../utils/dateUtils';
+import EmployeeDropdown from './EmployeeDropdown';
 
 export default function BoardingMatrix({ startDate }) {
   const { dogs, boardings, settings } = useData();
@@ -171,6 +172,20 @@ export default function BoardingMatrix({ startDate }) {
               );
             })}
           </tr>
+          {/* Employee Row */}
+          {settings.employees.length > 0 && (
+            <tr className="bg-gray-50 border-t">
+              <td className="px-4 py-3 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
+                Employee
+              </td>
+              <td colSpan={2}></td>
+              {dates.map((dateStr) => (
+                <td key={dateStr} className="px-1 py-2">
+                  <EmployeeDropdown date={dateStr} />
+                </td>
+              ))}
+            </tr>
+          )}
         </tfoot>
       </table>
 
