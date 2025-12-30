@@ -5,7 +5,7 @@ import DogCsvImport from '../components/DogCsvImport';
 import BoardingForm from '../components/BoardingForm';
 import CsvImport from '../components/CsvImport';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { formatDateTime, calculateNights } from '../utils/dateUtils';
+import { formatDateTime, calculateNights, formatName } from '../utils/dateUtils';
 
 export default function DogsPage() {
   const { dogs, boardings, addDog, updateDog, deleteDog, toggleDogActive, addBoarding, updateBoarding, deleteBoarding } = useData();
@@ -67,7 +67,7 @@ export default function DogsPage() {
   };
 
   const getDogName = (dogId) => {
-    return dogs.find(d => d.id === dogId)?.name || 'Unknown';
+    return formatName(dogs.find(d => d.id === dogId)?.name) || 'Unknown';
   };
 
   const getDogNightRate = (dogId) => {
@@ -224,7 +224,7 @@ export default function DogsPage() {
             <tbody className="divide-y divide-gray-200">
               {filteredAndSortedDogs.map((dog) => (
                 <tr key={dog.id} className={`hover:bg-gray-50 ${dog.active === false ? 'opacity-50' : ''}`}>
-                  <td className={`px-6 py-4 ${dog.active === false ? 'text-gray-400' : 'text-gray-900'}`}>{dog.name}</td>
+                  <td className={`px-6 py-4 ${dog.active === false ? 'text-gray-400' : 'text-gray-900'}`}>{formatName(dog.name)}</td>
                   <td className={`px-6 py-4 text-right ${dog.active === false ? 'text-gray-400' : 'text-gray-600'}`}>{formatCurrency(dog.dayRate)}</td>
                   <td className={`px-6 py-4 text-right ${dog.active === false ? 'text-gray-400' : 'text-gray-600'}`}>{formatCurrency(dog.nightRate)}</td>
                   <td className="px-6 py-4 text-right">

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { toDateInputValue, toTimeInputValue, combineDateAndTime } from '../utils/dateUtils';
+import { toDateInputValue, toTimeInputValue, combineDateAndTime, formatName } from '../utils/dateUtils';
 
 export default function BoardingForm({ boarding, onSave, onCancel }) {
   const { dogs } = useData();
@@ -91,7 +91,7 @@ export default function BoardingForm({ boarding, onSave, onCancel }) {
             .filter((dog) => dog.active !== false || (isEditing && dog.id === boarding?.dogId))
             .map((dog) => (
               <option key={dog.id} value={dog.id}>
-                {dog.name}
+                {formatName(dog.name)}
               </option>
             ))}
         </select>
