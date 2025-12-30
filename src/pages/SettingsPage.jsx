@@ -77,6 +77,14 @@ export default function SettingsPage() {
     setDraggedIndex(null);
   };
 
+  const sortEmployees = (direction) => {
+    const sorted = [...settings.employees].sort((a, b) => {
+      const result = a.toLowerCase().localeCompare(b.toLowerCase());
+      return direction === 'asc' ? result : -result;
+    });
+    updateSettings({ ...settings, employees: sorted });
+  };
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
@@ -143,6 +151,24 @@ export default function SettingsPage() {
             </button>
           </div>
         </form>
+
+        {/* Sort Buttons */}
+        {settings.employees.length > 1 && (
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => sortEmployees('asc')}
+              className="px-3 py-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            >
+              Sort A-Z
+            </button>
+            <button
+              onClick={() => sortEmployees('desc')}
+              className="px-3 py-1 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            >
+              Sort Z-A
+            </button>
+          </div>
+        )}
 
         {/* Employee List */}
         {settings.employees.length === 0 ? (
