@@ -1,7 +1,7 @@
 import { useData } from '../context/DataContext';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
 
-export default function EmployeeTotals({ startDate }) {
+export default function EmployeeTotals({ startDate, days = 14 }) {
   const { dogs, boardings, settings, nightAssignments } = useData();
 
   // Helper to check if employee is active
@@ -13,7 +13,7 @@ export default function EmployeeTotals({ startDate }) {
     return typeof emp === 'string' ? true : emp.active !== false;
   };
 
-  const dates = getDateRange(startDate.toISOString().split('T')[0], 14);
+  const dates = getDateRange(startDate.toISOString().split('T')[0], days);
 
   const calculateDayNet = (dateStr) => {
     let gross = 0;
