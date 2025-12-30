@@ -1,18 +1,22 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
 import DogForm from '../components/DogForm';
+import BoardingForm from '../components/BoardingForm';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { formatDateTime, calculateNights } from '../utils/dateUtils';
 
 export default function DogsPage() {
-  const { dogs, boardings, addDog, updateDog, deleteDog } = useData();
+  const { dogs, boardings, addDog, updateDog, deleteDog, addBoarding, updateBoarding, deleteBoarding } = useData();
 
   const [editingDog, setEditingDog] = useState(null);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, dog: null });
+  const [showAddDogForm, setShowAddDogForm] = useState(false);
+  const [showAddBoardingForm, setShowAddBoardingForm] = useState(false);
+  const [editingBoarding, setEditingBoarding] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: null, item: null });
 
   const handleAddDog = (dogData) => {
     addDog(dogData);
-    setShowAddForm(false);
+    setShowAddDogForm(false);
   };
 
   const handleEditDog = (dogData) => {
@@ -20,14 +24,32 @@ export default function DogsPage() {
     setEditingDog(null);
   };
 
-  const handleDeleteClick = (dog) => {
+  const handleDeleteDogClick = (dog) => {
     const hasBoardings = boardings.some(b => b.dogId === dog.id);
-    setDeleteConfirm({ isOpen: true, dog, hasBoardings });
+    setDeleteConfirm({ isOpen: true, type: 'dog', item: dog, hasBoardings });
+  };
+
+  const handleAddBoarding = (boardingData) => {
+    addBoarding(boardingData);
+    setShowAddBoardingForm(false);
+  };
+
+  const handleEditBoarding = (boardingData) => {
+    updateBoarding(editingBoarding.id, boardingData);
+    setEditingBoarding(null);
+  };
+
+  const handleDeleteBoardingClick = (boarding) => {
+    setDeleteConfirm({ isOpen: true, type: 'boarding', item: boarding });
   };
 
   const handleConfirmDelete = () => {
-    deleteDog(deleteConfirm.dog.id);
-    setDeleteConfirm({ isOpen: false, dog: null });
+    if (deleteConfirm.type === 'dog') {
+      deleteDog(deleteConfirm.item.id);
+    } else if (deleteConfirm.type === 'boarding') {
+      deleteBoarding(deleteConfirm.item.id);
+    }
+    setDeleteConfirm({ isOpen: false, type: null, item: null });
   };
 
   const formatCurrency = (amount) => {
@@ -37,13 +59,36 @@ export default function DogsPage() {
     }).format(amount);
   };
 
+  const getDogName = (dogId) => {
+    return dogs.find(d => d.id === dogId)?.name || 'Unknown';
+  };
+
+  const getDogNightRate = (dogId) => {
+    return dogs.find(d => d.id === dogId)?.nightRate || 0;
+  };
+
+  const getDeleteMessage = () => {
+    if (deleteConfirm.type === 'dog') {
+      return deleteConfirm.hasBoardings
+        ? `"${deleteConfirm.item?.name}" has boarding records. Deleting will also remove all their boardings. Are you sure?`
+        : `Are you sure you want to delete "${deleteConfirm.item?.name}"?`;
+    } else if (deleteConfirm.type === 'boarding') {
+      const dogName = getDogName(deleteConfirm.item?.dogId);
+      return `Are you sure you want to delete this boarding for ${dogName}?`;
+    }
+    return '';
+  };
+
+  const isFormOpen = showAddDogForm || editingDog || showAddBoardingForm || editingBoarding;
+
   return (
     <div>
+      {/* Dogs Section */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Dogs</h1>
-        {!showAddForm && !editingDog && (
+        {!isFormOpen && (
           <button
-            onClick={() => setShowAddForm(true)}
+            onClick={() => setShowAddDogForm(true)}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
           >
             Add Dog
@@ -52,12 +97,12 @@ export default function DogsPage() {
       </div>
 
       {/* Add Dog Form */}
-      {showAddForm && (
+      {showAddDogForm && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Add New Dog</h2>
           <DogForm
             onSave={handleAddDog}
-            onCancel={() => setShowAddForm(false)}
+            onCancel={() => setShowAddDogForm(false)}
           />
         </div>
       )}
@@ -75,7 +120,7 @@ export default function DogsPage() {
       )}
 
       {/* Dog List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
         {dogs.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No dogs added yet</p>
         ) : (
@@ -97,14 +142,14 @@ export default function DogsPage() {
                   <td className="px-6 py-4 text-right">
                     <button
                       onClick={() => setEditingDog(dog)}
-                      disabled={showAddForm || editingDog}
+                      disabled={isFormOpen}
                       className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-4 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Edit
                     </button>
                     <button
-                      onClick={() => handleDeleteClick(dog)}
-                      disabled={showAddForm || editingDog}
+                      onClick={() => handleDeleteDogClick(dog)}
+                      disabled={isFormOpen}
                       className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Delete
@@ -117,17 +162,104 @@ export default function DogsPage() {
         )}
       </div>
 
+      {/* Boardings Section */}
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-bold">Boardings</h2>
+        {!isFormOpen && dogs.length > 0 && (
+          <button
+            onClick={() => setShowAddBoardingForm(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Add Boarding
+          </button>
+        )}
+      </div>
+
+      {/* Add Boarding Form */}
+      {showAddBoardingForm && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Add New Boarding</h2>
+          <BoardingForm
+            onSave={handleAddBoarding}
+            onCancel={() => setShowAddBoardingForm(false)}
+          />
+        </div>
+      )}
+
+      {/* Edit Boarding Form */}
+      {editingBoarding && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Edit Boarding</h2>
+          <BoardingForm
+            boarding={editingBoarding}
+            onSave={handleEditBoarding}
+            onCancel={() => setEditingBoarding(null)}
+          />
+        </div>
+      )}
+
+      {/* Boarding List */}
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        {boardings.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">
+            {dogs.length === 0 ? 'Add dogs first to create boardings' : 'No boardings added yet'}
+          </p>
+        ) : (
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Dog</th>
+                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Arrival</th>
+                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Departure</th>
+                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Nights</th>
+                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Gross</th>
+                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {boardings.map((boarding) => {
+                const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
+                const nightRate = getDogNightRate(boarding.dogId);
+                const gross = nights * nightRate;
+
+                return (
+                  <tr key={boarding.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-gray-900">{getDogName(boarding.dogId)}</td>
+                    <td className="px-6 py-4 text-gray-600">{formatDateTime(boarding.arrivalDateTime)}</td>
+                    <td className="px-6 py-4 text-gray-600">{formatDateTime(boarding.departureDateTime)}</td>
+                    <td className="px-6 py-4 text-right text-gray-600">{nights}</td>
+                    <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(gross)}</td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => setEditingBoarding(boarding)}
+                        disabled={isFormOpen}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBoardingClick(boarding)}
+                        disabled={isFormOpen}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={deleteConfirm.isOpen}
-        title="Delete Dog"
-        message={
-          deleteConfirm.hasBoardings
-            ? `"${deleteConfirm.dog?.name}" has boarding records. Deleting will also remove all their boardings. Are you sure?`
-            : `Are you sure you want to delete "${deleteConfirm.dog?.name}"?`
-        }
+        title={deleteConfirm.type === 'dog' ? 'Delete Dog' : 'Delete Boarding'}
+        message={getDeleteMessage()}
         onConfirm={handleConfirmDelete}
-        onCancel={() => setDeleteConfirm({ isOpen: false, dog: null })}
+        onCancel={() => setDeleteConfirm({ isOpen: false, type: null, item: null })}
       />
     </div>
   );
