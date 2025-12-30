@@ -76,10 +76,34 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
     return count;
   };
 
+  // Check if a dog has any presence in the date range
+  const dogHasPresenceInRange = (dog) => {
+    const dogBoardings = boardings.filter(b => b.dogId === dog.id);
+    for (const dateStr of dates) {
+      for (const boarding of dogBoardings) {
+        if (isDayPresent(boarding, dateStr) || isOvernight(boarding, dateStr)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Filter to only dogs with boardings in the date range
+  const dogsWithBoardings = dogs.filter(dogHasPresenceInRange);
+
   if (dogs.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
         No dogs added yet. Go to the Dogs page to add some dogs first.
+      </div>
+    );
+  }
+
+  if (dogsWithBoardings.length === 0) {
+    return (
+      <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+        No dogs boarding in this date range.
       </div>
     );
   }
@@ -107,7 +131,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
           </tr>
         </thead>
         <tbody>
-          {dogs.map((dog) => (
+          {dogsWithBoardings.map((dog) => (
             <tr key={dog.id} className="border-b hover:bg-gray-50">
               <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-white font-medium">
                 {formatName(dog.name)}
