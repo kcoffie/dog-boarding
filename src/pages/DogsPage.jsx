@@ -14,6 +14,7 @@ export default function DogsPage() {
   const [showAddDogForm, setShowAddDogForm] = useState(false);
   const [showDogCsvImport, setShowDogCsvImport] = useState(false);
   const [showAddBoardingForm, setShowAddBoardingForm] = useState(false);
+  const [preselectedDogId, setPreselectedDogId] = useState(null);
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [editingBoarding, setEditingBoarding] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: null, item: null });
@@ -39,6 +40,13 @@ export default function DogsPage() {
   const handleAddBoarding = (boardingData) => {
     addBoarding(boardingData);
     setShowAddBoardingForm(false);
+    setPreselectedDogId(null);
+  };
+
+  const handleDogNameClick = (dog) => {
+    if (dog.active === false) return; // Don't allow for inactive dogs
+    setPreselectedDogId(dog.id);
+    setShowAddBoardingForm(true);
   };
 
   const handleEditBoarding = (boardingData) => {
@@ -154,8 +162,12 @@ export default function DogsPage() {
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Add New Boarding</h2>
           <BoardingForm
+            preselectedDogId={preselectedDogId}
             onSave={handleAddBoarding}
-            onCancel={() => setShowAddBoardingForm(false)}
+            onCancel={() => {
+              setShowAddBoardingForm(false);
+              setPreselectedDogId(null);
+            }}
           />
         </div>
       )}
@@ -330,7 +342,19 @@ export default function DogsPage() {
             <tbody className="divide-y divide-gray-200">
               {filteredAndSortedDogs.map((dog) => (
                 <tr key={dog.id} className={`hover:bg-gray-50 ${dog.active === false ? 'opacity-50' : ''}`}>
-                  <td className={`px-6 py-4 ${dog.active === false ? 'text-gray-400' : 'text-gray-900'}`}>{formatName(dog.name)}</td>
+                  <td className={`px-6 py-4 ${dog.active === false ? 'text-gray-400' : 'text-gray-900'}`}>
+                    {dog.active !== false ? (
+                      <button
+                        onClick={() => handleDogNameClick(dog)}
+                        disabled={isFormOpen}
+                        className="text-blue-600 hover:text-blue-800 hover:underline font-medium disabled:text-gray-900 disabled:no-underline disabled:cursor-default"
+                      >
+                        {formatName(dog.name)}
+                      </button>
+                    ) : (
+                      formatName(dog.name)
+                    )}
+                  </td>
                   <td className={`px-6 py-4 text-right ${dog.active === false ? 'text-gray-400' : 'text-gray-600'}`}>{formatCurrency(dog.dayRate)}</td>
                   <td className={`px-6 py-4 text-right ${dog.active === false ? 'text-gray-400' : 'text-gray-600'}`}>{formatCurrency(dog.nightRate)}</td>
                   <td className="px-6 py-4 text-right">
