@@ -16,7 +16,7 @@ export default function Layout() {
             <h1 className="text-xl font-bold text-gray-900">Q Boarding Manager</h1>
             <nav className="flex gap-2">
               <NavLink to="/" className={linkClass}>
-                Matrix
+                Q Boarding
               </NavLink>
               <NavLink to="/dogs" className={linkClass}>
                 Dogs
