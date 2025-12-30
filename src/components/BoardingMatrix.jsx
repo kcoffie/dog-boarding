@@ -2,10 +2,10 @@ import { useData } from '../context/DataContext';
 import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent, formatName } from '../utils/dateUtils';
 import EmployeeDropdown from './EmployeeDropdown';
 
-export default function BoardingMatrix({ startDate }) {
+export default function BoardingMatrix({ startDate, days = 14 }) {
   const { dogs, boardings, settings } = useData();
 
-  const dates = getDateRange(startDate.toISOString().split('T')[0], 14);
+  const dates = getDateRange(startDate.toISOString().split('T')[0], days);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {

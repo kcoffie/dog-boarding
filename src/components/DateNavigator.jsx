@@ -1,63 +1,124 @@
-import { formatDate } from '../utils/dateUtils';
+import { useState } from 'react';
+import { toDateInputValue } from '../utils/dateUtils';
 
-export default function DateNavigator({ startDate, onDateChange }) {
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 13); // 14 days total
+const MAX_DAYS = 21; // 3 weeks max
 
-  const handlePrevWeek = () => {
-    const newDate = new Date(startDate);
-    newDate.setDate(newDate.getDate() - 7);
-    onDateChange(newDate);
+export default function DateNavigator({ startDate, endDate, onStartDateChange, onEndDateChange }) {
+  const [error, setError] = useState('');
+
+  const toInputDate = (date) => {
+    return date.toISOString().split('T')[0];
   };
 
-  const handlePrevDay = () => {
-    const newDate = new Date(startDate);
-    newDate.setDate(newDate.getDate() - 1);
-    onDateChange(newDate);
+  const handleStartChange = (e) => {
+    const newStart = new Date(e.target.value + 'T00:00:00');
+    if (isNaN(newStart.getTime())) return;
+
+    const daysDiff = Math.floor((endDate - newStart) / (1000 * 60 * 60 * 24)) + 1;
+
+    if (newStart > endDate) {
+      setError('Start date must be before end date');
+      return;
+    }
+
+    if (daysDiff > MAX_DAYS) {
+      setError(`Range cannot exceed ${MAX_DAYS} days (3 weeks)`);
+      return;
+    }
+
+    setError('');
+    onStartDateChange(newStart);
+  };
+
+  const handleEndChange = (e) => {
+    const newEnd = new Date(e.target.value + 'T00:00:00');
+    if (isNaN(newEnd.getTime())) return;
+
+    const daysDiff = Math.floor((newEnd - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
+    if (newEnd < startDate) {
+      setError('End date must be after start date');
+      return;
+    }
+
+    if (daysDiff > MAX_DAYS) {
+      setError(`Range cannot exceed ${MAX_DAYS} days (3 weeks)`);
+      return;
+    }
+
+    setError('');
+    onEndDateChange(newEnd);
+  };
+
+  const shiftRange = (days) => {
+    const newStart = new Date(startDate);
+    const newEnd = new Date(endDate);
+    newStart.setDate(newStart.getDate() + days);
+    newEnd.setDate(newEnd.getDate() + days);
+    onStartDateChange(newStart);
+    onEndDateChange(newEnd);
   };
 
   const handleToday = () => {
-    onDateChange(new Date());
-  };
-
-  const handleNextDay = () => {
-    const newDate = new Date(startDate);
-    newDate.setDate(newDate.getDate() + 1);
-    onDateChange(newDate);
-  };
-
-  const handleNextWeek = () => {
-    const newDate = new Date(startDate);
-    newDate.setDate(newDate.getDate() + 7);
-    onDateChange(newDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const currentRange = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
+    const newEnd = new Date(today);
+    newEnd.setDate(newEnd.getDate() + currentRange);
+    onStartDateChange(today);
+    onEndDateChange(newEnd);
   };
 
   const buttonClass = "px-3 py-1.5 text-sm font-medium rounded-md transition-colors";
   const navButtonClass = `${buttonClass} text-gray-700 bg-white border border-gray-300 hover:bg-gray-50`;
   const todayButtonClass = `${buttonClass} text-white bg-blue-600 hover:bg-blue-700`;
 
+  const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
   return (
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center gap-2">
-        <button onClick={handlePrevWeek} className={navButtonClass}>
-          ← Week
-        </button>
-        <button onClick={handlePrevDay} className={navButtonClass}>
-          ← Day
-        </button>
-        <button onClick={handleToday} className={todayButtonClass}>
-          Today
-        </button>
-        <button onClick={handleNextDay} className={navButtonClass}>
-          Day →
-        </button>
-        <button onClick={handleNextWeek} className={navButtonClass}>
-          Week →
-        </button>
+    <div className="mb-4">
+      <div className="flex flex-wrap items-center gap-4 mb-2">
+        {/* Navigation buttons */}
+        <div className="flex items-center gap-2">
+          <button onClick={() => shiftRange(-7)} className={navButtonClass}>
+            ← Week
+          </button>
+          <button onClick={() => shiftRange(-1)} className={navButtonClass}>
+            ← Day
+          </button>
+          <button onClick={handleToday} className={todayButtonClass}>
+            Today
+          </button>
+          <button onClick={() => shiftRange(1)} className={navButtonClass}>
+            Day →
+          </button>
+          <button onClick={() => shiftRange(7)} className={navButtonClass}>
+            Week →
+          </button>
+        </div>
+
+        {/* Date range inputs */}
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={toInputDate(startDate)}
+            onChange={handleStartChange}
+            className="px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <span className="text-gray-500">to</span>
+          <input
+            type="date"
+            value={toInputDate(endDate)}
+            onChange={handleEndChange}
+            className="px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <span className="text-sm text-gray-500">({daysDiff} days)</span>
+        </div>
       </div>
-      <div className="text-gray-700 font-medium">
-        {formatDate(startDate.toISOString())} - {formatDate(endDate.toISOString())}
-      </div>
+
+      {error && (
+        <p className="text-red-500 text-sm">{error}</p>
+      )}
     </div>
   );
 }
