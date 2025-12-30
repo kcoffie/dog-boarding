@@ -17,6 +17,8 @@ export default function DogsPage() {
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [editingBoarding, setEditingBoarding] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: null, item: null });
+  const [sortColumn, setSortColumn] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
 
   const handleAddDog = (dogData) => {
     addDog(dogData);
@@ -85,6 +87,36 @@ export default function DogsPage() {
 
   const isFormOpen = showAddDogForm || showDogCsvImport || editingDog || showAddBoardingForm || showCsvImport || editingBoarding;
 
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedDogs = [...dogs].sort((a, b) => {
+    let aVal = a[sortColumn];
+    let bVal = b[sortColumn];
+
+    if (sortColumn === 'name') {
+      aVal = aVal.toLowerCase();
+      bVal = bVal.toLowerCase();
+    }
+
+    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const SortIcon = ({ column }) => {
+    if (sortColumn !== column) {
+      return <span className="text-gray-400 ml-1">↕</span>;
+    }
+    return <span className="ml-1">{sortDirection === 'asc' ? '↑' : '↓'}</span>;
+  };
+
   return (
     <div>
       {/* Dogs Section */}
@@ -146,14 +178,29 @@ export default function DogsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Name</th>
-                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Day Rate</th>
-                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Night Rate</th>
+                <th
+                  className="text-left px-6 py-3 text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('name')}
+                >
+                  Name<SortIcon column="name" />
+                </th>
+                <th
+                  className="text-right px-6 py-3 text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('dayRate')}
+                >
+                  Day Rate<SortIcon column="dayRate" />
+                </th>
+                <th
+                  className="text-right px-6 py-3 text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100 select-none"
+                  onClick={() => handleSort('nightRate')}
+                >
+                  Night Rate<SortIcon column="nightRate" />
+                </th>
                 <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {dogs.map((dog) => (
+              {sortedDogs.map((dog) => (
                 <tr key={dog.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-gray-900">{dog.name}</td>
                   <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(dog.dayRate)}</td>
