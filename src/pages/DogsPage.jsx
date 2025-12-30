@@ -108,9 +108,11 @@ export default function DogsPage() {
         bVal = bVal.toLowerCase();
       }
 
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
+      let comparison = 0;
+      if (aVal < bVal) comparison = -1;
+      else if (aVal > bVal) comparison = 1;
+
+      return sortDirection === 'desc' ? -comparison : comparison;
     });
 
   const SortIcon = ({ column }) => {
