@@ -19,6 +19,7 @@ export function DataProvider({ children }) {
     const newDog = {
       ...dog,
       id: crypto.randomUUID(),
+      active: true,
     };
     setDogs([...dogs, newDog]);
     return newDog;
@@ -34,10 +35,17 @@ export function DataProvider({ children }) {
     setBoardings(boardings.filter((b) => b.dogId !== id));
   };
 
+  const toggleDogActive = (id) => {
+    setDogs(dogs.map((dog) =>
+      dog.id === id ? { ...dog, active: !dog.active } : dog
+    ));
+  };
+
   const addDogs = (newDogs) => {
     const dogsWithIds = newDogs.map((d) => ({
       ...d,
       id: crypto.randomUUID(),
+      active: true,
     }));
     setDogs([...dogs, ...dogsWithIds]);
   };
@@ -124,6 +132,7 @@ export function DataProvider({ children }) {
     addDogs,
     updateDog,
     deleteDog,
+    toggleDogActive,
     // Boarding operations
     addBoarding,
     updateBoarding,

@@ -87,11 +87,13 @@ export default function BoardingForm({ boarding, onSave, onCancel }) {
           } ${isEditing ? 'bg-gray-100' : ''}`}
         >
           <option value="">Select a dog...</option>
-          {dogs.map((dog) => (
-            <option key={dog.id} value={dog.id}>
-              {dog.name}
-            </option>
-          ))}
+          {dogs
+            .filter((dog) => dog.active !== false || (isEditing && dog.id === boarding?.dogId))
+            .map((dog) => (
+              <option key={dog.id} value={dog.id}>
+                {dog.name}
+              </option>
+            ))}
         </select>
         {errors.dogId && <p className="text-red-500 text-sm mt-1">{errors.dogId}</p>}
       </div>
