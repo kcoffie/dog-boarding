@@ -106,6 +106,8 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
           <input
             type="date"
             value={toInputDate(endDate)}
+            min={toInputDate(startDate)}
+            max={toInputDate(new Date(startDate.getTime() + (MAX_DAYS - 1) * 24 * 60 * 60 * 1000))}
             onChange={handleEndChange}
             className="px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
