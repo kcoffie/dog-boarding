@@ -99,6 +99,13 @@ export function DataProvider({ children }) {
     setNightAssignments(nightAssignments.filter((a) => a.employeeName !== name));
   };
 
+  const reorderEmployees = (fromIndex, toIndex) => {
+    const newEmployees = [...settings.employees];
+    const [removed] = newEmployees.splice(fromIndex, 1);
+    newEmployees.splice(toIndex, 0, removed);
+    setSettings({ ...settings, employees: newEmployees });
+  };
+
   // Night assignment operations
   const setNightAssignment = (date, employeeName) => {
     const existing = nightAssignments.find((a) => a.date === date);
@@ -142,6 +149,7 @@ export function DataProvider({ children }) {
     updateSettings,
     addEmployee,
     deleteEmployee,
+    reorderEmployees,
     // Night assignment operations
     setNightAssignment,
     getNightAssignment,
