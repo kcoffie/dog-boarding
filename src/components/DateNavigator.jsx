@@ -64,63 +64,95 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
     onEndDateChange(newEnd);
   };
 
-  const buttonClass = "px-3 py-1.5 text-sm font-medium rounded-md transition-colors";
-  const navButtonClass = `${buttonClass} text-gray-700 bg-white border border-gray-300 hover:bg-gray-50`;
-  const todayButtonClass = `${buttonClass} text-white bg-blue-600 hover:bg-blue-700`;
-
   const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
   return (
-    <div className="mb-4">
-      <div className="flex flex-wrap items-center gap-4 mb-2">
+    <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-4">
+      <div className="flex flex-wrap items-center gap-4">
         {/* Navigation buttons */}
-        <div className="flex items-center gap-2">
-          <button onClick={() => shiftRange(-7)} className={navButtonClass}>
-            ← Week
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => shiftRange(-7)}
+            className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+          >
+            <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+            Week
           </button>
-          <button onClick={() => shiftRange(-1)} className={navButtonClass}>
-            ← Day
+          <button
+            onClick={() => shiftRange(-1)}
+            className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+          >
+            <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Day
           </button>
-          <button onClick={handleToday} className={todayButtonClass}>
+          <button
+            onClick={handleToday}
+            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
+          >
             Today
           </button>
-          <button onClick={() => shiftRange(1)} className={navButtonClass}>
-            Day →
+          <button
+            onClick={() => shiftRange(1)}
+            className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+          >
+            Day
+            <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
           </button>
-          <button onClick={() => shiftRange(7)} className={navButtonClass}>
-            Week →
+          <button
+            onClick={() => shiftRange(7)}
+            className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+          >
+            Week
+            <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
           </button>
         </div>
 
+        {/* Divider */}
+        <div className="hidden sm:block w-px h-8 bg-slate-200" />
+
         {/* Date range inputs */}
-        <div className="flex items-center gap-2">
-          <DatePicker
-            selected={startDate}
-            onChange={handleStartChange}
-            selectsStart
-            startDate={startDate}
-            endDate={endDate}
-            dateFormat="MMM d, yyyy"
-            className="w-32 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <span className="text-gray-500">to</span>
-          <DatePicker
-            selected={endDate}
-            onChange={handleEndChange}
-            selectsEnd
-            startDate={startDate}
-            endDate={endDate}
-            minDate={startDate}
-            maxDate={maxEndDate}
-            dateFormat="MMM d, yyyy"
-            className="w-32 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <span className="text-sm text-gray-500">({daysDiff} days)</span>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <DatePicker
+              selected={startDate}
+              onChange={handleStartChange}
+              selectsStart
+              startDate={startDate}
+              endDate={endDate}
+              dateFormat="MMM d, yyyy"
+              className="w-36 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            />
+          </div>
+          <span className="text-slate-400 font-medium">to</span>
+          <div className="relative">
+            <DatePicker
+              selected={endDate}
+              onChange={handleEndChange}
+              selectsEnd
+              startDate={startDate}
+              endDate={endDate}
+              minDate={startDate}
+              maxDate={maxEndDate}
+              dateFormat="MMM d, yyyy"
+              className="w-36 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            />
+          </div>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+            {daysDiff} days
+          </span>
         </div>
       </div>
 
       {error && (
-        <p className="text-red-500 text-sm">{error}</p>
+        <p className="text-red-600 text-sm mt-3">{error}</p>
       )}
     </div>
   );

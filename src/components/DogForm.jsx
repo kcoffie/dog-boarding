@@ -56,74 +56,80 @@ export default function DogForm({ dog, onSave, onCancel }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
           Name
         </label>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.name ? 'border-red-500' : 'border-gray-300'
+          className={`w-full px-3.5 py-2.5 text-sm bg-white border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
+            errors.name ? 'border-red-500' : 'border-slate-300'
           }`}
-          placeholder="Dog name"
+          placeholder="Enter dog name"
         />
-        {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+        {errors.name && <p className="text-red-600 text-sm mt-1.5">{errors.name}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Day Rate ($)
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">
+            Day Rate
           </label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={dayRate}
-            onChange={(e) => setDayRate(e.target.value)}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              errors.dayRate ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="0.00"
-          />
-          {errors.dayRate && <p className="text-red-500 text-sm mt-1">{errors.dayRate}</p>}
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={dayRate}
+              onChange={(e) => setDayRate(e.target.value)}
+              className={`w-full pl-8 pr-3.5 py-2.5 text-sm bg-white border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
+                errors.dayRate ? 'border-red-500' : 'border-slate-300'
+              }`}
+              placeholder="0.00"
+            />
+          </div>
+          {errors.dayRate && <p className="text-red-600 text-sm mt-1.5">{errors.dayRate}</p>}
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Night Rate ($)
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">
+            Night Rate
           </label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={nightRate}
-            onChange={(e) => setNightRate(e.target.value)}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              errors.nightRate ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="0.00"
-          />
-          {errors.nightRate && <p className="text-red-500 text-sm mt-1">{errors.nightRate}</p>}
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">$</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={nightRate}
+              onChange={(e) => setNightRate(e.target.value)}
+              className={`w-full pl-8 pr-3.5 py-2.5 text-sm bg-white border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
+                errors.nightRate ? 'border-red-500' : 'border-slate-300'
+              }`}
+              placeholder="0.00"
+            />
+          </div>
+          {errors.nightRate && <p className="text-red-600 text-sm mt-1.5">{errors.nightRate}</p>}
         </div>
       </div>
 
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-3 pt-2">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
         >
           {isEditing ? 'Save Changes' : 'Add Dog'}
         </button>

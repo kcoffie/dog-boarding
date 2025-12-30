@@ -22,9 +22,9 @@ export default function EmployeeDropdown({ date }) {
     <select
       value={selectedEmployee}
       onChange={handleChange}
-      className="w-full text-xs px-1 py-1 border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+      className="w-full text-xs px-2 py-1.5 border border-slate-300 rounded-lg bg-white text-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
     >
-      <option value="">-</option>
+      <option value="">—</option>
       {availableEmployees.map((employee) => {
         const name = getEmployeeName(employee);
         return (

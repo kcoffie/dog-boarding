@@ -21,15 +21,25 @@ export default function MatrixPage() {
   const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">Q</h1>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
+        <p className="text-slate-500 mt-1">Overview of boarding schedule and revenue</p>
+      </div>
+
+      {/* Date Navigator */}
       <DateNavigator
         startDate={startDate}
         endDate={endDate}
         onStartDateChange={setStartDate}
         onEndDateChange={setEndDate}
       />
+
+      {/* Boarding Matrix */}
       <BoardingMatrix startDate={startDate} days={daysDiff} />
+
+      {/* Employee Totals */}
       <EmployeeTotals startDate={startDate} days={daysDiff} />
     </div>
   );
