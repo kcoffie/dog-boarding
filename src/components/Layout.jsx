@@ -13,7 +13,7 @@ export default function Layout() {
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold text-gray-900">Dog Boarding Manager</h1>
+            <h1 className="text-xl font-bold text-gray-900">Q Boarding Manager</h1>
             <nav className="flex gap-2">
               <NavLink to="/" className={linkClass}>
                 Matrix
