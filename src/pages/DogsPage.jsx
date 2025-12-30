@@ -8,7 +8,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { formatDateTime, calculateNights } from '../utils/dateUtils';
 
 export default function DogsPage() {
-  const { dogs, boardings, addDog, updateDog, deleteDog, addBoarding, updateBoarding, deleteBoarding } = useData();
+  const { dogs, boardings, addDog, updateDog, deleteDog, toggleDogActive, addBoarding, updateBoarding, deleteBoarding } = useData();
 
   const [editingDog, setEditingDog] = useState(null);
   const [showAddDogForm, setShowAddDogForm] = useState(false);
@@ -223,10 +223,10 @@ export default function DogsPage() {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredAndSortedDogs.map((dog) => (
-                <tr key={dog.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-gray-900">{dog.name}</td>
-                  <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(dog.dayRate)}</td>
-                  <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(dog.nightRate)}</td>
+                <tr key={dog.id} className={`hover:bg-gray-50 ${dog.active === false ? 'opacity-50' : ''}`}>
+                  <td className={`px-6 py-4 ${dog.active === false ? 'text-gray-400' : 'text-gray-900'}`}>{dog.name}</td>
+                  <td className={`px-6 py-4 text-right ${dog.active === false ? 'text-gray-400' : 'text-gray-600'}`}>{formatCurrency(dog.dayRate)}</td>
+                  <td className={`px-6 py-4 text-right ${dog.active === false ? 'text-gray-400' : 'text-gray-600'}`}>{formatCurrency(dog.nightRate)}</td>
                   <td className="px-6 py-4 text-right">
                     <button
                       onClick={() => setEditingDog(dog)}
@@ -234,6 +234,13 @@ export default function DogsPage() {
                       className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-4 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Edit
+                    </button>
+                    <button
+                      onClick={() => toggleDogActive(dog.id)}
+                      disabled={isFormOpen}
+                      className="text-amber-600 hover:text-amber-800 text-sm font-medium mr-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {dog.active === false ? 'Activate' : 'Deactivate'}
                     </button>
                     <button
                       onClick={() => handleDeleteDogClick(dog)}
