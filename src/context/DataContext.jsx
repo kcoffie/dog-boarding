@@ -82,10 +82,12 @@ export function DataProvider({ children }) {
   };
 
   const addEmployee = (name) => {
-    if (!settings.employees.includes(name)) {
+    // Support both old string format and new object format
+    const employeeNames = settings.employees.map(e => typeof e === 'string' ? e : e.name);
+    if (!employeeNames.some(n => n.toLowerCase() === name.toLowerCase())) {
       setSettings({
         ...settings,
-        employees: [...settings.employees, name],
+        employees: [...settings.employees, { name, active: true }],
       });
     }
   };
@@ -93,10 +95,24 @@ export function DataProvider({ children }) {
   const deleteEmployee = (name) => {
     setSettings({
       ...settings,
-      employees: settings.employees.filter((e) => e !== name),
+      employees: settings.employees.filter((e) => (typeof e === 'string' ? e : e.name) !== name),
     });
     // Also remove their night assignments
     setNightAssignments(nightAssignments.filter((a) => a.employeeName !== name));
+  };
+
+  const toggleEmployeeActive = (name) => {
+    setSettings({
+      ...settings,
+      employees: settings.employees.map((e) => {
+        const empName = typeof e === 'string' ? e : e.name;
+        if (empName === name) {
+          const currentActive = typeof e === 'string' ? true : e.active;
+          return { name: empName, active: !currentActive };
+        }
+        return typeof e === 'string' ? { name: e, active: true } : e;
+      }),
+    });
   };
 
   const reorderEmployees = (fromIndex, toIndex) => {
@@ -149,6 +165,7 @@ export function DataProvider({ children }) {
     updateSettings,
     addEmployee,
     deleteEmployee,
+    toggleEmployeeActive,
     reorderEmployees,
     // Night assignment operations
     setNightAssignment,
