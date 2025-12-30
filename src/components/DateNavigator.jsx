@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { toDateInputValue } from '../utils/dateUtils';
 
 const MAX_DAYS = 21; // 3 weeks max
 
 export default function DateNavigator({ startDate, endDate, onStartDateChange, onEndDateChange }) {
+  const [error, setError] = useState('');
 
   const toInputDate = (date) => {
     return date.toISOString().split('T')[0];
@@ -11,6 +13,8 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
   const handleStartChange = (e) => {
     const newStart = new Date(e.target.value + 'T00:00:00');
     if (isNaN(newStart.getTime())) return;
+
+    setError('');
 
     // Keep current range length, but cap at MAX_DAYS
     const currentRange = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
@@ -30,19 +34,16 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
     const daysDiff = Math.floor((newEnd - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
     if (newEnd < startDate) {
-      // If end is before start, adjust start to match end
-      onStartDateChange(newEnd);
-      onEndDateChange(newEnd);
+      setError('End date must be after start date');
       return;
     }
 
     if (daysDiff > MAX_DAYS) {
-      // Auto-adjust start date to keep max range
-      const newStart = new Date(newEnd);
-      newStart.setDate(newStart.getDate() - (MAX_DAYS - 1));
-      onStartDateChange(newStart);
+      setError(`Range cannot exceed ${MAX_DAYS} days (3 weeks)`);
+      return;
     }
 
+    setError('');
     onEndDateChange(newEnd);
   };
 
@@ -111,6 +112,10 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
           <span className="text-sm text-gray-500">({daysDiff} days)</span>
         </div>
       </div>
+
+      {error && (
+        <p className="text-red-500 text-sm">{error}</p>
+      )}
     </div>
   );
 }
