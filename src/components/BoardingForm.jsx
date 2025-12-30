@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import Select from 'react-select';
 import { useData } from '../context/DataContext';
 import { toDateInputValue, toTimeInputValue, combineDateAndTime, formatName } from '../utils/dateUtils';
 
@@ -13,6 +14,16 @@ export default function BoardingForm({ boarding, onSave, onCancel }) {
   const [errors, setErrors] = useState({});
 
   const isEditing = !!boarding;
+
+  // Build options for react-select
+  const dogOptions = dogs
+    .filter((dog) => dog.active !== false || (isEditing && dog.id === boarding?.dogId))
+    .map((dog) => ({
+      value: dog.id,
+      label: formatName(dog.name),
+    }));
+
+  const selectedDog = dogOptions.find((opt) => opt.value === dogId) || null;
 
   useEffect(() => {
     if (boarding) {
@@ -78,23 +89,26 @@ export default function BoardingForm({ boarding, onSave, onCancel }) {
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Dog
         </label>
-        <select
-          value={dogId}
-          onChange={(e) => setDogId(e.target.value)}
-          disabled={isEditing}
-          className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            errors.dogId ? 'border-red-500' : 'border-gray-300'
-          } ${isEditing ? 'bg-gray-100' : ''}`}
-        >
-          <option value="">Select a dog...</option>
-          {dogs
-            .filter((dog) => dog.active !== false || (isEditing && dog.id === boarding?.dogId))
-            .map((dog) => (
-              <option key={dog.id} value={dog.id}>
-                {formatName(dog.name)}
-              </option>
-            ))}
-        </select>
+        <Select
+          value={selectedDog}
+          onChange={(option) => setDogId(option?.value || '')}
+          options={dogOptions}
+          isDisabled={isEditing}
+          isClearable
+          placeholder="Type to search dogs..."
+          noOptionsMessage={() => "No dogs found"}
+          styles={{
+            control: (base, state) => ({
+              ...base,
+              borderColor: errors.dogId ? '#ef4444' : state.isFocused ? '#3b82f6' : '#d1d5db',
+              boxShadow: state.isFocused ? '0 0 0 2px rgba(59, 130, 246, 0.5)' : 'none',
+              '&:hover': {
+                borderColor: errors.dogId ? '#ef4444' : '#3b82f6',
+              },
+              backgroundColor: isEditing ? '#f3f4f6' : 'white',
+            }),
+          }}
+        />
         {errors.dogId && <p className="text-red-500 text-sm mt-1">{errors.dogId}</p>}
       </div>
 
