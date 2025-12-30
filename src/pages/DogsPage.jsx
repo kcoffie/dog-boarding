@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useData } from '../context/DataContext';
 import DogForm from '../components/DogForm';
 import BoardingForm from '../components/BoardingForm';
+import CsvImport from '../components/CsvImport';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { formatDateTime, calculateNights } from '../utils/dateUtils';
 
@@ -11,6 +12,7 @@ export default function DogsPage() {
   const [editingDog, setEditingDog] = useState(null);
   const [showAddDogForm, setShowAddDogForm] = useState(false);
   const [showAddBoardingForm, setShowAddBoardingForm] = useState(false);
+  const [showCsvImport, setShowCsvImport] = useState(false);
   const [editingBoarding, setEditingBoarding] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: null, item: null });
 
@@ -79,7 +81,7 @@ export default function DogsPage() {
     return '';
   };
 
-  const isFormOpen = showAddDogForm || editingDog || showAddBoardingForm || editingBoarding;
+  const isFormOpen = showAddDogForm || editingDog || showAddBoardingForm || showCsvImport || editingBoarding;
 
   return (
     <div>
@@ -166,12 +168,20 @@ export default function DogsPage() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold">Boardings</h2>
         {!isFormOpen && dogs.length > 0 && (
-          <button
-            onClick={() => setShowAddBoardingForm(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            Add Boarding
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowCsvImport(true)}
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Import CSV
+            </button>
+            <button
+              onClick={() => setShowAddBoardingForm(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Add Boarding
+            </button>
+          </div>
         )}
       </div>
 
@@ -183,6 +193,13 @@ export default function DogsPage() {
             onSave={handleAddBoarding}
             onCancel={() => setShowAddBoardingForm(false)}
           />
+        </div>
+      )}
+
+      {/* CSV Import */}
+      {showCsvImport && (
+        <div className="mb-6">
+          <CsvImport onClose={() => setShowCsvImport(false)} />
         </div>
       )}
 
