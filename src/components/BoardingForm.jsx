@@ -3,10 +3,10 @@ import Select from 'react-select';
 import { useData } from '../context/DataContext';
 import { toDateInputValue, toTimeInputValue, combineDateAndTime, formatName } from '../utils/dateUtils';
 
-export default function BoardingForm({ boarding, onSave, onCancel }) {
+export default function BoardingForm({ boarding, preselectedDogId, onSave, onCancel }) {
   const { dogs } = useData();
 
-  const [dogId, setDogId] = useState('');
+  const [dogId, setDogId] = useState(preselectedDogId || '');
   const [arrivalDate, setArrivalDate] = useState('');
   const [arrivalTime, setArrivalTime] = useState('14:00');
   const [departureDate, setDepartureDate] = useState('');
