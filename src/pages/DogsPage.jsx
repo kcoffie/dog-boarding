@@ -128,9 +128,115 @@ export default function DogsPage() {
 
   return (
     <div>
+      {/* Boardings Section */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Boardings</h1>
+        {!isFormOpen && dogs.length > 0 && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowCsvImport(true)}
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Import CSV
+            </button>
+            <button
+              onClick={() => setShowAddBoardingForm(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Add Boarding
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Add Boarding Form */}
+      {showAddBoardingForm && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Add New Boarding</h2>
+          <BoardingForm
+            onSave={handleAddBoarding}
+            onCancel={() => setShowAddBoardingForm(false)}
+          />
+        </div>
+      )}
+
+      {/* CSV Import */}
+      {showCsvImport && (
+        <div className="mb-6">
+          <CsvImport onClose={() => setShowCsvImport(false)} />
+        </div>
+      )}
+
+      {/* Edit Boarding Form */}
+      {editingBoarding && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Edit Boarding</h2>
+          <BoardingForm
+            boarding={editingBoarding}
+            onSave={handleEditBoarding}
+            onCancel={() => setEditingBoarding(null)}
+          />
+        </div>
+      )}
+
+      {/* Boarding List */}
+      <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
+        {boardings.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">
+            {dogs.length === 0 ? 'Add dogs first to create boardings' : 'No boardings added yet'}
+          </p>
+        ) : (
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Dog</th>
+                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Arrival</th>
+                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Departure</th>
+                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Nights</th>
+                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Gross</th>
+                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {boardings.map((boarding) => {
+                const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
+                const nightRate = getDogNightRate(boarding.dogId);
+                const gross = nights * nightRate;
+
+                return (
+                  <tr key={boarding.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-gray-900">{getDogName(boarding.dogId)}</td>
+                    <td className="px-6 py-4 text-gray-600">{formatDateTime(boarding.arrivalDateTime)}</td>
+                    <td className="px-6 py-4 text-gray-600">{formatDateTime(boarding.departureDateTime)}</td>
+                    <td className="px-6 py-4 text-right text-gray-600">{nights}</td>
+                    <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(gross)}</td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => setEditingBoarding(boarding)}
+                        disabled={isFormOpen}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBoardingClick(boarding)}
+                        disabled={isFormOpen}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
       {/* Dogs Section */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Dogs</h1>
+        <h2 className="text-xl font-bold">Dogs</h2>
         {!isFormOpen && (
           <div className="flex gap-2">
             <button
@@ -193,7 +299,7 @@ export default function DogsPage() {
       )}
 
       {/* Dog List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
+      <div className="bg-white rounded-lg shadow overflow-hidden">
         {dogs.length === 0 ? (
           <p className="text-gray-500 text-center py-8">No dogs added yet</p>
         ) : (
@@ -252,112 +358,6 @@ export default function DogsPage() {
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Boardings Section */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold">Boardings</h2>
-        {!isFormOpen && dogs.length > 0 && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowCsvImport(true)}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-            >
-              Import CSV
-            </button>
-            <button
-              onClick={() => setShowAddBoardingForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              Add Boarding
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Add Boarding Form */}
-      {showAddBoardingForm && (
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Add New Boarding</h2>
-          <BoardingForm
-            onSave={handleAddBoarding}
-            onCancel={() => setShowAddBoardingForm(false)}
-          />
-        </div>
-      )}
-
-      {/* CSV Import */}
-      {showCsvImport && (
-        <div className="mb-6">
-          <CsvImport onClose={() => setShowCsvImport(false)} />
-        </div>
-      )}
-
-      {/* Edit Boarding Form */}
-      {editingBoarding && (
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Edit Boarding</h2>
-          <BoardingForm
-            boarding={editingBoarding}
-            onSave={handleEditBoarding}
-            onCancel={() => setEditingBoarding(null)}
-          />
-        </div>
-      )}
-
-      {/* Boarding List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {boardings.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">
-            {dogs.length === 0 ? 'Add dogs first to create boardings' : 'No boardings added yet'}
-          </p>
-        ) : (
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Dog</th>
-                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Arrival</th>
-                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Departure</th>
-                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Nights</th>
-                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Gross</th>
-                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {boardings.map((boarding) => {
-                const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
-                const nightRate = getDogNightRate(boarding.dogId);
-                const gross = nights * nightRate;
-
-                return (
-                  <tr key={boarding.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-gray-900">{getDogName(boarding.dogId)}</td>
-                    <td className="px-6 py-4 text-gray-600">{formatDateTime(boarding.arrivalDateTime)}</td>
-                    <td className="px-6 py-4 text-gray-600">{formatDateTime(boarding.departureDateTime)}</td>
-                    <td className="px-6 py-4 text-right text-gray-600">{nights}</td>
-                    <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(gross)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => setEditingBoarding(boarding)}
-                        disabled={isFormOpen}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBoardingClick(boarding)}
-                        disabled={isFormOpen}
-                        className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
             </tbody>
           </table>
         )}
