@@ -106,13 +106,15 @@ export default function DogsPage() {
 
       // Case-insensitive string comparison for name
       if (sortColumn === 'name') {
-        aVal = aVal.toLowerCase();
-        bVal = bVal.toLowerCase();
+        aVal = (aVal || '').toLowerCase();
+        bVal = (bVal || '').toLowerCase();
         const result = aVal.localeCompare(bVal);
         return sortDirection === 'asc' ? result : -result;
       }
 
       // Numeric comparison for rates
+      aVal = aVal || 0;
+      bVal = bVal || 0;
       const result = aVal - bVal;
       return sortDirection === 'asc' ? result : -result;
     });
