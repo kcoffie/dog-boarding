@@ -83,10 +83,37 @@ export default function BoardingForm({ boarding, preselectedDogId, onSave, onCan
     }
   };
 
+  // Custom styles for react-select to match our design
+  const selectStyles = {
+    control: (base, state) => ({
+      ...base,
+      minHeight: '42px',
+      borderRadius: '0.5rem',
+      borderColor: errors.dogId ? '#ef4444' : state.isFocused ? '#6366f1' : '#cbd5e1',
+      boxShadow: state.isFocused ? '0 0 0 2px rgba(99, 102, 241, 0.2)' : 'none',
+      '&:hover': {
+        borderColor: errors.dogId ? '#ef4444' : '#6366f1',
+      },
+      backgroundColor: isEditing ? '#f8fafc' : 'white',
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: '#94a3b8',
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: state.isSelected ? '#6366f1' : state.isFocused ? '#eef2ff' : 'white',
+      color: state.isSelected ? 'white' : '#1e293b',
+      '&:active': {
+        backgroundColor: '#c7d2fe',
+      },
+    }),
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-slate-700 mb-1.5">
           Dog
         </label>
         <Select
@@ -95,94 +122,84 @@ export default function BoardingForm({ boarding, preselectedDogId, onSave, onCan
           options={dogOptions}
           isDisabled={isEditing}
           isClearable
-          placeholder="Type to search dogs..."
+          placeholder="Select a dog..."
           noOptionsMessage={() => "No dogs found"}
-          styles={{
-            control: (base, state) => ({
-              ...base,
-              borderColor: errors.dogId ? '#ef4444' : state.isFocused ? '#3b82f6' : '#d1d5db',
-              boxShadow: state.isFocused ? '0 0 0 2px rgba(59, 130, 246, 0.5)' : 'none',
-              '&:hover': {
-                borderColor: errors.dogId ? '#ef4444' : '#3b82f6',
-              },
-              backgroundColor: isEditing ? '#f3f4f6' : 'white',
-            }),
-          }}
+          styles={selectStyles}
         />
-        {errors.dogId && <p className="text-red-500 text-sm mt-1">{errors.dogId}</p>}
+        {errors.dogId && <p className="text-red-600 text-sm mt-1.5">{errors.dogId}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">
             Arrival Date
           </label>
           <input
             type="date"
             value={arrivalDate}
             onChange={(e) => setArrivalDate(e.target.value)}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              errors.arrivalDate ? 'border-red-500' : 'border-gray-300'
+            className={`w-full px-3.5 py-2.5 text-sm bg-white border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
+              errors.arrivalDate ? 'border-red-500' : 'border-slate-300'
             }`}
           />
-          {errors.arrivalDate && <p className="text-red-500 text-sm mt-1">{errors.arrivalDate}</p>}
+          {errors.arrivalDate && <p className="text-red-600 text-sm mt-1.5">{errors.arrivalDate}</p>}
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">
             Arrival Time
           </label>
           <input
             type="time"
             value={arrivalTime}
             onChange={(e) => setArrivalTime(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">
             Departure Date
           </label>
           <input
             type="date"
             value={departureDate}
             onChange={(e) => setDepartureDate(e.target.value)}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              errors.departureDate ? 'border-red-500' : 'border-gray-300'
+            className={`w-full px-3.5 py-2.5 text-sm bg-white border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
+              errors.departureDate ? 'border-red-500' : 'border-slate-300'
             }`}
           />
-          {errors.departureDate && <p className="text-red-500 text-sm mt-1">{errors.departureDate}</p>}
+          {errors.departureDate && <p className="text-red-600 text-sm mt-1.5">{errors.departureDate}</p>}
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">
             Departure Time
           </label>
           <input
             type="time"
             value={departureTime}
             onChange={(e) => setDepartureTime(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           />
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex justify-end gap-3 pt-2">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
         >
           {isEditing ? 'Save Changes' : 'Add Boarding'}
         </button>

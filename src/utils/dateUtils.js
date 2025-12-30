@@ -130,7 +130,11 @@ export function isDayPresent(boarding, dateStr) {
 // Generate array of dates for a range
 export function getDateRange(startDate, days) {
   const dates = [];
-  const start = new Date(startDate);
+  // Handle both Date objects and date strings
+  // For strings, append time to parse as local time (not UTC)
+  const start = startDate instanceof Date
+    ? new Date(startDate)
+    : new Date(startDate + 'T00:00:00');
   start.setHours(0, 0, 0, 0);
 
   for (let i = 0; i < days; i++) {

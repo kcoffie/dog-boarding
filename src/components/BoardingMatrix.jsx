@@ -5,7 +5,7 @@ import EmployeeDropdown from './EmployeeDropdown';
 export default function BoardingMatrix({ startDate, days = 14 }) {
   const { dogs, boardings, settings } = useData();
 
-  const dates = getDateRange(startDate.toISOString().split('T')[0], days);
+  const dates = getDateRange(startDate, days);
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -33,14 +33,14 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
 
     if (isNight) {
       return (
-        <div className="w-6 h-6 mx-auto rounded-full bg-blue-600" title="Overnight" />
+        <div className="w-7 h-7 mx-auto rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-sm" title="Overnight" />
       );
     } else if (isDay) {
       return (
-        <div className="w-6 h-6 mx-auto rounded-full bg-yellow-400" title="Day only" />
+        <div className="w-7 h-7 mx-auto rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 shadow-sm" title="Day only" />
       );
     }
-    return <span className="text-gray-300">-</span>;
+    return <span className="text-slate-300">—</span>;
   };
 
   const calculateDayGross = (dateStr) => {
@@ -50,7 +50,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
       for (const boarding of dogBoardings) {
         if (isOvernight(boarding, dateStr)) {
           total += dog.nightRate;
-          break; // Only count once per dog per night
+          break;
         }
       }
     }
@@ -76,7 +76,6 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
     return count;
   };
 
-  // Check if a dog has any presence in the date range
   const dogHasPresenceInRange = (dog) => {
     const dogBoardings = boardings.filter(b => b.dogId === dog.id);
     for (const dateStr of dates) {
@@ -89,153 +88,166 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
     return false;
   };
 
-  // Filter to only dogs with boardings in the date range
   const dogsWithBoardings = dogs.filter(dogHasPresenceInRange);
 
   if (dogs.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-        No dogs added yet. Go to the Dogs page to add some dogs first.
+      <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-12 text-center">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+          <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-medium text-slate-900 mb-1">No dogs yet</h3>
+        <p className="text-slate-500">Go to the Dogs page to add some dogs first.</p>
       </div>
     );
   }
 
   if (dogsWithBoardings.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-        No dogs boarding in this date range.
+      <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-12 text-center">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+          <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-medium text-slate-900 mb-1">No boardings in range</h3>
+        <p className="text-slate-500">No dogs are boarding during the selected dates.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-x-auto">
-      <table className="w-full min-w-max">
-        <thead>
-          <tr className="bg-gray-50 border-b">
-            <th className="text-left px-4 py-3 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50 min-w-[120px]">
-              Dog
-            </th>
-            <th className="text-right px-3 py-3 text-sm font-semibold text-gray-900 min-w-[70px]">
-              Day
-            </th>
-            <th className="text-right px-3 py-3 text-sm font-semibold text-gray-900 min-w-[70px]">
-              Night
-            </th>
-            {dates.map((dateStr) => (
-              <th key={dateStr} className="text-center px-2 py-3 text-xs font-semibold text-gray-900 min-w-[50px]">
-                <div>{getDayOfWeek(dateStr)}</div>
-                <div className="font-normal text-gray-600">{formatDateShort(dateStr)}</div>
+    <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-max">
+          <thead>
+            <tr className="border-b border-slate-200">
+              <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider sticky left-0 bg-white min-w-[140px]">
+                Dog
               </th>
+              <th className="text-right px-3 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[70px]">
+                Day
+              </th>
+              <th className="text-right px-3 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[70px]">
+                Night
+              </th>
+              {dates.map((dateStr) => (
+                <th key={dateStr} className="text-center px-2 py-4 text-xs font-medium text-slate-500 min-w-[52px]">
+                  <div className="text-slate-400">{getDayOfWeek(dateStr)}</div>
+                  <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {dogsWithBoardings.map((dog) => (
+              <tr key={dog.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-5 py-4 text-sm font-medium text-slate-900 sticky left-0 bg-white">
+                  {formatName(dog.name)}
+                </td>
+                <td className="px-3 py-4 text-sm text-slate-500 text-right tabular-nums">
+                  ${dog.dayRate}
+                </td>
+                <td className="px-3 py-4 text-sm text-slate-500 text-right tabular-nums">
+                  ${dog.nightRate}
+                </td>
+                {dates.map((dateStr) => (
+                  <td key={dateStr} className="px-2 py-4 text-center">
+                    {getPresenceIndicator(dog, dateStr)}
+                  </td>
+                ))}
+              </tr>
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {dogsWithBoardings.map((dog) => (
-            <tr key={dog.id} className="border-b hover:bg-gray-50">
-              <td className="px-4 py-3 text-sm text-gray-900 sticky left-0 bg-white font-medium">
-                {formatName(dog.name)}
-              </td>
-              <td className="px-3 py-3 text-sm text-gray-600 text-right">
-                ${dog.dayRate}
-              </td>
-              <td className="px-3 py-3 text-sm text-gray-600 text-right">
-                ${dog.nightRate}
-              </td>
-              {dates.map((dateStr) => (
-                <td key={dateStr} className="px-2 py-3 text-center">
-                  {getPresenceIndicator(dog, dateStr)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          {/* Dogs Overnight Row */}
-          <tr className="bg-gray-50 border-t-2">
-            <td className="px-4 py-3 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
-              Dogs Overnight
-            </td>
-            <td colSpan={2}></td>
-            {dates.map((dateStr) => {
-              const count = countOvernightDogs(dateStr);
-              return (
-                <td key={dateStr} className="px-2 py-3 text-center text-sm font-medium text-gray-900">
-                  {count > 0 ? count : '-'}
-                </td>
-              );
-            })}
-          </tr>
-          {/* Gross Row */}
-          <tr className="bg-gray-50">
-            <td className="px-4 py-3 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
-              Gross
-            </td>
-            <td colSpan={2}></td>
-            {dates.map((dateStr) => {
-              const gross = calculateDayGross(dateStr);
-              return (
-                <td key={dateStr} className="px-2 py-3 text-center text-sm font-medium text-gray-900">
-                  {gross > 0 ? formatCurrency(gross) : '-'}
-                </td>
-              );
-            })}
-          </tr>
-          {/* Net Row */}
-          <tr className="bg-gray-50">
-            <td className="px-4 py-3 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
-              Net ({settings.netPercentage}%)
-            </td>
-            <td colSpan={2}></td>
-            {dates.map((dateStr) => {
-              const net = calculateDayNet(dateStr);
-              return (
-                <td key={dateStr} className="px-2 py-3 text-center text-sm font-medium text-green-600">
-                  {net > 0 ? formatCurrency(net) : '-'}
-                </td>
-              );
-            })}
-          </tr>
-          {/* Date Row (above Employee) */}
-          {settings.employees.length > 0 && (
-            <tr className="bg-gray-50 border-t">
-              <td className="px-4 py-2 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
-                Date
+          </tbody>
+          <tfoot className="bg-slate-50/50">
+            {/* Dogs Overnight Row */}
+            <tr className="border-t-2 border-slate-200">
+              <td className="px-5 py-4 text-sm font-semibold text-slate-700 sticky left-0 bg-slate-50/50">
+                Dogs Overnight
               </td>
               <td colSpan={2}></td>
-              {dates.map((dateStr) => (
-                <td key={dateStr} className="px-2 py-2 text-center text-xs font-semibold text-gray-900">
-                  <div>{getDayOfWeek(dateStr)}</div>
-                  <div className="font-normal text-gray-600">{formatDateShort(dateStr)}</div>
-                </td>
-              ))}
+              {dates.map((dateStr) => {
+                const count = countOvernightDogs(dateStr);
+                return (
+                  <td key={dateStr} className="px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums">
+                    {count > 0 ? count : '—'}
+                  </td>
+                );
+              })}
             </tr>
-          )}
-          {/* Employee Row */}
-          {settings.employees.length > 0 && (
-            <tr className="bg-gray-50">
-              <td className="px-4 py-3 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
-                Employee
+            {/* Gross Row */}
+            <tr>
+              <td className="px-5 py-4 text-sm font-semibold text-slate-700 sticky left-0 bg-slate-50/50">
+                Gross
               </td>
               <td colSpan={2}></td>
-              {dates.map((dateStr) => (
-                <td key={dateStr} className="px-1 py-2">
-                  <EmployeeDropdown date={dateStr} />
-                </td>
-              ))}
+              {dates.map((dateStr) => {
+                const gross = calculateDayGross(dateStr);
+                return (
+                  <td key={dateStr} className="px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums">
+                    {gross > 0 ? formatCurrency(gross) : '—'}
+                  </td>
+                );
+              })}
             </tr>
-          )}
-        </tfoot>
-      </table>
+            {/* Net Row */}
+            <tr>
+              <td className="px-5 py-4 text-sm font-semibold text-slate-700 sticky left-0 bg-slate-50/50">
+                Net <span className="font-normal text-slate-500">({settings.netPercentage}%)</span>
+              </td>
+              <td colSpan={2}></td>
+              {dates.map((dateStr) => {
+                const net = calculateDayNet(dateStr);
+                return (
+                  <td key={dateStr} className="px-2 py-4 text-center text-sm font-semibold text-emerald-600 tabular-nums">
+                    {net > 0 ? formatCurrency(net) : '—'}
+                  </td>
+                );
+              })}
+            </tr>
+            {/* Date Row (above Employee) */}
+            {settings.employees.length > 0 && (
+              <tr className="border-t border-slate-200">
+                <td className="px-5 py-3 text-sm font-semibold text-slate-700 sticky left-0 bg-slate-50/50">
+                  Date
+                </td>
+                <td colSpan={2}></td>
+                {dates.map((dateStr) => (
+                  <td key={dateStr} className="px-2 py-3 text-center text-xs font-medium text-slate-500">
+                    <div className="text-slate-400">{getDayOfWeek(dateStr)}</div>
+                    <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
+                  </td>
+                ))}
+              </tr>
+            )}
+            {/* Employee Row */}
+            {settings.employees.length > 0 && (
+              <tr>
+                <td className="px-5 py-4 text-sm font-semibold text-slate-700 sticky left-0 bg-slate-50/50">
+                  Employee
+                </td>
+                <td colSpan={2}></td>
+                {dates.map((dateStr) => (
+                  <td key={dateStr} className="px-1 py-3">
+                    <EmployeeDropdown date={dateStr} />
+                  </td>
+                ))}
+              </tr>
+            )}
+          </tfoot>
+        </table>
+      </div>
 
       {/* Legend */}
-      <div className="px-4 py-3 border-t bg-gray-50 flex items-center gap-6 text-sm text-gray-600">
+      <div className="px-5 py-4 border-t border-slate-200 bg-slate-50/50 flex items-center gap-6 text-sm text-slate-600">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full bg-blue-600" />
+          <div className="w-5 h-5 rounded-md bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-sm" />
           <span>Overnight</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-full bg-yellow-400" />
+          <div className="w-5 h-5 rounded-md bg-gradient-to-br from-amber-400 to-amber-500 shadow-sm" />
           <span>Day only</span>
         </div>
       </div>

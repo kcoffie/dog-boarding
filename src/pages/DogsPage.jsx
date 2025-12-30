@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import DogForm from '../components/DogForm';
 import DogCsvImport from '../components/DogCsvImport';
@@ -14,13 +14,15 @@ export default function DogsPage() {
   const [showAddDogForm, setShowAddDogForm] = useState(false);
   const [showDogCsvImport, setShowDogCsvImport] = useState(false);
   const [showAddBoardingForm, setShowAddBoardingForm] = useState(false);
-  const [preselectedDogId, setPreselectedDogId] = useState(null);
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [editingBoarding, setEditingBoarding] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: null, item: null });
   const [sortColumn, setSortColumn] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
+  const [boardingSortColumn, setBoardingSortColumn] = useState('arrivalDateTime');
+  const [boardingSortDirection, setBoardingSortDirection] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
+  const [inlineAddBoardingDogId, setInlineAddBoardingDogId] = useState(null);
 
   const handleAddDog = (dogData) => {
     addDog(dogData);
@@ -40,13 +42,16 @@ export default function DogsPage() {
   const handleAddBoarding = (boardingData) => {
     addBoarding(boardingData);
     setShowAddBoardingForm(false);
-    setPreselectedDogId(null);
+  };
+
+  const handleInlineAddBoarding = (boardingData) => {
+    addBoarding(boardingData);
+    setInlineAddBoardingDogId(null);
   };
 
   const handleDogNameClick = (dog) => {
     if (dog.active === false) return; // Don't allow for inactive dogs
-    setPreselectedDogId(dog.id);
-    setShowAddBoardingForm(true);
+    setInlineAddBoardingDogId(dog.id);
   };
 
   const handleEditBoarding = (boardingData) => {
@@ -94,7 +99,7 @@ export default function DogsPage() {
     return '';
   };
 
-  const isFormOpen = showAddDogForm || showDogCsvImport || editingDog || showAddBoardingForm || showCsvImport || editingBoarding;
+  const isFormOpen = showAddDogForm || showDogCsvImport || editingDog || showAddBoardingForm || showCsvImport || editingBoarding || inlineAddBoardingDogId;
 
   const handleSort = (column) => {
     if (sortColumn === column) {
@@ -105,6 +110,15 @@ export default function DogsPage() {
     }
   };
 
+  const handleBoardingSort = (column) => {
+    if (boardingSortColumn === column) {
+      setBoardingSortDirection(boardingSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setBoardingSortColumn(column);
+      setBoardingSortDirection('asc');
+    }
+  };
+
   const trimmedSearch = searchTerm.trim().toLowerCase();
   const filteredAndSortedDogs = [...dogs]
     .filter(dog => (dog.name || '').toLowerCase().includes(trimmedSearch))
@@ -112,7 +126,6 @@ export default function DogsPage() {
       let aVal = a[sortColumn];
       let bVal = b[sortColumn];
 
-      // Case-insensitive string comparison for name
       if (sortColumn === 'name') {
         aVal = (aVal || '').toLowerCase();
         bVal = (bVal || '').toLowerCase();
@@ -120,7 +133,6 @@ export default function DogsPage() {
         return sortDirection === 'asc' ? result : -result;
       }
 
-      // Numeric comparison for rates
       aVal = aVal || 0;
       bVal = bVal || 0;
       const result = aVal - bVal;
@@ -129,262 +141,383 @@ export default function DogsPage() {
 
   const SortIcon = ({ column }) => {
     if (sortColumn !== column) {
-      return <span className="text-gray-400 ml-1">↕</span>;
+      return <span className="text-slate-300 ml-1">↕</span>;
     }
-    return <span className="ml-1">{sortDirection === 'asc' ? '↑' : '↓'}</span>;
+    return <span className="ml-1 text-indigo-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>;
   };
 
+  const BoardingSortIcon = ({ column }) => {
+    if (boardingSortColumn !== column) {
+      return <span className="text-slate-300 ml-1">↕</span>;
+    }
+    return <span className="ml-1 text-indigo-600">{boardingSortDirection === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  const sortedBoardings = [...boardings].sort((a, b) => {
+    let aVal, bVal;
+
+    switch (boardingSortColumn) {
+      case 'dogName':
+        aVal = getDogName(a.dogId).toLowerCase();
+        bVal = getDogName(b.dogId).toLowerCase();
+        break;
+      case 'arrivalDateTime':
+      case 'departureDateTime':
+        aVal = new Date(a[boardingSortColumn]).getTime();
+        bVal = new Date(b[boardingSortColumn]).getTime();
+        break;
+      case 'nights':
+        aVal = calculateNights(a.arrivalDateTime, a.departureDateTime);
+        bVal = calculateNights(b.arrivalDateTime, b.departureDateTime);
+        break;
+      case 'gross':
+        aVal = calculateNights(a.arrivalDateTime, a.departureDateTime) * getDogNightRate(a.dogId);
+        bVal = calculateNights(b.arrivalDateTime, b.departureDateTime) * getDogNightRate(b.dogId);
+        break;
+      default:
+        return 0;
+    }
+
+    if (typeof aVal === 'string') {
+      const result = aVal.localeCompare(bVal);
+      return boardingSortDirection === 'asc' ? result : -result;
+    }
+
+    const result = aVal - bVal;
+    return boardingSortDirection === 'asc' ? result : -result;
+  });
+
   return (
-    <div>
+    <div className="space-y-8">
       {/* Boardings Section */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Boardings</h1>
-        {!isFormOpen && dogs.length > 0 && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowCsvImport(true)}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-            >
-              Import CSV
-            </button>
-            <button
-              onClick={() => setShowAddBoardingForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              Add Boarding
-            </button>
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Boardings</h1>
+            <p className="text-slate-500 mt-1">Manage boarding reservations</p>
+          </div>
+          {!isFormOpen && dogs.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCsvImport(true)}
+                className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import CSV
+              </button>
+              <button
+                onClick={() => setShowAddBoardingForm(true)}
+                className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Boarding
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Add Boarding Form */}
+        {showAddBoardingForm && (
+          <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Add New Boarding</h2>
+            <BoardingForm
+              onSave={handleAddBoarding}
+              onCancel={() => setShowAddBoardingForm(false)}
+            />
           </div>
         )}
-      </div>
 
-      {/* Add Boarding Form */}
-      {showAddBoardingForm && (
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Add New Boarding</h2>
-          <BoardingForm
-            preselectedDogId={preselectedDogId}
-            onSave={handleAddBoarding}
-            onCancel={() => {
-              setShowAddBoardingForm(false);
-              setPreselectedDogId(null);
-            }}
-          />
-        </div>
-      )}
-
-      {/* CSV Import */}
-      {showCsvImport && (
-        <div className="mb-6">
-          <CsvImport onClose={() => setShowCsvImport(false)} />
-        </div>
-      )}
-
-      {/* Edit Boarding Form */}
-      {editingBoarding && (
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Edit Boarding</h2>
-          <BoardingForm
-            boarding={editingBoarding}
-            onSave={handleEditBoarding}
-            onCancel={() => setEditingBoarding(null)}
-          />
-        </div>
-      )}
-
-      {/* Boarding List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
-        {boardings.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">
-            {dogs.length === 0 ? 'Add dogs first to create boardings' : 'No boardings added yet'}
-          </p>
-        ) : (
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Dog</th>
-                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Arrival</th>
-                <th className="text-left px-6 py-3 text-sm font-semibold text-gray-900">Departure</th>
-                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Nights</th>
-                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Gross</th>
-                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {boardings.map((boarding) => {
-                const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
-                const nightRate = getDogNightRate(boarding.dogId);
-                const gross = nights * nightRate;
-
-                return (
-                  <tr key={boarding.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-gray-900">{getDogName(boarding.dogId)}</td>
-                    <td className="px-6 py-4 text-gray-600">{formatDateTime(boarding.arrivalDateTime)}</td>
-                    <td className="px-6 py-4 text-gray-600">{formatDateTime(boarding.departureDateTime)}</td>
-                    <td className="px-6 py-4 text-right text-gray-600">{nights}</td>
-                    <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(gross)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => setEditingBoarding(boarding)}
-                        disabled={isFormOpen}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBoardingClick(boarding)}
-                        disabled={isFormOpen}
-                        className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {/* CSV Import */}
+        {showCsvImport && (
+          <div className="mb-6">
+            <CsvImport onClose={() => setShowCsvImport(false)} />
+          </div>
         )}
+
+        {/* Edit Boarding Form */}
+        {editingBoarding && (
+          <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Edit Boarding</h2>
+            <BoardingForm
+              boarding={editingBoarding}
+              onSave={handleEditBoarding}
+              onCancel={() => setEditingBoarding(null)}
+            />
+          </div>
+        )}
+
+        {/* Boarding List */}
+        <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden">
+          {boardings.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-slate-900 mb-1">No boardings yet</h3>
+              <p className="text-slate-500">{dogs.length === 0 ? 'Add dogs first to create boardings' : 'Click "Add Boarding" to get started'}</p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th
+                    className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleBoardingSort('dogName')}
+                  >
+                    Dog<BoardingSortIcon column="dogName" />
+                  </th>
+                  <th
+                    className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleBoardingSort('arrivalDateTime')}
+                  >
+                    Arrival<BoardingSortIcon column="arrivalDateTime" />
+                  </th>
+                  <th
+                    className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleBoardingSort('departureDateTime')}
+                  >
+                    Departure<BoardingSortIcon column="departureDateTime" />
+                  </th>
+                  <th
+                    className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleBoardingSort('nights')}
+                  >
+                    Nights<BoardingSortIcon column="nights" />
+                  </th>
+                  <th
+                    className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleBoardingSort('gross')}
+                  >
+                    Gross<BoardingSortIcon column="gross" />
+                  </th>
+                  <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sortedBoardings.map((boarding) => {
+                  const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
+                  const nightRate = getDogNightRate(boarding.dogId);
+                  const gross = nights * nightRate;
+
+                  return (
+                    <tr key={boarding.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-5 py-4 text-sm font-medium text-slate-900">{getDogName(boarding.dogId)}</td>
+                      <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.arrivalDateTime)}</td>
+                      <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.departureDateTime)}</td>
+                      <td className="px-5 py-4 text-sm text-slate-600 text-right tabular-nums">{nights}</td>
+                      <td className="px-5 py-4 text-sm font-medium text-slate-900 text-right tabular-nums">{formatCurrency(gross)}</td>
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          onClick={() => setEditingBoarding(boarding)}
+                          disabled={isFormOpen}
+                          className="text-sm font-medium text-indigo-600 hover:text-indigo-800 mr-4 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteBoardingClick(boarding)}
+                          disabled={isFormOpen}
+                          className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {/* Dogs Section */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold">Dogs</h2>
-        {!isFormOpen && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowDogCsvImport(true)}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-            >
-              Import CSV
-            </button>
-            <button
-              onClick={() => setShowAddDogForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-            >
-              Add Dog
-            </button>
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Dogs</h2>
+            <p className="text-slate-500 mt-1">Manage your dog roster</p>
+          </div>
+          {!isFormOpen && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDogCsvImport(true)}
+                className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import CSV
+              </button>
+              <button
+                onClick={() => setShowAddDogForm(true)}
+                className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Dog
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Add Dog Form */}
+        {showAddDogForm && (
+          <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Add New Dog</h2>
+            <DogForm
+              onSave={handleAddDog}
+              onCancel={() => setShowAddDogForm(false)}
+            />
           </div>
         )}
-      </div>
 
-      {/* Add Dog Form */}
-      {showAddDogForm && (
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Add New Dog</h2>
-          <DogForm
-            onSave={handleAddDog}
-            onCancel={() => setShowAddDogForm(false)}
-          />
-        </div>
-      )}
-
-      {/* Dog CSV Import */}
-      {showDogCsvImport && (
-        <div className="mb-6">
-          <DogCsvImport onClose={() => setShowDogCsvImport(false)} />
-        </div>
-      )}
-
-      {/* Edit Dog Form */}
-      {editingDog && (
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Edit Dog</h2>
-          <DogForm
-            dog={editingDog}
-            onSave={handleEditDog}
-            onCancel={() => setEditingDog(null)}
-          />
-        </div>
-      )}
-
-      {/* Search */}
-      {dogs.length > 0 && (
-        <div className="mb-4">
-          <input
-            type="text"
-            placeholder="Search dogs by name..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      )}
-
-      {/* Dog List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {dogs.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No dogs added yet</p>
-        ) : (
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th
-                  className="text-left px-6 py-3 text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100 select-none"
-                  onClick={() => handleSort('name')}
-                >
-                  Name<SortIcon column="name" />
-                </th>
-                <th
-                  className="text-right px-6 py-3 text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100 select-none"
-                  onClick={() => handleSort('dayRate')}
-                >
-                  Day Rate<SortIcon column="dayRate" />
-                </th>
-                <th
-                  className="text-right px-6 py-3 text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100 select-none"
-                  onClick={() => handleSort('nightRate')}
-                >
-                  Night Rate<SortIcon column="nightRate" />
-                </th>
-                <th className="text-right px-6 py-3 text-sm font-semibold text-gray-900">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredAndSortedDogs.map((dog) => (
-                <tr key={dog.id} className={`hover:bg-gray-50 ${dog.active === false ? 'opacity-50' : ''}`}>
-                  <td className={`px-6 py-4 ${dog.active === false ? 'text-gray-400' : 'text-gray-900'}`}>
-                    {dog.active !== false ? (
-                      <button
-                        onClick={() => handleDogNameClick(dog)}
-                        disabled={isFormOpen}
-                        className="text-blue-600 hover:text-blue-800 hover:underline font-medium disabled:text-gray-900 disabled:no-underline disabled:cursor-default"
-                      >
-                        {formatName(dog.name)}
-                      </button>
-                    ) : (
-                      formatName(dog.name)
-                    )}
-                  </td>
-                  <td className={`px-6 py-4 text-right ${dog.active === false ? 'text-gray-400' : 'text-gray-600'}`}>{formatCurrency(dog.dayRate)}</td>
-                  <td className={`px-6 py-4 text-right ${dog.active === false ? 'text-gray-400' : 'text-gray-600'}`}>{formatCurrency(dog.nightRate)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => setEditingDog(dog)}
-                      disabled={isFormOpen}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => toggleDogActive(dog.id)}
-                      disabled={isFormOpen}
-                      className="text-amber-600 hover:text-amber-800 text-sm font-medium mr-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {dog.active === false ? 'Activate' : 'Deactivate'}
-                    </button>
-                    <button
-                      onClick={() => handleDeleteDogClick(dog)}
-                      disabled={isFormOpen}
-                      className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Dog CSV Import */}
+        {showDogCsvImport && (
+          <div className="mb-6">
+            <DogCsvImport onClose={() => setShowDogCsvImport(false)} />
+          </div>
         )}
+
+        {/* Edit Dog Form */}
+        {editingDog && (
+          <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Edit Dog</h2>
+            <DogForm
+              dog={editingDog}
+              onSave={handleEditDog}
+              onCancel={() => setEditingDog(null)}
+            />
+          </div>
+        )}
+
+        {/* Search */}
+        {dogs.length > 0 && (
+          <div className="mb-4">
+            <div className="relative max-w-xs">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search dogs..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Dog List */}
+        <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden">
+          {dogs.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-slate-900 mb-1">No dogs yet</h3>
+              <p className="text-slate-500">Click "Add Dog" to get started</p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th
+                    className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleSort('name')}
+                  >
+                    Name<SortIcon column="name" />
+                  </th>
+                  <th
+                    className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleSort('dayRate')}
+                  >
+                    Day Rate<SortIcon column="dayRate" />
+                  </th>
+                  <th
+                    className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleSort('nightRate')}
+                  >
+                    Night Rate<SortIcon column="nightRate" />
+                  </th>
+                  <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredAndSortedDogs.map((dog) => (
+                  <React.Fragment key={dog.id}>
+                    <tr className={`hover:bg-slate-50/50 transition-colors ${dog.active === false ? 'opacity-50' : ''}`}>
+                      <td className={`px-5 py-4 ${dog.active === false ? 'text-slate-400' : 'text-slate-900'}`}>
+                        {dog.active !== false ? (
+                          <button
+                            onClick={() => handleDogNameClick(dog)}
+                            disabled={isFormOpen && inlineAddBoardingDogId !== dog.id}
+                            className="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline disabled:text-slate-900 disabled:no-underline disabled:cursor-default transition-colors"
+                          >
+                            {formatName(dog.name)}
+                          </button>
+                        ) : (
+                          <span className="text-sm font-medium">{formatName(dog.name)}</span>
+                        )}
+                      </td>
+                      <td className={`px-5 py-4 text-sm text-right tabular-nums ${dog.active === false ? 'text-slate-400' : 'text-slate-600'}`}>{formatCurrency(dog.dayRate)}</td>
+                      <td className={`px-5 py-4 text-sm text-right tabular-nums ${dog.active === false ? 'text-slate-400' : 'text-slate-600'}`}>{formatCurrency(dog.nightRate)}</td>
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          onClick={() => setEditingDog(dog)}
+                          disabled={isFormOpen}
+                          className="text-sm font-medium text-indigo-600 hover:text-indigo-800 mr-4 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleDogActive(dog.id)}
+                          disabled={isFormOpen}
+                          className="text-sm font-medium text-amber-600 hover:text-amber-800 mr-4 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {dog.active === false ? 'Activate' : 'Deactivate'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDogClick(dog)}
+                          disabled={isFormOpen}
+                          className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                    {inlineAddBoardingDogId === dog.id && (
+                      <tr>
+                        <td colSpan={4} className="px-5 py-5 bg-indigo-50/50 border-l-4 border-indigo-500">
+                          <div className="max-w-2xl">
+                            <h3 className="text-sm font-semibold text-slate-900 mb-4">
+                              Add Boarding for {formatName(dog.name)}
+                            </h3>
+                            <BoardingForm
+                              preselectedDogId={dog.id}
+                              onSave={handleInlineAddBoarding}
+                              onCancel={() => setInlineAddBoardingDogId(null)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {/* Delete Confirmation Dialog */}
