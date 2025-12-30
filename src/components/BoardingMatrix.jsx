@@ -172,9 +172,24 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               );
             })}
           </tr>
-          {/* Employee Row */}
+          {/* Date Row (above Employee) */}
           {settings.employees.length > 0 && (
             <tr className="bg-gray-50 border-t">
+              <td className="px-4 py-2 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
+                Date
+              </td>
+              <td colSpan={2}></td>
+              {dates.map((dateStr) => (
+                <td key={dateStr} className="px-2 py-2 text-center text-xs font-semibold text-gray-900">
+                  <div>{getDayOfWeek(dateStr)}</div>
+                  <div className="font-normal text-gray-600">{formatDateShort(dateStr)}</div>
+                </td>
+              ))}
+            </tr>
+          )}
+          {/* Employee Row */}
+          {settings.employees.length > 0 && (
+            <tr className="bg-gray-50">
               <td className="px-4 py-3 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
                 Employee
               </td>
