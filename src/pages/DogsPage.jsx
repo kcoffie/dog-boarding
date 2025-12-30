@@ -103,16 +103,17 @@ export default function DogsPage() {
       let aVal = a[sortColumn];
       let bVal = b[sortColumn];
 
+      // Case-insensitive string comparison for name
       if (sortColumn === 'name') {
         aVal = aVal.toLowerCase();
         bVal = bVal.toLowerCase();
+        const result = aVal.localeCompare(bVal);
+        return sortDirection === 'asc' ? result : -result;
       }
 
-      let comparison = 0;
-      if (aVal < bVal) comparison = -1;
-      else if (aVal > bVal) comparison = 1;
-
-      return sortDirection === 'desc' ? -comparison : comparison;
+      // Numeric comparison for rates
+      const result = aVal - bVal;
+      return sortDirection === 'asc' ? result : -result;
     });
 
   const SortIcon = ({ column }) => {
