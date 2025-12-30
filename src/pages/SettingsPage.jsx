@@ -3,7 +3,11 @@ import { useData } from '../context/DataContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function SettingsPage() {
-  const { settings, updateSettings, addEmployee, deleteEmployee, reorderEmployees, nightAssignments } = useData();
+  const { settings, updateSettings, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
+
+  // Helper to get employee name (handles both string and object formats)
+  const getEmployeeName = (emp) => typeof emp === 'string' ? emp : emp.name;
+  const isEmployeeActive = (emp) => typeof emp === 'string' ? true : emp.active !== false;
 
   const [netPercentage, setNetPercentage] = useState(settings.netPercentage);
   const [percentageError, setPercentageError] = useState('');
@@ -37,7 +41,7 @@ export default function SettingsPage() {
       return;
     }
 
-    if (settings.employees.some(emp => emp.toLowerCase() === trimmedName.toLowerCase())) {
+    if (settings.employees.some(emp => getEmployeeName(emp).toLowerCase() === trimmedName.toLowerCase())) {
       setEmployeeError('An employee with this name already exists');
       return;
     }
@@ -79,7 +83,9 @@ export default function SettingsPage() {
 
   const sortEmployees = (direction) => {
     const sorted = [...settings.employees].sort((a, b) => {
-      const result = a.toLowerCase().localeCompare(b.toLowerCase());
+      const nameA = getEmployeeName(a).toLowerCase();
+      const nameB = getEmployeeName(b).toLowerCase();
+      const result = nameA.localeCompare(nameB);
       return direction === 'asc' ? result : -result;
     });
     updateSettings({ ...settings, employees: sorted });
@@ -175,29 +181,41 @@ export default function SettingsPage() {
           <p className="text-gray-500 text-center py-4">No employees added yet</p>
         ) : (
           <ul className="divide-y divide-gray-200">
-            {settings.employees.map((employee, index) => (
-              <li
-                key={employee}
-                draggable
-                onDragStart={(e) => handleDragStart(e, index)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDragEnd={handleDragEnd}
-                className={`flex items-center justify-between py-3 cursor-grab active:cursor-grabbing ${
-                  draggedIndex === index ? 'opacity-50 bg-blue-50' : ''
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-gray-400 select-none">⋮⋮</span>
-                  <span className="text-gray-900">{employee}</span>
-                </div>
-                <button
-                  onClick={() => handleDeleteClick(employee)}
-                  className="text-red-600 hover:text-red-800 text-sm font-medium"
+            {settings.employees.map((employee, index) => {
+              const name = getEmployeeName(employee);
+              const active = isEmployeeActive(employee);
+              return (
+                <li
+                  key={name}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDragEnd={handleDragEnd}
+                  className={`flex items-center justify-between py-3 cursor-grab active:cursor-grabbing ${
+                    draggedIndex === index ? 'opacity-50 bg-blue-50' : ''
+                  } ${!active ? 'opacity-50' : ''}`}
                 >
-                  Delete
-                </button>
-              </li>
-            ))}
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-400 select-none">⋮⋮</span>
+                    <span className={active ? 'text-gray-900' : 'text-gray-400'}>{name}</span>
+                  </div>
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => toggleEmployeeActive(name)}
+                      className="text-amber-600 hover:text-amber-800 text-sm font-medium"
+                    >
+                      {active ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteClick(name)}
+                      className="text-red-600 hover:text-red-800 text-sm font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

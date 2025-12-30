@@ -4,6 +4,15 @@ import { getDateRange, isOvernight } from '../utils/dateUtils';
 export default function EmployeeTotals({ startDate }) {
   const { dogs, boardings, settings, nightAssignments } = useData();
 
+  // Helper to check if employee is active
+  const isEmployeeActive = (name) => {
+    const emp = settings.employees.find(e =>
+      (typeof e === 'string' ? e : e.name) === name
+    );
+    if (!emp) return true;
+    return typeof emp === 'string' ? true : emp.active !== false;
+  };
+
   const dates = getDateRange(startDate.toISOString().split('T')[0], 14);
 
   const calculateDayNet = (dateStr) => {
@@ -108,27 +117,30 @@ export default function EmployeeTotals({ startDate }) {
     <div className="mt-6 bg-white rounded-lg shadow p-4">
       <h3 className="text-lg font-semibold text-gray-900 mb-4">Employee Totals</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {employeeNames.map((name) => (
-          <div key={name} className="bg-gray-50 rounded-lg p-4">
-            <div className="font-medium text-gray-900">{name}</div>
-            <div className="mt-2 text-sm text-gray-600">
-              <div className="flex justify-between">
-                <span>Nights worked:</span>
-                <span className="font-medium">{employeeTotals[name].nights}</span>
-              </div>
-              <div className="flex justify-between mt-1">
-                <span>Total earnings:</span>
-                <span className="font-medium text-green-600">
-                  {formatCurrency(employeeTotals[name].earnings)}
-                </span>
-              </div>
-              <div className="mt-2 pt-2 border-t border-gray-200">
-                <span className="text-gray-500">Dates: </span>
-                <span className="text-gray-700">{formatDateRanges(employeeTotals[name].dates)}</span>
+        {employeeNames.map((name) => {
+          const active = isEmployeeActive(name);
+          return (
+            <div key={name} className={`bg-gray-50 rounded-lg p-4 ${!active ? 'opacity-50' : ''}`}>
+              <div className={`font-medium ${active ? 'text-gray-900' : 'text-gray-400'}`}>{name}</div>
+              <div className="mt-2 text-sm text-gray-600">
+                <div className="flex justify-between">
+                  <span>Nights worked:</span>
+                  <span className="font-medium">{employeeTotals[name].nights}</span>
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span>Total earnings:</span>
+                  <span className={`font-medium ${active ? 'text-green-600' : 'text-gray-400'}`}>
+                    {formatCurrency(employeeTotals[name].earnings)}
+                  </span>
+                </div>
+                <div className="mt-2 pt-2 border-t border-gray-200">
+                  <span className="text-gray-500">Dates: </span>
+                  <span className="text-gray-700">{formatDateRanges(employeeTotals[name].dates)}</span>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
