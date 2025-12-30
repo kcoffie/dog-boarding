@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
 import DogForm from '../components/DogForm';
+import DogCsvImport from '../components/DogCsvImport';
 import BoardingForm from '../components/BoardingForm';
 import CsvImport from '../components/CsvImport';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -11,6 +12,7 @@ export default function DogsPage() {
 
   const [editingDog, setEditingDog] = useState(null);
   const [showAddDogForm, setShowAddDogForm] = useState(false);
+  const [showDogCsvImport, setShowDogCsvImport] = useState(false);
   const [showAddBoardingForm, setShowAddBoardingForm] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [editingBoarding, setEditingBoarding] = useState(null);
@@ -81,7 +83,7 @@ export default function DogsPage() {
     return '';
   };
 
-  const isFormOpen = showAddDogForm || editingDog || showAddBoardingForm || showCsvImport || editingBoarding;
+  const isFormOpen = showAddDogForm || showDogCsvImport || editingDog || showAddBoardingForm || showCsvImport || editingBoarding;
 
   return (
     <div>
@@ -89,12 +91,20 @@ export default function DogsPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Dogs</h1>
         {!isFormOpen && (
-          <button
-            onClick={() => setShowAddDogForm(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            Add Dog
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowDogCsvImport(true)}
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Import CSV
+            </button>
+            <button
+              onClick={() => setShowAddDogForm(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Add Dog
+            </button>
+          </div>
         )}
       </div>
 
@@ -106,6 +116,13 @@ export default function DogsPage() {
             onSave={handleAddDog}
             onCancel={() => setShowAddDogForm(false)}
           />
+        </div>
+      )}
+
+      {/* Dog CSV Import */}
+      {showDogCsvImport && (
+        <div className="mb-6">
+          <DogCsvImport onClose={() => setShowDogCsvImport(false)} />
         </div>
       )}
 
