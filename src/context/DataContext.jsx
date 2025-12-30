@@ -34,6 +34,14 @@ export function DataProvider({ children }) {
     setBoardings(boardings.filter((b) => b.dogId !== id));
   };
 
+  const addDogs = (newDogs) => {
+    const dogsWithIds = newDogs.map((d) => ({
+      ...d,
+      id: crypto.randomUUID(),
+    }));
+    setDogs([...dogs, ...dogsWithIds]);
+  };
+
   // Boarding operations
   const addBoarding = (boarding) => {
     const newBoarding = {
@@ -113,6 +121,7 @@ export function DataProvider({ children }) {
     nightAssignments,
     // Dog operations
     addDog,
+    addDogs,
     updateDog,
     deleteDog,
     // Boarding operations
