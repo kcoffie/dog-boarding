@@ -151,47 +151,61 @@ export default function CsvImport({ onClose }) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Import Boardings from CSV</h2>
+    <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-slate-900">Import Boardings from CSV</h2>
+        </div>
         <button
           onClick={onClose}
-          className="text-gray-500 hover:text-gray-700"
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
         >
-          &times;
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </button>
       </div>
 
       {/* Format instructions */}
-      <div className="mb-4 p-3 bg-gray-50 rounded-md text-sm text-gray-600">
-        <p className="font-medium mb-1">Expected CSV format:</p>
-        <code className="text-xs bg-gray-200 px-1 py-0.5 rounded">
+      <div className="mb-5 p-4 bg-slate-50 rounded-xl border border-slate-100">
+        <p className="font-medium text-slate-700 mb-2 text-sm">Expected CSV format:</p>
+        <code className="text-xs bg-slate-200/60 text-slate-700 px-2 py-1 rounded-md font-mono">
           dogName,arrivalDateTime,departureDateTime
         </code>
-        <p className="mt-2 text-xs">
+        <p className="mt-3 text-xs text-slate-500">
           Date formats: ISO 8601 or "YYYY-MM-DD HH:mm"
         </p>
       </div>
 
       {/* File input */}
-      <div className="mb-4">
+      <div className="mb-5">
         <input
           ref={fileInputRef}
           type="file"
           accept=".csv"
           onChange={handleFileSelect}
-          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+          className="block w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 file:transition-colors file:cursor-pointer"
         />
         {fileName && (
-          <p className="mt-1 text-sm text-gray-500">Selected: {fileName}</p>
+          <p className="mt-2 text-sm text-slate-500">Selected: {fileName}</p>
         )}
       </div>
 
       {/* Errors */}
       {errors.length > 0 && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
-          <p className="font-medium text-red-800 mb-2">Errors found:</p>
-          <ul className="list-disc list-inside text-sm text-red-700 max-h-32 overflow-y-auto">
+        <div className="mb-5 p-4 bg-red-50 border border-red-100 rounded-xl">
+          <div className="flex items-center gap-2 mb-2">
+            <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="font-medium text-red-800 text-sm">Errors found:</p>
+          </div>
+          <ul className="list-disc list-inside text-sm text-red-700 max-h-32 overflow-y-auto space-y-1">
             {errors.map((error, i) => (
               <li key={i}>{error}</li>
             ))}
@@ -201,25 +215,25 @@ export default function CsvImport({ onClose }) {
 
       {/* Preview */}
       {parsedData.length > 0 && (
-        <div className="mb-4">
-          <p className="font-medium text-gray-700 mb-2">
+        <div className="mb-5">
+          <p className="font-medium text-slate-700 mb-3 text-sm">
             Preview ({parsedData.length} valid boarding{parsedData.length !== 1 ? 's' : ''}):
           </p>
-          <div className="max-h-48 overflow-y-auto border rounded-md">
+          <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 sticky top-0">
+              <thead className="bg-slate-50 sticky top-0">
                 <tr>
-                  <th className="text-left px-3 py-2">Dog</th>
-                  <th className="text-left px-3 py-2">Arrival</th>
-                  <th className="text-left px-3 py-2">Departure</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Dog</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Arrival</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">Departure</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-slate-100">
                 {parsedData.map((row, i) => (
-                  <tr key={i}>
-                    <td className="px-3 py-2">{formatName(row.dogName)}</td>
-                    <td className="px-3 py-2">{formatDateTime(row.arrivalDateTime)}</td>
-                    <td className="px-3 py-2">{formatDateTime(row.departureDateTime)}</td>
+                  <tr key={i} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-2.5 font-medium text-slate-900">{formatName(row.dogName)}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{formatDateTime(row.arrivalDateTime)}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{formatDateTime(row.departureDateTime)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -229,25 +243,25 @@ export default function CsvImport({ onClose }) {
       )}
 
       {/* Actions */}
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-3 pt-2">
         {(parsedData.length > 0 || errors.length > 0) && (
           <button
             onClick={handleReset}
-            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
           >
             Reset
           </button>
         )}
         <button
           onClick={onClose}
-          className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+          className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
         >
           Cancel
         </button>
         {parsedData.length > 0 && (
           <button
             onClick={handleImport}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
           >
             Import {parsedData.length} Boarding{parsedData.length !== 1 ? 's' : ''}
           </button>
