@@ -61,6 +61,20 @@ export default function BoardingMatrix({ startDate }) {
     return gross * (settings.netPercentage / 100);
   };
 
+  const countOvernightDogs = (dateStr) => {
+    let count = 0;
+    for (const dog of dogs) {
+      const dogBoardings = boardings.filter(b => b.dogId === dog.id);
+      for (const boarding of dogBoardings) {
+        if (isOvernight(boarding, dateStr)) {
+          count++;
+          break;
+        }
+      }
+    }
+    return count;
+  };
+
   if (dogs.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
@@ -112,8 +126,23 @@ export default function BoardingMatrix({ startDate }) {
           ))}
         </tbody>
         <tfoot>
-          {/* Gross Row */}
+          {/* Dogs Overnight Row */}
           <tr className="bg-gray-50 border-t-2">
+            <td className="px-4 py-3 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
+              Dogs Overnight
+            </td>
+            <td colSpan={2}></td>
+            {dates.map((dateStr) => {
+              const count = countOvernightDogs(dateStr);
+              return (
+                <td key={dateStr} className="px-2 py-3 text-center text-sm font-medium text-gray-900">
+                  {count > 0 ? count : '-'}
+                </td>
+              );
+            })}
+          </tr>
+          {/* Gross Row */}
+          <tr className="bg-gray-50">
             <td className="px-4 py-3 text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
               Gross
             </td>
