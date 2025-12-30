@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import { useData } from '../context/DataContext';
+import { formatName } from '../utils/dateUtils';
 
 export default function CsvImport({ onClose }) {
   const { dogs, addBoardings } = useData();
@@ -216,7 +217,7 @@ export default function CsvImport({ onClose }) {
               <tbody className="divide-y">
                 {parsedData.map((row, i) => (
                   <tr key={i}>
-                    <td className="px-3 py-2">{row.dogName}</td>
+                    <td className="px-3 py-2">{formatName(row.dogName)}</td>
                     <td className="px-3 py-2">{formatDateTime(row.arrivalDateTime)}</td>
                     <td className="px-3 py-2">{formatDateTime(row.departureDateTime)}</td>
                   </tr>
