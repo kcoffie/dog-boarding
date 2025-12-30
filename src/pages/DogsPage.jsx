@@ -19,6 +19,7 @@ export default function DogsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: null, item: null });
   const [sortColumn, setSortColumn] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleAddDog = (dogData) => {
     addDog(dogData);
@@ -96,19 +97,21 @@ export default function DogsPage() {
     }
   };
 
-  const sortedDogs = [...dogs].sort((a, b) => {
-    let aVal = a[sortColumn];
-    let bVal = b[sortColumn];
+  const filteredAndSortedDogs = [...dogs]
+    .filter(dog => dog.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .sort((a, b) => {
+      let aVal = a[sortColumn];
+      let bVal = b[sortColumn];
 
-    if (sortColumn === 'name') {
-      aVal = aVal.toLowerCase();
-      bVal = bVal.toLowerCase();
-    }
+      if (sortColumn === 'name') {
+        aVal = aVal.toLowerCase();
+        bVal = bVal.toLowerCase();
+      }
 
-    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
 
   const SortIcon = ({ column }) => {
     if (sortColumn !== column) {
@@ -170,6 +173,19 @@ export default function DogsPage() {
         </div>
       )}
 
+      {/* Search */}
+      {dogs.length > 0 && (
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="Search dogs by name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      )}
+
       {/* Dog List */}
       <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
         {dogs.length === 0 ? (
@@ -200,7 +216,7 @@ export default function DogsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {sortedDogs.map((dog) => (
+              {filteredAndSortedDogs.map((dog) => (
                 <tr key={dog.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-gray-900">{dog.name}</td>
                   <td className="px-6 py-4 text-right text-gray-600">{formatCurrency(dog.dayRate)}</td>
