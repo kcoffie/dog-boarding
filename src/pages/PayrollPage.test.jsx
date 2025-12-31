@@ -143,8 +143,8 @@ describe('PayrollPage', () => {
       });
 
       render(<PayrollPage />);
-      // Kate should be shown, N/A should not be
-      expect(screen.getByText('Kate')).toBeInTheDocument();
+      // Kate should be shown, N/A should not be (may appear multiple times due to mobile/desktop layouts)
+      expect(screen.getAllByText('Kate').length).toBeGreaterThan(0);
       // N/A shouldn't appear as an outstanding employee card
       const outstandingSection = screen.getByText('Outstanding Payments').closest('div').parentElement;
       expect(outstandingSection.textContent).not.toContain('N/A');
@@ -263,10 +263,10 @@ describe('PayrollPage', () => {
       });
 
       render(<PayrollPage />);
-      // Should show the employee name in history
-      expect(screen.getByText('Kate')).toBeInTheDocument();
-      // Should show delete button
-      expect(screen.getByText('Delete')).toBeInTheDocument();
+      // Should show the employee name in history (may appear multiple times due to mobile/desktop layouts)
+      expect(screen.getAllByText('Kate').length).toBeGreaterThan(0);
+      // Should show delete button (may appear multiple times due to mobile/desktop layouts)
+      expect(screen.getAllByText('Delete').length).toBeGreaterThan(0);
     });
 
     it('shows confirmation dialog when clicking Delete', async () => {
@@ -293,8 +293,8 @@ describe('PayrollPage', () => {
 
       render(<PayrollPage />);
 
-      const deleteButton = screen.getByText('Delete');
-      fireEvent.click(deleteButton);
+      const deleteButtons = screen.getAllByText('Delete');
+      fireEvent.click(deleteButtons[0]);
 
       await waitFor(() => {
         expect(screen.getByText('Delete Payment Record')).toBeInTheDocument();
@@ -325,8 +325,8 @@ describe('PayrollPage', () => {
 
       render(<PayrollPage />);
 
-      const deleteButton = screen.getByText('Delete');
-      fireEvent.click(deleteButton);
+      const deleteButtons = screen.getAllByText('Delete');
+      fireEvent.click(deleteButtons[0]);
 
       await waitFor(() => {
         expect(screen.getByText('Delete Payment Record')).toBeInTheDocument();
