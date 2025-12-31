@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent, formatName } from '../utils/dateUtils';
 import EmployeeDropdown from './EmployeeDropdown';
@@ -9,9 +9,23 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
   const [dateSortDirection, setDateSortDirection] = useState('asc');
   const [presenceSortDate, setPresenceSortDate] = useState(null);
   const [presenceSortDirection, setPresenceSortDirection] = useState('desc'); // desc = present first
+  const [mobileSelectedDate, setMobileSelectedDate] = useState(null);
+  const dateScrollRef = useRef(null);
 
   const baseDates = getDateRange(startDate, days);
   const dates = dateSortDirection === 'asc' ? baseDates : [...baseDates].reverse();
+
+  // Initialize mobile selected date to today or first date in range
+  useEffect(() => {
+    if (!mobileSelectedDate || !baseDates.includes(mobileSelectedDate)) {
+      const today = new Date().toISOString().split('T')[0];
+      if (baseDates.includes(today)) {
+        setMobileSelectedDate(today);
+      } else {
+        setMobileSelectedDate(baseDates[0]);
+      }
+    }
+  }, [baseDates, mobileSelectedDate]);
 
   const toggleDogSort = () => {
     setDogSortDirection(dogSortDirection === 'asc' ? 'desc' : 'asc');
@@ -215,9 +229,192 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
     );
   }
 
+  // Get dogs present on a specific date for mobile view
+  const getDogsForMobileDate = (dateStr) => {
+    if (!dateStr) return { overnight: [], dayOnly: [] };
+    const overnight = [];
+    const dayOnly = [];
+
+    for (const dog of dogs) {
+      const dogBoardings = boardings.filter(b => b.dogId === dog.id);
+      let isNight = false;
+      let isDay = false;
+
+      for (const boarding of dogBoardings) {
+        if (isOvernight(boarding, dateStr)) isNight = true;
+        if (isDayPresent(boarding, dateStr)) isDay = true;
+      }
+
+      if (isNight) {
+        overnight.push(dog);
+      } else if (isDay) {
+        dayOnly.push(dog);
+      }
+    }
+
+    return { overnight, dayOnly };
+  };
+
+  const mobileDogsData = getDogsForMobileDate(mobileSelectedDate);
+  const mobileGross = calculateDayGross(mobileSelectedDate || baseDates[0]);
+  const mobileNet = calculateDayNet(mobileSelectedDate || baseDates[0]);
+  const mobileOvernightCount = countOvernightDogs(mobileSelectedDate || baseDates[0]);
+
   return (
     <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* Mobile View */}
+      <div className="md:hidden">
+        {/* Date Scroller */}
+        <div
+          ref={dateScrollRef}
+          className="flex overflow-x-auto gap-2 p-4 pb-3 -mx-0 snap-x snap-mandatory scrollbar-hide"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+        >
+          {baseDates.map((dateStr) => {
+            const isSelected = dateStr === mobileSelectedDate;
+            const isToday = dateStr === new Date().toISOString().split('T')[0];
+            const overnightCount = countOvernightDogs(dateStr);
+            const weekend = isWeekend(dateStr);
+            const needsAttention = needsEmployeeAttention(dateStr);
+
+            return (
+              <button
+                key={dateStr}
+                onClick={() => setMobileSelectedDate(dateStr)}
+                className={`
+                  flex-shrink-0 min-w-[56px] py-2 px-1 rounded-xl text-center snap-start
+                  transition-all select-none min-h-[44px]
+                  ${isSelected
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : needsAttention
+                    ? 'bg-amber-50 border-2 border-amber-300'
+                    : weekend
+                    ? 'bg-slate-100 border border-slate-200'
+                    : 'bg-white border border-slate-200'
+                  }
+                  ${!isSelected ? 'active:scale-[0.95]' : ''}
+                `}
+              >
+                <div className={`text-[10px] uppercase tracking-wide ${isSelected ? 'text-indigo-200' : 'text-slate-400'}`}>
+                  {getDayOfWeek(dateStr)}
+                </div>
+                <div className={`text-lg font-semibold ${isSelected ? 'text-white' : isToday ? 'text-indigo-600' : 'text-slate-700'}`}>
+                  {formatDateShort(dateStr)}
+                </div>
+                {overnightCount > 0 && (
+                  <div className={`mt-1 text-[10px] font-medium ${isSelected ? 'text-indigo-200' : 'text-slate-500'}`}>
+                    {overnightCount} dog{overnightCount !== 1 ? 's' : ''}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Daily Summary */}
+        <div className="px-4 py-3 bg-slate-50 border-y border-slate-100">
+          <div className="flex justify-between items-center text-sm">
+            <div className="flex gap-4">
+              <div>
+                <span className="text-slate-500">Overnight:</span>
+                <span className="ml-1 font-semibold text-slate-700">{mobileOvernightCount}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Gross:</span>
+                <span className="ml-1 font-semibold text-slate-700">{formatCurrency(mobileGross)}</span>
+              </div>
+            </div>
+            <div>
+              <span className="text-slate-500">Net:</span>
+              <span className="ml-1 font-semibold text-emerald-600">{formatCurrency(mobileNet)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Dogs List */}
+        <div className="divide-y divide-slate-100">
+          {mobileDogsData.overnight.length === 0 && mobileDogsData.dayOnly.length === 0 ? (
+            <div className="p-8 text-center text-slate-400">
+              No dogs booked for this date
+            </div>
+          ) : (
+            <>
+              {/* Overnight Dogs */}
+              {mobileDogsData.overnight.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 bg-indigo-50/50 text-xs font-semibold text-indigo-600 uppercase tracking-wide flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-gradient-to-br from-indigo-500 to-indigo-600" />
+                    Overnight ({mobileDogsData.overnight.length})
+                  </div>
+                  {mobileDogsData.overnight.map((dog) => (
+                    <div key={dog.id} className="px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                          <span className="text-xs font-semibold text-indigo-600">
+                            {formatName(dog.name).charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <span className="font-medium text-slate-900">{formatName(dog.name)}</span>
+                      </div>
+                      <span className="text-sm text-slate-600">${dog.nightRate}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Day Only Dogs */}
+              {mobileDogsData.dayOnly.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 bg-amber-50/50 text-xs font-semibold text-amber-600 uppercase tracking-wide flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-gradient-to-br from-amber-400 to-amber-500" />
+                    Day Only ({mobileDogsData.dayOnly.length})
+                  </div>
+                  {mobileDogsData.dayOnly.map((dog) => (
+                    <div key={dog.id} className="px-4 py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                          <span className="text-xs font-semibold text-amber-600">
+                            {formatName(dog.name).charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <span className="font-medium text-slate-900">{formatName(dog.name)}</span>
+                      </div>
+                      <span className="text-sm text-slate-600">${dog.dayRate}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Employee Assignment (Mobile) */}
+        {settings.employees.length > 0 && mobileSelectedDate && (
+          <div className="px-4 py-3 border-t border-slate-200 bg-slate-50">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">Employee:</span>
+              <div className="w-40">
+                <EmployeeDropdown date={mobileSelectedDate} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Legend */}
+        <div className="px-4 py-3 border-t border-slate-100 flex items-center gap-4 text-xs text-slate-500">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded bg-gradient-to-br from-indigo-500 to-indigo-600" />
+            <span>Overnight</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded bg-gradient-to-br from-amber-400 to-amber-500" />
+            <span>Day only</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full min-w-max">
           <thead>
             <tr className="border-b border-slate-200">
@@ -379,8 +576,8 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
         </table>
       </div>
 
-      {/* Legend */}
-      <div className="px-5 py-4 border-t border-slate-200 bg-slate-50/50 flex items-center gap-6 text-sm text-slate-600">
+      {/* Legend (Desktop only) */}
+      <div className="hidden md:flex px-5 py-4 border-t border-slate-200 bg-slate-50/50 items-center gap-6 text-sm text-slate-600">
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded-md bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-sm" />
           <span>Overnight</span>

@@ -280,7 +280,7 @@ export default function PayrollPage() {
                   </div>
                   <button
                     onClick={() => handleMarkAsPaid(name)}
-                    className="mt-4 w-full px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] rounded-lg transition-all shadow-sm"
+                    className="mt-4 w-full min-h-[44px] px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 active:scale-[0.98] rounded-lg transition-all shadow-sm select-none"
                   >
                     Mark as Paid
                   </button>
@@ -312,50 +312,87 @@ export default function PayrollPage() {
             <p className="text-slate-500 text-sm">No payment history yet.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Date Range</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nights</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Amount</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Paid On</th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {sortedPayments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center">
-                          <span className="text-xs font-semibold text-emerald-600">{payment.employeeName.charAt(0).toUpperCase()}</span>
-                        </div>
-                        <span className="text-sm font-medium text-slate-900">{payment.employeeName}</span>
+          <>
+            {/* Mobile Card Layout */}
+            <div className="md:hidden divide-y divide-slate-100 -mx-6">
+              {sortedPayments.map((payment) => (
+                <div key={payment.id} className="px-6 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                        <span className="text-sm font-semibold text-emerald-600">{payment.employeeName.charAt(0).toUpperCase()}</span>
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">
-                      {formatDateRanges(payment.dates)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-600 text-right tabular-nums">{payment.nights}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-emerald-600 text-right tabular-nums">{formatCurrency(payment.amount)}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500 text-right">
-                      {new Date(payment.paidDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDeletePayment(payment)}
-                        className="text-sm font-medium text-red-600 hover:text-red-800 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </td>
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-900">{payment.employeeName}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          Paid {new Date(payment.paidDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-lg font-semibold text-emerald-600">{formatCurrency(payment.amount)}</div>
+                      <div className="text-xs text-slate-500">{payment.nights} nights</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-600">
+                    <span className="text-slate-400">Dates:</span> {formatDateRanges(payment.dates)}
+                  </div>
+                  <button
+                    onClick={() => handleDeletePayment(payment)}
+                    className="mt-3 min-h-[44px] w-full px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 active:bg-red-200 rounded-lg transition-all select-none"
+                  >
+                    Delete Payment
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table Layout */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Date Range</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nights</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Amount</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Paid On</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {sortedPayments.map((payment) => (
+                    <tr key={payment.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center">
+                            <span className="text-xs font-semibold text-emerald-600">{payment.employeeName.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <span className="text-sm font-medium text-slate-900">{payment.employeeName}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600">
+                        {formatDateRanges(payment.dates)}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600 text-right tabular-nums">{payment.nights}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-emerald-600 text-right tabular-nums">{formatCurrency(payment.amount)}</td>
+                      <td className="px-4 py-3 text-sm text-slate-500 text-right">
+                        {new Date(payment.paidDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => handleDeletePayment(payment)}
+                          className="text-sm font-medium text-red-600 hover:text-red-800 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
