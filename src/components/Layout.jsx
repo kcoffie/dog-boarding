@@ -82,8 +82,11 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Modern Header */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200/60">
+      {/* Modern Header with safe area for notch */}
+      <header
+        className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200/60"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between">
             {/* Logo */}
@@ -167,8 +170,11 @@ export default function Layout() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      {/* Main Content with bottom safe area for home indicator */}
+      <main
+        className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8"
+        style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+      >
         <Outlet />
       </main>
     </div>
