@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import DogForm from '../components/DogForm';
 import DogCsvImport from '../components/DogCsvImport';
@@ -23,6 +23,14 @@ export default function DogsPage() {
   const [boardingSortDirection, setBoardingSortDirection] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
   const [inlineAddBoardingDogId, setInlineAddBoardingDogId] = useState(null);
+  const editBoardingFormRef = useRef(null);
+
+  // Scroll to edit form when editing a boarding
+  useEffect(() => {
+    if (editingBoarding && editBoardingFormRef.current) {
+      editBoardingFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [editingBoarding]);
 
   const handleAddDog = async (dogData) => {
     try {
@@ -293,7 +301,7 @@ export default function DogsPage() {
 
         {/* Edit Boarding Form */}
         {editingBoarding && (
-          <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6 mb-6">
+          <div ref={editBoardingFormRef} className="bg-white rounded-xl border border-indigo-200 shadow-sm p-6 mb-6 ring-2 ring-indigo-500/20">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Edit Boarding</h2>
             <BoardingForm
               boarding={editingBoarding}
