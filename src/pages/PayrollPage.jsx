@@ -10,9 +10,9 @@ export default function PayrollPage() {
     dogs,
     boardings,
     settings,
-    nightAssignments,
     payments,
     getNetPercentageForDate,
+    getNightAssignment,
     addPayment,
     deletePayment,
     getPaidDatesForEmployee,
@@ -101,21 +101,22 @@ export default function PayrollPage() {
     const outstanding = {};
 
     for (const dateStr of dates) {
-      const assignment = nightAssignments.find(a => a.date === dateStr);
-      if (assignment && assignment.employeeName && assignment.employeeName !== 'N/A') {
-        const paidDates = getPaidDatesForEmployee(assignment.employeeName);
+      // Use getNightAssignment to resolve employee name from ID
+      const employeeName = getNightAssignment(dateStr);
+      if (employeeName && employeeName !== 'N/A') {
+        const paidDates = getPaidDatesForEmployee(employeeName);
 
         // Skip if already paid
         if (paidDates.includes(dateStr)) continue;
 
         const net = calculateDayNet(dateStr);
 
-        if (!outstanding[assignment.employeeName]) {
-          outstanding[assignment.employeeName] = { nights: 0, amount: 0, dates: [] };
+        if (!outstanding[employeeName]) {
+          outstanding[employeeName] = { nights: 0, amount: 0, dates: [] };
         }
-        outstanding[assignment.employeeName].nights += 1;
-        outstanding[assignment.employeeName].amount += net;
-        outstanding[assignment.employeeName].dates.push(dateStr);
+        outstanding[employeeName].nights += 1;
+        outstanding[employeeName].amount += net;
+        outstanding[employeeName].dates.push(dateStr);
       }
     }
 
@@ -138,17 +139,21 @@ export default function PayrollPage() {
     setPayConfirm({ isOpen: true, employee: employeeName });
   };
 
-  const confirmPayment = (selectedDates, amount) => {
+  const confirmPayment = async (selectedDates, amount) => {
     if (selectedDates && selectedDates.length > 0) {
       const sortedDates = [...selectedDates].sort();
-      addPayment({
-        employeeName: payConfirm.employee,
-        startDate: sortedDates[0],
-        endDate: sortedDates[sortedDates.length - 1],
-        amount: amount,
-        nights: selectedDates.length,
-        dates: selectedDates,
-      });
+      try {
+        await addPayment({
+          employeeName: payConfirm.employee,
+          startDate: sortedDates[0],
+          endDate: sortedDates[sortedDates.length - 1],
+          amount: amount,
+          nights: selectedDates.length,
+          dates: selectedDates,
+        });
+      } catch (err) {
+        console.error('Failed to add payment:', err);
+      }
     }
     setPayConfirm({ isOpen: false, employee: null });
   };
@@ -157,9 +162,13 @@ export default function PayrollPage() {
     setDeleteConfirm({ isOpen: true, payment });
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteConfirm.payment) {
-      deletePayment(deleteConfirm.payment.id);
+      try {
+        await deletePayment(deleteConfirm.payment.id);
+      } catch (err) {
+        console.error('Failed to delete payment:', err);
+      }
     }
     setDeleteConfirm({ isOpen: false, payment: null });
   };

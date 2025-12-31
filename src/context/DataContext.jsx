@@ -1,10 +1,10 @@
 import { createContext, useContext, useMemo } from 'react';
-import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useSettings as useSupabaseSettings } from '../hooks/useSettings';
 import { useEmployees as useSupabaseEmployees } from '../hooks/useEmployees';
 import { useDogs as useSupabaseDogs } from '../hooks/useDogs';
 import { useBoardings as useSupabaseBoardings } from '../hooks/useBoardings';
 import { useNightAssignments as useSupabaseNightAssignments } from '../hooks/useNightAssignments';
+import { usePayments as useSupabasePayments } from '../hooks/usePayments';
 import { useAuth } from './AuthContext';
 import { logger } from '../utils/logger';
 
@@ -12,7 +12,6 @@ const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
   const { user } = useAuth();
-  const [payments, setPayments] = useLocalStorage('payments', []);
 
   // Use Supabase for net percentage settings when logged in
   const {
@@ -62,6 +61,15 @@ export function DataProvider({ children }) {
     getNightAssignment: getSupabaseNightAssignment,
     deleteAssignmentsForEmployee: deleteSupabaseAssignmentsForEmployee,
   } = useSupabaseNightAssignments(supabaseEmployees);
+
+  // Use Supabase for payments (needs employees for name<->ID conversion)
+  const {
+    payments,
+    loading: paymentsLoading,
+    addPayment: addSupabasePayment,
+    deletePayment: deleteSupabasePayment,
+    getPaidDatesForEmployee: getSupabasePaidDatesForEmployee,
+  } = useSupabasePayments(supabaseEmployees);
 
   // Combine Supabase settings with employees into unified settings object
   const settings = useMemo(() => ({
@@ -263,30 +271,33 @@ export function DataProvider({ children }) {
     return getSupabaseNightAssignment(date);
   };
 
-  // Payment operations
-  const addPayment = (payment) => {
-    const newPayment = {
-      ...payment,
-      id: crypto.randomUUID(),
-      paidDate: new Date().toISOString().split('T')[0],
-    };
-    setPayments([...payments, newPayment]);
-    logger.settings('Payment recorded', `${payment.employeeName}: $${payment.amount.toFixed(2)}`);
-    return newPayment;
+  // Payment operations (using Supabase)
+  const addPayment = async (payment) => {
+    try {
+      const newPayment = await addSupabasePayment(payment);
+      logger.settings('Payment recorded', `${payment.employeeName}: $${payment.amount.toFixed(2)}`);
+      return newPayment;
+    } catch (err) {
+      console.error('Failed to add payment:', err);
+      throw err;
+    }
   };
 
-  const deletePayment = (id) => {
+  const deletePayment = async (id) => {
     const payment = payments.find(p => p.id === id);
-    setPayments(payments.filter(p => p.id !== id));
-    if (payment) {
-      logger.settings('Payment deleted', `${payment.employeeName}: $${payment.amount.toFixed(2)}`);
+    try {
+      await deleteSupabasePayment(id);
+      if (payment) {
+        logger.settings('Payment deleted', `${payment.employeeName}: $${payment.amount.toFixed(2)}`);
+      }
+    } catch (err) {
+      console.error('Failed to delete payment:', err);
+      throw err;
     }
   };
 
   const getPaidDatesForEmployee = (employeeName) => {
-    return payments
-      .filter(p => p.employeeName === employeeName)
-      .flatMap(p => p.dates);
+    return getSupabasePaidDatesForEmployee(employeeName);
   };
 
   const value = {
@@ -299,6 +310,7 @@ export function DataProvider({ children }) {
     dogsLoading,
     boardingsLoading,
     nightAssignmentsLoading,
+    paymentsLoading,
     nightAssignments,
     payments,
     // Dog operations
