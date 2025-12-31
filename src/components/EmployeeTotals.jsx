@@ -83,12 +83,12 @@ export default function EmployeeTotals({ startDate, days = 14 }) {
     }).join(', ');
   };
 
-  // Calculate totals per employee for the displayed date range
+  // Calculate totals per employee for the displayed date range (exclude N/A)
   const employeeTotals = {};
 
   for (const dateStr of dates) {
     const assignment = nightAssignments.find(a => a.date === dateStr);
-    if (assignment && assignment.employeeName) {
+    if (assignment && assignment.employeeName && assignment.employeeName !== 'N/A') {
       const net = calculateDayNet(dateStr);
       if (!employeeTotals[assignment.employeeName]) {
         employeeTotals[assignment.employeeName] = { nights: 0, earnings: 0, dates: [] };
