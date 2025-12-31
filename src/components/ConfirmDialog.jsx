@@ -26,7 +26,7 @@ export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCan
 
       {/* Dialog */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full p-6 transform transition-all">
+        <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-scaleIn">
           {/* Icon */}
           <div className={`w-12 h-12 mx-auto mb-4 rounded-full ${colors.iconBg} flex items-center justify-center`}>
             {confirmColor === 'emerald' ? (
