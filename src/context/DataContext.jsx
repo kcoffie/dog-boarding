@@ -1,20 +1,16 @@
 import { createContext, useContext, useMemo } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useSettings as useSupabaseSettings } from '../hooks/useSettings';
+import { useEmployees as useSupabaseEmployees } from '../hooks/useEmployees';
 import { useAuth } from './AuthContext';
 import { logger } from '../utils/logger';
 
 const DataContext = createContext(null);
 
-const initialLocalSettings = {
-  employees: [],
-};
-
 export function DataProvider({ children }) {
   const { user } = useAuth();
   const [dogs, setDogs] = useLocalStorage('dogs', []);
   const [boardings, setBoardings] = useLocalStorage('boardings', []);
-  const [localSettings, setLocalSettings] = useLocalStorage('localSettings', initialLocalSettings);
   const [nightAssignments, setNightAssignments] = useLocalStorage('nightAssignments', []);
   const [payments, setPayments] = useLocalStorage('payments', []);
 
@@ -26,12 +22,22 @@ export function DataProvider({ children }) {
     getNetPercentageForDate: getSupabaseNetPercentageForDate,
   } = useSupabaseSettings();
 
-  // Combine Supabase settings with local employees into unified settings object
+  // Use Supabase for employees
+  const {
+    employees: supabaseEmployees,
+    loading: employeesLoading,
+    addEmployee: addSupabaseEmployee,
+    deleteEmployee: deleteSupabaseEmployee,
+    toggleEmployeeActive: toggleSupabaseEmployeeActive,
+    reorderEmployees: reorderSupabaseEmployees,
+  } = useSupabaseEmployees();
+
+  // Combine Supabase settings with employees into unified settings object
   const settings = useMemo(() => ({
     netPercentage: supabaseSettings?.netPercentage ?? 65,
     netPercentageHistory: supabaseSettings?.netPercentageHistory ?? [],
-    employees: localSettings.employees ?? [],
-  }), [supabaseSettings, localSettings.employees]);
+    employees: supabaseEmployees ?? [],
+  }), [supabaseSettings, supabaseEmployees]);
 
   // Dog operations
   const addDog = (dog) => {
@@ -147,49 +153,38 @@ export function DataProvider({ children }) {
     }
   };
 
-  const addEmployee = (name) => {
-    const employees = localSettings.employees || [];
-    const employeeNames = employees.map(e => typeof e === 'string' ? e : e.name);
-    if (!employeeNames.some(n => n.toLowerCase() === name.toLowerCase())) {
-      setLocalSettings({
-        ...localSettings,
-        employees: [...employees, { name, active: true }],
-      });
+  const addEmployee = async (name) => {
+    try {
+      await addSupabaseEmployee(name);
       logger.settings('Added employee', name);
+    } catch (err) {
+      console.error('Failed to add employee:', err);
+      throw err;
     }
   };
 
-  const deleteEmployee = (name) => {
-    const employees = localSettings.employees || [];
-    setLocalSettings({
-      ...localSettings,
-      employees: employees.filter((e) => (typeof e === 'string' ? e : e.name) !== name),
-    });
-    setNightAssignments(nightAssignments.filter((a) => a.employeeName !== name));
-    logger.settings('Deleted employee', name);
+  const deleteEmployee = async (name) => {
+    try {
+      await deleteSupabaseEmployee(name);
+      setNightAssignments(nightAssignments.filter((a) => a.employeeName !== name));
+      logger.settings('Deleted employee', name);
+    } catch (err) {
+      console.error('Failed to delete employee:', err);
+      throw err;
+    }
   };
 
-  const toggleEmployeeActive = (name) => {
-    const employees = localSettings.employees || [];
-    setLocalSettings({
-      ...localSettings,
-      employees: employees.map((e) => {
-        const empName = typeof e === 'string' ? e : e.name;
-        if (empName === name) {
-          const currentActive = typeof e === 'string' ? true : e.active;
-          return { name: empName, active: !currentActive };
-        }
-        return typeof e === 'string' ? { name: e, active: true } : e;
-      }),
-    });
+  const toggleEmployeeActive = async (name) => {
+    try {
+      await toggleSupabaseEmployeeActive(name);
+    } catch (err) {
+      console.error('Failed to toggle employee:', err);
+      throw err;
+    }
   };
 
   const reorderEmployees = (fromIndex, toIndex) => {
-    const employees = localSettings.employees || [];
-    const newEmployees = [...employees];
-    const [removed] = newEmployees.splice(fromIndex, 1);
-    newEmployees.splice(toIndex, 0, removed);
-    setLocalSettings({ ...localSettings, employees: newEmployees });
+    reorderSupabaseEmployees(fromIndex, toIndex);
   };
 
   // Night assignment operations
@@ -249,6 +244,7 @@ export function DataProvider({ children }) {
     boardings,
     settings,
     settingsLoading,
+    employeesLoading,
     nightAssignments,
     payments,
     // Dog operations
