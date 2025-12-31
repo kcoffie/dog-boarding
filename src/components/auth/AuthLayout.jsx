@@ -1,6 +1,12 @@
 export default function AuthLayout({ children, title, subtitle }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12">
+    <div
+      className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12"
+      style={{
+        paddingTop: 'calc(3rem + env(safe-area-inset-top))',
+        paddingBottom: 'calc(3rem + env(safe-area-inset-bottom))'
+      }}
+    >
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">

@@ -25,6 +25,50 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* PWA Safe Area Handling */
+html {
+  /* Prevent overscroll bounce in PWA */
+  overscroll-behavior: none;
+}
+
+/* Safe area insets for notch and home indicator */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-left {
+  padding-left: env(safe-area-inset-left);
+}
+
+.safe-right {
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Prevent unwanted mobile behaviors */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.tap-transparent {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent iOS zoom on input focus */
+input, select, textarea {
+  font-size: 16px;
+}
+
+/* Smooth momentum scrolling */
+.scroll-smooth {
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
