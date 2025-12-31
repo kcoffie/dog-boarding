@@ -73,7 +73,7 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => shiftRange(-7)}
-            className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 active:scale-[0.98] rounded-lg transition-all select-none"
           >
             <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
@@ -82,7 +82,7 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
           </button>
           <button
             onClick={() => shiftRange(-1)}
-            className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 active:scale-[0.98] rounded-lg transition-all select-none"
           >
             <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -91,13 +91,13 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
           </button>
           <button
             onClick={handleToday}
-            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] rounded-lg transition-all shadow-sm"
+            className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 active:scale-[0.98] rounded-lg transition-all shadow-sm select-none"
           >
             Today
           </button>
           <button
             onClick={() => shiftRange(1)}
-            className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 active:scale-[0.98] rounded-lg transition-all select-none"
           >
             Day
             <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -106,7 +106,7 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
           </button>
           <button
             onClick={() => shiftRange(7)}
-            className="inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            className="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 active:scale-[0.98] rounded-lg transition-all select-none"
           >
             Week
             <svg className="w-4 h-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
