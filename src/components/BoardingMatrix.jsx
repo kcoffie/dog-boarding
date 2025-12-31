@@ -5,12 +5,18 @@ import EmployeeDropdown from './EmployeeDropdown';
 
 export default function BoardingMatrix({ startDate, days = 14 }) {
   const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
-  const [sortDirection, setSortDirection] = useState('asc');
+  const [dogSortDirection, setDogSortDirection] = useState('asc');
+  const [dateSortDirection, setDateSortDirection] = useState('asc');
 
-  const dates = getDateRange(startDate, days);
+  const baseDates = getDateRange(startDate, days);
+  const dates = dateSortDirection === 'asc' ? baseDates : [...baseDates].reverse();
 
-  const toggleSort = () => {
-    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+  const toggleDogSort = () => {
+    setDogSortDirection(dogSortDirection === 'asc' ? 'desc' : 'asc');
+  };
+
+  const toggleDateSort = () => {
+    setDateSortDirection(dateSortDirection === 'asc' ? 'desc' : 'asc');
   };
 
   const isWeekend = (dateStr) => {
@@ -119,7 +125,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
 
   const dogHasPresenceInRange = (dog) => {
     const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-    for (const dateStr of dates) {
+    for (const dateStr of baseDates) {
       for (const boarding of dogBoardings) {
         if (isDayPresent(boarding, dateStr) || isOvernight(boarding, dateStr)) {
           return true;
@@ -135,7 +141,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
       const nameA = formatName(a.name).toLowerCase();
       const nameB = formatName(b.name).toLowerCase();
       const result = nameA.localeCompare(nameB);
-      return sortDirection === 'asc' ? result : -result;
+      return dogSortDirection === 'asc' ? result : -result;
     });
 
   if (dogs.length === 0) {
@@ -174,10 +180,10 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
             <tr className="border-b border-slate-200">
               <th
                 className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider sticky left-0 bg-white min-w-[140px] cursor-pointer hover:bg-slate-50 transition-colors"
-                onClick={toggleSort}
+                onClick={toggleDogSort}
               >
                 Dog
-                <span className="ml-1 text-indigo-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                <span className="ml-1 text-indigo-600">{dogSortDirection === 'asc' ? '↑' : '↓'}</span>
               </th>
               <th className="text-right px-3 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[70px]">
                 Day
@@ -185,8 +191,21 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               <th className="text-right px-3 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[70px]">
                 Night
               </th>
+              <th
+                className="text-center px-2 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                onClick={toggleDateSort}
+                colSpan={dates.length}
+              >
+                Dates
+                <span className="ml-1 text-indigo-600">{dateSortDirection === 'asc' ? '→' : '←'}</span>
+              </th>
+            </tr>
+            <tr className="border-b border-slate-200">
+              <th className="sticky left-0 bg-white"></th>
+              <th></th>
+              <th></th>
               {dates.map((dateStr) => (
-                <th key={dateStr} className={`text-center px-2 py-4 text-xs font-medium text-slate-500 min-w-[52px] ${getHeaderColumnBg(dateStr)}`}>
+                <th key={dateStr} className={`text-center px-2 py-2 text-xs font-medium text-slate-500 min-w-[52px] ${getHeaderColumnBg(dateStr)}`}>
                   <div className={isWeekend(dateStr) ? 'text-slate-500' : 'text-slate-400'}>{getDayOfWeek(dateStr)}</div>
                   <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
                 </th>
