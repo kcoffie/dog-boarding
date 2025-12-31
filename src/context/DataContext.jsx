@@ -15,6 +15,7 @@ export function DataProvider({ children }) {
   const [boardings, setBoardings] = useLocalStorage('boardings', []);
   const [settings, setSettings] = useLocalStorage('settings', initialSettings);
   const [nightAssignments, setNightAssignments] = useLocalStorage('nightAssignments', []);
+  const [payments, setPayments] = useLocalStorage('payments', []);
 
   // Dog operations
   const addDog = (dog) => {
@@ -209,12 +210,39 @@ export function DataProvider({ children }) {
     return nightAssignments.find((a) => a.date === date)?.employeeName || '';
   };
 
+  // Payment operations
+  const addPayment = (payment) => {
+    const newPayment = {
+      ...payment,
+      id: crypto.randomUUID(),
+      paidDate: new Date().toISOString().split('T')[0],
+    };
+    setPayments([...payments, newPayment]);
+    logger.settings('Payment recorded', `${payment.employeeName}: $${payment.amount.toFixed(2)}`);
+    return newPayment;
+  };
+
+  const deletePayment = (id) => {
+    const payment = payments.find(p => p.id === id);
+    setPayments(payments.filter(p => p.id !== id));
+    if (payment) {
+      logger.settings('Payment deleted', `${payment.employeeName}: $${payment.amount.toFixed(2)}`);
+    }
+  };
+
+  const getPaidDatesForEmployee = (employeeName) => {
+    return payments
+      .filter(p => p.employeeName === employeeName)
+      .flatMap(p => p.dates);
+  };
+
   const value = {
     // Data
     dogs,
     boardings,
     settings,
     nightAssignments,
+    payments,
     // Dog operations
     addDog,
     addDogs,
@@ -237,6 +265,10 @@ export function DataProvider({ children }) {
     // Night assignment operations
     setNightAssignment,
     getNightAssignment,
+    // Payment operations
+    addPayment,
+    deletePayment,
+    getPaidDatesForEmployee,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
