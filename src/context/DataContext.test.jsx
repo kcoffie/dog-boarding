@@ -257,3 +257,79 @@ describe('setNetPercentage', () => {
     });
   });
 });
+
+// Note: Night assignment operations are tested implicitly through
+// EmployeeTotals and SummaryCards tests, and through the useLocalStorage mock
+
+describe('Employee operations', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSettings = {
+      netPercentage: 65,
+      netPercentageHistory: [],
+      employees: [],
+    };
+  });
+
+  it('addEmployee adds new employee', () => {
+    let contextData;
+    render(
+      <DataProvider>
+        <TestComponent onMount={(data) => { contextData = data; }} />
+      </DataProvider>
+    );
+
+    act(() => {
+      contextData.addEmployee('Kate');
+    });
+
+    expect(mockSetSettings).toHaveBeenCalledWith(expect.objectContaining({
+      employees: [{ name: 'Kate', active: true }],
+    }));
+  });
+
+  it('addEmployee prevents duplicates (case insensitive)', () => {
+    mockSettings = {
+      netPercentage: 65,
+      netPercentageHistory: [],
+      employees: [{ name: 'Kate', active: true }],
+    };
+
+    let contextData;
+    render(
+      <DataProvider>
+        <TestComponent onMount={(data) => { contextData = data; }} />
+      </DataProvider>
+    );
+
+    act(() => {
+      contextData.addEmployee('KATE');
+    });
+
+    // Should not have been called since Kate already exists
+    expect(mockSetSettings).not.toHaveBeenCalled();
+  });
+
+  it('toggleEmployeeActive toggles active status', () => {
+    mockSettings = {
+      netPercentage: 65,
+      netPercentageHistory: [],
+      employees: [{ name: 'Kate', active: true }],
+    };
+
+    let contextData;
+    render(
+      <DataProvider>
+        <TestComponent onMount={(data) => { contextData = data; }} />
+      </DataProvider>
+    );
+
+    act(() => {
+      contextData.toggleEmployeeActive('Kate');
+    });
+
+    expect(mockSetSettings).toHaveBeenCalledWith(expect.objectContaining({
+      employees: [{ name: 'Kate', active: false }],
+    }));
+  });
+});
