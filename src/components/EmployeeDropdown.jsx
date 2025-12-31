@@ -9,8 +9,12 @@ export default function EmployeeDropdown({ date }) {
   const getEmployeeName = (emp) => typeof emp === 'string' ? emp : emp.name;
   const isEmployeeActive = (emp) => typeof emp === 'string' ? true : emp.active !== false;
 
-  const handleChange = (e) => {
-    setNightAssignment(date, e.target.value);
+  const handleChange = async (e) => {
+    try {
+      await setNightAssignment(date, e.target.value);
+    } catch (err) {
+      console.error('Failed to set assignment:', err);
+    }
   };
 
   // Filter to only active employees, but include currently selected even if inactive
