@@ -5,6 +5,7 @@ import MatrixPage from './pages/MatrixPage';
 import DogsPage from './pages/DogsPage';
 import SettingsPage from './pages/SettingsPage';
 import PayrollPage from './pages/PayrollPage';
+import CalendarPage from './pages/CalendarPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
@@ -32,6 +33,7 @@ function App() {
             }
           >
             <Route index element={<MatrixPage />} />
+            <Route path="calendar" element={<CalendarPage />} />
             <Route path="dogs" element={<DogsPage />} />
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="settings" element={<SettingsPage />} />
