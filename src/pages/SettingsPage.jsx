@@ -1,15 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function SettingsPage() {
-  const { settings, updateSettings, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
+  const { settings, settingsLoading, updateSettings, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
 
   const getEmployeeName = (emp) => typeof emp === 'string' ? emp : emp.name;
   const isEmployeeActive = (emp) => typeof emp === 'string' ? true : emp.active !== false;
 
-  const [netPercentage, setNetPercentage] = useState(settings.netPercentage);
+  const [netPercentage, setNetPercentage] = useState('');
   const [percentageError, setPercentageError] = useState('');
+
+  // Sync local state when Supabase settings load
+  useEffect(() => {
+    if (!settingsLoading && settings.netPercentage !== undefined) {
+      setNetPercentage(settings.netPercentage);
+    }
+  }, [settings.netPercentage, settingsLoading]);
   const [useEffectiveDate, setUseEffectiveDate] = useState(false);
   const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [newEmployeeName, setNewEmployeeName] = useState('');
@@ -23,18 +30,22 @@ export default function SettingsPage() {
     setPercentageError('');
   };
 
-  const handlePercentageSave = () => {
+  const handlePercentageSave = async () => {
     const numValue = parseFloat(netPercentage);
     if (isNaN(numValue) || numValue < 0 || numValue > 100) {
       setPercentageError('Must be a number between 0 and 100');
       return;
     }
-    if (useEffectiveDate) {
-      saveNetPercentage(numValue, effectiveDate);
-    } else {
-      saveNetPercentage(numValue, null);
+    try {
+      if (useEffectiveDate) {
+        await saveNetPercentage(numValue, effectiveDate);
+      } else {
+        await saveNetPercentage(numValue, null);
+      }
+      setPercentageError('');
+    } catch (err) {
+      setPercentageError('Failed to save. Please try again.');
     }
-    setPercentageError('');
   };
 
   const handleAddEmployee = (e) => {
