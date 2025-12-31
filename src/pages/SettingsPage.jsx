@@ -72,7 +72,10 @@ export default function SettingsPage() {
   };
 
   const handleDeleteClick = (employeeName) => {
-    const hasAssignments = nightAssignments.some(a => a.employeeName === employeeName);
+    // Find employee ID to check assignments
+    const employee = settings.employees.find(e => getEmployeeName(e) === employeeName);
+    const employeeId = employee?.id;
+    const hasAssignments = employeeId ? nightAssignments.some(a => a.employeeId === employeeId) : false;
     setDeleteConfirm({ isOpen: true, employeeName, hasAssignments });
   };
 

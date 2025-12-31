@@ -2,7 +2,7 @@ import { useData } from '../context/DataContext';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
 
 export default function SummaryCards({ startDate, days }) {
-  const { dogs, boardings, settings, nightAssignments, getNetPercentageForDate } = useData();
+  const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
 
   const dates = getDateRange(startDate, days);
   const todayStr = new Date().toISOString().split('T')[0];
@@ -28,17 +28,8 @@ export default function SummaryCards({ startDate, days }) {
     return total + dayGross;
   }, 0);
 
-  // Nights assigned in range (exclude N/A - means owner is covering)
-  const assignedNights = dates.filter(dateStr =>
-    nightAssignments.some(a => a.date === dateStr && a.employeeName && a.employeeName !== 'N/A')
-  ).length;
-
-  // Nights with boardings that need employee coverage (exclude N/A nights)
-  const nightsWithBoardings = dates.filter(dateStr => {
-    // Check if N/A is assigned - if so, no employee needed
-    const assignment = nightAssignments.find(a => a.date === dateStr);
-    if (assignment?.employeeName === 'N/A') return false;
-
+  // Helper to check if date has any dogs boarding
+  const hasDogsBoarding = (dateStr) => {
     for (const dog of dogs) {
       const dogBoardings = boardings.filter(b => b.dogId === dog.id);
       if (dogBoardings.some(b => isOvernight(b, dateStr))) {
@@ -46,6 +37,21 @@ export default function SummaryCards({ startDate, days }) {
       }
     }
     return false;
+  };
+
+  // Nights assigned in range (only count nights with dogs that have employee assigned)
+  const assignedNights = dates.filter(dateStr => {
+    const employeeName = getNightAssignment(dateStr);
+    return employeeName && employeeName !== 'N/A' && hasDogsBoarding(dateStr);
+  }).length;
+
+  // Nights with boardings that need employee coverage (exclude N/A nights)
+  const nightsWithBoardings = dates.filter(dateStr => {
+    // Check if N/A is assigned - if so, no employee needed
+    const employeeName = getNightAssignment(dateStr);
+    if (employeeName === 'N/A') return false;
+
+    return hasDogsBoarding(dateStr);
   }).length;
 
   // Active dogs count

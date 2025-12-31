@@ -2,7 +2,7 @@ import { useData } from '../context/DataContext';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
 
 export default function EmployeeTotals({ startDate, days = 14 }) {
-  const { dogs, boardings, settings, nightAssignments, getNetPercentageForDate } = useData();
+  const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
 
   // Helper to check if employee is active
   const isEmployeeActive = (name) => {
@@ -87,15 +87,15 @@ export default function EmployeeTotals({ startDate, days = 14 }) {
   const employeeTotals = {};
 
   for (const dateStr of dates) {
-    const assignment = nightAssignments.find(a => a.date === dateStr);
-    if (assignment && assignment.employeeName && assignment.employeeName !== 'N/A') {
+    const employeeName = getNightAssignment(dateStr);
+    if (employeeName && employeeName !== 'N/A') {
       const net = calculateDayNet(dateStr);
-      if (!employeeTotals[assignment.employeeName]) {
-        employeeTotals[assignment.employeeName] = { nights: 0, earnings: 0, dates: [] };
+      if (!employeeTotals[employeeName]) {
+        employeeTotals[employeeName] = { nights: 0, earnings: 0, dates: [] };
       }
-      employeeTotals[assignment.employeeName].nights += 1;
-      employeeTotals[assignment.employeeName].earnings += net;
-      employeeTotals[assignment.employeeName].dates.push(dateStr);
+      employeeTotals[employeeName].nights += 1;
+      employeeTotals[employeeName].earnings += net;
+      employeeTotals[employeeName].dates.push(dateStr);
     }
   }
 
