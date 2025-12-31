@@ -92,3 +92,14 @@ describe('BoardingMatrix empty states', () => {
     // Note: This is a simplified test - in real scenarios you'd use proper module mocking
   });
 });
+
+describe('BoardingMatrix sorting', () => {
+  it('renders sortable dog column header', () => {
+    renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={7} />);
+
+    // Dog header should be clickable
+    const dogHeader = screen.getByText('Dog');
+    expect(dogHeader).toBeInTheDocument();
+    expect(dogHeader.closest('th')).toHaveClass('cursor-pointer');
+  });
+});
