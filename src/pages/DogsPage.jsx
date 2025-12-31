@@ -24,14 +24,22 @@ export default function DogsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [inlineAddBoardingDogId, setInlineAddBoardingDogId] = useState(null);
 
-  const handleAddDog = (dogData) => {
-    addDog(dogData);
-    setShowAddDogForm(false);
+  const handleAddDog = async (dogData) => {
+    try {
+      await addDog(dogData);
+      setShowAddDogForm(false);
+    } catch (err) {
+      console.error('Failed to add dog:', err);
+    }
   };
 
-  const handleEditDog = (dogData) => {
-    updateDog(editingDog.id, dogData);
-    setEditingDog(null);
+  const handleEditDog = async (dogData) => {
+    try {
+      await updateDog(editingDog.id, dogData);
+      setEditingDog(null);
+    } catch (err) {
+      console.error('Failed to update dog:', err);
+    }
   };
 
   const handleDeleteDogClick = (dog) => {
@@ -63,13 +71,17 @@ export default function DogsPage() {
     setDeleteConfirm({ isOpen: true, type: 'boarding', item: boarding });
   };
 
-  const handleConfirmDelete = () => {
-    if (deleteConfirm.type === 'dog') {
-      deleteDog(deleteConfirm.item.id);
-    } else if (deleteConfirm.type === 'boarding') {
-      deleteBoarding(deleteConfirm.item.id);
+  const handleConfirmDelete = async () => {
+    try {
+      if (deleteConfirm.type === 'dog') {
+        await deleteDog(deleteConfirm.item.id);
+      } else if (deleteConfirm.type === 'boarding') {
+        deleteBoarding(deleteConfirm.item.id);
+      }
+      setDeleteConfirm({ isOpen: false, type: null, item: null });
+    } catch (err) {
+      console.error('Failed to delete:', err);
     }
-    setDeleteConfirm({ isOpen: false, type: null, item: null });
   };
 
   const formatCurrency = (amount) => {
