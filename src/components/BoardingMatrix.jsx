@@ -191,23 +191,22 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               <th className="text-right px-3 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[70px]">
                 Night
               </th>
-              <th
-                className="text-center px-2 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
-                onClick={toggleDateSort}
-                colSpan={dates.length}
-              >
-                Dates
-                <span className="ml-1 text-indigo-600">{dateSortDirection === 'asc' ? '→' : '←'}</span>
-              </th>
-            </tr>
-            <tr className="border-b border-slate-200">
-              <th className="sticky left-0 bg-white"></th>
-              <th></th>
-              <th></th>
-              {dates.map((dateStr) => (
+              {dates.map((dateStr, index) => (
                 <th key={dateStr} className={`text-center px-2 py-2 text-xs font-medium text-slate-500 min-w-[52px] ${getHeaderColumnBg(dateStr)}`}>
                   <div className={isWeekend(dateStr) ? 'text-slate-500' : 'text-slate-400'}>{getDayOfWeek(dateStr)}</div>
                   <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
+                  {index === 0 && (
+                    <button
+                      onClick={toggleDateSort}
+                      className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
+                      title={dateSortDirection === 'asc' ? 'Showing oldest first - click for newest first' : 'Showing newest first - click for oldest first'}
+                    >
+                      {dateSortDirection === 'asc' ? 'Oldest' : 'Newest'}
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                      </svg>
+                    </button>
+                  )}
                 </th>
               ))}
             </tr>
