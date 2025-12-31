@@ -304,7 +304,82 @@ export default function DogsPage() {
               <p className="text-slate-500">{dogs.length === 0 ? 'Add dogs first to create boardings' : 'Click "Add Boarding" to get started'}</p>
             </div>
           ) : (
-            <table className="w-full">
+            <>
+            {/* Mobile Card Layout */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {sortedBoardings.map((boarding) => {
+                const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
+                const nightRate = getDogNightRate(boarding.dogId);
+                const gross = nights * nightRate;
+                const dogName = getDogName(boarding.dogId);
+                const status = getBoardingStatus(boarding);
+                const statusStyle = statusConfig[status];
+                const isEditing = editingBoarding?.id === boarding.id;
+
+                return (
+                  <div key={boarding.id} className={`p-4 ${isEditing ? 'bg-indigo-50/50' : ''}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm font-semibold text-indigo-600">{getInitials(dogName)}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-900 truncate">{dogName}</div>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+                            {statusStyle.label}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-lg font-semibold text-slate-900">{formatCurrency(gross)}</div>
+                        <div className="text-xs text-slate-500">{nights} nights</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 text-sm text-slate-600">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Arrival:</span>
+                        <span>{formatDateTime(boarding.arrivalDateTime)}</span>
+                      </div>
+                      <div className="flex justify-between mt-1">
+                        <span className="text-slate-500">Departure:</span>
+                        <span>{formatDateTime(boarding.departureDateTime)}</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex gap-4">
+                      <button
+                        onClick={() => setEditingBoarding(isEditing ? null : boarding)}
+                        disabled={isFormOpen && !isEditing}
+                        className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
+                      >
+                        {isEditing ? 'Cancel' : 'Edit'}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBoardingClick(boarding)}
+                        disabled={isFormOpen}
+                        className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 active:bg-red-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                    {isEditing && (
+                      <div className="mt-4 pt-4 border-t border-indigo-200">
+                        <h3 className="text-sm font-semibold text-slate-900 mb-4">
+                          Edit Boarding for {dogName}
+                        </h3>
+                        <BoardingForm
+                          boarding={editingBoarding}
+                          onSave={handleEditBoarding}
+                          onCancel={() => setEditingBoarding(null)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table Layout */}
+            <table className="w-full hidden md:table">
               <thead>
                 <tr className="border-b border-slate-200">
                   <th
@@ -414,6 +489,7 @@ export default function DogsPage() {
                 })}
               </tbody>
             </table>
+            </>
           )}
         </div>
       </div>
@@ -510,7 +586,80 @@ export default function DogsPage() {
               <p className="text-slate-500">Click "Add Dog" to get started</p>
             </div>
           ) : (
-            <table className="w-full">
+            <>
+            {/* Mobile Card Layout */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {filteredAndSortedDogs.map((dog) => (
+                <div key={dog.id} className={`p-4 ${dog.active === false ? 'opacity-50' : ''} ${inlineAddBoardingDogId === dog.id ? 'bg-indigo-50/50' : ''}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                        <span className="text-sm font-semibold text-indigo-600">{getInitials(formatName(dog.name))}</span>
+                      </div>
+                      <div className="min-w-0">
+                        {dog.active !== false ? (
+                          <button
+                            onClick={() => handleDogNameClick(dog)}
+                            disabled={isFormOpen && inlineAddBoardingDogId !== dog.id}
+                            className="font-medium text-indigo-600 hover:text-indigo-800 disabled:text-slate-900 disabled:cursor-default transition-colors truncate block"
+                          >
+                            {formatName(dog.name)}
+                          </button>
+                        ) : (
+                          <span className="font-medium text-slate-400 truncate block">{formatName(dog.name)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm text-slate-600">
+                        <span className="text-slate-400">Day:</span> {formatCurrency(dog.dayRate)}
+                      </div>
+                      <div className="text-sm text-slate-600">
+                        <span className="text-slate-400">Night:</span> {formatCurrency(dog.nightRate)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => setEditingDog(dog)}
+                      disabled={isFormOpen}
+                      className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => toggleDogActive(dog.id)}
+                      disabled={isFormOpen}
+                      className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
+                    >
+                      {dog.active === false ? 'Activate' : 'Deactivate'}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteDogClick(dog)}
+                      disabled={isFormOpen}
+                      className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 active:bg-red-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                  {inlineAddBoardingDogId === dog.id && (
+                    <div className="mt-4 pt-4 border-t border-indigo-200">
+                      <h3 className="text-sm font-semibold text-slate-900 mb-4">
+                        Add Boarding for {formatName(dog.name)}
+                      </h3>
+                      <BoardingForm
+                        preselectedDogId={dog.id}
+                        onSave={handleInlineAddBoarding}
+                        onCancel={() => setInlineAddBoardingDogId(null)}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table Layout */}
+            <table className="w-full hidden md:table">
               <thead>
                 <tr className="border-b border-slate-200">
                   <th
@@ -597,6 +746,7 @@ export default function DogsPage() {
                 ))}
               </tbody>
             </table>
+            </>
           )}
         </div>
       </div>
