@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { logger } from '../utils/logger';
 
 const DataContext = createContext(null);
 
@@ -22,23 +23,30 @@ export function DataProvider({ children }) {
       active: true,
     };
     setDogs([...dogs, newDog]);
+    logger.dog('Added', newDog.name);
     return newDog;
   };
 
   const updateDog = (id, updates) => {
+    const dog = dogs.find(d => d.id === id);
     setDogs(dogs.map((dog) => (dog.id === id ? { ...dog, ...updates } : dog)));
+    logger.dog('Updated', dog?.name);
   };
 
   const deleteDog = (id) => {
+    const dog = dogs.find(d => d.id === id);
     setDogs(dogs.filter((dog) => dog.id !== id));
-    // Also delete associated boardings
     setBoardings(boardings.filter((b) => b.dogId !== id));
+    logger.dog('Deleted', dog?.name);
   };
 
   const toggleDogActive = (id) => {
+    const dog = dogs.find(d => d.id === id);
+    const newActive = !dog?.active;
     setDogs(dogs.map((dog) =>
       dog.id === id ? { ...dog, active: !dog.active } : dog
     ));
+    logger.dog(newActive ? 'Activated' : 'Deactivated', dog?.name);
   };
 
   const addDogs = (newDogs) => {
@@ -48,6 +56,7 @@ export function DataProvider({ children }) {
       active: true,
     }));
     setDogs([...dogs, ...dogsWithIds]);
+    logger.dog('Imported', `${newDogs.length} dogs`);
   };
 
   // Boarding operations
@@ -57,15 +66,23 @@ export function DataProvider({ children }) {
       id: crypto.randomUUID(),
     };
     setBoardings([...boardings, newBoarding]);
+    const dog = dogs.find(d => d.id === boarding.dogId);
+    logger.boarding('Added', `${dog?.name || 'Unknown'}: ${boarding.arrivalDateTime.split('T')[0]} → ${boarding.departureDateTime.split('T')[0]}`);
     return newBoarding;
   };
 
   const updateBoarding = (id, updates) => {
+    const boarding = boardings.find(b => b.id === id);
+    const dog = dogs.find(d => d.id === boarding?.dogId);
     setBoardings(boardings.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+    logger.boarding('Updated', dog?.name || 'Unknown');
   };
 
   const deleteBoarding = (id) => {
+    const boarding = boardings.find(b => b.id === id);
+    const dog = dogs.find(d => d.id === boarding?.dogId);
     setBoardings(boardings.filter((b) => b.id !== id));
+    logger.boarding('Deleted', dog?.name || 'Unknown');
   };
 
   const addBoardings = (newBoardings) => {
@@ -74,21 +91,25 @@ export function DataProvider({ children }) {
       id: crypto.randomUUID(),
     }));
     setBoardings([...boardings, ...boardingsWithIds]);
+    logger.boarding('Imported', `${newBoardings.length} boardings`);
   };
 
   // Settings operations
   const updateSettings = (updates) => {
     setSettings({ ...settings, ...updates });
+    if (updates.netPercentage !== undefined) {
+      logger.settings('Net percentage', `${updates.netPercentage}%`);
+    }
   };
 
   const addEmployee = (name) => {
-    // Support both old string format and new object format
     const employeeNames = settings.employees.map(e => typeof e === 'string' ? e : e.name);
     if (!employeeNames.some(n => n.toLowerCase() === name.toLowerCase())) {
       setSettings({
         ...settings,
         employees: [...settings.employees, { name, active: true }],
       });
+      logger.settings('Added employee', name);
     }
   };
 
@@ -97,8 +118,8 @@ export function DataProvider({ children }) {
       ...settings,
       employees: settings.employees.filter((e) => (typeof e === 'string' ? e : e.name) !== name),
     });
-    // Also remove their night assignments
     setNightAssignments(nightAssignments.filter((a) => a.employeeName !== name));
+    logger.settings('Deleted employee', name);
   };
 
   const toggleEmployeeActive = (name) => {
@@ -132,11 +153,14 @@ export function DataProvider({ children }) {
             a.date === date ? { ...a, employeeName } : a
           )
         );
+        logger.settings('Assigned', `${date} → ${employeeName}`);
       } else {
         setNightAssignments(nightAssignments.filter((a) => a.date !== date));
+        logger.settings('Unassigned', date);
       }
     } else if (employeeName) {
       setNightAssignments([...nightAssignments, { date, employeeName }]);
+      logger.settings('Assigned', `${date} → ${employeeName}`);
     }
   };
 
