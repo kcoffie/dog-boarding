@@ -6,34 +6,28 @@ import EmployeeDropdown from './EmployeeDropdown';
 export default function BoardingMatrix({ startDate, days = 14 }) {
   const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
   const [dogSortDirection, setDogSortDirection] = useState('asc');
-  const [dateSortDirection, setDateSortDirection] = useState('asc');
   const [presenceSortDate, setPresenceSortDate] = useState(null);
   const [presenceSortDirection, setPresenceSortDirection] = useState('desc'); // desc = present first
   const [mobileSelectedDate, setMobileSelectedDate] = useState(null);
   const dateScrollRef = useRef(null);
 
-  const baseDates = getDateRange(startDate, days);
-  const dates = dateSortDirection === 'asc' ? baseDates : [...baseDates].reverse();
+  const dates = getDateRange(startDate, days);
 
   // Initialize mobile selected date to today or first date in range
   useEffect(() => {
-    if (!mobileSelectedDate || !baseDates.includes(mobileSelectedDate)) {
+    if (!mobileSelectedDate || !dates.includes(mobileSelectedDate)) {
       const today = new Date().toISOString().split('T')[0];
-      if (baseDates.includes(today)) {
+      if (dates.includes(today)) {
         setMobileSelectedDate(today);
       } else {
-        setMobileSelectedDate(baseDates[0]);
+        setMobileSelectedDate(dates[0]);
       }
     }
-  }, [baseDates, mobileSelectedDate]);
+  }, [dates, mobileSelectedDate]);
 
   const toggleDogSort = () => {
     setDogSortDirection(dogSortDirection === 'asc' ? 'desc' : 'asc');
     setPresenceSortDate(null); // Clear presence sort when sorting by name
-  };
-
-  const toggleDateSort = () => {
-    setDateSortDirection(dateSortDirection === 'asc' ? 'desc' : 'asc');
   };
 
   const handleDateColumnClick = (dateStr) => {
@@ -170,7 +164,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
 
   const dogHasPresenceInRange = (dog) => {
     const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-    for (const dateStr of baseDates) {
+    for (const dateStr of dates) {
       for (const boarding of dogBoardings) {
         if (isDayPresent(boarding, dateStr) || isOvernight(boarding, dateStr)) {
           return true;
@@ -258,9 +252,9 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
   };
 
   const mobileDogsData = getDogsForMobileDate(mobileSelectedDate);
-  const mobileGross = calculateDayGross(mobileSelectedDate || baseDates[0]);
-  const mobileNet = calculateDayNet(mobileSelectedDate || baseDates[0]);
-  const mobileOvernightCount = countOvernightDogs(mobileSelectedDate || baseDates[0]);
+  const mobileGross = calculateDayGross(mobileSelectedDate || dates[0]);
+  const mobileNet = calculateDayNet(mobileSelectedDate || dates[0]);
+  const mobileOvernightCount = countOvernightDogs(mobileSelectedDate || dates[0]);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden">
@@ -272,7 +266,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
           className="flex overflow-x-auto gap-2 p-4 pb-3 -mx-0 snap-x snap-mandatory scrollbar-hide"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
         >
-          {baseDates.map((dateStr) => {
+          {dates.map((dateStr) => {
             const isSelected = dateStr === mobileSelectedDate;
             const isToday = dateStr === new Date().toISOString().split('T')[0];
             const overnightCount = countOvernightDogs(dateStr);
@@ -454,18 +448,6 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
                       <div className="mt-1 text-[10px] font-medium text-indigo-600">
                         {presenceSortDirection === 'desc' ? '▲ Present' : '▼ Empty'}
                       </div>
-                    )}
-                    {index === 0 && !isActiveSortColumn && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); toggleDateSort(); }}
-                        className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
-                        title={dateSortDirection === 'asc' ? 'Showing oldest first - click for newest first' : 'Showing newest first - click for oldest first'}
-                      >
-                        {dateSortDirection === 'asc' ? 'Oldest' : 'Newest'}
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                        </svg>
-                      </button>
                     )}
                   </th>
                 );
