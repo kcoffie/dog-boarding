@@ -87,6 +87,29 @@ export default function DogsPage() {
     return dogs.find(d => d.id === dogId)?.nightRate || 0;
   };
 
+  const getInitials = (name) => {
+    if (!name) return '?';
+    const words = name.trim().split(/\s+/);
+    if (words.length === 1) return words[0].charAt(0).toUpperCase();
+    return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+  };
+
+  const getBoardingStatus = (boarding) => {
+    const now = new Date();
+    const arrival = new Date(boarding.arrivalDateTime);
+    const departure = new Date(boarding.departureDateTime);
+
+    if (now < arrival) return 'upcoming';
+    if (now > departure) return 'past';
+    return 'current';
+  };
+
+  const statusConfig = {
+    current: { label: 'Current', bg: 'bg-emerald-100', text: 'text-emerald-700' },
+    upcoming: { label: 'Upcoming', bg: 'bg-sky-100', text: 'text-sky-700' },
+    past: { label: 'Past', bg: 'bg-slate-100', text: 'text-slate-500' },
+  };
+
   const getDeleteMessage = () => {
     if (deleteConfirm.type === 'dog') {
       return deleteConfirm.hasBoardings
@@ -272,6 +295,9 @@ export default function DogsPage() {
                   >
                     Dog<BoardingSortIcon column="dogName" />
                   </th>
+                  <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Status
+                  </th>
                   <th
                     className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleBoardingSort('arrivalDateTime')}
@@ -304,10 +330,25 @@ export default function DogsPage() {
                   const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
                   const nightRate = getDogNightRate(boarding.dogId);
                   const gross = nights * nightRate;
+                  const dogName = getDogName(boarding.dogId);
+                  const status = getBoardingStatus(boarding);
+                  const statusStyle = statusConfig[status];
 
                   return (
                     <tr key={boarding.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-4 text-sm font-medium text-slate-900">{getDogName(boarding.dogId)}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                            <span className="text-xs font-semibold text-indigo-600">{getInitials(dogName)}</span>
+                          </div>
+                          <span className="text-sm font-medium text-slate-900">{dogName}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+                          {statusStyle.label}
+                        </span>
+                      </td>
                       <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.arrivalDateTime)}</td>
                       <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.departureDateTime)}</td>
                       <td className="px-5 py-4 text-sm text-slate-600 text-right tabular-nums">{nights}</td>
