@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import DateNavigator from '../components/DateNavigator';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -18,8 +18,13 @@ export default function PayrollPage() {
     getPaidDatesForEmployee,
   } = useData();
 
-  // Default to last 30 days
+  // Default to last 30 days, but restore from localStorage if available
   const [startDate, setStartDate] = useState(() => {
+    const saved = localStorage.getItem('payroll-start-date');
+    if (saved) {
+      const date = new Date(saved + 'T00:00:00');
+      if (!isNaN(date.getTime())) return date;
+    }
     const date = new Date();
     date.setHours(0, 0, 0, 0);
     date.setDate(date.getDate() - 29);
@@ -27,10 +32,24 @@ export default function PayrollPage() {
   });
 
   const [endDate, setEndDate] = useState(() => {
+    const saved = localStorage.getItem('payroll-end-date');
+    if (saved) {
+      const date = new Date(saved + 'T00:00:00');
+      if (!isNaN(date.getTime())) return date;
+    }
     const date = new Date();
     date.setHours(0, 0, 0, 0);
     return date;
   });
+
+  // Persist dates to localStorage
+  useEffect(() => {
+    localStorage.setItem('payroll-start-date', startDate.toISOString().split('T')[0]);
+  }, [startDate]);
+
+  useEffect(() => {
+    localStorage.setItem('payroll-end-date', endDate.toISOString().split('T')[0]);
+  }, [endDate]);
 
   const [payConfirm, setPayConfirm] = useState({ isOpen: false, employee: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, payment: null });
