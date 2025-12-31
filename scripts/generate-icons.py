@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate PWA icons with a paw print design."""
+"""Generate PWA icons with a house design."""
 
 from PIL import Image, ImageDraw
 import os
@@ -8,39 +8,61 @@ import os
 PRIMARY_COLOR = (79, 70, 229)  # #4f46e5 - indigo-600
 WHITE = (255, 255, 255)
 
-def draw_paw_print(draw, center_x, center_y, scale, color):
-    """Draw a paw print at the given center position."""
+def draw_house(draw, center_x, center_y, scale, color):
+    """Draw a house icon at the given center position."""
 
-    # Main pad (large oval)
-    pad_width = 36 * scale
-    pad_height = 30 * scale
-    pad_y_offset = 10 * scale
-    draw.ellipse([
-        center_x - pad_width/2,
-        center_y + pad_y_offset - pad_height/2,
-        center_x + pad_width/2,
-        center_y + pad_y_offset + pad_height/2
+    # House dimensions relative to scale
+    house_width = 50 * scale
+    house_height = 35 * scale
+    roof_height = 25 * scale
+
+    # Calculate positions
+    left = center_x - house_width / 2
+    right = center_x + house_width / 2
+    top = center_y - roof_height / 2
+    bottom = center_y + house_height / 2 + 5 * scale
+
+    # Roof (triangle)
+    roof_peak = top - 5 * scale
+    roof_left = left - 5 * scale
+    roof_right = right + 5 * scale
+    roof_bottom = top + roof_height / 2
+
+    draw.polygon([
+        (center_x, roof_peak),      # Peak
+        (roof_left, roof_bottom),   # Left corner
+        (roof_right, roof_bottom),  # Right corner
     ], fill=color)
 
-    # Toe pads (4 smaller ovals)
-    toes = [
-        (-22, -12, 14, 18),  # left outer
-        (-8, -22, 12, 16),   # left inner
-        (8, -22, 12, 16),    # right inner
-        (22, -12, 14, 18),   # right outer
-    ]
+    # House body (rectangle)
+    body_top = roof_bottom - 2 * scale
+    draw.rectangle([
+        left, body_top,
+        right, bottom
+    ], fill=color)
 
-    for x_off, y_off, width, height in toes:
-        toe_x = center_x + x_off * scale
-        toe_y = center_y + y_off * scale
-        toe_w = width * scale
-        toe_h = height * scale
-        draw.ellipse([
-            toe_x - toe_w/2,
-            toe_y - toe_h/2,
-            toe_x + toe_w/2,
-            toe_y + toe_h/2
-        ], fill=color)
+    # Door (rectangle in center-bottom)
+    door_width = 12 * scale
+    door_height = 18 * scale
+    door_left = center_x - door_width / 2
+    door_right = center_x + door_width / 2
+    door_top = bottom - door_height
+    door_bottom = bottom
+
+    draw.rectangle([
+        door_left, door_top,
+        door_right, door_bottom
+    ], fill=PRIMARY_COLOR if color == WHITE else WHITE)
+
+    # Window (small square on left side)
+    window_size = 10 * scale
+    window_left = left + 8 * scale
+    window_top = body_top + 10 * scale
+
+    draw.rectangle([
+        window_left, window_top,
+        window_left + window_size, window_top + window_size
+    ], fill=PRIMARY_COLOR if color == WHITE else WHITE)
 
 def generate_icon(size, maskable=False):
     """Generate a single icon at the given size."""
@@ -55,9 +77,9 @@ def generate_icon(size, maskable=False):
     if maskable:
         # Full bleed background for maskable icons
         draw.rectangle([0, 0, size, size], fill=PRIMARY_COLOR)
-        # Paw in safe zone (center 80%)
-        paw_scale = scale * 0.6  # Smaller paw for maskable safe zone
-        draw_paw_print(draw, center, center, paw_scale, WHITE)
+        # House in safe zone (center 80%)
+        house_scale = scale * 0.55
+        draw_house(draw, center, center, house_scale, WHITE)
     else:
         # Rounded rectangle background
         corner_radius = int(size * 0.2)
@@ -66,8 +88,8 @@ def generate_icon(size, maskable=False):
             radius=corner_radius,
             fill=PRIMARY_COLOR
         )
-        # Paw print
-        draw_paw_print(draw, center, center, scale * 0.7, WHITE)
+        # House icon
+        draw_house(draw, center, center, scale * 0.65, WHITE)
 
     return img
 
