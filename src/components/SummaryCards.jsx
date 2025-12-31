@@ -97,7 +97,7 @@ export default function SummaryCards({ startDate, days }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
       ),
-      color: nightsWithBoardings > 0 && assignedNights < nightsWithBoardings ? 'amber' : 'sky',
+      color: nightsWithBoardings > 0 && assignedNights < nightsWithBoardings ? 'amber' : 'indigo',
       subtext: nightsWithBoardings > 0 && assignedNights < nightsWithBoardings
         ? `${nightsWithBoardings - assignedNights} unassigned`
         : 'in date range',
@@ -110,36 +110,27 @@ export default function SummaryCards({ startDate, days }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         </svg>
       ),
-      color: 'violet',
+      color: 'slate',
       subtext: `${dogs.length} total`,
     },
   ];
 
   const colorClasses = {
     indigo: {
-      bg: 'bg-indigo-50',
       icon: 'bg-indigo-100 text-indigo-600',
       value: 'text-indigo-600',
     },
     emerald: {
-      bg: 'bg-emerald-50',
       icon: 'bg-emerald-100 text-emerald-600',
       value: 'text-emerald-600',
     },
     amber: {
-      bg: 'bg-amber-50',
       icon: 'bg-amber-100 text-amber-600',
       value: 'text-amber-600',
     },
-    sky: {
-      bg: 'bg-sky-50',
-      icon: 'bg-sky-100 text-sky-600',
-      value: 'text-sky-600',
-    },
-    violet: {
-      bg: 'bg-violet-50',
-      icon: 'bg-violet-100 text-violet-600',
-      value: 'text-violet-600',
+    slate: {
+      icon: 'bg-slate-100 text-slate-600',
+      value: 'text-slate-600',
     },
   };
 
@@ -155,7 +146,7 @@ export default function SummaryCards({ startDate, days }) {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm font-medium text-slate-500">{card.label}</p>
-                <p className={`text-2xl font-bold mt-1 ${colors.value}`}>
+                <p className={`text-3xl font-bold mt-1 ${colors.value}`}>
                   {card.value}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">{card.subtext}</p>
