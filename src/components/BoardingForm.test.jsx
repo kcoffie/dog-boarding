@@ -2,35 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import BoardingForm from './BoardingForm';
-import { DataProvider } from '../context/DataContext';
+import { useData } from '../context/DataContext';
 
-// Mock useLocalStorage
-vi.mock('../hooks/useLocalStorage', () => ({
-  useLocalStorage: vi.fn((key, defaultValue) => {
-    const testData = {
-      dogs: [
-        { id: '1', name: 'Luna', dayRate: 35, nightRate: 45, active: true },
-        { id: '2', name: 'Cooper', dayRate: 35, nightRate: 45, active: true },
-      ],
-      boardings: [],
-      settings: { netPercentage: 65, employees: [] },
-      nightAssignments: [],
-    };
-    return [testData[key] ?? defaultValue, vi.fn()];
-  }),
+// Mock the useData hook
+vi.mock('../context/DataContext', () => ({
+  useData: vi.fn(),
 }));
 
-const renderWithProvider = (ui) => {
-  return render(
-    <DataProvider>
-      {ui}
-    </DataProvider>
-  );
-};
+const mockDogs = [
+  { id: '1', name: 'Luna', dayRate: 35, nightRate: 45, active: true },
+  { id: '2', name: 'Cooper', dayRate: 35, nightRate: 45, active: true },
+];
 
-// Helper to get inputs - date inputs come first, then time inputs
-const getDateInputs = () => screen.getAllByRole('textbox').filter(i => i.type === 'date') || document.querySelectorAll('input[type="date"]');
-const getTimeInputs = () => document.querySelectorAll('input[type="time"]');
+const mockSettings = {
+  netPercentage: 65,
+  employees: [],
+};
 
 describe('BoardingForm', () => {
   const mockOnSave = vi.fn();
@@ -38,10 +25,17 @@ describe('BoardingForm', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useData.mockReturnValue({
+      dogs: mockDogs,
+      boardings: [],
+      settings: mockSettings,
+      getNetPercentageForDate: () => 65,
+      getNightAssignment: () => '',
+    });
   });
 
   it('renders form fields', () => {
-    renderWithProvider(<BoardingForm onSave={mockOnSave} />);
+    render(<BoardingForm onSave={mockOnSave} />);
 
     expect(screen.getByText(/^dog$/i)).toBeInTheDocument();
     expect(screen.getByText(/arrival date/i)).toBeInTheDocument();
@@ -51,7 +45,7 @@ describe('BoardingForm', () => {
   });
 
   it('renders Add Boarding button', () => {
-    renderWithProvider(<BoardingForm onSave={mockOnSave} />);
+    render(<BoardingForm onSave={mockOnSave} />);
     expect(screen.getByRole('button', { name: /add boarding/i })).toBeInTheDocument();
   });
 
@@ -62,18 +56,18 @@ describe('BoardingForm', () => {
       arrivalDateTime: '2025-01-15T14:00:00',
       departureDateTime: '2025-01-18T10:00:00',
     };
-    renderWithProvider(<BoardingForm boarding={existingBoarding} onSave={mockOnSave} />);
+    render(<BoardingForm boarding={existingBoarding} onSave={mockOnSave} />);
     expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument();
   });
 
   it('renders cancel button when onCancel provided', () => {
-    renderWithProvider(<BoardingForm onSave={mockOnSave} onCancel={mockOnCancel} />);
+    render(<BoardingForm onSave={mockOnSave} onCancel={mockOnCancel} />);
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
   });
 
   it('validates required dog selection', async () => {
     const user = userEvent.setup();
-    const { container } = renderWithProvider(<BoardingForm onSave={mockOnSave} />);
+    const { container } = render(<BoardingForm onSave={mockOnSave} />);
 
     // Fill dates but leave dog empty
     const dateInputs = container.querySelectorAll('input[type="date"]');
@@ -88,7 +82,7 @@ describe('BoardingForm', () => {
 
   it('validates required arrival date', async () => {
     const user = userEvent.setup();
-    const { container } = renderWithProvider(<BoardingForm onSave={mockOnSave} />);
+    const { container } = render(<BoardingForm onSave={mockOnSave} />);
 
     // Only fill departure
     const dateInputs = container.querySelectorAll('input[type="date"]');
@@ -101,7 +95,7 @@ describe('BoardingForm', () => {
 
   it('validates required departure date', async () => {
     const user = userEvent.setup();
-    const { container } = renderWithProvider(<BoardingForm onSave={mockOnSave} />);
+    const { container } = render(<BoardingForm onSave={mockOnSave} />);
 
     // Only fill arrival
     const dateInputs = container.querySelectorAll('input[type="date"]');
@@ -114,7 +108,7 @@ describe('BoardingForm', () => {
 
   it('validates departure after arrival', async () => {
     const user = userEvent.setup();
-    const { container } = renderWithProvider(<BoardingForm onSave={mockOnSave} />);
+    const { container } = render(<BoardingForm onSave={mockOnSave} />);
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
 
@@ -127,7 +121,7 @@ describe('BoardingForm', () => {
   });
 
   it('has default times set', () => {
-    const { container } = renderWithProvider(<BoardingForm onSave={mockOnSave} />);
+    const { container } = render(<BoardingForm onSave={mockOnSave} />);
 
     const timeInputs = container.querySelectorAll('input[type="time"]');
     expect(timeInputs[0]).toHaveValue('14:00');
