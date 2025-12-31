@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['apple-touch-icon.png'],
       manifest: {
-        name: 'Dog Boarding Manager',
-        short_name: 'Boarding',
+        name: 'Qboard',
+        short_name: 'Qboard',
         description: 'Manage your dog boarding business',
         theme_color: '#4f46e5',
         background_color: '#ffffff',
