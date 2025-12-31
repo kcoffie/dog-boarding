@@ -196,9 +196,11 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
         }
         // Fall through to name sort for ties
       }
+      // Sort by dog name using dogSortDirection
       const nameA = formatName(a.name).toLowerCase();
       const nameB = formatName(b.name).toLowerCase();
-      return nameA.localeCompare(nameB);
+      const comparison = nameA.localeCompare(nameB);
+      return dogSortDirection === 'asc' ? comparison : -comparison;
     });
 
   if (dogs.length === 0) {
