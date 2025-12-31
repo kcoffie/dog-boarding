@@ -30,22 +30,26 @@ describe('EmployeeTotals', () => {
     ],
   };
 
+  // Helper to create getNightAssignment mock from assignments object
+  const createGetNightAssignment = (assignments) => (date) => assignments[date] || '';
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   describe('N/A exclusion', () => {
     it('excludes N/A from employee totals', () => {
+      const assignments = {
+        '2025-01-15': 'Kate',
+        '2025-01-16': 'N/A',
+        '2025-01-17': 'Nick',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'Kate' },
-          { date: '2025-01-16', employeeName: 'N/A' },
-          { date: '2025-01-17', employeeName: 'Nick' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<EmployeeTotals startDate="2025-01-15" days={4} />);
@@ -59,16 +63,17 @@ describe('EmployeeTotals', () => {
     });
 
     it('does not show N/A card even when all nights are N/A', () => {
+      const assignments = {
+        '2025-01-15': 'N/A',
+        '2025-01-16': 'N/A',
+        '2025-01-17': 'N/A',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'N/A' },
-          { date: '2025-01-16', employeeName: 'N/A' },
-          { date: '2025-01-17', employeeName: 'N/A' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       const { container } = render(<EmployeeTotals startDate="2025-01-15" days={4} />);
@@ -81,16 +86,17 @@ describe('EmployeeTotals', () => {
 
   describe('Employee calculations', () => {
     it('calculates nights worked correctly', () => {
+      const assignments = {
+        '2025-01-15': 'Kate',
+        '2025-01-16': 'Kate',
+        '2025-01-17': 'Nick',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'Kate' },
-          { date: '2025-01-16', employeeName: 'Kate' },
-          { date: '2025-01-17', employeeName: 'Nick' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<EmployeeTotals startDate="2025-01-15" days={4} />);
@@ -101,14 +107,15 @@ describe('EmployeeTotals', () => {
     });
 
     it('calculates earnings correctly', () => {
+      const assignments = {
+        '2025-01-15': 'Kate',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'Kate' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<EmployeeTotals startDate="2025-01-15" days={4} />);
@@ -125,14 +132,15 @@ describe('EmployeeTotals', () => {
         ],
       };
 
+      const assignments = {
+        '2025-01-15': 'Kate',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: settingsWithInactive,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'Kate' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<EmployeeTotals startDate="2025-01-15" days={4} />);
@@ -144,16 +152,17 @@ describe('EmployeeTotals', () => {
 
   describe('Date formatting', () => {
     it('formats consecutive dates as ranges', () => {
+      const assignments = {
+        '2025-01-15': 'Kate',
+        '2025-01-16': 'Kate',
+        '2025-01-17': 'Kate',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'Kate' },
-          { date: '2025-01-16', employeeName: 'Kate' },
-          { date: '2025-01-17', employeeName: 'Kate' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<EmployeeTotals startDate="2025-01-15" days={4} />);
@@ -163,16 +172,16 @@ describe('EmployeeTotals', () => {
     });
 
     it('shows individual dates when not consecutive', () => {
+      const assignments = {
+        '2025-01-15': 'Kate',
+        '2025-01-17': 'Kate',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'Kate' },
-          // Skip 16
-          { date: '2025-01-17', employeeName: 'Kate' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<EmployeeTotals startDate="2025-01-15" days={4} />);
@@ -188,8 +197,8 @@ describe('EmployeeTotals', () => {
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: () => '',
       });
 
       const { container } = render(<EmployeeTotals startDate="2025-01-15" days={4} />);
@@ -198,14 +207,15 @@ describe('EmployeeTotals', () => {
     });
 
     it('returns null when only N/A assignments exist', () => {
+      const assignments = {
+        '2025-01-15': 'N/A',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'N/A' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       const { container } = render(<EmployeeTotals startDate="2025-01-15" days={4} />);

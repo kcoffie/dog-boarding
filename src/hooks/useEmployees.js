@@ -137,6 +137,18 @@ export function useEmployees() {
     });
   };
 
+  const sortEmployeesBy = (direction) => {
+    setEmployees(prev => {
+      const sorted = [...prev].sort((a, b) => {
+        const nameA = a.name.toLowerCase();
+        const nameB = b.name.toLowerCase();
+        const result = nameA.localeCompare(nameB);
+        return direction === 'asc' ? result : -result;
+      });
+      return sorted;
+    });
+  };
+
   return {
     employees,
     loading,
@@ -145,6 +157,7 @@ export function useEmployees() {
     deleteEmployee,
     toggleEmployeeActive,
     reorderEmployees,
+    sortEmployeesBy,
     refresh: fetchEmployees,
   };
 }
