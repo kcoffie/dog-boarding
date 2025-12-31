@@ -4,7 +4,7 @@ import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent,
 import EmployeeDropdown from './EmployeeDropdown';
 
 export default function BoardingMatrix({ startDate, days = 14 }) {
-  const { dogs, boardings, settings, getNetPercentageForDate } = useData();
+  const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
   const [sortDirection, setSortDirection] = useState('asc');
 
   const dates = getDateRange(startDate, days);
@@ -17,6 +17,34 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
     const date = new Date(dateStr + 'T00:00:00');
     const day = date.getDay();
     return day === 0 || day === 6; // Sunday or Saturday
+  };
+
+  const needsEmployeeAttention = (dateStr) => {
+    // Returns true if dogs are overnight but no employee assigned (and not N/A)
+    if (settings.employees.length === 0) return false;
+    const overnightCount = countOvernightDogs(dateStr);
+    if (overnightCount === 0) return false;
+    const assignment = getNightAssignment(dateStr);
+    return !assignment; // Empty string means unassigned, N/A means covered by owner
+  };
+
+  const getColumnBg = (dateStr, isFooter = false) => {
+    const needsAttention = needsEmployeeAttention(dateStr);
+    const weekend = isWeekend(dateStr);
+    if (needsAttention) {
+      return isFooter ? 'bg-amber-100/80' : 'bg-amber-50/80';
+    }
+    if (weekend) {
+      return isFooter ? 'bg-slate-100/60' : 'bg-slate-50/80';
+    }
+    return '';
+  };
+
+  const getHeaderColumnBg = (dateStr) => {
+    const needsAttention = needsEmployeeAttention(dateStr);
+    if (needsAttention) return 'bg-amber-100/80';
+    if (isWeekend(dateStr)) return 'bg-slate-100/80';
+    return '';
   };
 
   const formatCurrency = (amount) => {
@@ -158,7 +186,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
                 Night
               </th>
               {dates.map((dateStr) => (
-                <th key={dateStr} className={`text-center px-2 py-4 text-xs font-medium text-slate-500 min-w-[52px] ${isWeekend(dateStr) ? 'bg-slate-100/80' : ''}`}>
+                <th key={dateStr} className={`text-center px-2 py-4 text-xs font-medium text-slate-500 min-w-[52px] ${getHeaderColumnBg(dateStr)}`}>
                   <div className={isWeekend(dateStr) ? 'text-slate-500' : 'text-slate-400'}>{getDayOfWeek(dateStr)}</div>
                   <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
                 </th>
@@ -185,7 +213,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
                   ${dog.nightRate}
                 </td>
                 {dates.map((dateStr) => (
-                  <td key={dateStr} className={`px-2 py-4 text-center ${isWeekend(dateStr) ? 'bg-slate-50/80' : ''}`}>
+                  <td key={dateStr} className={`px-2 py-4 text-center ${getColumnBg(dateStr)}`}>
                     {getPresenceIndicator(dog, dateStr)}
                   </td>
                 ))}
@@ -202,7 +230,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               {dates.map((dateStr) => {
                 const count = countOvernightDogs(dateStr);
                 return (
-                  <td key={dateStr} className={`px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
+                  <td key={dateStr} className={`px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums ${getColumnBg(dateStr, true)}`}>
                     {count > 0 ? count : '—'}
                   </td>
                 );
@@ -217,7 +245,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               {dates.map((dateStr) => {
                 const gross = calculateDayGross(dateStr);
                 return (
-                  <td key={dateStr} className={`px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
+                  <td key={dateStr} className={`px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums ${getColumnBg(dateStr, true)}`}>
                     {gross > 0 ? formatCurrency(gross) : '—'}
                   </td>
                 );
@@ -232,7 +260,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               {dates.map((dateStr) => {
                 const net = calculateDayNet(dateStr);
                 return (
-                  <td key={dateStr} className={`px-2 py-4 text-center text-sm font-semibold text-emerald-600 tabular-nums ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
+                  <td key={dateStr} className={`px-2 py-4 text-center text-sm font-semibold text-emerald-600 tabular-nums ${getColumnBg(dateStr, true)}`}>
                     {net > 0 ? formatCurrency(net) : '—'}
                   </td>
                 );
@@ -246,7 +274,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
                 </td>
                 <td colSpan={2}></td>
                 {dates.map((dateStr) => (
-                  <td key={dateStr} className={`px-2 py-3 text-center text-xs font-medium text-slate-500 ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
+                  <td key={dateStr} className={`px-2 py-3 text-center text-xs font-medium text-slate-500 ${getColumnBg(dateStr, true)}`}>
                     <div className={isWeekend(dateStr) ? 'text-slate-500' : 'text-slate-400'}>{getDayOfWeek(dateStr)}</div>
                     <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
                   </td>
@@ -261,7 +289,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
                 </td>
                 <td colSpan={2}></td>
                 {dates.map((dateStr) => (
-                  <td key={dateStr} className={`px-1 py-3 ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
+                  <td key={dateStr} className={`px-1 py-3 ${getColumnBg(dateStr, true)}`}>
                     <EmployeeDropdown date={dateStr} />
                   </td>
                 ))}
