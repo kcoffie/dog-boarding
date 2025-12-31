@@ -45,7 +45,8 @@ describe('BoardingMatrix', () => {
 
   it('renders dog names', () => {
     renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={7} />);
-    expect(screen.getByText('Luna')).toBeInTheDocument();
+    // Dog names may appear in both mobile and desktop views
+    expect(screen.getAllByText('Luna').length).toBeGreaterThan(0);
   });
 
   it('renders date columns', () => {
@@ -64,19 +65,22 @@ describe('BoardingMatrix', () => {
 
   it('renders gross and net labels', () => {
     renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={7} />);
-    expect(screen.getByText('Gross')).toBeInTheDocument();
-    expect(screen.getByText(/Net/)).toBeInTheDocument();
+    // Labels may appear in both mobile and desktop views
+    expect(screen.getAllByText('Gross').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Net/).length).toBeGreaterThan(0);
   });
 
   it('renders employee row when employees exist', () => {
     renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={7} />);
-    expect(screen.getByText('Employee')).toBeInTheDocument();
+    // Employee label may appear in both mobile and desktop views
+    expect(screen.getAllByText('Employee').length).toBeGreaterThan(0);
   });
 
   it('renders legend', () => {
     renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={7} />);
-    expect(screen.getByText('Overnight')).toBeInTheDocument();
-    expect(screen.getByText('Day only')).toBeInTheDocument();
+    // Legend appears in both mobile and desktop views
+    expect(screen.getAllByText('Overnight').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Day only').length).toBeGreaterThan(0);
   });
 });
 
