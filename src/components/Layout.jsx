@@ -1,9 +1,17 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
 
   // Close mobile menu on navigation
   const handleNavClick = () => {
@@ -81,14 +89,25 @@ export default function Layout() {
             </div>
 
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-1 p-1 bg-slate-100/80 rounded-xl">
-              {navItems.map((item) => (
-                <NavLink key={item.to} to={item.to} className={linkClass}>
-                  <span className="w-4 h-4 mr-1.5">{item.icon}</span>
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
+            <div className="hidden md:flex items-center gap-3">
+              <nav className="flex items-center gap-1 p-1 bg-slate-100/80 rounded-xl">
+                {navItems.map((item) => (
+                  <NavLink key={item.to} to={item.to} className={linkClass}>
+                    <span className="w-4 h-4 mr-1.5">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+              <button
+                onClick={handleSignOut}
+                className="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                title={`Sign out (${user?.email})`}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
 
             {/* Mobile Menu Button */}
             <button
@@ -126,6 +145,15 @@ export default function Layout() {
                   {item.label}
                 </NavLink>
               ))}
+              <button
+                onClick={() => { handleNavClick(); handleSignOut(); }}
+                className="flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign out
+              </button>
             </nav>
           </div>
         </div>
