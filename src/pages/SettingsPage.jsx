@@ -48,7 +48,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleAddEmployee = (e) => {
+  const handleAddEmployee = async (e) => {
     e.preventDefault();
     const trimmedName = newEmployeeName.trim();
 
@@ -62,9 +62,13 @@ export default function SettingsPage() {
       return;
     }
 
-    addEmployee(trimmedName);
-    setNewEmployeeName('');
-    setEmployeeError('');
+    try {
+      await addEmployee(trimmedName);
+      setNewEmployeeName('');
+      setEmployeeError('');
+    } catch (err) {
+      setEmployeeError('Failed to add employee. Please try again.');
+    }
   };
 
   const handleDeleteClick = (employeeName) => {
@@ -72,9 +76,13 @@ export default function SettingsPage() {
     setDeleteConfirm({ isOpen: true, employeeName, hasAssignments });
   };
 
-  const handleConfirmDelete = () => {
-    deleteEmployee(deleteConfirm.employeeName);
-    setDeleteConfirm({ isOpen: false, employeeName: '', hasAssignments: false });
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteEmployee(deleteConfirm.employeeName);
+      setDeleteConfirm({ isOpen: false, employeeName: '', hasAssignments: false });
+    } catch (err) {
+      console.error('Failed to delete employee:', err);
+    }
   };
 
   const handleCancelDelete = () => {
