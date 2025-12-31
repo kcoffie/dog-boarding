@@ -5,13 +5,12 @@ import { useDogs as useSupabaseDogs } from '../hooks/useDogs';
 import { useBoardings as useSupabaseBoardings } from '../hooks/useBoardings';
 import { useNightAssignments as useSupabaseNightAssignments } from '../hooks/useNightAssignments';
 import { usePayments as useSupabasePayments } from '../hooks/usePayments';
-import { useAuth } from './AuthContext';
 import { logger } from '../utils/logger';
 
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
-  const { user } = useAuth();
+  // Auth context is used by the hooks internally
 
   // Use Supabase for net percentage settings when logged in
   const {
@@ -29,6 +28,7 @@ export function DataProvider({ children }) {
     deleteEmployee: deleteSupabaseEmployee,
     toggleEmployeeActive: toggleSupabaseEmployeeActive,
     reorderEmployees: reorderSupabaseEmployees,
+    sortEmployeesBy: sortSupabaseEmployeesBy,
   } = useSupabaseEmployees();
 
   // Use Supabase for dogs
@@ -183,16 +183,10 @@ export function DataProvider({ children }) {
     }
   };
 
-  // Settings operations
-  const updateSettings = (updates) => {
-    // Handle employee updates locally
-    if (updates.employees !== undefined) {
-      setLocalSettings(prev => ({ ...prev, employees: updates.employees }));
-    }
-    // Net percentage updates are handled by setNetPercentage
-    if (updates.netPercentage !== undefined) {
-      logger.settings('Net percentage', `${updates.netPercentage}%`);
-    }
+  // Settings operations - employee sorting is now handled locally in SettingsPage
+  const updateSettings = () => {
+    // This function is deprecated - employee operations are handled by dedicated functions
+    // Keep this stub for backwards compatibility but it's a no-op
   };
 
   const getNetPercentageForDate = (dateStr) => {
@@ -250,6 +244,10 @@ export function DataProvider({ children }) {
 
   const reorderEmployees = (fromIndex, toIndex) => {
     reorderSupabaseEmployees(fromIndex, toIndex);
+  };
+
+  const sortEmployees = (direction) => {
+    sortSupabaseEmployeesBy(direction);
   };
 
   // Night assignment operations (using Supabase)
@@ -332,6 +330,7 @@ export function DataProvider({ children }) {
     deleteEmployee,
     toggleEmployeeActive,
     reorderEmployees,
+    sortEmployees,
     // Night assignment operations
     setNightAssignment,
     getNightAssignment,

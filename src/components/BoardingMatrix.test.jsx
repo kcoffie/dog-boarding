@@ -1,40 +1,46 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import BoardingMatrix from './BoardingMatrix';
-import { DataProvider } from '../context/DataContext';
+import { useData } from '../context/DataContext';
 import { BrowserRouter } from 'react-router-dom';
 
-// Mock useLocalStorage to provide test data
-vi.mock('../hooks/useLocalStorage', () => ({
-  useLocalStorage: vi.fn((key, defaultValue) => {
-    const testData = {
-      dogs: [
-        { id: '1', name: 'Luna', dayRate: 35, nightRate: 45, active: true },
-        { id: '2', name: 'Cooper', dayRate: 35, nightRate: 45, active: true },
-      ],
-      boardings: [
-        { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-18T10:00:00' },
-      ],
-      settings: { netPercentage: 65, employees: ['Kate', 'Nick'] },
-      nightAssignments: [],
-    };
-    return [testData[key] ?? defaultValue, vi.fn()];
-  }),
+// Mock the useData hook
+vi.mock('../context/DataContext', () => ({
+  useData: vi.fn(),
 }));
 
-const renderWithProviders = (ui, { startDate = '2025-01-15', days = 7 } = {}) => {
+const renderWithProviders = (ui) => {
   return render(
     <BrowserRouter>
-      <DataProvider>
-        {ui}
-      </DataProvider>
+      {ui}
     </BrowserRouter>
   );
 };
 
 describe('BoardingMatrix', () => {
+  const mockDogs = [
+    { id: '1', name: 'Luna', dayRate: 35, nightRate: 45, active: true },
+    { id: '2', name: 'Cooper', dayRate: 35, nightRate: 45, active: true },
+  ];
+
+  const mockBoardings = [
+    { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-18T10:00:00' },
+  ];
+
+  const mockSettings = {
+    netPercentage: 65,
+    employees: ['Kate', 'Nick'],
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    useData.mockReturnValue({
+      dogs: mockDogs,
+      boardings: mockBoardings,
+      settings: mockSettings,
+      getNetPercentageForDate: () => 65,
+      getNightAssignment: () => '',
+    });
   });
 
   it('renders dog names', () => {
@@ -75,25 +81,50 @@ describe('BoardingMatrix', () => {
 });
 
 describe('BoardingMatrix empty states', () => {
-  it('shows message when no dogs', () => {
-    vi.doMock('../hooks/useLocalStorage', () => ({
-      useLocalStorage: vi.fn((key, defaultValue) => {
-        const testData = {
-          dogs: [],
-          boardings: [],
-          settings: { netPercentage: 65, employees: [] },
-          nightAssignments: [],
-        };
-        return [testData[key] ?? defaultValue, vi.fn()];
-      }),
-    }));
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    // Re-import to get new mock
-    // Note: This is a simplified test - in real scenarios you'd use proper module mocking
+  it('shows message when no dogs', () => {
+    useData.mockReturnValue({
+      dogs: [],
+      boardings: [],
+      settings: { netPercentage: 65, employees: [] },
+      getNetPercentageForDate: () => 65,
+      getNightAssignment: () => '',
+    });
+
+    renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={7} />);
+    expect(screen.getByText('No dogs yet')).toBeInTheDocument();
   });
 });
 
 describe('BoardingMatrix sorting', () => {
+  const mockDogs = [
+    { id: '1', name: 'Luna', dayRate: 35, nightRate: 45, active: true },
+    { id: '2', name: 'Cooper', dayRate: 35, nightRate: 45, active: true },
+  ];
+
+  const mockBoardings = [
+    { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-18T10:00:00' },
+  ];
+
+  const mockSettings = {
+    netPercentage: 65,
+    employees: ['Kate', 'Nick'],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useData.mockReturnValue({
+      dogs: mockDogs,
+      boardings: mockBoardings,
+      settings: mockSettings,
+      getNetPercentageForDate: () => 65,
+      getNightAssignment: () => '',
+    });
+  });
+
   it('renders sortable dog column header', () => {
     renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={7} />);
 
