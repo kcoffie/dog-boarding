@@ -7,16 +7,47 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
   const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
   const [dogSortDirection, setDogSortDirection] = useState('asc');
   const [dateSortDirection, setDateSortDirection] = useState('asc');
+  const [presenceSortDate, setPresenceSortDate] = useState(null);
+  const [presenceSortDirection, setPresenceSortDirection] = useState('desc'); // desc = present first
 
   const baseDates = getDateRange(startDate, days);
   const dates = dateSortDirection === 'asc' ? baseDates : [...baseDates].reverse();
 
   const toggleDogSort = () => {
     setDogSortDirection(dogSortDirection === 'asc' ? 'desc' : 'asc');
+    setPresenceSortDate(null); // Clear presence sort when sorting by name
   };
 
   const toggleDateSort = () => {
     setDateSortDirection(dateSortDirection === 'asc' ? 'desc' : 'asc');
+  };
+
+  const handleDateColumnClick = (dateStr) => {
+    if (presenceSortDate === dateStr) {
+      // Toggle direction if clicking same date
+      setPresenceSortDirection(presenceSortDirection === 'desc' ? 'asc' : 'desc');
+    } else {
+      // New date, start with present-first
+      setPresenceSortDate(dateStr);
+      setPresenceSortDirection('desc');
+    }
+  };
+
+  // Get presence value for sorting: 0 = empty, 1 = overnight, 2 = day-only
+  // This ordering means desc sort gives: day-only, overnight, empty
+  const getPresenceValue = (dog, dateStr) => {
+    const dogBoardings = boardings.filter(b => b.dogId === dog.id);
+    let isDay = false;
+    let isNight = false;
+
+    for (const boarding of dogBoardings) {
+      if (isDayPresent(boarding, dateStr)) isDay = true;
+      if (isOvernight(boarding, dateStr)) isNight = true;
+    }
+
+    if (isNight) return 1;
+    if (isDay) return 2;
+    return 0;
   };
 
   const isWeekend = (dateStr) => {
@@ -138,10 +169,22 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
   const dogsWithBoardings = dogs
     .filter(dogHasPresenceInRange)
     .sort((a, b) => {
+      // If sorting by presence on a specific date
+      if (presenceSortDate) {
+        const presenceA = getPresenceValue(a, presenceSortDate);
+        const presenceB = getPresenceValue(b, presenceSortDate);
+        if (presenceA !== presenceB) {
+          // desc = present first (day-only, overnight, empty)
+          // asc = empty first (empty, overnight, day-only)
+          return presenceSortDirection === 'desc'
+            ? presenceB - presenceA
+            : presenceA - presenceB;
+        }
+        // Fall through to name sort for ties
+      }
       const nameA = formatName(a.name).toLowerCase();
       const nameB = formatName(b.name).toLowerCase();
-      const result = nameA.localeCompare(nameB);
-      return dogSortDirection === 'asc' ? result : -result;
+      return nameA.localeCompare(nameB);
     });
 
   if (dogs.length === 0) {
@@ -181,9 +224,15 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               <th
                 className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider sticky left-0 bg-white min-w-[140px] cursor-pointer hover:bg-slate-50 transition-colors"
                 onClick={toggleDogSort}
+                title={presenceSortDate ? 'Click to sort alphabetically and clear date sort' : 'Click to toggle alphabetical sort'}
               >
                 Dog
-                <span className="ml-1 text-indigo-600">{dogSortDirection === 'asc' ? '↑' : '↓'}</span>
+                {!presenceSortDate && (
+                  <span className="ml-1 text-indigo-600">{dogSortDirection === 'asc' ? '↑' : '↓'}</span>
+                )}
+                {presenceSortDate && (
+                  <span className="ml-1 text-slate-400">A-Z</span>
+                )}
               </th>
               <th className="text-right px-3 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[70px]">
                 Day
@@ -191,24 +240,37 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               <th className="text-right px-3 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[70px]">
                 Night
               </th>
-              {dates.map((dateStr, index) => (
-                <th key={dateStr} className={`text-center px-2 py-2 text-xs font-medium text-slate-500 min-w-[52px] ${getHeaderColumnBg(dateStr)}`}>
-                  <div className={isWeekend(dateStr) ? 'text-slate-500' : 'text-slate-400'}>{getDayOfWeek(dateStr)}</div>
-                  <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
-                  {index === 0 && (
-                    <button
-                      onClick={toggleDateSort}
-                      className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
-                      title={dateSortDirection === 'asc' ? 'Showing oldest first - click for newest first' : 'Showing newest first - click for oldest first'}
-                    >
-                      {dateSortDirection === 'asc' ? 'Oldest' : 'Newest'}
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                      </svg>
-                    </button>
-                  )}
-                </th>
-              ))}
+              {dates.map((dateStr, index) => {
+                const isActiveSortColumn = presenceSortDate === dateStr;
+                return (
+                  <th
+                    key={dateStr}
+                    className={`text-center px-2 py-2 text-xs font-medium text-slate-500 min-w-[52px] cursor-pointer hover:bg-slate-100 transition-colors ${getHeaderColumnBg(dateStr)} ${isActiveSortColumn ? 'ring-2 ring-inset ring-indigo-400' : ''}`}
+                    onClick={() => handleDateColumnClick(dateStr)}
+                    title="Click to sort dogs by presence on this date"
+                  >
+                    <div className={isWeekend(dateStr) ? 'text-slate-500' : 'text-slate-400'}>{getDayOfWeek(dateStr)}</div>
+                    <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
+                    {isActiveSortColumn && (
+                      <div className="mt-1 text-[10px] font-medium text-indigo-600">
+                        {presenceSortDirection === 'desc' ? '▲ Present' : '▼ Empty'}
+                      </div>
+                    )}
+                    {index === 0 && !isActiveSortColumn && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleDateSort(); }}
+                        className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded transition-colors"
+                        title={dateSortDirection === 'asc' ? 'Showing oldest first - click for newest first' : 'Showing newest first - click for oldest first'}
+                      >
+                        {dateSortDirection === 'asc' ? 'Oldest' : 'Newest'}
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                      </button>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
