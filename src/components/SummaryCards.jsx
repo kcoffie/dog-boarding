@@ -140,7 +140,7 @@ export default function SummaryCards({ startDate, days }) {
         return (
           <div
             key={card.label}
-            className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-5 hover:shadow-md transition-shadow"
+            className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
           >
             <div className="flex items-start justify-between">
               <div>

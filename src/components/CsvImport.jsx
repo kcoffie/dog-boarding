@@ -261,7 +261,7 @@ export default function CsvImport({ onClose }) {
         {parsedData.length > 0 && (
           <button
             onClick={handleImport}
-            className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
+            className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] rounded-lg transition-all shadow-sm"
           >
             Import {parsedData.length} Boarding{parsedData.length !== 1 ? 's' : ''}
           </button>
