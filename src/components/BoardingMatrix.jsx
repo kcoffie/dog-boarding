@@ -7,6 +7,12 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
 
   const dates = getDateRange(startDate, days);
 
+  const isWeekend = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00');
+    const day = date.getDay();
+    return day === 0 || day === 6; // Sunday or Saturday
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -135,8 +141,8 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
                 Night
               </th>
               {dates.map((dateStr) => (
-                <th key={dateStr} className="text-center px-2 py-4 text-xs font-medium text-slate-500 min-w-[52px]">
-                  <div className="text-slate-400">{getDayOfWeek(dateStr)}</div>
+                <th key={dateStr} className={`text-center px-2 py-4 text-xs font-medium text-slate-500 min-w-[52px] ${isWeekend(dateStr) ? 'bg-slate-100/80' : ''}`}>
+                  <div className={isWeekend(dateStr) ? 'text-slate-500' : 'text-slate-400'}>{getDayOfWeek(dateStr)}</div>
                   <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
                 </th>
               ))}
@@ -162,7 +168,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
                   ${dog.nightRate}
                 </td>
                 {dates.map((dateStr) => (
-                  <td key={dateStr} className="px-2 py-4 text-center">
+                  <td key={dateStr} className={`px-2 py-4 text-center ${isWeekend(dateStr) ? 'bg-slate-50/80' : ''}`}>
                     {getPresenceIndicator(dog, dateStr)}
                   </td>
                 ))}
@@ -179,7 +185,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               {dates.map((dateStr) => {
                 const count = countOvernightDogs(dateStr);
                 return (
-                  <td key={dateStr} className="px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums">
+                  <td key={dateStr} className={`px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
                     {count > 0 ? count : '—'}
                   </td>
                 );
@@ -194,7 +200,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               {dates.map((dateStr) => {
                 const gross = calculateDayGross(dateStr);
                 return (
-                  <td key={dateStr} className="px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums">
+                  <td key={dateStr} className={`px-2 py-4 text-center text-sm font-medium text-slate-700 tabular-nums ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
                     {gross > 0 ? formatCurrency(gross) : '—'}
                   </td>
                 );
@@ -209,7 +215,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
               {dates.map((dateStr) => {
                 const net = calculateDayNet(dateStr);
                 return (
-                  <td key={dateStr} className="px-2 py-4 text-center text-sm font-semibold text-emerald-600 tabular-nums">
+                  <td key={dateStr} className={`px-2 py-4 text-center text-sm font-semibold text-emerald-600 tabular-nums ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
                     {net > 0 ? formatCurrency(net) : '—'}
                   </td>
                 );
@@ -223,8 +229,8 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
                 </td>
                 <td colSpan={2}></td>
                 {dates.map((dateStr) => (
-                  <td key={dateStr} className="px-2 py-3 text-center text-xs font-medium text-slate-500">
-                    <div className="text-slate-400">{getDayOfWeek(dateStr)}</div>
+                  <td key={dateStr} className={`px-2 py-3 text-center text-xs font-medium text-slate-500 ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
+                    <div className={isWeekend(dateStr) ? 'text-slate-500' : 'text-slate-400'}>{getDayOfWeek(dateStr)}</div>
                     <div className="text-slate-600 font-semibold">{formatDateShort(dateStr)}</div>
                   </td>
                 ))}
@@ -238,7 +244,7 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
                 </td>
                 <td colSpan={2}></td>
                 {dates.map((dateStr) => (
-                  <td key={dateStr} className="px-1 py-3">
+                  <td key={dateStr} className={`px-1 py-3 ${isWeekend(dateStr) ? 'bg-slate-100/60' : ''}`}>
                     <EmployeeDropdown date={dateStr} />
                   </td>
                 ))}

@@ -122,14 +122,14 @@ export default function DogForm({ dog, onSave, onCancel }) {
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] rounded-lg transition-all"
           >
             Cancel
           </button>
         )}
         <button
           type="submit"
-          className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
+          className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] rounded-lg transition-all shadow-sm"
         >
           {isEditing ? 'Save Changes' : 'Add Dog'}
         </button>
