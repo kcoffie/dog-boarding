@@ -1,21 +1,37 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useSettings as useSupabaseSettings } from '../hooks/useSettings';
+import { useAuth } from './AuthContext';
 import { logger } from '../utils/logger';
 
 const DataContext = createContext(null);
 
-const initialSettings = {
-  netPercentage: 65,
-  netPercentageHistory: [], // [{ effectiveDate: 'YYYY-MM-DD', percentage: number }]
+const initialLocalSettings = {
   employees: [],
 };
 
 export function DataProvider({ children }) {
+  const { user } = useAuth();
   const [dogs, setDogs] = useLocalStorage('dogs', []);
   const [boardings, setBoardings] = useLocalStorage('boardings', []);
-  const [settings, setSettings] = useLocalStorage('settings', initialSettings);
+  const [localSettings, setLocalSettings] = useLocalStorage('localSettings', initialLocalSettings);
   const [nightAssignments, setNightAssignments] = useLocalStorage('nightAssignments', []);
   const [payments, setPayments] = useLocalStorage('payments', []);
+
+  // Use Supabase for net percentage settings when logged in
+  const {
+    settings: supabaseSettings,
+    loading: settingsLoading,
+    updateNetPercentage: updateSupabaseNetPercentage,
+    getNetPercentageForDate: getSupabaseNetPercentageForDate,
+  } = useSupabaseSettings();
+
+  // Combine Supabase settings with local employees into unified settings object
+  const settings = useMemo(() => ({
+    netPercentage: supabaseSettings?.netPercentage ?? 65,
+    netPercentageHistory: supabaseSettings?.netPercentageHistory ?? [],
+    employees: localSettings.employees ?? [],
+  }), [supabaseSettings, localSettings.employees]);
 
   // Dog operations
   const addDog = (dog) => {
@@ -98,76 +114,66 @@ export function DataProvider({ children }) {
 
   // Settings operations
   const updateSettings = (updates) => {
-    setSettings({ ...settings, ...updates });
+    // Handle employee updates locally
+    if (updates.employees !== undefined) {
+      setLocalSettings(prev => ({ ...prev, employees: updates.employees }));
+    }
+    // Net percentage updates are handled by setNetPercentage
     if (updates.netPercentage !== undefined) {
       logger.settings('Net percentage', `${updates.netPercentage}%`);
     }
   };
 
   const getNetPercentageForDate = (dateStr) => {
-    const history = settings.netPercentageHistory || [];
-    if (history.length === 0) {
-      return settings.netPercentage;
+    // Use Supabase function if available
+    if (getSupabaseNetPercentageForDate) {
+      return getSupabaseNetPercentageForDate(dateStr);
     }
-    // Sort by effectiveDate descending to find most recent applicable
-    const sorted = [...history].sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
-    for (const entry of sorted) {
-      if (entry.effectiveDate <= dateStr) {
-        return entry.percentage;
-      }
-    }
-    // Date is before any history entries, use the first entry's percentage
-    return sorted[sorted.length - 1].percentage;
+    // Fallback for when not logged in
+    return 65;
   };
 
-  const setNetPercentage = (percentage, effectiveDate = null) => {
-    if (effectiveDate) {
-      // Add to history - preserve past dates with old percentage
-      const history = settings.netPercentageHistory || [];
-      // Remove any existing entry for this exact date
-      const filtered = history.filter(h => h.effectiveDate !== effectiveDate);
-      const newHistory = [...filtered, { effectiveDate, percentage }];
-      setSettings({
-        ...settings,
-        netPercentage: percentage,
-        netPercentageHistory: newHistory,
-      });
-      logger.settings('Net percentage', `${percentage}% from ${effectiveDate}`);
-    } else {
-      // Retroactive - clear history and set single value
-      setSettings({
-        ...settings,
-        netPercentage: percentage,
-        netPercentageHistory: [],
-      });
-      logger.settings('Net percentage', `${percentage}% (all dates)`);
+  const setNetPercentage = async (percentage, effectiveDate = null) => {
+    try {
+      await updateSupabaseNetPercentage(percentage, effectiveDate);
+      if (effectiveDate) {
+        logger.settings('Net percentage', `${percentage}% from ${effectiveDate}`);
+      } else {
+        logger.settings('Net percentage', `${percentage}% (all dates)`);
+      }
+    } catch (err) {
+      console.error('Failed to update net percentage:', err);
+      throw err;
     }
   };
 
   const addEmployee = (name) => {
-    const employeeNames = settings.employees.map(e => typeof e === 'string' ? e : e.name);
+    const employees = localSettings.employees || [];
+    const employeeNames = employees.map(e => typeof e === 'string' ? e : e.name);
     if (!employeeNames.some(n => n.toLowerCase() === name.toLowerCase())) {
-      setSettings({
-        ...settings,
-        employees: [...settings.employees, { name, active: true }],
+      setLocalSettings({
+        ...localSettings,
+        employees: [...employees, { name, active: true }],
       });
       logger.settings('Added employee', name);
     }
   };
 
   const deleteEmployee = (name) => {
-    setSettings({
-      ...settings,
-      employees: settings.employees.filter((e) => (typeof e === 'string' ? e : e.name) !== name),
+    const employees = localSettings.employees || [];
+    setLocalSettings({
+      ...localSettings,
+      employees: employees.filter((e) => (typeof e === 'string' ? e : e.name) !== name),
     });
     setNightAssignments(nightAssignments.filter((a) => a.employeeName !== name));
     logger.settings('Deleted employee', name);
   };
 
   const toggleEmployeeActive = (name) => {
-    setSettings({
-      ...settings,
-      employees: settings.employees.map((e) => {
+    const employees = localSettings.employees || [];
+    setLocalSettings({
+      ...localSettings,
+      employees: employees.map((e) => {
         const empName = typeof e === 'string' ? e : e.name;
         if (empName === name) {
           const currentActive = typeof e === 'string' ? true : e.active;
@@ -179,10 +185,11 @@ export function DataProvider({ children }) {
   };
 
   const reorderEmployees = (fromIndex, toIndex) => {
-    const newEmployees = [...settings.employees];
+    const employees = localSettings.employees || [];
+    const newEmployees = [...employees];
     const [removed] = newEmployees.splice(fromIndex, 1);
     newEmployees.splice(toIndex, 0, removed);
-    setSettings({ ...settings, employees: newEmployees });
+    setLocalSettings({ ...localSettings, employees: newEmployees });
   };
 
   // Night assignment operations
@@ -241,6 +248,7 @@ export function DataProvider({ children }) {
     dogs,
     boardings,
     settings,
+    settingsLoading,
     nightAssignments,
     payments,
     // Dog operations
