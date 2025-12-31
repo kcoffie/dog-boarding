@@ -2,7 +2,7 @@ import { useData } from '../context/DataContext';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
 
 export default function EmployeeTotals({ startDate, days = 14 }) {
-  const { dogs, boardings, settings, nightAssignments } = useData();
+  const { dogs, boardings, settings, nightAssignments, getNetPercentageForDate } = useData();
 
   // Helper to check if employee is active
   const isEmployeeActive = (name) => {
@@ -26,7 +26,8 @@ export default function EmployeeTotals({ startDate, days = 14 }) {
         }
       }
     }
-    return gross * (settings.netPercentage / 100);
+    const percentage = getNetPercentageForDate(dateStr);
+    return gross * (percentage / 100);
   };
 
   // Format a single date for display

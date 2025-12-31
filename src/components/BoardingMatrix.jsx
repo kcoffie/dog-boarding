@@ -3,7 +3,7 @@ import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent,
 import EmployeeDropdown from './EmployeeDropdown';
 
 export default function BoardingMatrix({ startDate, days = 14 }) {
-  const { dogs, boardings, settings } = useData();
+  const { dogs, boardings, settings, getNetPercentageForDate } = useData();
 
   const dates = getDateRange(startDate, days);
 
@@ -59,7 +59,8 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
 
   const calculateDayNet = (dateStr) => {
     const gross = calculateDayGross(dateStr);
-    return gross * (settings.netPercentage / 100);
+    const percentage = getNetPercentageForDate(dateStr);
+    return gross * (percentage / 100);
   };
 
   const countOvernightDogs = (dateStr) => {
