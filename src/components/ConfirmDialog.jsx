@@ -48,13 +48,13 @@ export default function ConfirmDialog({ isOpen, title, message, onConfirm, onCan
           <div className="flex gap-3">
             <button
               onClick={onCancel}
-              className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] rounded-lg transition-all"
+              className="flex-1 min-h-[44px] px-4 py-2.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 active:scale-[0.98] rounded-lg transition-all select-none"
             >
               Cancel
             </button>
             <button
               onClick={onConfirm}
-              className={`flex-1 px-4 py-2.5 text-sm font-medium text-white ${colors.button} active:scale-[0.98] rounded-lg transition-all shadow-sm`}
+              className={`flex-1 min-h-[44px] px-4 py-2.5 text-sm font-medium text-white ${colors.button} active:scale-[0.98] rounded-lg transition-all shadow-sm select-none`}
             >
               {confirmText}
             </button>

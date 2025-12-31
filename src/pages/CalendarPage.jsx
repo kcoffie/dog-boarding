@@ -1,6 +1,34 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { formatName } from '../utils/dateUtils';
+
+// Swipe gesture hook
+function useSwipe(onSwipeLeft, onSwipeRight, threshold = 50) {
+  const touchStart = useRef(null);
+  const touchEnd = useRef(null);
+
+  const onTouchStart = (e) => {
+    touchEnd.current = null;
+    touchStart.current = e.targetTouches[0].clientX;
+  };
+
+  const onTouchMove = (e) => {
+    touchEnd.current = e.targetTouches[0].clientX;
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart.current || !touchEnd.current) return;
+
+    const distance = touchStart.current - touchEnd.current;
+    const isLeftSwipe = distance > threshold;
+    const isRightSwipe = distance < -threshold;
+
+    if (isLeftSwipe && onSwipeLeft) onSwipeLeft();
+    if (isRightSwipe && onSwipeRight) onSwipeRight();
+  };
+
+  return { onTouchStart, onTouchMove, onTouchEnd };
+}
 
 // Color generation from dog name
 function hashString(str) {
@@ -138,6 +166,9 @@ export default function CalendarPage() {
     setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
   };
 
+  // Swipe handlers for mobile
+  const swipeHandlers = useSwipe(nextMonth, prevMonth);
+
   // Generate calendar grid
   const weeks = [];
   let days = [];
@@ -219,7 +250,7 @@ export default function CalendarPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={prevMonth}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              className="min-h-[44px] min-w-[44px] p-2 hover:bg-slate-100 active:bg-slate-200 active:scale-[0.95] rounded-lg transition-all select-none flex items-center justify-center"
             >
               <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -227,13 +258,13 @@ export default function CalendarPage() {
             </button>
             <button
               onClick={goToToday}
-              className="px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
+              className="min-h-[44px] px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 active:scale-[0.98] rounded-lg transition-all select-none"
             >
               Today
             </button>
             <button
               onClick={nextMonth}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              className="min-h-[44px] min-w-[44px] p-2 hover:bg-slate-100 active:bg-slate-200 active:scale-[0.95] rounded-lg transition-all select-none flex items-center justify-center"
             >
               <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -247,7 +278,10 @@ export default function CalendarPage() {
 
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Calendar Grid */}
-        <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200/60 overflow-hidden">
+        <div
+          className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200/60 overflow-hidden"
+          {...swipeHandlers}
+        >
           {/* Day headers */}
           <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
@@ -273,11 +307,11 @@ export default function CalendarPage() {
                       key={dayIndex}
                       onClick={() => day && setSelectedDate(day === selectedDate ? null : day)}
                       className={`
-                        min-h-24 p-1 cursor-pointer transition-colors
+                        min-h-24 p-1 cursor-pointer transition-all select-none
                         ${!day ? 'bg-slate-50' : ''}
                         ${isWeekend && day ? 'bg-slate-50/50' : ''}
                         ${isSelected ? 'bg-indigo-50 ring-2 ring-inset ring-indigo-500' : ''}
-                        ${day && !isSelected ? 'hover:bg-slate-50' : ''}
+                        ${day && !isSelected ? 'hover:bg-slate-50 active:bg-slate-100' : ''}
                       `}
                     >
                       {day && (
@@ -344,9 +378,9 @@ export default function CalendarPage() {
               {selectedDate && (
                 <button
                   onClick={() => setSelectedDate(null)}
-                  className="p-1 hover:bg-slate-200 rounded transition-colors"
+                  className="min-h-[44px] min-w-[44px] -m-2 p-2 hover:bg-slate-200 active:bg-slate-300 active:scale-[0.95] rounded-lg transition-all select-none flex items-center justify-center"
                 >
-                  <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
