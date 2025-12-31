@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import DogForm from '../components/DogForm';
 import DogCsvImport from '../components/DogCsvImport';
@@ -23,14 +23,6 @@ export default function DogsPage() {
   const [boardingSortDirection, setBoardingSortDirection] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
   const [inlineAddBoardingDogId, setInlineAddBoardingDogId] = useState(null);
-  const editBoardingFormRef = useRef(null);
-
-  // Scroll to edit form when editing a boarding
-  useEffect(() => {
-    if (editingBoarding && editBoardingFormRef.current) {
-      editBoardingFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [editingBoarding]);
 
   const handleAddDog = async (dogData) => {
     try {
@@ -299,18 +291,6 @@ export default function DogsPage() {
           </div>
         )}
 
-        {/* Edit Boarding Form */}
-        {editingBoarding && (
-          <div ref={editBoardingFormRef} className="bg-white rounded-xl border border-indigo-200 shadow-sm p-6 mb-6 ring-2 ring-indigo-500/20">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Edit Boarding</h2>
-            <BoardingForm
-              boarding={editingBoarding}
-              onSave={handleEditBoarding}
-              onCancel={() => setEditingBoarding(null)}
-            />
-          </div>
-        )}
-
         {/* Boarding List */}
         <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden">
           {boardings.length === 0 ? (
@@ -374,43 +354,62 @@ export default function DogsPage() {
                   const dogName = getDogName(boarding.dogId);
                   const status = getBoardingStatus(boarding);
                   const statusStyle = statusConfig[status];
+                  const isEditing = editingBoarding?.id === boarding.id;
 
                   return (
-                    <tr key={boarding.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                            <span className="text-xs font-semibold text-indigo-600">{getInitials(dogName)}</span>
+                    <React.Fragment key={boarding.id}>
+                      <tr className={`hover:bg-slate-50/50 transition-colors ${isEditing ? 'bg-indigo-50/50' : ''}`}>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                              <span className="text-xs font-semibold text-indigo-600">{getInitials(dogName)}</span>
+                            </div>
+                            <span className="text-sm font-medium text-slate-900">{dogName}</span>
                           </div>
-                          <span className="text-sm font-medium text-slate-900">{dogName}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
-                          {statusStyle.label}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.arrivalDateTime)}</td>
-                      <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.departureDateTime)}</td>
-                      <td className="px-5 py-4 text-sm text-slate-600 text-right tabular-nums">{nights}</td>
-                      <td className="px-5 py-4 text-sm font-medium text-slate-900 text-right tabular-nums">{formatCurrency(gross)}</td>
-                      <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => setEditingBoarding(boarding)}
-                          disabled={isFormOpen}
-                          className="text-sm font-medium text-indigo-600 hover:text-indigo-800 mr-4 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteBoardingClick(boarding)}
-                          disabled={isFormOpen}
-                          className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
+                            {statusStyle.label}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.arrivalDateTime)}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.departureDateTime)}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600 text-right tabular-nums">{nights}</td>
+                        <td className="px-5 py-4 text-sm font-medium text-slate-900 text-right tabular-nums">{formatCurrency(gross)}</td>
+                        <td className="px-5 py-4 text-right">
+                          <button
+                            onClick={() => setEditingBoarding(isEditing ? null : boarding)}
+                            disabled={isFormOpen && !isEditing}
+                            className="text-sm font-medium text-indigo-600 hover:text-indigo-800 mr-4 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {isEditing ? 'Cancel' : 'Edit'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBoardingClick(boarding)}
+                            disabled={isFormOpen}
+                            className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                      {isEditing && (
+                        <tr>
+                          <td colSpan={7} className="px-5 py-5 bg-indigo-50/50 border-l-4 border-indigo-500">
+                            <div className="max-w-2xl">
+                              <h3 className="text-sm font-semibold text-slate-900 mb-4">
+                                Edit Boarding for {dogName}
+                              </h3>
+                              <BoardingForm
+                                boarding={editingBoarding}
+                                onSave={handleEditBoarding}
+                                onCancel={() => setEditingBoarding(null)}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
