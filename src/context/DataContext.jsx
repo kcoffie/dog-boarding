@@ -6,6 +6,7 @@ const DataContext = createContext(null);
 
 const initialSettings = {
   netPercentage: 65,
+  netPercentageHistory: [], // [{ effectiveDate: 'YYYY-MM-DD', percentage: number }]
   employees: [],
 };
 
@@ -102,6 +103,46 @@ export function DataProvider({ children }) {
     }
   };
 
+  const getNetPercentageForDate = (dateStr) => {
+    const history = settings.netPercentageHistory || [];
+    if (history.length === 0) {
+      return settings.netPercentage;
+    }
+    // Sort by effectiveDate descending to find most recent applicable
+    const sorted = [...history].sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+    for (const entry of sorted) {
+      if (entry.effectiveDate <= dateStr) {
+        return entry.percentage;
+      }
+    }
+    // Date is before any history entries, use the first entry's percentage
+    return sorted[sorted.length - 1].percentage;
+  };
+
+  const setNetPercentage = (percentage, effectiveDate = null) => {
+    if (effectiveDate) {
+      // Add to history - preserve past dates with old percentage
+      const history = settings.netPercentageHistory || [];
+      // Remove any existing entry for this exact date
+      const filtered = history.filter(h => h.effectiveDate !== effectiveDate);
+      const newHistory = [...filtered, { effectiveDate, percentage }];
+      setSettings({
+        ...settings,
+        netPercentage: percentage,
+        netPercentageHistory: newHistory,
+      });
+      logger.settings('Net percentage', `${percentage}% from ${effectiveDate}`);
+    } else {
+      // Retroactive - clear history and set single value
+      setSettings({
+        ...settings,
+        netPercentage: percentage,
+        netPercentageHistory: [],
+      });
+      logger.settings('Net percentage', `${percentage}% (all dates)`);
+    }
+  };
+
   const addEmployee = (name) => {
     const employeeNames = settings.employees.map(e => typeof e === 'string' ? e : e.name);
     if (!employeeNames.some(n => n.toLowerCase() === name.toLowerCase())) {
@@ -187,6 +228,8 @@ export function DataProvider({ children }) {
     addBoardings,
     // Settings operations
     updateSettings,
+    getNetPercentageForDate,
+    setNetPercentage,
     addEmployee,
     deleteEmployee,
     toggleEmployeeActive,

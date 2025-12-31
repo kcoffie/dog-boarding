@@ -3,13 +3,15 @@ import { useData } from '../context/DataContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function SettingsPage() {
-  const { settings, updateSettings, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
+  const { settings, updateSettings, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
 
   const getEmployeeName = (emp) => typeof emp === 'string' ? emp : emp.name;
   const isEmployeeActive = (emp) => typeof emp === 'string' ? true : emp.active !== false;
 
   const [netPercentage, setNetPercentage] = useState(settings.netPercentage);
   const [percentageError, setPercentageError] = useState('');
+  const [useEffectiveDate, setUseEffectiveDate] = useState(false);
+  const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [employeeError, setEmployeeError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, employeeName: '', hasAssignments: false });
@@ -27,7 +29,11 @@ export default function SettingsPage() {
       setPercentageError('Must be a number between 0 and 100');
       return;
     }
-    updateSettings({ netPercentage: numValue });
+    if (useEffectiveDate) {
+      saveNetPercentage(numValue, effectiveDate);
+    } else {
+      saveNetPercentage(numValue, null);
+    }
     setPercentageError('');
   };
 
@@ -111,22 +117,64 @@ export default function SettingsPage() {
             <p className="text-slate-500 text-sm mt-1 mb-4">
               Percentage of gross revenue paid to the employee for each night worked.
             </p>
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={netPercentage}
-                  onChange={handlePercentageChange}
-                  onBlur={handlePercentageSave}
-                  onKeyDown={(e) => e.key === 'Enter' && handlePercentageSave()}
-                  className={`w-24 px-3.5 py-2.5 text-sm bg-white border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
-                    percentageError ? 'border-red-500' : 'border-slate-300'
-                  }`}
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={netPercentage}
+                    onChange={handlePercentageChange}
+                    onKeyDown={(e) => e.key === 'Enter' && handlePercentageSave()}
+                    className={`w-24 px-3.5 py-2.5 text-sm bg-white border rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
+                      percentageError ? 'border-red-500' : 'border-slate-300'
+                    }`}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">%</span>
+                </div>
+                <button
+                  onClick={handlePercentageSave}
+                  className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                >
+                  Save
+                </button>
               </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useEffectiveDate}
+                  onChange={(e) => setUseEffectiveDate(e.target.checked)}
+                  className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                />
+                <span className="text-sm text-slate-600">Apply from specific date (preserve past rates)</span>
+              </label>
+              {useEffectiveDate && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-500">Effective from:</span>
+                  <input
+                    type="date"
+                    value={effectiveDate}
+                    onChange={(e) => setEffectiveDate(e.target.value)}
+                    className="px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  />
+                </div>
+              )}
+              {(settings.netPercentageHistory?.length > 0) && (
+                <div className="mt-3 p-3 bg-slate-50 rounded-lg">
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Rate History</p>
+                  <ul className="space-y-1">
+                    {[...settings.netPercentageHistory]
+                      .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))
+                      .map((entry, i) => (
+                        <li key={i} className="text-sm text-slate-600">
+                          <span className="font-medium">{entry.percentage}%</span>
+                          <span className="text-slate-400"> from {entry.effectiveDate}</span>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
             </div>
             {percentageError && (
               <p className="text-red-600 text-sm mt-2">{percentageError}</p>
