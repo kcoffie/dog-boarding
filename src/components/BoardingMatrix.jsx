@@ -144,9 +144,16 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {dogsWithBoardings.map((dog) => (
-              <tr key={dog.id} className="hover:bg-slate-50/50 transition-colors">
-                <td className="px-5 py-4 text-sm font-medium text-slate-900 sticky left-0 bg-white">
-                  {formatName(dog.name)}
+              <tr key={dog.id} className="group hover:bg-indigo-50/50 transition-colors">
+                <td className="px-5 py-4 text-sm font-medium text-slate-900 sticky left-0 bg-white group-hover:bg-indigo-50/50 transition-colors">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs font-semibold text-indigo-600">
+                        {formatName(dog.name).charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <span>{formatName(dog.name)}</span>
+                  </div>
                 </td>
                 <td className="px-3 py-4 text-sm text-slate-500 text-right tabular-nums">
                   ${dog.dayRate}
