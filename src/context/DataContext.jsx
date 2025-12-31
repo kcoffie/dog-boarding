@@ -3,6 +3,7 @@ import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useSettings as useSupabaseSettings } from '../hooks/useSettings';
 import { useEmployees as useSupabaseEmployees } from '../hooks/useEmployees';
 import { useDogs as useSupabaseDogs } from '../hooks/useDogs';
+import { useBoardings as useSupabaseBoardings } from '../hooks/useBoardings';
 import { useAuth } from './AuthContext';
 import { logger } from '../utils/logger';
 
@@ -10,7 +11,6 @@ const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
   const { user } = useAuth();
-  const [boardings, setBoardings] = useLocalStorage('boardings', []);
   const [nightAssignments, setNightAssignments] = useLocalStorage('nightAssignments', []);
   const [payments, setPayments] = useLocalStorage('payments', []);
 
@@ -42,6 +42,17 @@ export function DataProvider({ children }) {
     deleteDog: deleteSupabaseDog,
     toggleDogActive: toggleSupabaseDogActive,
   } = useSupabaseDogs();
+
+  // Use Supabase for boardings
+  const {
+    boardings,
+    loading: boardingsLoading,
+    addBoarding: addSupabaseBoarding,
+    addBoardings: addSupabaseBoardings,
+    updateBoarding: updateSupabaseBoarding,
+    deleteBoarding: deleteSupabaseBoarding,
+    deleteBoardingsForDog: deleteSupabaseBoardingsForDog,
+  } = useSupabaseBoardings();
 
   // Combine Supabase settings with employees into unified settings object
   const settings = useMemo(() => ({
@@ -76,8 +87,9 @@ export function DataProvider({ children }) {
   const deleteDog = async (id) => {
     const dog = dogs.find(d => d.id === id);
     try {
+      // Boardings are cascade deleted in Supabase, but we need to refresh local state
+      await deleteSupabaseBoardingsForDog(id);
       await deleteSupabaseDog(id);
-      setBoardings(boardings.filter((b) => b.dogId !== id));
       logger.dog('Deleted', dog?.name);
     } catch (err) {
       console.error('Failed to delete dog:', err);
@@ -107,39 +119,51 @@ export function DataProvider({ children }) {
     }
   };
 
-  // Boarding operations
-  const addBoarding = (boarding) => {
-    const newBoarding = {
-      ...boarding,
-      id: crypto.randomUUID(),
-    };
-    setBoardings([...boardings, newBoarding]);
-    const dog = dogs.find(d => d.id === boarding.dogId);
-    logger.boarding('Added', `${dog?.name || 'Unknown'}: ${boarding.arrivalDateTime.split('T')[0]} → ${boarding.departureDateTime.split('T')[0]}`);
-    return newBoarding;
+  // Boarding operations (using Supabase)
+  const addBoarding = async (boarding) => {
+    try {
+      const newBoarding = await addSupabaseBoarding(boarding);
+      const dog = dogs.find(d => d.id === boarding.dogId);
+      logger.boarding('Added', `${dog?.name || 'Unknown'}: ${boarding.arrivalDateTime.split('T')[0]} → ${boarding.departureDateTime.split('T')[0]}`);
+      return newBoarding;
+    } catch (err) {
+      console.error('Failed to add boarding:', err);
+      throw err;
+    }
   };
 
-  const updateBoarding = (id, updates) => {
+  const updateBoarding = async (id, updates) => {
     const boarding = boardings.find(b => b.id === id);
     const dog = dogs.find(d => d.id === boarding?.dogId);
-    setBoardings(boardings.map((b) => (b.id === id ? { ...b, ...updates } : b)));
-    logger.boarding('Updated', dog?.name || 'Unknown');
+    try {
+      await updateSupabaseBoarding(id, updates);
+      logger.boarding('Updated', dog?.name || 'Unknown');
+    } catch (err) {
+      console.error('Failed to update boarding:', err);
+      throw err;
+    }
   };
 
-  const deleteBoarding = (id) => {
+  const deleteBoarding = async (id) => {
     const boarding = boardings.find(b => b.id === id);
     const dog = dogs.find(d => d.id === boarding?.dogId);
-    setBoardings(boardings.filter((b) => b.id !== id));
-    logger.boarding('Deleted', dog?.name || 'Unknown');
+    try {
+      await deleteSupabaseBoarding(id);
+      logger.boarding('Deleted', dog?.name || 'Unknown');
+    } catch (err) {
+      console.error('Failed to delete boarding:', err);
+      throw err;
+    }
   };
 
-  const addBoardings = (newBoardings) => {
-    const boardingsWithIds = newBoardings.map((b) => ({
-      ...b,
-      id: crypto.randomUUID(),
-    }));
-    setBoardings([...boardings, ...boardingsWithIds]);
-    logger.boarding('Imported', `${newBoardings.length} boardings`);
+  const addBoardings = async (newBoardings) => {
+    try {
+      await addSupabaseBoardings(newBoardings);
+      logger.boarding('Imported', `${newBoardings.length} boardings`);
+    } catch (err) {
+      console.error('Failed to import boardings:', err);
+      throw err;
+    }
   };
 
   // Settings operations
@@ -270,6 +294,7 @@ export function DataProvider({ children }) {
     settingsLoading,
     employeesLoading,
     dogsLoading,
+    boardingsLoading,
     nightAssignments,
     payments,
     // Dog operations

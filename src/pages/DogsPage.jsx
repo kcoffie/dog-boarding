@@ -47,14 +47,22 @@ export default function DogsPage() {
     setDeleteConfirm({ isOpen: true, type: 'dog', item: dog, hasBoardings });
   };
 
-  const handleAddBoarding = (boardingData) => {
-    addBoarding(boardingData);
-    setShowAddBoardingForm(false);
+  const handleAddBoarding = async (boardingData) => {
+    try {
+      await addBoarding(boardingData);
+      setShowAddBoardingForm(false);
+    } catch (err) {
+      console.error('Failed to add boarding:', err);
+    }
   };
 
-  const handleInlineAddBoarding = (boardingData) => {
-    addBoarding(boardingData);
-    setInlineAddBoardingDogId(null);
+  const handleInlineAddBoarding = async (boardingData) => {
+    try {
+      await addBoarding(boardingData);
+      setInlineAddBoardingDogId(null);
+    } catch (err) {
+      console.error('Failed to add boarding:', err);
+    }
   };
 
   const handleDogNameClick = (dog) => {
@@ -62,9 +70,13 @@ export default function DogsPage() {
     setInlineAddBoardingDogId(dog.id);
   };
 
-  const handleEditBoarding = (boardingData) => {
-    updateBoarding(editingBoarding.id, boardingData);
-    setEditingBoarding(null);
+  const handleEditBoarding = async (boardingData) => {
+    try {
+      await updateBoarding(editingBoarding.id, boardingData);
+      setEditingBoarding(null);
+    } catch (err) {
+      console.error('Failed to update boarding:', err);
+    }
   };
 
   const handleDeleteBoardingClick = (boarding) => {
@@ -76,7 +88,7 @@ export default function DogsPage() {
       if (deleteConfirm.type === 'dog') {
         await deleteDog(deleteConfirm.item.id);
       } else if (deleteConfirm.type === 'boarding') {
-        deleteBoarding(deleteConfirm.item.id);
+        await deleteBoarding(deleteConfirm.item.id);
       }
       setDeleteConfirm({ isOpen: false, type: null, item: null });
     } catch (err) {
