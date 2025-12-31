@@ -4,6 +4,7 @@ import { useSettings as useSupabaseSettings } from '../hooks/useSettings';
 import { useEmployees as useSupabaseEmployees } from '../hooks/useEmployees';
 import { useDogs as useSupabaseDogs } from '../hooks/useDogs';
 import { useBoardings as useSupabaseBoardings } from '../hooks/useBoardings';
+import { useNightAssignments as useSupabaseNightAssignments } from '../hooks/useNightAssignments';
 import { useAuth } from './AuthContext';
 import { logger } from '../utils/logger';
 
@@ -11,7 +12,6 @@ const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
   const { user } = useAuth();
-  const [nightAssignments, setNightAssignments] = useLocalStorage('nightAssignments', []);
   const [payments, setPayments] = useLocalStorage('payments', []);
 
   // Use Supabase for net percentage settings when logged in
@@ -53,6 +53,15 @@ export function DataProvider({ children }) {
     deleteBoarding: deleteSupabaseBoarding,
     deleteBoardingsForDog: deleteSupabaseBoardingsForDog,
   } = useSupabaseBoardings();
+
+  // Use Supabase for night assignments (needs employees for name<->ID conversion)
+  const {
+    nightAssignments,
+    loading: nightAssignmentsLoading,
+    setNightAssignment: setSupabaseNightAssignment,
+    getNightAssignment: getSupabaseNightAssignment,
+    deleteAssignmentsForEmployee: deleteSupabaseAssignmentsForEmployee,
+  } = useSupabaseNightAssignments(supabaseEmployees);
 
   // Combine Supabase settings with employees into unified settings object
   const settings = useMemo(() => ({
@@ -213,8 +222,8 @@ export function DataProvider({ children }) {
 
   const deleteEmployee = async (name) => {
     try {
+      await deleteSupabaseAssignmentsForEmployee(name);
       await deleteSupabaseEmployee(name);
-      setNightAssignments(nightAssignments.filter((a) => a.employeeName !== name));
       logger.settings('Deleted employee', name);
     } catch (err) {
       console.error('Failed to delete employee:', err);
@@ -235,29 +244,23 @@ export function DataProvider({ children }) {
     reorderSupabaseEmployees(fromIndex, toIndex);
   };
 
-  // Night assignment operations
-  const setNightAssignment = (date, employeeName) => {
-    const existing = nightAssignments.find((a) => a.date === date);
-    if (existing) {
+  // Night assignment operations (using Supabase)
+  const setNightAssignment = async (date, employeeName) => {
+    try {
+      await setSupabaseNightAssignment(date, employeeName);
       if (employeeName) {
-        setNightAssignments(
-          nightAssignments.map((a) =>
-            a.date === date ? { ...a, employeeName } : a
-          )
-        );
         logger.settings('Assigned', `${date} → ${employeeName}`);
       } else {
-        setNightAssignments(nightAssignments.filter((a) => a.date !== date));
         logger.settings('Unassigned', date);
       }
-    } else if (employeeName) {
-      setNightAssignments([...nightAssignments, { date, employeeName }]);
-      logger.settings('Assigned', `${date} → ${employeeName}`);
+    } catch (err) {
+      console.error('Failed to set night assignment:', err);
+      throw err;
     }
   };
 
   const getNightAssignment = (date) => {
-    return nightAssignments.find((a) => a.date === date)?.employeeName || '';
+    return getSupabaseNightAssignment(date);
   };
 
   // Payment operations
@@ -295,6 +298,7 @@ export function DataProvider({ children }) {
     employeesLoading,
     dogsLoading,
     boardingsLoading,
+    nightAssignmentsLoading,
     nightAssignments,
     payments,
     // Dog operations
