@@ -119,15 +119,19 @@ export default function CsvImport({ onClose }) {
     });
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     const boardings = parsedData.map(({ dogId, arrivalDateTime, departureDateTime }) => ({
       dogId,
       arrivalDateTime,
       departureDateTime,
     }));
 
-    addBoardings(boardings);
-    onClose();
+    try {
+      await addBoardings(boardings);
+      onClose();
+    } catch (err) {
+      setErrors([`Failed to import boardings: ${err.message}`]);
+    }
   };
 
   const handleReset = () => {
