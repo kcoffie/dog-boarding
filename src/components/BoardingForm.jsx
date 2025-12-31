@@ -199,7 +199,7 @@ export default function BoardingForm({ boarding, preselectedDogId, onSave, onCan
         )}
         <button
           type="submit"
-          className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
+          className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] rounded-lg transition-all shadow-sm"
         >
           {isEditing ? 'Save Changes' : 'Add Boarding'}
         </button>
