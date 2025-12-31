@@ -5,13 +5,32 @@ import MatrixPage from './pages/MatrixPage';
 import DogsPage from './pages/DogsPage';
 import SettingsPage from './pages/SettingsPage';
 import PayrollPage from './pages/PayrollPage';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import LoginPage from './pages/auth/LoginPage';
+import SignupPage from './pages/auth/SignupPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 
 function App() {
   return (
     <DataProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Layout />}>
+          {/* Auth routes (public) */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+          {/* Protected routes */}
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
             <Route index element={<MatrixPage />} />
             <Route path="dogs" element={<DogsPage />} />
             <Route path="payroll" element={<PayrollPage />} />

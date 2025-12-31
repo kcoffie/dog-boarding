@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",
     "react-datepicker": "^9.1.0",
