@@ -75,7 +75,8 @@ export function calculateNights(arrivalDateTime, departureDateTime) {
 
 // Check if a dog is staying overnight on a specific date
 export function isOvernight(boarding, dateStr) {
-  const date = new Date(dateStr);
+  // Parse dateStr as local time by appending time component
+  const date = new Date(dateStr + 'T00:00:00');
   const arrival = new Date(boarding.arrivalDateTime);
   const departure = new Date(boarding.departureDateTime);
 
@@ -94,7 +95,8 @@ export function isOvernight(boarding, dateStr) {
 
 // Check if a dog is present during day hours on a specific date
 export function isDayPresent(boarding, dateStr) {
-  const date = new Date(dateStr);
+  // Parse dateStr as local time by appending time component
+  const date = new Date(dateStr + 'T00:00:00');
   const arrival = new Date(boarding.arrivalDateTime);
   const departure = new Date(boarding.departureDateTime);
 
