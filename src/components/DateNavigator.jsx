@@ -2,7 +2,7 @@ import { useState } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
-const MAX_DAYS = 21; // 3 weeks max
+const MAX_DAYS = 122; // ~4 months max
 
 export default function DateNavigator({ startDate, endDate, onStartDateChange, onEndDateChange }) {
   const [error, setError] = useState('');
@@ -34,7 +34,7 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
     }
 
     if (daysDiff > MAX_DAYS) {
-      setError(`Range cannot exceed ${MAX_DAYS} days (3 weeks)`);
+      setError(`Range cannot exceed ${MAX_DAYS} days (~4 months)`);
       return;
     }
 
