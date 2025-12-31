@@ -28,13 +28,17 @@ export default function SummaryCards({ startDate, days }) {
     return total + dayGross;
   }, 0);
 
-  // Nights assigned in range
+  // Nights assigned in range (exclude N/A - means owner is covering)
   const assignedNights = dates.filter(dateStr =>
-    nightAssignments.some(a => a.date === dateStr && a.employeeName)
+    nightAssignments.some(a => a.date === dateStr && a.employeeName && a.employeeName !== 'N/A')
   ).length;
 
-  // Nights with boardings (need assignment)
+  // Nights with boardings that need employee coverage (exclude N/A nights)
   const nightsWithBoardings = dates.filter(dateStr => {
+    // Check if N/A is assigned - if so, no employee needed
+    const assignment = nightAssignments.find(a => a.date === dateStr);
+    if (assignment?.employeeName === 'N/A') return false;
+
     for (const dog of dogs) {
       const dogBoardings = boardings.filter(b => b.dogId === dog.id);
       if (dogBoardings.some(b => isOvernight(b, dateStr))) {
