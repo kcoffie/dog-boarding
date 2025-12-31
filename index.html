@@ -2,24 +2,44 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Q Board</title>
+
+    <!-- Viewport - Critical for mobile -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
 
     <!-- PWA Meta Tags -->
     <meta name="description" content="Manage your dog boarding business" />
     <meta name="theme-color" content="#4f46e5" />
+    <meta name="background-color" content="#ffffff" />
+
+    <!-- iOS Specific -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Boarding" />
+
+    <!-- iOS Icons -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="/icons/icon-167x167.png" />
 
     <!-- Favicon -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/pwa-192x192.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/pwa-192x192.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
 
-    <!-- Apple Touch Icon -->
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Prevent white flash on load -->
+    <style>
+      html, body {
+        background-color: #f8fafc;
+        margin: 0;
+        padding: 0;
+      }
+      /* Prevent overscroll bounce */
+      html {
+        overscroll-behavior: none;
+      }
+    </style>
 
-    <!-- Apple Mobile Web App -->
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="QBoard" />
+    <title>Dog Boarding Manager</title>
   </head>
   <body>
     <div id="root"></div>
