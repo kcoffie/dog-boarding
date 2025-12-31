@@ -1,11 +1,17 @@
+import { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent, formatName } from '../utils/dateUtils';
 import EmployeeDropdown from './EmployeeDropdown';
 
 export default function BoardingMatrix({ startDate, days = 14 }) {
   const { dogs, boardings, settings, getNetPercentageForDate } = useData();
+  const [sortDirection, setSortDirection] = useState('asc');
 
   const dates = getDateRange(startDate, days);
+
+  const toggleSort = () => {
+    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+  };
 
   const isWeekend = (dateStr) => {
     const date = new Date(dateStr + 'T00:00:00');
@@ -95,7 +101,14 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
     return false;
   };
 
-  const dogsWithBoardings = dogs.filter(dogHasPresenceInRange);
+  const dogsWithBoardings = dogs
+    .filter(dogHasPresenceInRange)
+    .sort((a, b) => {
+      const nameA = formatName(a.name).toLowerCase();
+      const nameB = formatName(b.name).toLowerCase();
+      const result = nameA.localeCompare(nameB);
+      return sortDirection === 'asc' ? result : -result;
+    });
 
   if (dogs.length === 0) {
     return (
@@ -131,8 +144,12 @@ export default function BoardingMatrix({ startDate, days = 14 }) {
         <table className="w-full min-w-max">
           <thead>
             <tr className="border-b border-slate-200">
-              <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider sticky left-0 bg-white min-w-[140px]">
+              <th
+                className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider sticky left-0 bg-white min-w-[140px] cursor-pointer hover:bg-slate-50 transition-colors"
+                onClick={toggleSort}
+              >
                 Dog
+                <span className="ml-1 text-indigo-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>
               </th>
               <th className="text-right px-3 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[70px]">
                 Day
