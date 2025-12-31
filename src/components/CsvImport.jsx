@@ -15,33 +15,37 @@ export default function CsvImport({ onClose }) {
     const errors = [];
     const { dogName, arrivalDateTime, departureDateTime } = row;
 
-    // Check dog exists
-    const dog = dogs.find(d => d.name.toLowerCase() === dogName?.toLowerCase());
-    if (!dogName) {
+    // Trim and normalize dog name
+    const trimmedDogName = dogName?.trim();
+
+    // Check dog exists (case-insensitive matching)
+    const dog = dogs.find(d => d.name.toLowerCase().trim() === trimmedDogName?.toLowerCase());
+    if (!trimmedDogName) {
       errors.push(`Row ${rowIndex + 1}: Missing dog name`);
     } else if (!dog) {
-      errors.push(`Row ${rowIndex + 1}: Unknown dog "${dogName}"`);
+      const availableDogs = dogs.map(d => d.name).join(', ');
+      errors.push(`Row ${rowIndex + 1}: Unknown dog "${trimmedDogName}". Available dogs: ${availableDogs || 'none'}`);
     }
 
     // Parse and validate dates
     let arrival = null;
     let departure = null;
 
-    if (!arrivalDateTime) {
+    if (!arrivalDateTime?.trim()) {
       errors.push(`Row ${rowIndex + 1}: Missing arrival date/time`);
     } else {
       arrival = parseDateTime(arrivalDateTime);
       if (!arrival) {
-        errors.push(`Row ${rowIndex + 1}: Invalid arrival date "${arrivalDateTime}"`);
+        errors.push(`Row ${rowIndex + 1}: Invalid arrival date "${arrivalDateTime.trim()}". Use format: YYYY-MM-DD HH:mm`);
       }
     }
 
-    if (!departureDateTime) {
+    if (!departureDateTime?.trim()) {
       errors.push(`Row ${rowIndex + 1}: Missing departure date/time`);
     } else {
       departure = parseDateTime(departureDateTime);
       if (!departure) {
-        errors.push(`Row ${rowIndex + 1}: Invalid departure date "${departureDateTime}"`);
+        errors.push(`Row ${rowIndex + 1}: Invalid departure date "${departureDateTime.trim()}". Use format: YYYY-MM-DD HH:mm`);
       }
     }
 
@@ -64,14 +68,18 @@ export default function CsvImport({ onClose }) {
   const parseDateTime = (str) => {
     if (!str) return null;
 
-    // Try ISO 8601 format
-    let date = new Date(str);
+    // Trim whitespace
+    const trimmed = str.trim();
+    if (!trimmed) return null;
+
+    // Try ISO 8601 format first
+    let date = new Date(trimmed);
     if (!isNaN(date.getTime())) {
       return date;
     }
 
     // Try "YYYY-MM-DD HH:mm" format
-    const match = str.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
+    const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
     if (match) {
       date = new Date(
         parseInt(match[1]),
@@ -79,6 +87,20 @@ export default function CsvImport({ onClose }) {
         parseInt(match[3]),
         parseInt(match[4]),
         parseInt(match[5])
+      );
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+
+    // Try "YYYY-MM-DD" format (default to noon)
+    const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      date = new Date(
+        parseInt(dateOnlyMatch[1]),
+        parseInt(dateOnlyMatch[2]) - 1,
+        parseInt(dateOnlyMatch[3]),
+        12, 0
       );
       if (!isNaN(date.getTime())) {
         return date;
