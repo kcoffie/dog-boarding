@@ -461,7 +461,7 @@ export default function CalendarPage() {
           <span className="w-2 h-2 bg-amber-500 rounded-full"></span> Departing
         </div>
         <div className="flex items-center gap-1">
-          <span className="inline-flex items-center justify-center w-4 h-4 bg-indigo-600 text-white rounded-full text-[10px]">1</span> Today
+          <span className="inline-flex items-center justify-center w-4 h-4 bg-indigo-600 text-white rounded-full text-[10px]">{today.getDate()}</span> Today
         </div>
       </div>
     </div>
