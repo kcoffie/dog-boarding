@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import SummaryCards from '../components/SummaryCards';
 import DateNavigator from '../components/DateNavigator';
 import BoardingMatrix from '../components/BoardingMatrix';
 import EmployeeTotals from '../components/EmployeeTotals';
@@ -27,6 +28,9 @@ export default function MatrixPage() {
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
         <p className="text-slate-500 mt-1">Overview of boarding schedule and revenue</p>
       </div>
+
+      {/* Summary Cards */}
+      <SummaryCards startDate={startDate} days={daysDiff} />
 
       {/* Date Navigator */}
       <DateNavigator
