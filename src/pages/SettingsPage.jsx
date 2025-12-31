@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function SettingsPage() {
-  const { settings, settingsLoading, updateSettings, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
+  const { settings, settingsLoading, sortEmployees, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
 
   const getEmployeeName = (emp) => typeof emp === 'string' ? emp : emp.name;
   const isEmployeeActive = (emp) => typeof emp === 'string' ? true : emp.active !== false;
@@ -108,14 +108,8 @@ export default function SettingsPage() {
     setDraggedIndex(null);
   };
 
-  const sortEmployees = (direction) => {
-    const sorted = [...settings.employees].sort((a, b) => {
-      const nameA = getEmployeeName(a).toLowerCase();
-      const nameB = getEmployeeName(b).toLowerCase();
-      const result = nameA.localeCompare(nameB);
-      return direction === 'asc' ? result : -result;
-    });
-    updateSettings({ ...settings, employees: sorted });
+  const handleSortEmployees = (direction) => {
+    sortEmployees(direction);
   };
 
   return (

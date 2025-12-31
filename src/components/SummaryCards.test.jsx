@@ -31,17 +31,21 @@ describe('SummaryCards', () => {
     vi.clearAllMocks();
   });
 
+  // Helper to create getNightAssignment mock from assignments object
+  const createGetNightAssignment = (assignments) => (date) => assignments[date] || '';
+
   describe('Nights Assigned calculation', () => {
     it('counts employee assignments correctly', () => {
+      const assignments = {
+        '2025-01-15': 'Kate',
+        '2025-01-16': 'Kate',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'Kate' },
-          { date: '2025-01-16', employeeName: 'Kate' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<SummaryCards startDate="2025-01-15" days={4} />);
@@ -51,15 +55,16 @@ describe('SummaryCards', () => {
     });
 
     it('excludes N/A from assigned count', () => {
+      const assignments = {
+        '2025-01-15': 'Kate',
+        '2025-01-16': 'N/A',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'Kate' },
-          { date: '2025-01-16', employeeName: 'N/A' }, // Should NOT count
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<SummaryCards startDate="2025-01-15" days={4} />);
@@ -72,16 +77,17 @@ describe('SummaryCards', () => {
     });
 
     it('excludes N/A nights from denominator (nights needing coverage)', () => {
+      const assignments = {
+        '2025-01-15': 'N/A',
+        '2025-01-16': 'N/A',
+        '2025-01-17': 'N/A',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'N/A' },
-          { date: '2025-01-16', employeeName: 'N/A' },
-          { date: '2025-01-17', employeeName: 'N/A' },
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<SummaryCards startDate="2025-01-15" days={4} />);
@@ -92,16 +98,16 @@ describe('SummaryCards', () => {
     });
 
     it('shows correct ratio with mixed assignments', () => {
+      const assignments = {
+        '2025-01-15': 'Kate',
+        '2025-01-16': 'N/A',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: '2025-01-15', employeeName: 'Kate' },
-          { date: '2025-01-16', employeeName: 'N/A' },
-          // 17 has no assignment
-        ],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment(assignments),
       });
 
       render(<SummaryCards startDate="2025-01-15" days={4} />);
@@ -118,8 +124,8 @@ describe('SummaryCards', () => {
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: () => '',
       });
 
       render(<SummaryCards startDate="2025-01-15" days={4} />);
@@ -142,8 +148,8 @@ describe('SummaryCards', () => {
         dogs: dogsWithInactive,
         boardings: [],
         settings: mockSettings,
-        nightAssignments: [],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: () => '',
       });
 
       render(<SummaryCards startDate="2025-01-15" days={4} />);
@@ -160,8 +166,8 @@ describe('SummaryCards', () => {
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [],
         getNetPercentageForDate: () => 65,
+        getNightAssignment: () => '',
       });
 
       render(<SummaryCards startDate="2025-01-15" days={4} />);

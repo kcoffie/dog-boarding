@@ -9,7 +9,6 @@ export default function PayrollPage() {
   const {
     dogs,
     boardings,
-    settings,
     payments,
     getNetPercentageForDate,
     getNightAssignment,

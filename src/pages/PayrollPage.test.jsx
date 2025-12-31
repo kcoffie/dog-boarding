@@ -63,11 +63,11 @@ describe('PayrollPage', () => {
     ],
   };
 
-  const mockNightAssignments = [
-    { date: dates.day1, employeeName: 'Kate' },
-    { date: dates.day2, employeeName: 'Kate' },
-    { date: dates.day3, employeeName: 'Nick' },
-  ];
+  const mockNightAssignments = {
+    [dates.day1]: 'Kate',
+    [dates.day2]: 'Kate',
+    [dates.day3]: 'Nick',
+  };
 
   const mockAddPayment = vi.fn();
   const mockDeletePayment = vi.fn();
@@ -80,7 +80,7 @@ describe('PayrollPage', () => {
       dogs: mockDogs,
       boardings: mockBoardings,
       settings: mockSettings,
-      nightAssignments: mockNightAssignments,
+      getNightAssignment: (date) => mockNightAssignments[date] || '',
       payments: [],
       getNetPercentageForDate: () => 65,
       addPayment: mockAddPayment,
@@ -113,7 +113,7 @@ describe('PayrollPage', () => {
         dogs: mockDogs,
         boardings: [],
         settings: mockSettings,
-        nightAssignments: [],
+        getNightAssignment: () => '',
         payments: [],
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
@@ -126,14 +126,15 @@ describe('PayrollPage', () => {
     });
 
     it('excludes N/A assignments from outstanding', () => {
+      const assignments = {
+        [dates.day1]: 'N/A',
+        [dates.day2]: 'Kate',
+      };
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [
-          { date: dates.day1, employeeName: 'N/A' },
-          { date: dates.day2, employeeName: 'Kate' },
-        ],
+        getNightAssignment: (date) => assignments[date] || '',
         payments: [],
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
@@ -159,7 +160,7 @@ describe('PayrollPage', () => {
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: mockNightAssignments,
+        getNightAssignment: (date) => mockNightAssignments[date] || '',
         payments: [{
           id: '1',
           employeeName: 'Kate',
@@ -244,7 +245,7 @@ describe('PayrollPage', () => {
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [],
+        getNightAssignment: () => '',
         payments: [{
           id: '1',
           employeeName: 'Kate',
@@ -273,7 +274,7 @@ describe('PayrollPage', () => {
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [],
+        getNightAssignment: () => '',
         payments: [{
           id: '1',
           employeeName: 'Kate',
@@ -305,7 +306,7 @@ describe('PayrollPage', () => {
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
-        nightAssignments: [],
+        getNightAssignment: () => '',
         payments: [{
           id: 'payment-1',
           employeeName: 'Kate',
@@ -352,7 +353,7 @@ describe('PayrollPage', () => {
         dogs: mockDogs,
         boardings: [],
         settings: mockSettings,
-        nightAssignments: [],
+        getNightAssignment: () => '',
         payments: [],
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
