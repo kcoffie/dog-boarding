@@ -205,8 +205,8 @@ describe('BoardingMatrix sorting', () => {
     });
   });
 
-  describe('Date column sorting', () => {
-    it('defaults to oldest first (ascending dates)', () => {
+  describe('Date columns', () => {
+    it('displays dates in chronological order', () => {
       renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={3} />);
 
       // Get all date column headers
@@ -216,65 +216,30 @@ describe('BoardingMatrix sorting', () => {
       const dateHeaders = Array.from(headers).slice(3);
       const dates = dateHeaders.map(th => th.textContent).filter(t => t.includes('Jan'));
 
-      // Should be in ascending order: Jan 15, Jan 16, Jan 17
+      // Should be in chronological order: Jan 15, Jan 16, Jan 17
       expect(dates[0]).toContain('Jan 15');
       expect(dates[1]).toContain('Jan 16');
       expect(dates[2]).toContain('Jan 17');
     });
 
-    it('shows Oldest button only on first date column, not on other columns', () => {
+    it('all date columns behave uniformly - none have special buttons initially', () => {
       renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={3} />);
 
-      // First date column should have Oldest button
-      expect(screen.getByText('Oldest')).toBeInTheDocument();
-
-      // Get all date column headers
       const table = document.querySelector('table');
       const headers = table.querySelectorAll('thead th');
       const dateHeaders = Array.from(headers).slice(3); // Skip Dog, Day, Night
 
-      // Only the first date column should contain Oldest
-      expect(dateHeaders[0].textContent).toContain('Oldest');
-      expect(dateHeaders[1].textContent).not.toContain('Oldest');
-      expect(dateHeaders[2].textContent).not.toContain('Oldest');
-    });
-
-    it('reverses date order when clicking date sort button', () => {
-      renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={3} />);
-
-      const sortButton = screen.getByText('Oldest');
-      fireEvent.click(sortButton);
-
-      // Now should show Newest
-      expect(screen.getByText('Newest')).toBeInTheDocument();
-
-      // Get date headers - should be reversed
-      const table = document.querySelector('table');
-      const headers = table.querySelectorAll('thead th');
-      const dateHeaders = Array.from(headers).slice(3);
-      const dates = dateHeaders.map(th => th.textContent).filter(t => t.includes('Jan'));
-
-      // Should be in descending order: Jan 17, Jan 16, Jan 15
-      expect(dates[0]).toContain('Jan 17');
-      expect(dates[1]).toContain('Jan 16');
-      expect(dates[2]).toContain('Jan 15');
-    });
-
-    it('toggles back to oldest first when clicking twice', () => {
-      renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={3} />);
-
-      const sortButton = screen.getByText('Oldest');
-      fireEvent.click(sortButton);
-
-      const newestButton = screen.getByText('Newest');
-      fireEvent.click(newestButton);
-
-      expect(screen.getByText('Oldest')).toBeInTheDocument();
+      // No date column should have Oldest/Newest or Present initially
+      dateHeaders.forEach(header => {
+        expect(header.textContent).not.toContain('Oldest');
+        expect(header.textContent).not.toContain('Newest');
+        expect(header.textContent).not.toContain('Present');
+      });
     });
   });
 
   describe('Presence sorting by date column', () => {
-    it('first column shows Oldest/Newest, other columns show Present when clicked', () => {
+    it('all date columns show Present when clicked for presence sort', () => {
       renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={3} />);
 
       const table = document.querySelector('table');
@@ -284,58 +249,37 @@ describe('BoardingMatrix sorting', () => {
       const jan16Header = dateHeaders[1]; // Second date column
       const jan17Header = dateHeaders[2]; // Third date column
 
-      // Initially: first column has Oldest, others have nothing special
-      expect(jan15Header.textContent).toContain('Oldest');
+      // Click the first date column (Jan 15)
+      fireEvent.click(jan15Header);
+      expect(jan15Header.textContent).toContain('Present');
       expect(jan16Header.textContent).not.toContain('Present');
       expect(jan17Header.textContent).not.toContain('Present');
 
       // Click the second date column (Jan 16)
       fireEvent.click(jan16Header);
-
-      // Now: first column still has Oldest, second column shows Present
-      expect(jan15Header.textContent).toContain('Oldest');
+      expect(jan15Header.textContent).not.toContain('Present');
       expect(jan16Header.textContent).toContain('Present');
       expect(jan17Header.textContent).not.toContain('Present');
 
       // Click the third date column (Jan 17)
       fireEvent.click(jan17Header);
-
-      // Now: first column still has Oldest, third column shows Present, second doesn't
-      expect(jan15Header.textContent).toContain('Oldest');
+      expect(jan15Header.textContent).not.toContain('Present');
       expect(jan16Header.textContent).not.toContain('Present');
       expect(jan17Header.textContent).toContain('Present');
-    });
-
-    it('clicking first date column activates presence sort and hides Oldest button', () => {
-      renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={3} />);
-
-      const table = document.querySelector('table');
-      const headers = table.querySelectorAll('thead th');
-      const jan15Header = Array.from(headers).find(th => th.textContent.includes('Jan 15'));
-
-      // Initially has Oldest button
-      expect(jan15Header.textContent).toContain('Oldest');
-
-      // Click to activate presence sort
-      fireEvent.click(jan15Header);
-
-      // Now shows Present instead of Oldest
-      expect(jan15Header.textContent).toContain('Present');
-      expect(jan15Header.textContent).not.toContain('Oldest');
     });
 
     it('clicking a date column activates presence sort', () => {
       renderWithProviders(<BoardingMatrix startDate="2025-01-15" days={3} />);
 
-      // Find Jan 16 header (second date column) and click it
+      // Find Jan 15 header (first date column) and click it
       const table = document.querySelector('table');
       const headers = table.querySelectorAll('thead th');
-      const jan16Header = Array.from(headers).find(th => th.textContent.includes('Jan 16'));
+      const jan15Header = Array.from(headers).find(th => th.textContent.includes('Jan 15'));
 
-      fireEvent.click(jan16Header);
+      fireEvent.click(jan15Header);
 
       // Should show active sort indicator
-      expect(jan16Header.textContent).toContain('Present');
+      expect(jan15Header.textContent).toContain('Present');
     });
 
     it('sorts dogs by presence on clicked date (present first)', () => {
