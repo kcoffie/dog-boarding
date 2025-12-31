@@ -184,6 +184,12 @@ export default function DogsPage() {
         aVal = getDogName(a.dogId).toLowerCase();
         bVal = getDogName(b.dogId).toLowerCase();
         break;
+      case 'status':
+        // Sort order: current, upcoming, past
+        const statusOrder = { current: 0, upcoming: 1, past: 2 };
+        aVal = statusOrder[getBoardingStatus(a)];
+        bVal = statusOrder[getBoardingStatus(b)];
+        break;
       case 'arrivalDateTime':
       case 'departureDateTime':
         aVal = new Date(a[boardingSortColumn]).getTime();
@@ -295,8 +301,11 @@ export default function DogsPage() {
                   >
                     Dog<BoardingSortIcon column="dogName" />
                   </th>
-                  <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Status
+                  <th
+                    className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => handleBoardingSort('status')}
+                  >
+                    Status<BoardingSortIcon column="status" />
                   </th>
                   <th
                     className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
