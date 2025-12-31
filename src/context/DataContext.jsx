@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useSettings as useSupabaseSettings } from '../hooks/useSettings';
 import { useEmployees as useSupabaseEmployees } from '../hooks/useEmployees';
+import { useDogs as useSupabaseDogs } from '../hooks/useDogs';
 import { useAuth } from './AuthContext';
 import { logger } from '../utils/logger';
 
@@ -9,7 +10,6 @@ const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
   const { user } = useAuth();
-  const [dogs, setDogs] = useLocalStorage('dogs', []);
   const [boardings, setBoardings] = useLocalStorage('boardings', []);
   const [nightAssignments, setNightAssignments] = useLocalStorage('nightAssignments', []);
   const [payments, setPayments] = useLocalStorage('payments', []);
@@ -32,6 +32,17 @@ export function DataProvider({ children }) {
     reorderEmployees: reorderSupabaseEmployees,
   } = useSupabaseEmployees();
 
+  // Use Supabase for dogs
+  const {
+    dogs,
+    loading: dogsLoading,
+    addDog: addSupabaseDog,
+    addDogs: addSupabaseDogs,
+    updateDog: updateSupabaseDog,
+    deleteDog: deleteSupabaseDog,
+    toggleDogActive: toggleSupabaseDogActive,
+  } = useSupabaseDogs();
+
   // Combine Supabase settings with employees into unified settings object
   const settings = useMemo(() => ({
     netPercentage: supabaseSettings?.netPercentage ?? 65,
@@ -39,48 +50,61 @@ export function DataProvider({ children }) {
     employees: supabaseEmployees ?? [],
   }), [supabaseSettings, supabaseEmployees]);
 
-  // Dog operations
-  const addDog = (dog) => {
-    const newDog = {
-      ...dog,
-      id: crypto.randomUUID(),
-      active: true,
-    };
-    setDogs([...dogs, newDog]);
-    logger.dog('Added', newDog.name);
-    return newDog;
+  // Dog operations (using Supabase)
+  const addDog = async (dog) => {
+    try {
+      const newDog = await addSupabaseDog(dog);
+      logger.dog('Added', newDog.name);
+      return newDog;
+    } catch (err) {
+      console.error('Failed to add dog:', err);
+      throw err;
+    }
   };
 
-  const updateDog = (id, updates) => {
+  const updateDog = async (id, updates) => {
     const dog = dogs.find(d => d.id === id);
-    setDogs(dogs.map((dog) => (dog.id === id ? { ...dog, ...updates } : dog)));
-    logger.dog('Updated', dog?.name);
+    try {
+      await updateSupabaseDog(id, updates);
+      logger.dog('Updated', dog?.name);
+    } catch (err) {
+      console.error('Failed to update dog:', err);
+      throw err;
+    }
   };
 
-  const deleteDog = (id) => {
+  const deleteDog = async (id) => {
     const dog = dogs.find(d => d.id === id);
-    setDogs(dogs.filter((dog) => dog.id !== id));
-    setBoardings(boardings.filter((b) => b.dogId !== id));
-    logger.dog('Deleted', dog?.name);
+    try {
+      await deleteSupabaseDog(id);
+      setBoardings(boardings.filter((b) => b.dogId !== id));
+      logger.dog('Deleted', dog?.name);
+    } catch (err) {
+      console.error('Failed to delete dog:', err);
+      throw err;
+    }
   };
 
-  const toggleDogActive = (id) => {
+  const toggleDogActive = async (id) => {
     const dog = dogs.find(d => d.id === id);
     const newActive = !dog?.active;
-    setDogs(dogs.map((dog) =>
-      dog.id === id ? { ...dog, active: !dog.active } : dog
-    ));
-    logger.dog(newActive ? 'Activated' : 'Deactivated', dog?.name);
+    try {
+      await toggleSupabaseDogActive(id);
+      logger.dog(newActive ? 'Activated' : 'Deactivated', dog?.name);
+    } catch (err) {
+      console.error('Failed to toggle dog:', err);
+      throw err;
+    }
   };
 
-  const addDogs = (newDogs) => {
-    const dogsWithIds = newDogs.map((d) => ({
-      ...d,
-      id: crypto.randomUUID(),
-      active: true,
-    }));
-    setDogs([...dogs, ...dogsWithIds]);
-    logger.dog('Imported', `${newDogs.length} dogs`);
+  const addDogs = async (newDogs) => {
+    try {
+      await addSupabaseDogs(newDogs);
+      logger.dog('Imported', `${newDogs.length} dogs`);
+    } catch (err) {
+      console.error('Failed to import dogs:', err);
+      throw err;
+    }
   };
 
   // Boarding operations
@@ -245,6 +269,7 @@ export function DataProvider({ children }) {
     settings,
     settingsLoading,
     employeesLoading,
+    dogsLoading,
     nightAssignments,
     payments,
     // Dog operations
