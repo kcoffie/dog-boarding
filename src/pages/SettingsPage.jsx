@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
+import { useInvites } from '../hooks/useInvites';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getEmployeeName, isEmployeeActive } from '../utils/employeeHelpers';
 
 export default function SettingsPage() {
   const { settings, settingsLoading, sortEmployees, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
+  const { invites, loading: invitesLoading, createInvite, deleteInvite } = useInvites();
 
   const [netPercentage, setNetPercentage] = useState('');
   const [percentageError, setPercentageError] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(null);
 
   // Sync local state when Supabase settings load
   useEffect(() => {
@@ -88,6 +93,31 @@ export default function SettingsPage() {
 
   const handleCancelDelete = () => {
     setDeleteConfirm({ isOpen: false, employeeName: '', hasAssignments: false });
+  };
+
+  const handleCreateInvite = async (e) => {
+    e.preventDefault();
+    setInviteLoading(true);
+    try {
+      await createInvite(inviteEmail || null);
+      setInviteEmail('');
+    } catch (err) {
+      console.error('Failed to create invite:', err);
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleCopyCode = (code) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2000);
+  };
+
+  const getInviteStatus = (invite) => {
+    if (invite.used_by) return { label: 'Used', color: 'bg-emerald-100 text-emerald-700' };
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) return { label: 'Expired', color: 'bg-slate-100 text-slate-500' };
+    return { label: 'Active', color: 'bg-indigo-100 text-indigo-700' };
   };
 
   const handleDragStart = (e, index) => {
@@ -322,6 +352,114 @@ export default function SettingsPage() {
               );
             })}
           </ul>
+        )}
+      </div>
+
+      {/* Invite Users Section */}
+      <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6">
+        <div className="flex items-start gap-4 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-slate-900">Invite Users</h2>
+            <p className="text-slate-500 text-sm mt-1">
+              Generate invite codes to allow new users to join your team.
+            </p>
+          </div>
+        </div>
+
+        {/* Create Invite Form */}
+        <form onSubmit={handleCreateInvite} className="mb-6">
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="Email (optional - leave blank for anyone)"
+                className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={inviteLoading}
+              className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700 disabled:bg-violet-400 active:scale-[0.98] transition-all shadow-sm"
+            >
+              {inviteLoading ? (
+                'Creating...'
+              ) : (
+                <>
+                  <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Generate
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+
+        {/* Invite List */}
+        {invitesLoading ? (
+          <div className="text-center py-8">
+            <p className="text-slate-500 text-sm">Loading invites...</p>
+          </div>
+        ) : invites.length === 0 ? (
+          <div className="text-center py-8">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-slate-100 flex items-center justify-center">
+              <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <p className="text-slate-500 text-sm">No invites generated yet</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {invites.map((invite) => {
+              const status = getInviteStatus(invite);
+              return (
+                <div
+                  key={invite.id}
+                  className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <code className="text-sm font-mono font-semibold text-slate-700 bg-white px-2 py-1 rounded border">
+                      {invite.code}
+                    </code>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${status.color}`}>
+                      {status.label}
+                    </span>
+                    {invite.email && (
+                      <span className="text-xs text-slate-500 truncate">
+                        for {invite.email}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {!invite.used_by && (
+                      <button
+                        onClick={() => handleCopyCode(invite.code)}
+                        className="text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+                      >
+                        {copiedCode === invite.code ? 'Copied!' : 'Copy'}
+                      </button>
+                    )}
+                    {!invite.used_by && (
+                      <button
+                        onClick={() => deleteInvite(invite.id)}
+                        className="text-sm font-medium text-red-600 hover:text-red-800 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
