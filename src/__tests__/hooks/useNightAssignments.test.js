@@ -47,7 +47,10 @@ const mockEmployees = [
   { id: 'emp-2', name: 'Jane Smith' },
 ];
 
-describe('useNightAssignments Hook', () => {
+/**
+ * @requirements REQ-033
+ */
+describe('REQ-033: useNightAssignments Hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSupabaseData.data = [];
@@ -98,7 +101,10 @@ describe('useNightAssignments Hook', () => {
   });
 });
 
-describe('useNightAssignments - Assignment Data Structure', () => {
+/**
+ * @requirements REQ-033
+ */
+describe('REQ-033: useNightAssignments - Assignment Data Structure', () => {
   it('should include id field in transformed assignments', async () => {
     // Test that the hook transforms data to include id
     const mockAssignment = { id: 'assign-1', date: '2024-01-15', employee_id: 'emp-1' };
@@ -118,7 +124,10 @@ describe('useNightAssignments - Assignment Data Structure', () => {
   });
 });
 
-describe('useNightAssignments - setNightAssignment', () => {
+/**
+ * @requirements REQ-033
+ */
+describe('REQ-033: useNightAssignments - setNightAssignment', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSupabaseData.data = [];

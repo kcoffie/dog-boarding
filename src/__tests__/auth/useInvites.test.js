@@ -32,7 +32,10 @@ vi.mock('../../lib/supabase', () => ({
 
 import { useInvites } from '../../hooks/useInvites';
 
-describe('useInvites Hook', () => {
+/**
+ * @requirements REQ-006
+ */
+describe('REQ-006: useInvites Hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockData.invites = [];
