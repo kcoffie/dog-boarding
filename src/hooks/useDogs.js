@@ -21,7 +21,6 @@ export function useDogs() {
       const { data, error } = await supabase
         .from('dogs')
         .select('*')
-        .eq('user_id', user.id)
         .order('name');
 
       if (error) throw error;
@@ -54,7 +53,6 @@ export function useDogs() {
       const { data, error } = await supabase
         .from('dogs')
         .insert([{
-          user_id: user.id,
           name: dog.name,
           day_rate: dog.dayRate,
           night_rate: dog.nightRate,
@@ -91,7 +89,6 @@ export function useDogs() {
       const { data, error } = await supabase
         .from('dogs')
         .insert(newDogs.map(dog => ({
-          user_id: user.id,
           name: dog.name,
           day_rate: dog.dayRate,
           night_rate: dog.nightRate,
