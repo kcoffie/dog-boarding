@@ -117,3 +117,66 @@ describe('useNightAssignments - Assignment Data Structure', () => {
     expect(expectedStructure).toHaveProperty('employeeId');
   });
 });
+
+describe('useNightAssignments - setNightAssignment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSupabaseData.data = [];
+    mockSupabaseData.error = null;
+  });
+
+  it('throws error when employee name not found in employees array', async () => {
+    const { result } = renderHook(() => useNightAssignments(mockEmployees));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // Try to set an assignment for an employee that doesn't exist
+    await expect(
+      result.current.setNightAssignment('2024-01-20', 'NonExistent Employee')
+    ).rejects.toThrow('Employee "NonExistent Employee" not found');
+  });
+
+  it('does not throw error when selecting N/A option', async () => {
+    const { result } = renderHook(() => useNightAssignments(mockEmployees));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // N/A should not throw - it's a valid option meaning "no employee needed"
+    await expect(
+      result.current.setNightAssignment('2024-01-20', 'N/A')
+    ).resolves.not.toThrow();
+  });
+
+  it('does not throw error when clearing selection (empty string)', async () => {
+    // Setup existing assignment
+    mockSupabaseData.data = [{ id: 'assign-1', date: '2024-01-20', employee_id: 'emp-1' }];
+
+    const { result } = renderHook(() => useNightAssignments(mockEmployees));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // Empty string should not throw - it means remove assignment
+    await expect(
+      result.current.setNightAssignment('2024-01-20', '')
+    ).resolves.not.toThrow();
+  });
+
+  it('accepts valid employee name from employees array', async () => {
+    const { result } = renderHook(() => useNightAssignments(mockEmployees));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // John Doe exists in mockEmployees, should not throw
+    await expect(
+      result.current.setNightAssignment('2024-01-20', 'John Doe')
+    ).resolves.not.toThrow();
+  });
+});
