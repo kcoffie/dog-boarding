@@ -44,10 +44,22 @@ export function useNightAssignments(employees = []) {
   }, [fetchNightAssignments]);
 
   const setNightAssignment = useCallback(async (date, employeeName) => {
-    if (!user) return;
+    if (!user) {
+      console.warn('setNightAssignment: No user logged in');
+      return;
+    }
+
+    // Handle N/A specially - it means "no employee needed"
+    const isNA = employeeName === 'N/A';
+    const employeeId = isNA ? null : getEmployeeIdByName(employees, employeeName);
+
+    // Validate: if not N/A and not empty, we should have found an employee
+    if (employeeName && !isNA && !employeeId) {
+      console.error('setNightAssignment: Employee not found', { employeeName, availableEmployees: employees.map(e => e.name) });
+      throw new Error(`Employee "${employeeName}" not found`);
+    }
 
     const existing = nightAssignments.find(a => a.date === date);
-    const employeeId = employeeName === 'N/A' ? null : getEmployeeIdByName(employees, employeeName);
 
     try {
       if (existing) {

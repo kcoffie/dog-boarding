@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import EmployeeDropdown from './EmployeeDropdown';
 import { useData } from '../context/DataContext';
 
@@ -16,10 +16,11 @@ describe('EmployeeDropdown', () => {
     ],
   };
 
-  const mockSetNightAssignment = vi.fn();
+  const mockSetNightAssignment = vi.fn().mockResolvedValue(undefined);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSetNightAssignment.mockResolvedValue(undefined);
     useData.mockReturnValue({
       settings: mockSettings,
       getNightAssignment: () => '',
@@ -92,5 +93,75 @@ describe('EmployeeDropdown', () => {
 
     // Sam should appear in options because they're currently selected
     expect(screen.getByText('Sam')).toBeInTheDocument();
+  });
+
+  it('shows error state when setNightAssignment fails', async () => {
+    mockSetNightAssignment.mockRejectedValueOnce(new Error('Employee not found'));
+
+    render(<EmployeeDropdown date="2025-01-15" />);
+
+    const select = screen.getByRole('combobox');
+    fireEvent.change(select, { target: { value: 'Kate' } });
+
+    await waitFor(() => {
+      // Should show error styling (red border)
+      expect(select.className).toContain('border-red-500');
+    });
+  });
+
+  it('disables dropdown while saving', async () => {
+    // Make the mock take some time to resolve
+    let resolvePromise;
+    mockSetNightAssignment.mockImplementationOnce(() => new Promise(resolve => {
+      resolvePromise = resolve;
+    }));
+
+    render(<EmployeeDropdown date="2025-01-15" />);
+
+    const select = screen.getByRole('combobox');
+    fireEvent.change(select, { target: { value: 'Kate' } });
+
+    // Should be disabled while saving
+    await waitFor(() => {
+      expect(select).toBeDisabled();
+    });
+
+    // Resolve the promise
+    resolvePromise();
+
+    // Should be enabled after saving
+    await waitFor(() => {
+      expect(select).not.toBeDisabled();
+    });
+  });
+
+  it('clears error state after timeout', async () => {
+    vi.useFakeTimers();
+    mockSetNightAssignment.mockRejectedValueOnce(new Error('Test error'));
+
+    render(<EmployeeDropdown date="2025-01-15" />);
+
+    const select = screen.getByRole('combobox');
+
+    // Fire the change event and wait for async handler
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'Kate' } });
+      // Let the promise rejection propagate
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Verify error state is shown
+    expect(select.className).toContain('border-red-500');
+
+    // Fast-forward 3 seconds and flush state updates
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    // Error should be cleared
+    expect(select.className).not.toContain('border-red-500');
+
+    vi.useRealTimers();
   });
 });
