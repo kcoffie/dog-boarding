@@ -21,7 +21,6 @@ export function useBoardings() {
       const { data, error } = await supabase
         .from('boardings')
         .select('*')
-        .eq('user_id', user.id)
         .order('arrival_datetime', { ascending: false });
 
       if (error) throw error;
@@ -52,7 +51,6 @@ export function useBoardings() {
       const { data, error } = await supabase
         .from('boardings')
         .insert([{
-          user_id: user.id,
           dog_id: boarding.dogId,
           arrival_datetime: boarding.arrivalDateTime,
           departure_datetime: boarding.departureDateTime,
@@ -85,7 +83,6 @@ export function useBoardings() {
       const { data, error } = await supabase
         .from('boardings')
         .insert(newBoardings.map(b => ({
-          user_id: user.id,
           dog_id: b.dogId,
           arrival_datetime: b.arrivalDateTime,
           departure_datetime: b.departureDateTime,
