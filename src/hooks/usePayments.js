@@ -22,7 +22,6 @@ export function usePayments(employees = []) {
       const { data, error } = await supabase
         .from('payments')
         .select('*')
-        .eq('user_id', user.id)
         .order('paid_date', { ascending: false });
 
       if (error) throw error;
@@ -73,7 +72,6 @@ export function usePayments(employees = []) {
       const { data, error } = await supabase
         .from('payments')
         .insert([{
-          user_id: user.id,
           employee_id: employeeId,
           start_date: payment.startDate,
           end_date: payment.endDate,
