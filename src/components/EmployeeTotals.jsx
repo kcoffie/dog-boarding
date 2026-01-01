@@ -1,7 +1,8 @@
 import { useData } from '../context/DataContext';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
+import { DEFAULT_MATRIX_DAYS } from '../utils/constants';
 
-export default function EmployeeTotals({ startDate, days = 14 }) {
+export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }) {
   const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
 
   // Helper to check if employee is active

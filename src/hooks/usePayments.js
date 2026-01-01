@@ -1,26 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { getEmployeeNameById, getEmployeeIdByName } from '../utils/employeeHelpers';
 
 export function usePayments(employees = []) {
   const { user } = useAuth();
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Helper to get employee name by ID
-  const getEmployeeNameById = useCallback((employeeId) => {
-    if (!employeeId) return '';
-    const employee = employees.find(e => e.id === employeeId);
-    return employee?.name || '';
-  }, [employees]);
-
-  // Helper to get employee ID by name
-  const getEmployeeIdByName = useCallback((employeeName) => {
-    if (!employeeName) return null;
-    const employee = employees.find(e => e.name === employeeName);
-    return employee?.id || null;
-  }, [employees]);
 
   const fetchPayments = useCallback(async () => {
     if (!user) {
@@ -44,7 +31,7 @@ export function usePayments(employees = []) {
       setPayments(data.map(p => ({
         id: p.id,
         employeeId: p.employee_id,
-        employeeName: getEmployeeNameById(p.employee_id),
+        employeeName: getEmployeeNameById(employees, p.employee_id),
         startDate: p.start_date,
         endDate: p.end_date,
         amount: parseFloat(p.amount),
@@ -58,7 +45,7 @@ export function usePayments(employees = []) {
     } finally {
       setLoading(false);
     }
-  }, [user, getEmployeeNameById]);
+  }, [user, employees]);
 
   useEffect(() => {
     fetchPayments();
@@ -69,15 +56,15 @@ export function usePayments(employees = []) {
     if (employees.length > 0 && payments.length > 0) {
       setPayments(prev => prev.map(p => ({
         ...p,
-        employeeName: getEmployeeNameById(p.employeeId),
+        employeeName: getEmployeeNameById(employees, p.employeeId),
       })));
     }
-  }, [employees, getEmployeeNameById]);
+  }, [employees]);
 
   const addPayment = async (payment) => {
     if (!user) return null;
 
-    const employeeId = getEmployeeIdByName(payment.employeeName);
+    const employeeId = getEmployeeIdByName(employees, payment.employeeName);
     if (!employeeId) {
       throw new Error('Employee not found');
     }

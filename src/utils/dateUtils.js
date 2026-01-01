@@ -57,18 +57,8 @@ export function calculateNights(arrivalDateTime, departureDateTime) {
   const arrivalDate = new Date(arrival.getFullYear(), arrival.getMonth(), arrival.getDate());
   const departureDate = new Date(departure.getFullYear(), departure.getMonth(), departure.getDate());
 
-  // Calculate days between
+  // Calculate days between (nights = days difference)
   const daysDiff = Math.floor((departureDate - arrivalDate) / (1000 * 60 * 60 * 24));
-
-  // If departure is before 5 PM (17:00), don't count the last night
-  const departureHour = departure.getHours();
-  const departureMinutes = departure.getMinutes();
-  const departureBeforeEvening = departureHour < 17 || (departureHour === 17 && departureMinutes === 0);
-
-  // Nights = days between dates, but if departing before 5 PM on last day, subtract 1
-  // Actually, a dog staying overnight means they stay from day X into day X+1
-  // So if arrival is Mon and departure is Wed, they stay Mon night and Tue night = 2 nights
-  // If departure is before 5 PM, the last day doesn't count as an overnight
 
   return Math.max(0, daysDiff);
 }

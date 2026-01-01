@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react';
 import Select from 'react-select';
 import { useData } from '../context/DataContext';
 import { toDateInputValue, toTimeInputValue, combineDateAndTime, formatName } from '../utils/dateUtils';
+import { DEFAULT_ARRIVAL_TIME, DEFAULT_DEPARTURE_TIME } from '../utils/constants';
 
 export default function BoardingForm({ boarding, preselectedDogId, onSave, onCancel }) {
   const { dogs } = useData();
 
   const [dogId, setDogId] = useState(preselectedDogId || '');
   const [arrivalDate, setArrivalDate] = useState('');
-  const [arrivalTime, setArrivalTime] = useState('14:00');
+  const [arrivalTime, setArrivalTime] = useState(DEFAULT_ARRIVAL_TIME);
   const [departureDate, setDepartureDate] = useState('');
-  const [departureTime, setDepartureTime] = useState('10:00');
+  const [departureTime, setDepartureTime] = useState(DEFAULT_DEPARTURE_TIME);
   const [errors, setErrors] = useState({});
 
   const isEditing = !!boarding;
@@ -76,9 +77,9 @@ export default function BoardingForm({ boarding, preselectedDogId, onSave, onCan
     if (!isEditing) {
       setDogId('');
       setArrivalDate('');
-      setArrivalTime('14:00');
+      setArrivalTime(DEFAULT_ARRIVAL_TIME);
       setDepartureDate('');
-      setDepartureTime('10:00');
+      setDepartureTime(DEFAULT_DEPARTURE_TIME);
       setErrors({});
     }
   };

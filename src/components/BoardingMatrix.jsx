@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent, formatName } from '../utils/dateUtils';
+import { DEFAULT_MATRIX_DAYS } from '../utils/constants';
 import EmployeeDropdown from './EmployeeDropdown';
 
-export default function BoardingMatrix({ startDate, days = 14 }) {
+export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }) {
   const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
   const [dogSortDirection, setDogSortDirection] = useState('asc');
   const [presenceSortDate, setPresenceSortDate] = useState(null);
