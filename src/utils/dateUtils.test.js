@@ -1,3 +1,7 @@
+/**
+ * @requirements REQ-060, REQ-061
+ * Date formatting and calculation utilities
+ */
 import { describe, it, expect } from 'vitest';
 import {
   formatName,
@@ -15,7 +19,10 @@ import {
   getDayOfWeek,
 } from './dateUtils';
 
-describe('formatName', () => {
+/**
+ * @requirements REQ-060
+ */
+describe('REQ-060: formatName', () => {
   it('capitalizes first letter of each word', () => {
     expect(formatName('luna')).toBe('Luna');
     expect(formatName('cooper smith')).toBe('Cooper Smith');
@@ -78,7 +85,10 @@ describe('combineDateAndTime', () => {
   });
 });
 
-describe('calculateNights', () => {
+/**
+ * @requirements REQ-061
+ */
+describe('REQ-061: calculateNights', () => {
   it('calculates nights for multi-day stay', () => {
     // Mon 2PM -> Wed 10AM = 2 nights (Mon night, Tue night)
     expect(calculateNights('2025-01-13T14:00', '2025-01-15T10:00')).toBe(2);
@@ -100,7 +110,10 @@ describe('calculateNights', () => {
   });
 });
 
-describe('isOvernight', () => {
+/**
+ * @requirements REQ-061
+ */
+describe('REQ-061: isOvernight', () => {
   const boarding = {
     arrivalDateTime: '2025-01-15T14:00:00',
     departureDateTime: '2025-01-18T10:00:00',

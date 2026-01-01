@@ -39,7 +39,10 @@ const renderSignupPage = () => {
   );
 };
 
-describe('Invite Code System', () => {
+/**
+ * @requirements REQ-001
+ */
+describe('REQ-001: Invite Code System', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

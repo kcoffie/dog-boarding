@@ -34,13 +34,19 @@ const renderProfilePage = () => {
   );
 };
 
+/**
+ * @requirements REQ-003, REQ-004
+ */
 describe('User Self-Management', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     supabase.auth.updateUser.mockReset();
   });
 
-  describe('Profile Display', () => {
+  /**
+   * @requirements REQ-003
+   */
+  describe('REQ-003: Profile Display', () => {
     it('displays current user email on profile page', () => {
       renderProfilePage();
       expect(screen.getByText('test@example.com')).toBeInTheDocument();
@@ -58,7 +64,10 @@ describe('User Self-Management', () => {
     });
   });
 
-  describe('Password Change Form', () => {
+  /**
+   * @requirements REQ-004
+   */
+  describe('REQ-004: Password Change Form', () => {
     it('shows password change form', () => {
       renderProfilePage();
       expect(screen.getByText('Change Password')).toBeInTheDocument();
