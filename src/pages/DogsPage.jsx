@@ -22,6 +22,8 @@ export default function DogsPage() {
   const [sortDirection, setSortDirection] = useState('asc');
   const [boardingSortColumn, setBoardingSortColumn] = useState('arrivalDateTime');
   const [boardingSortDirection, setBoardingSortDirection] = useState('desc');
+  const [pastBoardingSortColumn, setPastBoardingSortColumn] = useState('departureDateTime');
+  const [pastBoardingSortDirection, setPastBoardingSortDirection] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
   const [inlineAddBoardingDogId, setInlineAddBoardingDogId] = useState(null);
 
@@ -156,6 +158,15 @@ export default function DogsPage() {
     }
   };
 
+  const handlePastBoardingSort = (column) => {
+    if (pastBoardingSortColumn === column) {
+      setPastBoardingSortDirection(pastBoardingSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setPastBoardingSortColumn(column);
+      setPastBoardingSortDirection('asc');
+    }
+  };
+
   const trimmedSearch = searchTerm.trim().toLowerCase();
   const filteredAndSortedDogs = [...dogs]
     .filter(dog => (dog.name || '').toLowerCase().includes(trimmedSearch))
@@ -190,7 +201,17 @@ export default function DogsPage() {
     return <span className="ml-1 text-indigo-600">{boardingSortDirection === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const sortedBoardings = [...boardings].sort((a, b) => {
+  const PastBoardingSortIcon = ({ column }) => {
+    if (pastBoardingSortColumn !== column) {
+      return <span className="text-slate-300 ml-1">↕</span>;
+    }
+    return <span className="ml-1 text-indigo-600">{pastBoardingSortDirection === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  // Filter out past boardings from main table - only show current and upcoming
+  const sortedBoardings = [...boardings]
+    .filter(b => getBoardingStatus(b) !== 'past')
+    .sort((a, b) => {
     let aVal, bVal;
 
     switch (boardingSortColumn) {
@@ -741,7 +762,39 @@ export default function DogsPage() {
       {(() => {
         const pastBoardings = boardings
           .filter(b => getBoardingStatus(b) === 'past')
-          .sort((a, b) => new Date(b.departureDateTime) - new Date(a.departureDateTime));
+          .sort((a, b) => {
+            let aVal, bVal;
+
+            switch (pastBoardingSortColumn) {
+              case 'dogName':
+                aVal = getDogName(a.dogId).toLowerCase();
+                bVal = getDogName(b.dogId).toLowerCase();
+                break;
+              case 'arrivalDateTime':
+              case 'departureDateTime':
+                aVal = new Date(a[pastBoardingSortColumn]).getTime();
+                bVal = new Date(b[pastBoardingSortColumn]).getTime();
+                break;
+              case 'nights':
+                aVal = calculateNights(a.arrivalDateTime, a.departureDateTime);
+                bVal = calculateNights(b.arrivalDateTime, b.departureDateTime);
+                break;
+              case 'gross':
+                aVal = calculateNights(a.arrivalDateTime, a.departureDateTime) * getDogNightRate(a.dogId);
+                bVal = calculateNights(b.arrivalDateTime, b.departureDateTime) * getDogNightRate(b.dogId);
+                break;
+              default:
+                return 0;
+            }
+
+            if (typeof aVal === 'string') {
+              const result = aVal.localeCompare(bVal);
+              return pastBoardingSortDirection === 'asc' ? result : -result;
+            }
+
+            const result = aVal - bVal;
+            return pastBoardingSortDirection === 'asc' ? result : -result;
+          });
 
         if (pastBoardings.length === 0) return null;
 
@@ -802,20 +855,35 @@ export default function DogsPage() {
                 <table className="w-full">
                   <thead className="sticky top-0 bg-white border-b border-slate-200 z-10">
                     <tr>
-                      <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Dog
+                      <th
+                        className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => handlePastBoardingSort('dogName')}
+                      >
+                        Dog<PastBoardingSortIcon column="dogName" />
                       </th>
-                      <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Arrival
+                      <th
+                        className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => handlePastBoardingSort('arrivalDateTime')}
+                      >
+                        Arrival<PastBoardingSortIcon column="arrivalDateTime" />
                       </th>
-                      <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Departure
+                      <th
+                        className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => handlePastBoardingSort('departureDateTime')}
+                      >
+                        Departure<PastBoardingSortIcon column="departureDateTime" />
                       </th>
-                      <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Nights
+                      <th
+                        className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => handlePastBoardingSort('nights')}
+                      >
+                        Nights<PastBoardingSortIcon column="nights" />
                       </th>
-                      <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Gross
+                      <th
+                        className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => handlePastBoardingSort('gross')}
+                      >
+                        Gross<PastBoardingSortIcon column="gross" />
                       </th>
                     </tr>
                   </thead>
