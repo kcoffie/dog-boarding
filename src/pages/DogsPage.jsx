@@ -737,6 +737,120 @@ export default function DogsPage() {
         </div>
       </div>
 
+      {/* Past Boardings Section */}
+      {(() => {
+        const pastBoardings = boardings
+          .filter(b => getBoardingStatus(b) === 'past')
+          .sort((a, b) => new Date(b.departureDateTime) - new Date(a.departureDateTime));
+
+        if (pastBoardings.length === 0) return null;
+
+        return (
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 tracking-tight">Past Boardings</h2>
+                <p className="text-slate-500 mt-1">Historical boarding records ({pastBoardings.length} total)</p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden">
+              {/* Mobile Card Layout */}
+              <div className="md:hidden max-h-[600px] overflow-y-auto divide-y divide-slate-100">
+                {pastBoardings.map((boarding) => {
+                  const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
+                  const nightRate = getDogNightRate(boarding.dogId);
+                  const gross = nights * nightRate;
+                  const dogName = getDogName(boarding.dogId);
+
+                  return (
+                    <div key={boarding.id} className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                            <span className="text-sm font-semibold text-slate-500">{getInitials(dogName)}</span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-slate-900 truncate">{dogName}</div>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
+                              Past
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-lg font-semibold text-slate-900">{formatCurrency(gross)}</div>
+                          <div className="text-xs text-slate-500">{nights} nights</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 text-sm text-slate-600">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Arrival:</span>
+                          <span>{formatDateTime(boarding.arrivalDateTime)}</span>
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span className="text-slate-500">Departure:</span>
+                          <span>{formatDateTime(boarding.departureDateTime)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table Layout - 12 rows visible with scroll */}
+              <div className="hidden md:block max-h-[528px] overflow-y-auto">
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-white border-b border-slate-200 z-10">
+                    <tr>
+                      <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Dog
+                      </th>
+                      <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Arrival
+                      </th>
+                      <th className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Departure
+                      </th>
+                      <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Nights
+                      </th>
+                      <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Gross
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {pastBoardings.map((boarding) => {
+                      const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
+                      const nightRate = getDogNightRate(boarding.dogId);
+                      const gross = nights * nightRate;
+                      const dogName = getDogName(boarding.dogId);
+
+                      return (
+                        <tr key={boarding.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs font-semibold text-slate-500">{getInitials(dogName)}</span>
+                              </div>
+                              <span className="text-sm font-medium text-slate-900">{dogName}</span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.arrivalDateTime)}</td>
+                          <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.departureDateTime)}</td>
+                          <td className="px-5 py-4 text-sm text-slate-600 text-right tabular-nums">{nights}</td>
+                          <td className="px-5 py-4 text-sm font-medium text-slate-900 text-right tabular-nums">{formatCurrency(gross)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Delete Dog Confirmation Dialog */}
       <ConfirmDialog
         isOpen={deleteConfirm.isOpen}

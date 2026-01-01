@@ -2,9 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 
-// Mock Supabase
-const mockUpdateUser = vi.fn();
+// Mock useAuth hook
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({
+    user: {
+      id: 'user-123',
+      email: 'test@example.com',
+      created_at: '2024-01-01T00:00:00Z',
+    },
+    signOut: vi.fn(),
+  }),
+}));
 
+// Mock Supabase - use inline mock to avoid hoisting issues
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     auth: {
@@ -14,21 +24,12 @@ vi.mock('../../lib/supabase', () => ({
 }));
 
 import ProfilePage from '../../pages/ProfilePage';
-import { AuthContext } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
-const mockUser = {
-  id: 'user-123',
-  email: 'test@example.com',
-  created_at: '2024-01-01T00:00:00Z',
-};
-
-const renderProfilePage = (user = mockUser) => {
+const renderProfilePage = () => {
   return render(
     <BrowserRouter>
-      <AuthContext.Provider value={{ user, signOut: vi.fn() }}>
-        <ProfilePage />
-      </AuthContext.Provider>
+      <ProfilePage />
     </BrowserRouter>
   );
 };
