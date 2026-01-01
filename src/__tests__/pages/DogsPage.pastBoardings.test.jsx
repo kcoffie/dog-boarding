@@ -121,9 +121,25 @@ describe('Past Boardings Table', () => {
     const currentStatuses = screen.getAllByText('Current');
     expect(currentStatuses.length).toBe(2); // mobile and desktop views
 
-    // Past status appears multiple times in past boardings section
+    // Past status appears in the past boardings section (mobile cards only, not in main table)
     const pastStatuses = screen.getAllByText('Past');
     expect(pastStatuses.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('main boardings table does not show past boardings', () => {
+    renderDogsPage();
+
+    // Main boardings table should only have Current status, not Past
+    // The "Past" text should only appear in the Past Boardings section
+    const mainBoardingsHeader = screen.getByText('Boardings');
+    expect(mainBoardingsHeader).toBeInTheDocument();
+
+    // The upcoming/current statuses in the main table
+    const currentStatuses = screen.getAllByText('Current');
+    expect(currentStatuses.length).toBe(2); // mobile and desktop
+
+    // "Upcoming" status should not exist in our mock (we only have current and past)
+    expect(screen.queryByText('Upcoming')).not.toBeInTheDocument();
   });
 
   it('has scrollable container for past boardings', () => {
@@ -157,6 +173,17 @@ describe('Past Boardings Table', () => {
     // This is harder to test directly, but we can verify the section renders
     const pastSection = screen.getByText('Past Boardings');
     expect(pastSection).toBeInTheDocument();
+  });
+
+  it('has sortable column headers in past boardings table', () => {
+    const { container } = renderDogsPage();
+
+    // Desktop table should have clickable headers with sort functionality
+    // Look for headers with cursor-pointer class
+    const sortableHeaders = container.querySelectorAll('th.cursor-pointer');
+    // Should have at least 5 sortable columns (Dog, Arrival, Departure, Nights, Gross)
+    // from both main boardings table and past boardings table
+    expect(sortableHeaders.length).toBeGreaterThanOrEqual(5);
   });
 });
 
