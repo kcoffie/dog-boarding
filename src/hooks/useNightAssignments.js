@@ -21,8 +21,7 @@ export function useNightAssignments(employees = []) {
 
       const { data, error } = await supabase
         .from('night_assignments')
-        .select('*')
-        .eq('user_id', user.id);
+        .select('*');
 
       if (error) throw error;
 
@@ -59,7 +58,6 @@ export function useNightAssignments(employees = []) {
             .update({
               employee_id: employeeId,
             })
-            .eq('user_id', user.id)
             .eq('date', date);
 
           if (error) throw error;
@@ -72,7 +70,6 @@ export function useNightAssignments(employees = []) {
           const { error } = await supabase
             .from('night_assignments')
             .delete()
-            .eq('user_id', user.id)
             .eq('date', date);
 
           if (error) throw error;
@@ -84,7 +81,6 @@ export function useNightAssignments(employees = []) {
         const { data, error } = await supabase
           .from('night_assignments')
           .insert([{
-            user_id: user.id,
             date,
             employee_id: employeeId,
           }])
@@ -123,7 +119,6 @@ export function useNightAssignments(employees = []) {
       const { error } = await supabase
         .from('night_assignments')
         .delete()
-        .eq('user_id', user.id)
         .eq('employee_id', employeeId);
 
       if (error) throw error;

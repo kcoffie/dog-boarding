@@ -21,7 +21,6 @@ export function useEmployees() {
       const { data, error } = await supabase
         .from('employees')
         .select('*')
-        .eq('user_id', user.id)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -57,7 +56,6 @@ export function useEmployees() {
       const { data, error } = await supabase
         .from('employees')
         .insert([{
-          user_id: user.id,
           name,
           active: true,
         }])

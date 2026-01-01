@@ -18,19 +18,19 @@ export function useSettings() {
     try {
       setLoading(true);
 
+      // Fetch shared settings (single org - one settings row for all users)
       const { data, error } = await supabase
         .from('settings')
         .select('*')
-        .eq('user_id', user.id)
+        .limit(1)
         .single();
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // No settings found - create default settings
+          // No settings found - create default shared settings
           const { data: newSettings, error: insertError } = await supabase
             .from('settings')
             .insert([{
-              user_id: user.id,
               net_percentage: 65.00,
               net_percentage_history: []
             }])
@@ -98,7 +98,7 @@ export function useSettings() {
       const { error } = await supabase
         .from('settings')
         .update(updates)
-        .eq('user_id', user.id);
+        .eq('id', settings.id);
 
       if (error) throw error;
 
