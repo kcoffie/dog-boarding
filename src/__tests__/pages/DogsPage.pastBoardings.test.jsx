@@ -83,7 +83,10 @@ const renderDogsPage = () => {
   );
 };
 
-describe('Past Boardings Table', () => {
+/**
+ * @requirements REQ-024
+ */
+describe('REQ-024: Past Boardings Table', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

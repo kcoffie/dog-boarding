@@ -7,7 +7,10 @@ vi.mock('../context/DataContext', () => ({
   useData: vi.fn(),
 }));
 
-describe('EmployeeDropdown', () => {
+/**
+ * @requirements REQ-033
+ */
+describe('REQ-033: EmployeeDropdown', () => {
   const mockSettings = {
     employees: [
       { id: '1', name: 'Kate', active: true },

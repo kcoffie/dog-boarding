@@ -39,7 +39,10 @@ const getTestDates = () => {
   };
 };
 
-describe('PayrollPage', () => {
+/**
+ * @requirements REQ-041, REQ-042, REQ-043
+ */
+describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
   const dates = getTestDates();
 
   const mockDogs = [

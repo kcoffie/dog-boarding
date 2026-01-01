@@ -22,7 +22,10 @@ const sampleBoardings = [
   { id: '3', dogId: '3', arrivalDateTime: '2025-01-15T18:00:00', departureDateTime: '2025-01-20T11:00:00' },
 ];
 
-describe('calculateGross', () => {
+/**
+ * @requirements REQ-032, REQ-063
+ */
+describe('REQ-063: calculateGross', () => {
   it('calculates gross for single overnight dog', () => {
     // Jan 18: Only Bella is overnight (Luna departed, Cooper departed)
     const gross = calculateGross(sampleDogs, sampleBoardings, '2025-01-18');
@@ -61,7 +64,10 @@ describe('calculateGross', () => {
   });
 });
 
-describe('calculateNet', () => {
+/**
+ * @requirements REQ-032, REQ-063
+ */
+describe('REQ-063: calculateNet', () => {
   it('calculates net at 65%', () => {
     expect(calculateNet(100, 65)).toBe(65);
   });
@@ -83,7 +89,10 @@ describe('calculateNet', () => {
   });
 });
 
-describe('countOvernightDogs', () => {
+/**
+ * @requirements REQ-032
+ */
+describe('REQ-032: countOvernightDogs', () => {
   it('counts multiple dogs on same night', () => {
     // Jan 16: Luna, Cooper, and Bella are all overnight
     const count = countOvernightDogs(sampleDogs, sampleBoardings, '2025-01-16');
@@ -106,7 +115,10 @@ describe('countOvernightDogs', () => {
   });
 });
 
-describe('calculateEmployeeTotals', () => {
+/**
+ * @requirements REQ-040
+ */
+describe('REQ-040: calculateEmployeeTotals', () => {
   const dates = ['2025-01-15', '2025-01-16', '2025-01-17'];
   const assignments = [
     { date: '2025-01-15', employeeName: 'Kate' },
@@ -159,7 +171,10 @@ describe('calculateEmployeeTotals', () => {
   });
 });
 
-describe('calculateBoardingGross', () => {
+/**
+ * @requirements REQ-063
+ */
+describe('REQ-063: calculateBoardingGross', () => {
   const luna = { id: '1', name: 'Luna', dayRate: 35, nightRate: 45 };
   const lunaBoarding = {
     id: '1',

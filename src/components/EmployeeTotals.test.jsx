@@ -8,7 +8,10 @@ vi.mock('../context/DataContext', () => ({
   useData: vi.fn(),
 }));
 
-describe('EmployeeTotals', () => {
+/**
+ * @requirements REQ-040
+ */
+describe('REQ-040: EmployeeTotals', () => {
   const mockDogs = [
     { id: '1', name: 'Luna', dayRate: 35, nightRate: 45, active: true },
     { id: '2', name: 'Cooper', dayRate: 35, nightRate: 45, active: true },

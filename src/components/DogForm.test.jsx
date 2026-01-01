@@ -8,7 +8,10 @@ const getNameInput = () => screen.getByPlaceholderText(/enter dog name/i);
 const getDayRateInput = () => screen.getAllByRole('spinbutton')[0];
 const getNightRateInput = () => screen.getAllByRole('spinbutton')[1];
 
-describe('DogForm', () => {
+/**
+ * @requirements REQ-010, REQ-011
+ */
+describe('REQ-010, REQ-011: DogForm', () => {
   const mockOnSave = vi.fn();
   const mockOnCancel = vi.fn();
 
