@@ -86,6 +86,12 @@ export default function LoginPage() {
           {loading ? 'Signing in...' : 'Sign in'}
         </button>
 
+        <p className="text-center text-sm text-slate-600">
+          Have an invite code?{' '}
+          <Link to="/signup" className="text-indigo-600 hover:text-indigo-700 font-medium">
+            Create account
+          </Link>
+        </p>
       </form>
     </AuthLayout>
   );
