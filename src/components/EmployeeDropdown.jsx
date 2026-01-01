@@ -1,13 +1,10 @@
 import { useData } from '../context/DataContext';
+import { getEmployeeName, isEmployeeActive } from '../utils/employeeHelpers';
 
 export default function EmployeeDropdown({ date }) {
   const { settings, getNightAssignment, setNightAssignment } = useData();
 
   const selectedEmployee = getNightAssignment(date);
-
-  // Helper to get employee name and active status
-  const getEmployeeName = (emp) => typeof emp === 'string' ? emp : emp.name;
-  const isEmployeeActive = (emp) => typeof emp === 'string' ? true : emp.active !== false;
 
   const handleChange = async (e) => {
     try {
