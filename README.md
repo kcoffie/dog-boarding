@@ -1,16 +1,89 @@
-# React + Vite
+# Qboard - Dog Boarding Manager
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern web application for managing dog boarding businesses. Track bookings, calculate revenue, manage employees, and more.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Visual Calendar** - See all bookings at a glance with color-coded dogs
+- **Boarding Matrix** - Daily breakdown of dogs, rates, and revenue
+- **Dog Management** - Track dogs with custom day/night rates
+- **Employee Tracking** - Assign employees to nights, calculate earnings
+- **Payroll** - Track and manage employee payments
+- **Mobile-First PWA** - Install on your phone, works offline
+- **Secure Multi-User** - Each user sees only their own data
+- **CSV Import** - Bulk import bookings from spreadsheets
 
-## React Compiler
+## Quick Start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Prerequisites
 
-## Expanding the ESLint configuration
+- Node.js 18+
+- npm or yarn
+- Supabase account (free tier works)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/dog-boarding.git
+cd dog-boarding
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env.local
+# Edit .env.local with your Supabase credentials
+
+# Start development server
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### Supabase Setup
+
+1. Create a new Supabase project at [supabase.com](https://supabase.com)
+2. Run the SQL from `supabase/schema.sql` in the SQL editor
+3. Copy your project URL and anon key to `.env.local`
+
+## Tech Stack
+
+- **Frontend:** React 18, Vite, Tailwind CSS
+- **Backend:** Supabase (PostgreSQL + Auth)
+- **Testing:** Vitest, React Testing Library
+
+## Development
+
+```bash
+# Run development server
+npm run dev
+
+# Run tests
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Build for production
+npm run build
+
+# Run linting
+npm run lint
+```
+
+## Project Structure
+
+```
+src/
+├── components/     # Reusable UI components
+├── pages/          # Page components (routed)
+├── hooks/          # Custom React hooks (Supabase data)
+├── utils/          # Utility functions
+├── context/        # React contexts
+└── lib/            # External library setup
+```
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.

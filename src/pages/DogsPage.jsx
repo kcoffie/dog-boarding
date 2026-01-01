@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useData } from '../context/DataContext';
 import DogForm from '../components/DogForm';
 import DogCsvImport from '../components/DogCsvImport';
@@ -420,7 +420,7 @@ export default function DogsPage() {
                   const isEditing = editingBoarding?.id === boarding.id;
 
                   return (
-                    <React.Fragment key={boarding.id}>
+                    <Fragment key={boarding.id}>
                       <tr className={`hover:bg-slate-50/50 transition-colors ${isEditing ? 'bg-indigo-50/50' : ''}`}>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
@@ -470,7 +470,7 @@ export default function DogsPage() {
                           </td>
                         </tr>
                       )}
-                    </React.Fragment>
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -671,7 +671,7 @@ export default function DogsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredAndSortedDogs.map((dog) => (
-                  <React.Fragment key={dog.id}>
+                  <Fragment key={dog.id}>
                     <tr className={`hover:bg-slate-50/50 transition-colors ${dog.active === false ? 'opacity-50' : ''}`}>
                       <td className={`px-5 py-4 ${dog.active === false ? 'text-slate-400' : 'text-slate-900'}`}>
                         {dog.active !== false ? (
@@ -728,7 +728,7 @@ export default function DogsPage() {
                         </td>
                       </tr>
                     )}
-                  </React.Fragment>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

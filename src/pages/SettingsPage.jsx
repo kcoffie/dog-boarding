@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { getEmployeeName, isEmployeeActive } from '../utils/employeeHelpers';
 
 export default function SettingsPage() {
   const { settings, settingsLoading, sortEmployees, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
-
-  const getEmployeeName = (emp) => typeof emp === 'string' ? emp : emp.name;
-  const isEmployeeActive = (emp) => typeof emp === 'string' ? true : emp.active !== false;
 
   const [netPercentage, setNetPercentage] = useState('');
   const [percentageError, setPercentageError] = useState('');
@@ -43,7 +41,7 @@ export default function SettingsPage() {
         await saveNetPercentage(numValue, null);
       }
       setPercentageError('');
-    } catch (err) {
+    } catch {
       setPercentageError('Failed to save. Please try again.');
     }
   };
@@ -66,7 +64,7 @@ export default function SettingsPage() {
       await addEmployee(trimmedName);
       setNewEmployeeName('');
       setEmployeeError('');
-    } catch (err) {
+    } catch {
       setEmployeeError('Failed to add employee. Please try again.');
     }
   };
@@ -106,10 +104,6 @@ export default function SettingsPage() {
 
   const handleDragEnd = () => {
     setDraggedIndex(null);
-  };
-
-  const handleSortEmployees = (direction) => {
-    sortEmployees(direction);
   };
 
   return (

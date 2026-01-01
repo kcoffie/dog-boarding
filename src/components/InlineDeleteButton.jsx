@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
+import { CONFIRM_TIMEOUT_MS } from '../utils/constants';
 
 export default function InlineDeleteButton({ onDelete, disabled = false, className = '' }) {
   const [confirming, setConfirming] = useState(false);
 
-  // Reset confirming state after 3 seconds
+  // Reset confirming state after timeout
   useEffect(() => {
     if (confirming) {
-      const timer = setTimeout(() => setConfirming(false), 3000);
+      const timer = setTimeout(() => setConfirming(false), CONFIRM_TIMEOUT_MS);
       return () => clearTimeout(timer);
     }
   }, [confirming]);

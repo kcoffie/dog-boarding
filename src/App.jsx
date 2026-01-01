@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { DataProvider } from './context/DataContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import MatrixPage from './pages/MatrixPage';
 import DogsPage from './pages/DogsPage';
@@ -14,6 +15,7 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 
 function App() {
   return (
+    <ErrorBoundary>
     <DataProvider>
       <BrowserRouter>
         <Routes>
@@ -41,6 +43,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </DataProvider>
+    </ErrorBoundary>
   );
 }
 

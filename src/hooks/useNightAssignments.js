@@ -1,26 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { getEmployeeNameById, getEmployeeIdByName } from '../utils/employeeHelpers';
 
 export function useNightAssignments(employees = []) {
   const { user } = useAuth();
   const [nightAssignments, setNightAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Helper to get employee name by ID
-  const getEmployeeNameById = useCallback((employeeId) => {
-    if (!employeeId) return '';
-    const employee = employees.find(e => e.id === employeeId);
-    return employee?.name || '';
-  }, [employees]);
-
-  // Helper to get employee ID by name
-  const getEmployeeIdByName = useCallback((employeeName) => {
-    if (!employeeName || employeeName === 'N/A') return null;
-    const employee = employees.find(e => e.name === employeeName);
-    return employee?.id || null;
-  }, [employees]);
 
   const fetchNightAssignments = useCallback(async () => {
     if (!user) {
@@ -61,7 +48,7 @@ export function useNightAssignments(employees = []) {
     if (!user) return;
 
     const existing = nightAssignments.find(a => a.date === date);
-    const employeeId = employeeName === 'N/A' ? null : getEmployeeIdByName(employeeName);
+    const employeeId = employeeName === 'N/A' ? null : getEmployeeIdByName(employees, employeeName);
 
     try {
       if (existing) {
@@ -122,14 +109,14 @@ export function useNightAssignments(employees = []) {
     const assignment = nightAssignments.find(a => a.date === date);
     if (!assignment) return '';
     if (assignment.employeeId === null) return 'N/A';
-    return getEmployeeNameById(assignment.employeeId) || '';
-  }, [nightAssignments, getEmployeeNameById]);
+    return getEmployeeNameById(employees, assignment.employeeId) || '';
+  }, [nightAssignments, employees]);
 
   // For deleting assignments when an employee is deleted
   const deleteAssignmentsForEmployee = async (employeeName) => {
     if (!user) return;
 
-    const employeeId = getEmployeeIdByName(employeeName);
+    const employeeId = getEmployeeIdByName(employees, employeeName);
     if (!employeeId) return;
 
     try {
