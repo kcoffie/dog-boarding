@@ -43,7 +43,7 @@ export function useNightAssignments(employees = []) {
     fetchNightAssignments();
   }, [fetchNightAssignments]);
 
-  const setNightAssignment = async (date, employeeName) => {
+  const setNightAssignment = useCallback(async (date, employeeName) => {
     if (!user) return;
 
     const existing = nightAssignments.find(a => a.date === date);
@@ -100,7 +100,7 @@ export function useNightAssignments(employees = []) {
       setError(err.message);
       throw err;
     }
-  };
+  }, [user, nightAssignments, employees]);
 
   const getNightAssignment = useCallback((date) => {
     const assignment = nightAssignments.find(a => a.date === date);
