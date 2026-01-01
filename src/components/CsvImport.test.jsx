@@ -43,7 +43,10 @@ const renderWithProvider = (ui) => {
   );
 };
 
-describe('CsvImport', () => {
+/**
+ * @requirements REQ-023
+ */
+describe('REQ-023: CsvImport', () => {
   const mockOnClose = vi.fn();
 
   beforeEach(() => {

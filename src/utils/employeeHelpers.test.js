@@ -1,3 +1,7 @@
+/**
+ * @requirements REQ-062
+ * Employee helper utilities
+ */
 import { describe, it, expect } from 'vitest';
 import {
   getEmployeeNameById,
@@ -6,7 +10,10 @@ import {
   isEmployeeActive,
 } from './employeeHelpers';
 
-describe('getEmployeeNameById', () => {
+/**
+ * @requirements REQ-062
+ */
+describe('REQ-062: getEmployeeNameById', () => {
   const employees = [
     { id: '1', name: 'Kate' },
     { id: '2', name: 'Nick' },

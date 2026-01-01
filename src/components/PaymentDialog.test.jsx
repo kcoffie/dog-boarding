@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import PaymentDialog from './PaymentDialog';
 
-describe('PaymentDialog', () => {
+/**
+ * @requirements REQ-041
+ */
+describe('REQ-041: PaymentDialog', () => {
   const mockOnConfirm = vi.fn();
   const mockOnCancel = vi.fn();
   const mockFormatCurrency = (amount) => `$${amount.toFixed(2)}`;

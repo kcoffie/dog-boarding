@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import DateNavigator from './DateNavigator';
 
-describe('DateNavigator', () => {
+/**
+ * @requirements REQ-031
+ */
+describe('REQ-031: DateNavigator', () => {
   const defaultProps = {
     startDate: new Date('2025-01-15'),
     endDate: new Date('2025-01-28'),

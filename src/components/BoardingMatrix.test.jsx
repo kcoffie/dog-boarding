@@ -17,7 +17,10 @@ const renderWithProviders = (ui) => {
   );
 };
 
-describe('BoardingMatrix', () => {
+/**
+ * @requirements REQ-030
+ */
+describe('REQ-030: BoardingMatrix', () => {
   const mockDogs = [
     { id: '1', name: 'Luna', dayRate: 35, nightRate: 45, active: true },
     { id: '2', name: 'Cooper', dayRate: 35, nightRate: 45, active: true },
@@ -84,7 +87,10 @@ describe('BoardingMatrix', () => {
   });
 });
 
-describe('BoardingMatrix empty states', () => {
+/**
+ * @requirements REQ-030
+ */
+describe('REQ-030: BoardingMatrix empty states', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -103,7 +109,10 @@ describe('BoardingMatrix empty states', () => {
   });
 });
 
-describe('BoardingMatrix sorting', () => {
+/**
+ * @requirements REQ-034
+ */
+describe('REQ-034: BoardingMatrix sorting', () => {
   // Dogs with names that sort differently: A, C, Z
   const mockDogsForSorting = [
     { id: '1', name: 'Charlie', dayRate: 35, nightRate: 45, active: true },

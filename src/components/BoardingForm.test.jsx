@@ -19,7 +19,10 @@ const mockSettings = {
   employees: [],
 };
 
-describe('BoardingForm', () => {
+/**
+ * @requirements REQ-020, REQ-021
+ */
+describe('REQ-020, REQ-021: BoardingForm', () => {
   const mockOnSave = vi.fn();
   const mockOnCancel = vi.fn();
 
