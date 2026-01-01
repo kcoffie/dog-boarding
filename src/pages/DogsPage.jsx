@@ -5,6 +5,7 @@ import DogCsvImport from '../components/DogCsvImport';
 import BoardingForm from '../components/BoardingForm';
 import CsvImport from '../components/CsvImport';
 import ConfirmDialog from '../components/ConfirmDialog';
+import InlineDeleteButton from '../components/InlineDeleteButton';
 import { formatDateTime, calculateNights, formatName } from '../utils/dateUtils';
 
 export default function DogsPage() {
@@ -79,16 +80,10 @@ export default function DogsPage() {
     }
   };
 
-  const handleDeleteBoardingClick = (boarding) => {
-    setDeleteConfirm({ isOpen: true, type: 'boarding', item: boarding });
-  };
-
   const handleConfirmDelete = async () => {
     try {
       if (deleteConfirm.type === 'dog') {
         await deleteDog(deleteConfirm.item.id);
-      } else if (deleteConfirm.type === 'boarding') {
-        await deleteBoarding(deleteConfirm.item.id);
       }
       setDeleteConfirm({ isOpen: false, type: null, item: null });
     } catch (err) {
@@ -135,15 +130,10 @@ export default function DogsPage() {
   };
 
   const getDeleteMessage = () => {
-    if (deleteConfirm.type === 'dog') {
-      return deleteConfirm.hasBoardings
-        ? `"${deleteConfirm.item?.name}" has boarding records. Deleting will also remove all their boardings. Are you sure?`
-        : `Are you sure you want to delete "${deleteConfirm.item?.name}"?`;
-    } else if (deleteConfirm.type === 'boarding') {
-      const dogName = getDogName(deleteConfirm.item?.dogId);
-      return `Are you sure you want to delete this boarding for ${dogName}?`;
-    }
-    return '';
+    if (!deleteConfirm.item) return '';
+    return deleteConfirm.hasBoardings
+      ? `"${deleteConfirm.item.name}" has boarding records. Deleting will also remove all their boardings. Are you sure?`
+      : `Are you sure you want to delete "${deleteConfirm.item.name}"?`;
   };
 
   const isFormOpen = showAddDogForm || showDogCsvImport || editingDog || showAddBoardingForm || showCsvImport || editingBoarding || inlineAddBoardingDogId;
@@ -353,13 +343,11 @@ export default function DogsPage() {
                       >
                         {isEditing ? 'Cancel' : 'Edit'}
                       </button>
-                      <button
-                        onClick={() => handleDeleteBoardingClick(boarding)}
+                      <InlineDeleteButton
+                        onDelete={() => deleteBoarding(boarding.id)}
                         disabled={isFormOpen}
-                        className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 active:bg-red-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
-                      >
-                        Delete
-                      </button>
+                        className="flex-1"
+                      />
                     </div>
                     {isEditing && (
                       <div className="mt-4 pt-4 border-t border-indigo-200">
@@ -459,13 +447,11 @@ export default function DogsPage() {
                           >
                             {isEditing ? 'Cancel' : 'Edit'}
                           </button>
-                          <button
-                            onClick={() => handleDeleteBoardingClick(boarding)}
+                          <InlineDeleteButton
+                            onDelete={() => deleteBoarding(boarding.id)}
                             disabled={isFormOpen}
-                            className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          >
-                            Delete
-                          </button>
+                            className="!min-h-0 !py-1 !px-2 text-xs"
+                          />
                         </td>
                       </tr>
                       {isEditing && (
@@ -751,10 +737,10 @@ export default function DogsPage() {
         </div>
       </div>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Dog Confirmation Dialog */}
       <ConfirmDialog
         isOpen={deleteConfirm.isOpen}
-        title={deleteConfirm.type === 'dog' ? 'Delete Dog' : 'Delete Boarding'}
+        title="Delete Dog"
         message={getDeleteMessage()}
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteConfirm({ isOpen: false, type: null, item: null })}
