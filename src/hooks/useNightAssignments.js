@@ -27,9 +27,9 @@ export function useNightAssignments(employees = []) {
 
       // Transform from DB format to app format (using employee names)
       setNightAssignments(data.map(a => ({
+        id: a.id,
         date: a.date,
         employeeId: a.employee_id,
-        // employeeName will be resolved when accessed via getNightAssignment
       })));
     } catch (err) {
       console.error('Error fetching night assignments:', err);
@@ -52,29 +52,29 @@ export function useNightAssignments(employees = []) {
     try {
       if (existing) {
         if (employeeName) {
-          // Update existing assignment
+          // Update existing assignment using id
           const { error } = await supabase
             .from('night_assignments')
             .update({
               employee_id: employeeId,
             })
-            .eq('date', date);
+            .eq('id', existing.id);
 
           if (error) throw error;
 
           setNightAssignments(prev => prev.map(a =>
-            a.date === date ? { ...a, employeeId } : a
+            a.id === existing.id ? { ...a, employeeId } : a
           ));
         } else {
           // Delete assignment (empty string means remove)
           const { error } = await supabase
             .from('night_assignments')
             .delete()
-            .eq('date', date);
+            .eq('id', existing.id);
 
           if (error) throw error;
 
-          setNightAssignments(prev => prev.filter(a => a.date !== date));
+          setNightAssignments(prev => prev.filter(a => a.id !== existing.id));
         }
       } else if (employeeName) {
         // Create new assignment
@@ -90,6 +90,7 @@ export function useNightAssignments(employees = []) {
         if (error) throw error;
 
         setNightAssignments(prev => [...prev, {
+          id: data.id,
           date: data.date,
           employeeId: data.employee_id,
         }]);
