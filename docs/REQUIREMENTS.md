@@ -412,6 +412,21 @@ System shows unpaid amounts per employee.
 
 ---
 
+### REQ-044: Payment Flow Integration
+**Added:** v1.3 | **Status:** Complete
+
+Marking dates as paid updates both payment history and outstanding balance.
+
+**Acceptance Criteria:**
+- After marking as paid, payment appears in payment history
+- After marking as paid, dates no longer show in outstanding
+- Payment history reflects correct employee, amount, and dates
+- Deleting a payment restores dates to outstanding
+
+**Tests:** `src/__tests__/hooks/usePayments.test.js`
+
+---
+
 ## Settings
 
 ### REQ-050: Net Percentage Configuration
