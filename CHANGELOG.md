@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-01-02
+
+### Added
+- **External Data Sync** - Automatically sync appointments from external booking systems
+  - Authentication with external booking site (REQ-100)
+  - Schedule page scraping for appointment discovery (REQ-101)
+  - Appointment detail extraction (REQ-102)
+  - Data mapping to dogs and boardings (REQ-103)
+  - Full sync orchestration with progress tracking (REQ-104)
+  - Sync logging and history (REQ-106)
+  - Admin UI for sync configuration (REQ-107)
+- Sync Settings panel in Settings page
+  - Enable/disable automatic sync
+  - Configurable sync interval (15 min - 24 hours)
+  - Manual "Sync Now" button with real-time progress
+  - Sync history with detailed statistics
+- Sync status indicator in header (shows when syncing or on error)
+- "External" badge on dogs and boardings imported from sync
+- Database tables for sync feature (sync_appointments, sync_settings, sync_logs)
+- Security: Error sanitization to prevent credential/URL leaks
+- Security: Input validation for sync settings
+- 486 tests (128 new for sync feature)
+
+### Changed
+- Refactored sort icon components to render functions (lint compliance)
+
+### Security
+- Added `sanitizeError()` function to redact URLs, passwords, and usernames from error messages
+- Sync interval validation (15-1440 minutes)
+- Credentials stored in environment variables (not in database)
+
 ## [1.2.0] - 2026-01-01
 
 ### Added
