@@ -66,11 +66,19 @@ export function useSyncSettings() {
     }
   }, [settings?.enabled]);
 
-  // Update sync interval
+  // Update sync interval with validation
   const setInterval = useCallback(async (minutes) => {
+    // Validate input
+    const parsedMinutes = parseInt(minutes, 10);
+    if (isNaN(parsedMinutes) || parsedMinutes < 15 || parsedMinutes > 1440) {
+      setError('Sync interval must be between 15 minutes and 24 hours');
+      return;
+    }
+
     try {
-      await updateSyncSettings(supabase, { interval_minutes: minutes });
-      setSettings(prev => ({ ...prev, interval_minutes: minutes }));
+      await updateSyncSettings(supabase, { interval_minutes: parsedMinutes });
+      setSettings(prev => ({ ...prev, interval_minutes: parsedMinutes }));
+      setError(null);
     } catch (err) {
       setError(err.message);
     }
