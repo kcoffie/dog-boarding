@@ -7,12 +7,28 @@
 - Each requirement should have at least one test
 - When adding features, add requirements here FIRST
 - When fixing bugs, check if a requirement needs updating
+- **Version tracking:** `Added:` shows when requirement was introduced
+- **Status values:** `Planned` → `In Progress` → `Complete`
+
+---
+
+## Version History
+
+| Version | Focus Area | Status |
+|---------|-----------|--------|
+| v1.0 | Core boarding management | Complete |
+| v1.1 | Payroll & employee management | Complete |
+| v1.2 | CSV import & past boardings | Complete |
+| v1.3 | Authentication & invite system | Complete |
+| v1.4 | TBD | Planned |
 
 ---
 
 ## Authentication & Access Control
 
 ### REQ-001: Invite-Only Signup
+**Added:** v1.3 | **Status:** Complete
+
 Users can only create accounts with a valid invite code.
 
 **Acceptance Criteria:**
@@ -28,6 +44,8 @@ Users can only create accounts with a valid invite code.
 ---
 
 ### REQ-002: User Login
+**Added:** v1.3 | **Status:** Complete
+
 Users can log in with email and password.
 
 **Acceptance Criteria:**
@@ -41,6 +59,8 @@ Users can log in with email and password.
 ---
 
 ### REQ-003: User Profile Display
+**Added:** v1.3 | **Status:** Complete
+
 Logged-in users can see their identity in the app.
 
 **Acceptance Criteria:**
@@ -53,6 +73,8 @@ Logged-in users can see their identity in the app.
 ---
 
 ### REQ-004: Password Self-Service
+**Added:** v1.3 | **Status:** Complete
+
 Users can change their own password.
 
 **Acceptance Criteria:**
@@ -67,6 +89,8 @@ Users can change their own password.
 ---
 
 ### REQ-005: Shared Data Access
+**Added:** v1.3 | **Status:** Complete
+
 All authenticated users see all data (single organization model).
 
 **Acceptance Criteria:**
@@ -80,6 +104,8 @@ All authenticated users see all data (single organization model).
 ---
 
 ### REQ-006: Invite Code Management
+**Added:** v1.3 | **Status:** Complete
+
 Authenticated users can create and manage invite codes.
 
 **Acceptance Criteria:**
@@ -96,6 +122,8 @@ Authenticated users can create and manage invite codes.
 ## Dogs
 
 ### REQ-010: Add Dog
+**Added:** v1.0 | **Status:** Complete
+
 Users can add new dogs to the system.
 
 **Acceptance Criteria:**
@@ -110,6 +138,8 @@ Users can add new dogs to the system.
 ---
 
 ### REQ-011: Edit Dog
+**Added:** v1.0 | **Status:** Complete
+
 Users can edit existing dogs.
 
 **Acceptance Criteria:**
@@ -123,6 +153,8 @@ Users can edit existing dogs.
 ---
 
 ### REQ-012: Delete Dog
+**Added:** v1.0 | **Status:** Complete
+
 Users can delete dogs.
 
 **Acceptance Criteria:**
@@ -135,6 +167,8 @@ Users can delete dogs.
 ---
 
 ### REQ-013: Toggle Dog Active Status
+**Added:** v1.0 | **Status:** Complete
+
 Users can mark dogs as active or inactive.
 
 **Acceptance Criteria:**
@@ -150,6 +184,8 @@ Users can mark dogs as active or inactive.
 ## Boardings
 
 ### REQ-020: Add Boarding
+**Added:** v1.0 | **Status:** Complete
+
 Users can add boarding reservations.
 
 **Acceptance Criteria:**
@@ -164,6 +200,8 @@ Users can add boarding reservations.
 ---
 
 ### REQ-021: Edit Boarding
+**Added:** v1.0 | **Status:** Complete
+
 Users can edit existing boardings.
 
 **Acceptance Criteria:**
@@ -176,6 +214,8 @@ Users can edit existing boardings.
 ---
 
 ### REQ-022: Delete Boarding
+**Added:** v1.0 | **Status:** Complete
+
 Users can delete boardings.
 
 **Acceptance Criteria:**
@@ -187,6 +227,8 @@ Users can delete boardings.
 ---
 
 ### REQ-023: CSV Import
+**Added:** v1.2 | **Status:** Complete
+
 Users can import boardings from CSV files.
 
 **Acceptance Criteria:**
@@ -201,6 +243,8 @@ Users can import boardings from CSV files.
 ---
 
 ### REQ-024: Past Boardings Display
+**Added:** v1.2 | **Status:** Complete
+
 Past boardings are displayed separately from current/upcoming.
 
 **Acceptance Criteria:**
@@ -216,6 +260,8 @@ Past boardings are displayed separately from current/upcoming.
 ## Boarding Matrix
 
 ### REQ-030: Display Matrix
+**Added:** v1.0 | **Status:** Complete
+
 Matrix shows dogs and dates in grid format.
 
 **Acceptance Criteria:**
@@ -229,6 +275,8 @@ Matrix shows dogs and dates in grid format.
 ---
 
 ### REQ-031: Date Navigation
+**Added:** v1.0 | **Status:** Complete
+
 Users can navigate to different date ranges.
 
 **Acceptance Criteria:**
@@ -243,6 +291,8 @@ Users can navigate to different date ranges.
 ---
 
 ### REQ-032: Overnight Calculation
+**Added:** v1.0 | **Status:** Complete
+
 Matrix calculates overnight revenue correctly.
 
 **Acceptance Criteria:**
@@ -256,6 +306,8 @@ Matrix calculates overnight revenue correctly.
 ---
 
 ### REQ-033: Employee Night Assignment
+**Added:** v1.1 | **Status:** Complete
+
 Users can assign employees to overnight shifts.
 
 **Acceptance Criteria:**
@@ -270,6 +322,8 @@ Users can assign employees to overnight shifts.
 ---
 
 ### REQ-034: Matrix Sorting
+**Added:** v1.0 | **Status:** Complete
+
 Users can sort the matrix by various columns.
 
 **Acceptance Criteria:**
@@ -283,6 +337,8 @@ Users can sort the matrix by various columns.
 ---
 
 ### REQ-035: Summary Cards
+**Added:** v1.0 | **Status:** Complete
+
 Matrix displays summary statistics.
 
 **Acceptance Criteria:**
@@ -298,6 +354,8 @@ Matrix displays summary statistics.
 ## Payroll
 
 ### REQ-040: Employee Totals
+**Added:** v1.1 | **Status:** Complete
+
 System calculates earnings per employee.
 
 **Acceptance Criteria:**
@@ -311,6 +369,8 @@ System calculates earnings per employee.
 ---
 
 ### REQ-041: Mark as Paid
+**Added:** v1.1 | **Status:** Complete
+
 Users can record payments to employees.
 
 **Acceptance Criteria:**
@@ -324,6 +384,8 @@ Users can record payments to employees.
 ---
 
 ### REQ-042: Payment History
+**Added:** v1.1 | **Status:** Complete
+
 Users can view and manage payment history.
 
 **Acceptance Criteria:**
@@ -337,6 +399,8 @@ Users can view and manage payment history.
 ---
 
 ### REQ-043: Outstanding Payments Display
+**Added:** v1.1 | **Status:** Complete
+
 System shows unpaid amounts per employee.
 
 **Acceptance Criteria:**
@@ -351,6 +415,8 @@ System shows unpaid amounts per employee.
 ## Settings
 
 ### REQ-050: Net Percentage Configuration
+**Added:** v1.1 | **Status:** Complete
+
 Users can configure the net percentage for calculations.
 
 **Acceptance Criteria:**
@@ -364,6 +430,8 @@ Users can configure the net percentage for calculations.
 ---
 
 ### REQ-051: Employee Management
+**Added:** v1.1 | **Status:** Complete
+
 Users can manage the employee list.
 
 **Acceptance Criteria:**
@@ -381,6 +449,8 @@ Users can manage the employee list.
 ## Utility Functions
 
 ### REQ-060: Date Formatting
+**Added:** v1.0 | **Status:** Complete
+
 System provides consistent date formatting.
 
 **Acceptance Criteria:**
@@ -395,6 +465,8 @@ System provides consistent date formatting.
 ---
 
 ### REQ-061: Nights Calculation
+**Added:** v1.0 | **Status:** Complete
+
 System calculates nights for boarding periods.
 
 **Acceptance Criteria:**
@@ -407,6 +479,8 @@ System calculates nights for boarding periods.
 ---
 
 ### REQ-062: Employee Helper Functions
+**Added:** v1.1 | **Status:** Complete
+
 System provides employee lookup utilities.
 
 **Acceptance Criteria:**
@@ -420,6 +494,8 @@ System provides employee lookup utilities.
 ---
 
 ### REQ-063: Revenue Calculations
+**Added:** v1.0 | **Status:** Complete
+
 System calculates revenue correctly.
 
 **Acceptance Criteria:**

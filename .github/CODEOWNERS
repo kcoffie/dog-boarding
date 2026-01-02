@@ -1,0 +1,11 @@
+# Dog Boarding App - Code Owners
+# These users will be automatically requested for review on PRs
+
+# Default owners for everything
+* @kcoffie
+
+# Specific owners for sensitive areas
+/supabase/ @kcoffie
+/.github/workflows/ @kcoffie
+/docs/REQUIREMENTS.md @kcoffie
+/scripts/ @kcoffie
