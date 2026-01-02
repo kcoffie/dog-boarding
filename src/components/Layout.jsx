@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import SyncStatusIndicator from './SyncStatusIndicator';
 
 export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -123,6 +124,9 @@ export default function Layout() {
                 ))}
               </nav>
 
+              {/* Sync Status */}
+              <SyncStatusIndicator />
+
               {/* User Dropdown */}
               <div className="relative" ref={userMenuRef}>
                 <button
@@ -171,12 +175,14 @@ export default function Layout() {
               </div>
             </div>
 
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-              aria-label="Toggle menu"
-            >
+            {/* Mobile Sync Status & Menu Button */}
+            <div className="flex items-center gap-2 md:hidden">
+              <SyncStatusIndicator />
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                aria-label="Toggle menu"
+              >
               {mobileMenuOpen ? (
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -186,7 +192,8 @@ export default function Layout() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               )}
-            </button>
+              </button>
+            </div>
           </div>
 
           {/* Mobile Navigation */}
