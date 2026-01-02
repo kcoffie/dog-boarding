@@ -20,7 +20,7 @@
 | v1.1 | Payroll & employee management | Complete |
 | v1.2 | CSV import & past boardings | Complete |
 | v1.3 | Authentication & invite system | Complete |
-| v1.4 | TBD | Planned |
+| v2.0 | External data sync | In Progress |
 
 ---
 
@@ -523,6 +523,138 @@ System calculates revenue correctly.
 
 ---
 
+## v2.0: External Data Sync
+
+### REQ-100: External Source Authentication
+**Added:** v2.0 | **Status:** Planned
+
+Scraper can authenticate with the external booking system.
+
+**Acceptance Criteria:**
+- Can store authentication credentials securely (not in code)
+- Can authenticate using stored session/cookies
+- Can re-authenticate when session expires
+- Authentication failures logged with clear error messages
+- Credentials stored in environment variables, not database
+
+**Tests:** `scraper/auth.test.js`
+
+---
+
+### REQ-101: Appointment List Scraping
+**Added:** v2.0 | **Status:** Planned
+
+Scraper can retrieve list of appointments from schedule page.
+
+**Acceptance Criteria:**
+- Can navigate to schedule page
+- Can extract all appointment links from page
+- Can filter for boarding appointments only
+- Can handle pagination if present
+- Can specify date range to scrape
+
+**Tests:** `scraper/schedule.test.js`
+
+---
+
+### REQ-102: Appointment Detail Extraction
+**Added:** v2.0 | **Status:** Planned
+
+Scraper can extract full details from individual appointment pages.
+
+**Acceptance Criteria:**
+- Extracts appointment info (service type, status, dates, duration, staff)
+- Extracts client info (name, emails, phone, address)
+- Extracts access instructions and notes
+- Extracts pet info (name, breed, medical, behavioral)
+- Handles missing fields gracefully (null, not error)
+- Stores source URL for reference
+
+**Tests:** `scraper/extraction.test.js`
+
+---
+
+### REQ-103: Data Mapping to App Schema
+**Added:** v2.0 | **Status:** Planned
+
+Scraped data maps correctly to existing app data models.
+
+**Acceptance Criteria:**
+- External appointments create/update Dog records
+- External appointments create/update Boarding records
+- Client info stored appropriately (new table or notes)
+- Duplicate detection by external_id
+- Existing manual entries not overwritten without flag
+
+**Tests:** `scraper/mapping.test.js`
+
+---
+
+### REQ-104: Sync Scheduling
+**Added:** v2.0 | **Status:** Planned
+
+Sync can run automatically on a schedule.
+
+**Acceptance Criteria:**
+- Can configure sync interval (hourly, daily, manual)
+- Sync runs in background without blocking UI
+- Last sync timestamp displayed in app
+- Can trigger manual sync from UI
+- Sync status visible (running, success, failed)
+
+**Tests:** `scraper/scheduler.test.js`, `components/SyncStatus.test.jsx`
+
+---
+
+### REQ-105: Sync Conflict Resolution
+**Added:** v2.0 | **Status:** Planned
+
+System handles conflicts between external and local data.
+
+**Acceptance Criteria:**
+- External data marked with `source: 'external'`
+- Local edits to external data flagged as overridden
+- Option to prefer external or local on conflict
+- Sync log shows what changed
+- Can revert local changes to external data
+
+**Tests:** `scraper/conflicts.test.js`
+
+---
+
+### REQ-106: Sync Error Handling
+**Added:** v2.0 | **Status:** Planned
+
+Sync failures are handled gracefully and reported.
+
+**Acceptance Criteria:**
+- Individual appointment failures don't stop full sync
+- Failed extractions logged for manual review
+- Rate limiting handled (automatic delays)
+- Network failures trigger retry with backoff
+- Error notifications to admin (optional)
+
+**Tests:** `scraper/errors.test.js`
+
+---
+
+### REQ-107: Sync Admin UI
+**Added:** v2.0 | **Status:** Planned
+
+Administrators can manage sync settings and view status.
+
+**Acceptance Criteria:**
+- Settings page has "External Sync" section
+- Can enable/disable automatic sync
+- Can configure sync interval
+- Can view sync history (last 10 syncs)
+- Can view sync errors
+- Can trigger manual sync
+
+**Tests:** `pages/SyncSettings.test.jsx`
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section
@@ -544,3 +676,4 @@ System calculates revenue correctly.
 - **REQ-060 to REQ-069**: Utility Functions
 - **REQ-070 to REQ-079**: PWA & Mobile (future)
 - **REQ-080 to REQ-089**: Calendar (future)
+- **REQ-100 to REQ-109**: External Data Sync (v2.0)
