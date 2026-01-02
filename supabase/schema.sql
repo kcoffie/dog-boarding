@@ -68,9 +68,12 @@ CREATE TABLE IF NOT EXISTS payments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   employee_id UUID REFERENCES employees(id) ON DELETE SET NULL,
   amount NUMERIC(10,2) NOT NULL,
-  payment_date DATE NOT NULL,
+  start_date DATE,
+  end_date DATE,
+  nights INTEGER,
+  dates DATE[] DEFAULT '{}',
+  paid_date DATE NOT NULL,
   notes TEXT DEFAULT '',
-  paid_dates DATE[] DEFAULT '{}',
   user_id UUID REFERENCES auth.users(id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
