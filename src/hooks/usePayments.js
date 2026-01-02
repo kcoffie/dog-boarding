@@ -79,6 +79,7 @@ export function usePayments(employees = []) {
           nights: payment.nights,
           dates: payment.dates,
           paid_date: new Date().toISOString().split('T')[0],
+          user_id: user.id,
         }])
         .select()
         .single();
