@@ -72,8 +72,9 @@ export async function seedDatabase() {
 
   // Create test users
   console.log('Creating test users...');
+  let seedUserId = null;
   for (const user of TEST_USERS) {
-    const { error } = await supabase.auth.admin.createUser({
+    const { data, error } = await supabase.auth.admin.createUser({
       email: user.email,
       password: user.password,
       email_confirm: true,
@@ -82,7 +83,22 @@ export async function seedDatabase() {
       console.error(`  ✗ ${user.email}: ${error.message}`);
     } else {
       console.log(`  ✓ ${user.email}`);
+      // Use first user's ID for seeding data
+      if (!seedUserId && data?.user?.id) {
+        seedUserId = data.user.id;
+      }
     }
+  }
+
+  // Get seed user ID if not set (user already existed)
+  if (!seedUserId) {
+    const { data: users } = await supabase.auth.admin.listUsers();
+    const testUser = users?.users?.find(u => u.email === 'admin@test.com');
+    seedUserId = testUser?.id;
+  }
+
+  if (!seedUserId) {
+    console.error('  ⚠ Could not get user ID for seeding, some operations may fail');
   }
 
   // Create invite codes
@@ -100,56 +116,83 @@ export async function seedDatabase() {
     }
   }
 
-  // Create dogs
+  // Create dogs (check if exists first, then insert)
   console.log('\nCreating dogs...');
-  const insertedDogs = [];
   for (const dog of TEST_DOGS) {
-    const { data, error } = await supabase
+    // Check if dog already exists
+    const { data: existing } = await supabase
       .from('dogs')
-      .upsert(dog, { onConflict: 'name' })
-      .select()
+      .select('id')
+      .eq('name', dog.name)
       .single();
-    if (error) {
-      console.error(`  ✗ ${dog.name}: ${error.message}`);
+
+    if (existing) {
+      console.log(`  ✓ ${dog.name} (exists)`);
     } else {
-      console.log(`  ✓ ${dog.name}`);
-      insertedDogs.push(data);
+      const { error } = await supabase.from('dogs').insert({ ...dog, user_id: seedUserId });
+      if (error) {
+        console.error(`  ✗ ${dog.name}: ${error.message}`);
+      } else {
+        console.log(`  ✓ ${dog.name}`);
+      }
     }
   }
 
-  // If upsert doesn't return data, fetch all dogs
-  let dogs = insertedDogs.filter(Boolean);
-  if (dogs.length === 0) {
-    const { data } = await supabase.from('dogs').select('id, name');
-    dogs = data || [];
-  }
+  // Fetch all dogs for boarding creation
+  const { data: dogs } = await supabase.from('dogs').select('id, name');
+  const dogList = dogs || [];
 
-  // Create employees
+  // Create employees (check if exists first, then insert)
   console.log('\nCreating employees...');
   for (const emp of TEST_EMPLOYEES) {
-    const { error } = await supabase
+    const { data: existing } = await supabase
       .from('employees')
-      .upsert(emp, { onConflict: 'name' });
-    if (error) {
-      console.error(`  ✗ ${emp.name}: ${error.message}`);
+      .select('id')
+      .eq('name', emp.name)
+      .single();
+
+    if (existing) {
+      console.log(`  ✓ ${emp.name} (exists)`);
     } else {
-      console.log(`  ✓ ${emp.name}`);
+      const { error } = await supabase.from('employees').insert({ ...emp, user_id: seedUserId });
+      if (error) {
+        console.error(`  ✗ ${emp.name}: ${error.message}`);
+      } else {
+        console.log(`  ✓ ${emp.name}`);
+      }
     }
   }
 
   // Fetch employees for night assignments
   const { data: employees } = await supabase.from('employees').select('id, name');
 
-  // Create settings
+  // Create/update settings
   console.log('\nCreating settings...');
-  const { error: settingsError } = await supabase.from('settings').upsert({
-    id: 'default',
-    net_percentage: 65,
-  });
-  if (settingsError) {
-    console.error(`  ✗ Settings: ${settingsError.message}`);
+  const { data: existingSettings } = await supabase
+    .from('settings')
+    .select('id')
+    .limit(1)
+    .single();
+
+  if (existingSettings) {
+    const { error: settingsError } = await supabase
+      .from('settings')
+      .update({ net_percentage: 65 })
+      .eq('id', existingSettings.id);
+    if (settingsError) {
+      console.error(`  ✗ Settings: ${settingsError.message}`);
+    } else {
+      console.log('  ✓ Default settings updated (65% net)');
+    }
   } else {
-    console.log('  ✓ Default settings (65% net)');
+    const { error: settingsError } = await supabase
+      .from('settings')
+      .insert({ net_percentage: 65 });
+    if (settingsError) {
+      console.error(`  ✗ Settings: ${settingsError.message}`);
+    } else {
+      console.log('  ✓ Default settings created (65% net)');
+    }
   }
 
   // Create sample boardings (past 30 days + next 30 days)
@@ -157,13 +200,13 @@ export async function seedDatabase() {
   const today = new Date();
   let boardingCount = 0;
 
-  if (dogs.length > 0) {
+  if (dogList.length > 0) {
     for (let dayOffset = -30; dayOffset < 30; dayOffset++) {
       // ~70% chance of having boardings on any given day
       if (Math.random() < 0.3) continue;
 
       const numDogs = Math.floor(Math.random() * 4) + 1;
-      const selectedDogs = [...dogs].sort(() => Math.random() - 0.5).slice(0, numDogs);
+      const selectedDogs = [...dogList].sort(() => Math.random() - 0.5).slice(0, numDogs);
 
       for (const dog of selectedDogs) {
         const arrival = new Date(today);
@@ -177,12 +220,17 @@ export async function seedDatabase() {
 
         const { error } = await supabase.from('boardings').insert({
           dog_id: dog.id,
-          dog_name: dog.name,
           arrival_datetime: arrival.toISOString(),
           departure_datetime: departure.toISOString(),
+          user_id: seedUserId,
         });
 
-        if (!error) boardingCount++;
+        if (error) {
+          // Log first error to help debug
+          if (boardingCount === 0) console.error(`    First error: ${error.message}`);
+        } else {
+          boardingCount++;
+        }
       }
     }
     console.log(`  ✓ ${boardingCount} boardings created`);
@@ -206,12 +254,28 @@ export async function seedDatabase() {
 
       const randomEmployee = activeEmployees[Math.floor(Math.random() * activeEmployees.length)];
 
-      const { error } = await supabase.from('night_assignments').upsert(
-        { date: dateStr, employee_id: randomEmployee.id },
-        { onConflict: 'date' }
-      );
+      // Check if assignment exists for this date
+      const { data: existing } = await supabase
+        .from('night_assignments')
+        .select('id')
+        .eq('date', dateStr)
+        .single();
 
-      if (!error) assignmentCount++;
+      if (existing) {
+        assignmentCount++; // Count as success since it exists
+      } else {
+        const { error } = await supabase.from('night_assignments').insert({
+          date: dateStr,
+          employee_id: randomEmployee.id,
+          user_id: seedUserId,
+        });
+
+        if (error) {
+          if (assignmentCount === 0) console.error(`    First error: ${error.message}`);
+        } else {
+          assignmentCount++;
+        }
+      }
     }
     console.log(`  ✓ ${assignmentCount} night assignments created`);
   } else {
@@ -227,8 +291,8 @@ export async function seedDatabase() {
   console.log('\nTest invite codes:');
   TEST_INVITE_CODES.forEach(c => console.log(`  🎟️  ${c}`));
   console.log('\nData created:');
-  console.log(`  🐕 ${dogs.length} dogs`);
-  console.log(`  👤 ${TEST_EMPLOYEES.length} employees`);
+  console.log(`  🐕 ${dogList.length} dogs`);
+  console.log(`  👤 ${employees?.length || 0} employees`);
   console.log(`  📅 ${boardingCount} boardings`);
   console.log(`  🌙 ${assignmentCount} night assignments`);
 }
