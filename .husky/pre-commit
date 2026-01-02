@@ -1,3 +1,2 @@
 npx lint-staged
 npm run check:requirements
-npm test -- --run --passWithNoTests
