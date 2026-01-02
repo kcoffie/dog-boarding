@@ -115,6 +115,30 @@ export async function updateSyncSettings(supabase, updates) {
 }
 
 /**
+ * Sanitize error messages to avoid leaking sensitive information
+ * @param {string} message - Raw error message
+ * @returns {string} Sanitized error message
+ */
+export function sanitizeError(message) {
+  if (!message) return 'Unknown error';
+
+  // Remove URLs that might contain credentials or internal paths
+  let sanitized = message.replace(/https?:\/\/[^\s]+/g, '[URL]');
+
+  // Remove potential credential leaks
+  sanitized = sanitized.replace(/password[=:]\s*\S+/gi, 'password=[REDACTED]');
+  sanitized = sanitized.replace(/username[=:]\s*\S+/gi, 'username=[REDACTED]');
+  sanitized = sanitized.replace(/email[=:]\s*\S+/gi, 'email=[REDACTED]');
+
+  // Truncate very long messages that might contain HTML/data dumps
+  if (sanitized.length > 200) {
+    sanitized = sanitized.substring(0, 200) + '...';
+  }
+
+  return sanitized;
+}
+
+/**
  * Delay helper with jitter
  * @param {number} ms
  * @param {number} [jitter=0.2] - Random jitter factor (0-1)
@@ -259,16 +283,16 @@ export async function runSync(options = {}) {
         }
       } catch (error) {
         result.appointmentsFailed++;
+        const sanitizedMsg = sanitizeError(error.message);
         result.errors.push({
           external_id: appt.id,
-          url: appt.url,
-          error: error.message,
+          error: sanitizedMsg,
         });
 
         onProgress?.({
           stage: 'error',
           appointment: appt.id,
-          error: error.message,
+          error: sanitizedMsg,
         });
 
         // Continue with next appointment (don't stop on individual failures)
@@ -305,14 +329,14 @@ export async function runSync(options = {}) {
       last_sync_status: result.status,
       last_sync_message: result.success
         ? `Synced ${result.appointmentsCreated + result.appointmentsUpdated} appointments`
-        : `Failed: ${result.errors[0]?.error || 'Unknown error'}`,
+        : `Failed: ${sanitizeError(result.errors[0]?.error) || 'Unknown error'}`,
     });
 
     onProgress?.({ stage: 'completed', result });
 
   } catch (error) {
     result.durationMs = Date.now() - startTime;
-    result.errors.push({ error: error.message });
+    result.errors.push({ error: sanitizeError(error.message) });
 
     // Update sync log if it was created
     if (syncLog) {
@@ -326,15 +350,19 @@ export async function runSync(options = {}) {
     }
 
     // Update sync settings
+    const sanitizedMsg = sanitizeError(error.message);
     await updateSyncSettings(supabase, {
       last_sync_at: new Date().toISOString(),
       last_sync_status: SyncStatus.FAILED,
-      last_sync_message: error.message,
+      last_sync_message: sanitizedMsg,
     }).catch(() => {});
 
-    onProgress?.({ stage: 'failed', error: error.message });
+    onProgress?.({ stage: 'failed', error: sanitizedMsg });
 
-    throw error;
+    // Re-throw with sanitized message
+    const sanitizedError = new Error(sanitizedMsg);
+    sanitizedError.originalError = error;
+    throw sanitizedError;
   }
 
   return result;

@@ -13,6 +13,7 @@ import {
   getRecentSyncLogs,
   isSyncRunning,
   abortStuckSync,
+  sanitizeError,
 } from '../../lib/scraper/sync.js';
 
 // Create mock Supabase client
@@ -338,5 +339,80 @@ describe('REQ-106: Sync Error Handling', () => {
       expect(result.status).toBe(SyncStatus.PARTIAL);
       expect(result.appointmentsCreated + result.appointmentsFailed).toBe(10);
     });
+  });
+});
+
+describe('Security: sanitizeError()', () => {
+  it('returns "Unknown error" for null/undefined input', () => {
+    expect(sanitizeError(null)).toBe('Unknown error');
+    expect(sanitizeError(undefined)).toBe('Unknown error');
+    expect(sanitizeError('')).toBe('Unknown error');
+  });
+
+  it('removes URLs from error messages', () => {
+    const message = 'Failed to fetch https://example.com/api/data';
+    const sanitized = sanitizeError(message);
+
+    expect(sanitized).toBe('Failed to fetch [URL]');
+    expect(sanitized).not.toContain('https://');
+    expect(sanitized).not.toContain('example.com');
+  });
+
+  it('removes HTTP URLs as well', () => {
+    const message = 'Error at http://internal-server:8080/private';
+    const sanitized = sanitizeError(message);
+
+    expect(sanitized).toBe('Error at [URL]');
+    expect(sanitized).not.toContain('http://');
+  });
+
+  it('redacts password values', () => {
+    const message = 'Auth failed with password=secret123';
+    const sanitized = sanitizeError(message);
+
+    expect(sanitized).not.toContain('secret123');
+    expect(sanitized).toContain('[REDACTED]');
+  });
+
+  it('redacts username values', () => {
+    const message = 'Login failed for username: admin@example.com';
+    const sanitized = sanitizeError(message);
+
+    expect(sanitized).not.toContain('admin@example.com');
+    expect(sanitized).toContain('[REDACTED]');
+  });
+
+  it('redacts email values', () => {
+    const message = 'Invalid email=user@domain.com';
+    const sanitized = sanitizeError(message);
+
+    expect(sanitized).not.toContain('user@domain.com');
+    expect(sanitized).toContain('[REDACTED]');
+  });
+
+  it('truncates very long messages', () => {
+    const longMessage = 'A'.repeat(500);
+    const sanitized = sanitizeError(longMessage);
+
+    expect(sanitized.length).toBeLessThanOrEqual(203); // 200 + "..."
+    expect(sanitized).toContain('...');
+  });
+
+  it('handles multiple sensitive items in one message', () => {
+    const message = 'Failed at https://api.example.com with username=admin and password=secret';
+    const sanitized = sanitizeError(message);
+
+    expect(sanitized).not.toContain('https://');
+    expect(sanitized).not.toContain('admin');
+    expect(sanitized).not.toContain('secret');
+    expect(sanitized).toContain('[URL]');
+    expect(sanitized).toContain('[REDACTED]');
+  });
+
+  it('preserves safe error messages', () => {
+    const message = 'Network timeout after 30 seconds';
+    const sanitized = sanitizeError(message);
+
+    expect(sanitized).toBe('Network timeout after 30 seconds');
   });
 });
