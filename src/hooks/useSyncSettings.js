@@ -1,6 +1,6 @@
 /**
  * Hook for managing external sync settings and operations
- * @requirements REQ-104, REQ-107
+ * @requirements REQ-104, REQ-107, REQ-108
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -11,7 +11,6 @@ import {
   updateSyncSettings,
   getRecentSyncLogs,
   isSyncRunning,
-  runSync,
 } from '../lib/scraper/sync.js';
 
 export function useSyncSettings() {
@@ -84,7 +83,8 @@ export function useSyncSettings() {
     }
   }, []);
 
-  // Trigger manual sync
+  // Trigger manual sync via server-side API
+  // @requirements REQ-108 - Uses server-side proxy to bypass CORS
   const triggerSync = useCallback(async () => {
     if (syncing) return;
 
@@ -93,12 +93,21 @@ export function useSyncSettings() {
       setSyncProgress({ stage: 'starting' });
       setError(null);
 
-      const result = await runSync({
-        supabase,
-        onProgress: (progress) => {
-          setSyncProgress(progress);
+      // Call server-side API to handle sync (bypasses CORS)
+      const response = await fetch('/api/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
       });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Sync failed');
+      }
+
+      setSyncProgress({ stage: 'completed', result });
 
       // Reload data after sync
       await loadData();

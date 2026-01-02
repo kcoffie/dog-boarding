@@ -639,7 +639,7 @@ Sync failures are handled gracefully and reported.
 ---
 
 ### REQ-107: Sync Admin UI
-**Added:** v2.0 | **Status:** Planned
+**Added:** v2.0 | **Status:** Complete
 
 Administrators can manage sync settings and view status.
 
@@ -652,6 +652,23 @@ Administrators can manage sync settings and view status.
 - Can trigger manual sync
 
 **Tests:** `pages/SyncSettings.test.jsx`
+
+---
+
+### REQ-108: Server-Side Sync Proxy
+**Added:** v2.0 | **Status:** Complete
+
+Sync operations run server-side to bypass browser CORS restrictions.
+
+**Acceptance Criteria:**
+- Sync requests go through server-side API endpoint (`/api/sync`)
+- External site requests made from server, not browser
+- Client receives sync results without CORS errors
+- API validates required environment variables
+- API returns proper error responses for missing configuration
+- API sanitizes error messages to prevent credential leaks
+
+**Tests:** `src/__tests__/api/sync.test.js`
 
 ---
 
