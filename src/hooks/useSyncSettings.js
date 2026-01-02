@@ -101,7 +101,20 @@ export function useSyncSettings() {
         },
       });
 
-      const result = await response.json();
+      // Handle non-JSON responses (e.g., server errors, empty responses)
+      let result;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          throw new Error('Server returned invalid response');
+        }
+      } else {
+        // Non-JSON response - likely a server error
+        const text = await response.text();
+        throw new Error(text || 'Server error occurred');
+      }
 
       if (!response.ok) {
         throw new Error(result.error || 'Sync failed');

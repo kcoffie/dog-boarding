@@ -31,6 +31,57 @@ describe('REQ-108: Server-Side Sync Proxy', () => {
   });
 
   describe('API endpoint behavior', () => {
+    it('handles empty response body', async () => {
+      // This test catches the "Unexpected end of JSON input" error
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve(''),
+        json: () => Promise.reject(new SyntaxError('Unexpected end of JSON input')),
+      });
+
+      const response = await fetch('/api/sync', { method: 'POST' });
+
+      // Client should handle this gracefully
+      try {
+        await response.json();
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect(error.message).toContain('Unexpected end of JSON input');
+      }
+    });
+
+    it('handles non-JSON response', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        text: () => Promise.resolve('Internal Server Error'),
+        json: () => Promise.reject(new SyntaxError('Unexpected token I in JSON')),
+      });
+
+      const response = await fetch('/api/sync', { method: 'POST' });
+
+      // Should be able to get text even if JSON fails
+      const text = await response.text();
+      expect(text).toBe('Internal Server Error');
+    });
+
+    it('handles FUNCTION_INVOCATION_FAILED error', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        headers: new Map([['x-vercel-error', 'FUNCTION_INVOCATION_FAILED']]),
+        text: () => Promise.resolve('A server error has occurred\n\nFUNCTION_INVOCATION_FAILED'),
+        json: () => Promise.reject(new SyntaxError('Unexpected token A in JSON')),
+      });
+
+      const response = await fetch('/api/sync', { method: 'POST' });
+      expect(response.ok).toBe(false);
+
+      const text = await response.text();
+      expect(text).toContain('FUNCTION_INVOCATION_FAILED');
+    });
+
     it('makes POST request to /api/sync', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,

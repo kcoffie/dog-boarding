@@ -6,7 +6,7 @@
  * from the external booking system.
  */
 
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
 // Config
 const SCRAPER_CONFIG = {
@@ -68,9 +68,13 @@ function combineCookies(...cookieStrings) {
     const parts = cookieString.split(/,(?=[^;]+=[^;]+)/);
     for (const part of parts) {
       const [nameValue] = part.split(';');
-      const [name, value] = nameValue.split('=');
-      if (name && value) {
-        cookies.set(name.trim(), value.trim());
+      const eqIndex = nameValue.indexOf('=');
+      if (eqIndex > 0) {
+        const name = nameValue.substring(0, eqIndex).trim();
+        const value = nameValue.substring(eqIndex + 1).trim();
+        if (name && value) {
+          cookies.set(name, value);
+        }
       }
     }
   }
@@ -256,7 +260,9 @@ function parseAppointmentPage(html, sourceUrl = '') {
         const date = new Date(Date.UTC(year, month, day, hour, 0, 0));
         return date.toISOString();
       }
-    } catch {}
+    } catch (e) {
+      // ignore parse errors
+    }
     return null;
   };
 
@@ -348,7 +354,7 @@ function mapToBoarding(external, dogId) {
 /**
  * Main sync handler
  */
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // Only allow POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -589,4 +595,4 @@ export default async function handler(req, res) {
       error: sanitizedMsg,
     });
   }
-}
+};
