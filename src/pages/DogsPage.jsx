@@ -187,21 +187,21 @@ export default function DogsPage() {
       return sortDirection === 'asc' ? result : -result;
     });
 
-  const SortIcon = ({ column }) => {
+  const renderSortIcon = (column) => {
     if (sortColumn !== column) {
       return <span className="text-slate-300 ml-1">↕</span>;
     }
     return <span className="ml-1 text-indigo-600">{sortDirection === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const BoardingSortIcon = ({ column }) => {
+  const renderBoardingSortIcon = (column) => {
     if (boardingSortColumn !== column) {
       return <span className="text-slate-300 ml-1">↕</span>;
     }
     return <span className="ml-1 text-indigo-600">{boardingSortDirection === 'asc' ? '↑' : '↓'}</span>;
   };
 
-  const PastBoardingSortIcon = ({ column }) => {
+  const renderPastBoardingSortIcon = (column) => {
     if (pastBoardingSortColumn !== column) {
       return <span className="text-slate-300 ml-1">↕</span>;
     }
@@ -219,12 +219,13 @@ export default function DogsPage() {
         aVal = getDogName(a.dogId).toLowerCase();
         bVal = getDogName(b.dogId).toLowerCase();
         break;
-      case 'status':
+      case 'status': {
         // Sort order: current, upcoming, past
         const statusOrder = { current: 0, upcoming: 1, past: 2 };
         aVal = statusOrder[getBoardingStatus(a)];
         bVal = statusOrder[getBoardingStatus(b)];
         break;
+      }
       case 'arrivalDateTime':
       case 'departureDateTime':
         aVal = new Date(a[boardingSortColumn]).getTime();
@@ -395,37 +396,37 @@ export default function DogsPage() {
                     className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleBoardingSort('dogName')}
                   >
-                    Dog<BoardingSortIcon column="dogName" />
+                    Dog{renderBoardingSortIcon('dogName')}
                   </th>
                   <th
                     className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleBoardingSort('status')}
                   >
-                    Status<BoardingSortIcon column="status" />
+                    Status{renderBoardingSortIcon('status')}
                   </th>
                   <th
                     className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleBoardingSort('arrivalDateTime')}
                   >
-                    Arrival<BoardingSortIcon column="arrivalDateTime" />
+                    Arrival{renderBoardingSortIcon('arrivalDateTime')}
                   </th>
                   <th
                     className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleBoardingSort('departureDateTime')}
                   >
-                    Departure<BoardingSortIcon column="departureDateTime" />
+                    Departure{renderBoardingSortIcon('departureDateTime')}
                   </th>
                   <th
                     className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleBoardingSort('nights')}
                   >
-                    Nights<BoardingSortIcon column="nights" />
+                    Nights{renderBoardingSortIcon('nights')}
                   </th>
                   <th
                     className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleBoardingSort('gross')}
                   >
-                    Gross<BoardingSortIcon column="gross" />
+                    Gross{renderBoardingSortIcon('gross')}
                   </th>
                   <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -604,17 +605,24 @@ export default function DogsPage() {
                         <span className="text-sm font-semibold text-indigo-600">{getInitials(formatName(dog.name))}</span>
                       </div>
                       <div className="min-w-0">
-                        {dog.active !== false ? (
-                          <button
-                            onClick={() => handleDogNameClick(dog)}
-                            disabled={isFormOpen && inlineAddBoardingDogId !== dog.id}
-                            className="font-medium text-indigo-600 hover:text-indigo-800 disabled:text-slate-900 disabled:cursor-default transition-colors truncate block"
-                          >
-                            {formatName(dog.name)}
-                          </button>
-                        ) : (
-                          <span className="font-medium text-slate-400 truncate block">{formatName(dog.name)}</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {dog.active !== false ? (
+                            <button
+                              onClick={() => handleDogNameClick(dog)}
+                              disabled={isFormOpen && inlineAddBoardingDogId !== dog.id}
+                              className="font-medium text-indigo-600 hover:text-indigo-800 disabled:text-slate-900 disabled:cursor-default transition-colors truncate"
+                            >
+                              {formatName(dog.name)}
+                            </button>
+                          ) : (
+                            <span className="font-medium text-slate-400 truncate">{formatName(dog.name)}</span>
+                          )}
+                          {dog.source === 'external' && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-cyan-100 text-cyan-700 flex-shrink-0">
+                              External
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -673,19 +681,19 @@ export default function DogsPage() {
                     className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleSort('name')}
                   >
-                    Name<SortIcon column="name" />
+                    Name{renderSortIcon('name')}
                   </th>
                   <th
                     className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleSort('dayRate')}
                   >
-                    Day Rate<SortIcon column="dayRate" />
+                    Day Rate{renderSortIcon('dayRate')}
                   </th>
                   <th
                     className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                     onClick={() => handleSort('nightRate')}
                   >
-                    Night Rate<SortIcon column="nightRate" />
+                    Night Rate{renderSortIcon('nightRate')}
                   </th>
                   <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -695,17 +703,24 @@ export default function DogsPage() {
                   <Fragment key={dog.id}>
                     <tr className={`hover:bg-slate-50/50 transition-colors ${dog.active === false ? 'opacity-50' : ''}`}>
                       <td className={`px-5 py-4 ${dog.active === false ? 'text-slate-400' : 'text-slate-900'}`}>
-                        {dog.active !== false ? (
-                          <button
-                            onClick={() => handleDogNameClick(dog)}
-                            disabled={isFormOpen && inlineAddBoardingDogId !== dog.id}
-                            className="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline disabled:text-slate-900 disabled:no-underline disabled:cursor-default transition-colors"
-                          >
-                            {formatName(dog.name)}
-                          </button>
-                        ) : (
-                          <span className="text-sm font-medium">{formatName(dog.name)}</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {dog.active !== false ? (
+                            <button
+                              onClick={() => handleDogNameClick(dog)}
+                              disabled={isFormOpen && inlineAddBoardingDogId !== dog.id}
+                              className="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline disabled:text-slate-900 disabled:no-underline disabled:cursor-default transition-colors"
+                            >
+                              {formatName(dog.name)}
+                            </button>
+                          ) : (
+                            <span className="text-sm font-medium">{formatName(dog.name)}</span>
+                          )}
+                          {dog.source === 'external' && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-cyan-100 text-cyan-700">
+                              External
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className={`px-5 py-4 text-sm text-right tabular-nums ${dog.active === false ? 'text-slate-400' : 'text-slate-600'}`}>{formatCurrency(dog.dayRate)}</td>
                       <td className={`px-5 py-4 text-sm text-right tabular-nums ${dog.active === false ? 'text-slate-400' : 'text-slate-600'}`}>{formatCurrency(dog.nightRate)}</td>
@@ -859,31 +874,31 @@ export default function DogsPage() {
                         className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                         onClick={() => handlePastBoardingSort('dogName')}
                       >
-                        Dog<PastBoardingSortIcon column="dogName" />
+                        Dog{renderPastBoardingSortIcon('dogName')}
                       </th>
                       <th
                         className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                         onClick={() => handlePastBoardingSort('arrivalDateTime')}
                       >
-                        Arrival<PastBoardingSortIcon column="arrivalDateTime" />
+                        Arrival{renderPastBoardingSortIcon('arrivalDateTime')}
                       </th>
                       <th
                         className="text-left px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                         onClick={() => handlePastBoardingSort('departureDateTime')}
                       >
-                        Departure<PastBoardingSortIcon column="departureDateTime" />
+                        Departure{renderPastBoardingSortIcon('departureDateTime')}
                       </th>
                       <th
                         className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                         onClick={() => handlePastBoardingSort('nights')}
                       >
-                        Nights<PastBoardingSortIcon column="nights" />
+                        Nights{renderPastBoardingSortIcon('nights')}
                       </th>
                       <th
                         className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
                         onClick={() => handlePastBoardingSort('gross')}
                       >
-                        Gross<PastBoardingSortIcon column="gross" />
+                        Gross{renderPastBoardingSortIcon('gross')}
                       </th>
                     </tr>
                   </thead>
