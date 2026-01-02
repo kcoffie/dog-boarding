@@ -24,3 +24,4 @@ coverage
 *.sln
 *.sw?
 .vercel
+.env.seed
