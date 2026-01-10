@@ -75,18 +75,19 @@ Created `scripts/sync-from-sheets.js` to:
 📅 Converted to 50 boarding records
 
 🐕 Dogs: 30 created, 1 existing
-📅 Boardings: 50 created, 0 skipped
+📅 Boardings: 49 created, 1 skipped
 ```
 
 ### Verification
-- 38 total dogs in database (31 from sheets + 7 test dogs)
-- 163 boardings from Nov 1+ in database
-- November boardings confirmed present (marley, lilly, asucar, etc.)
+- 38 total dogs in database (30 from sheets + 8 test dogs)
+- 162 boardings from Nov 2025+ in database
+- Dates correctly set to Nov 2025 - Jan 2026
+- Verified: marley (Nov 20-22), lilly (Nov 21-28), captain (Jan 1-4)
 
 ---
 
 ## Short Summary
-Created a sync script (`scripts/sync-from-sheets.js`) that imports boarding data from the Google Sheets matrix format. The script downloads 4 sheets (Nov 18 - Jan 10), parses the day/night matrix, and creates dog and boarding records in the database. Successfully synced 31 dogs and 50 boarding records from the sheets.
+Created a sync script (`scripts/sync-from-sheets.js`) that imports boarding data from the Google Sheets matrix format. The script downloads 4 sheets (Nov 18, 2025 - Jan 10, 2026), parses the day/night matrix, and creates dog and boarding records in the database. Successfully synced 30 dogs and 49 boarding records from the sheets.
 
 ## Detailed Engineering Summary
 
