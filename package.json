@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage",
     "check:requirements": "node scripts/check-requirements.js",
     "seed": "node scripts/seed-test-data.js",
+    "sync:sheets": "node scripts/sync-from-sheets.js",
     "reset-db": "node scripts/reset-test-data.js",
     "seed:staging": "VITE_ENVIRONMENT=staging node scripts/seed-test-data.js",
     "test:smoke": "node scripts/smoke-test.js",
