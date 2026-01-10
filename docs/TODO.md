@@ -4,31 +4,40 @@ Items needing attention. Tell me to add, update, or remove items.
 
 ---
 
-## High Priority
+## Bugs (High Priority)
 
-_None_
-
----
-
-## Normal Priority
-
-- [ ] **Issue #17** - Add system user management to Settings page (REQ-007)
-  - View list of all system users
-  - Update user passwords
-  - Delete user accounts
-  - Future: role-based access control
+- [ ] **#14** - [UAT Bug]: external sync is settings?
+- [ ] **#9** - [UAT Bug]: payment history columns should be sortable
 
 ---
 
-## Low Priority
+## Features / Enhancements
 
-_None_
+- [ ] **#17** - Add system user management to Settings page (REQ-007)
+- [ ] **#15** - Add boarding / info card
+- [ ] **#7** - Report changes made
+- [ ] **#6** - Make some stuff admin only
+
+---
+
+## UAT Feedback
+
+- [ ] **#13** - [UAT Feedback]: new UAT process
+- [ ] **#11** - [UAT Feedback]: embed signup code in signup url
+- [ ] **#10** - [UAT Feedback]: stop using --no-verify
+- [ ] **#8** - [UAT Feedback]: can calendar look better?
+
+---
+
+## My Items
+
+_Add personal items here that aren't GitHub issues_
 
 ---
 
 ## Completed
 
-- [x] **Issue #12** - Charlie user login fix (2026-01-10)
+- [x] **#12** - Charlie user login fix (2026-01-10)
   - Reset password in production database
   - Added auth logging for debugging
 
@@ -39,3 +48,4 @@ _None_
 - Production Supabase: `watdarwisvzmctpaxbtb.supabase.co`
 - Staging Supabase: `sefyibwepcezafpyncak.supabase.co`
 - Branch: `uat`
+- Issue list: https://github.com/kcoffie/dog-boarding/issues
