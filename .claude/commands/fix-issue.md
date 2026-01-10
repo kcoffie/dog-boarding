@@ -15,6 +15,10 @@ Work on GitHub issue #$1 in branch `$2`.
 
 ## Workflow Steps
 
+### 0. Read Rules
+- ALWAYS read `.claude/rules/commit-messages.md` first
+- Follow all rules for commits and GitHub comments
+
 ### 1. Setup
 - Switch to branch `$2` (create if needed, stash any uncommitted changes)
 - Fetch issue details from https://github.com/kcoffie/dog-boarding/issues/$1
@@ -72,7 +76,8 @@ At completion, prepare two summaries in the work document:
 - After user confirms summaries are posted, ask if issue should be closed
 
 ## Rules
-- Never mention Claude/AI in commits or issue comments
+- ALWAYS read `.claude/rules/commit-messages.md` at start of workflow
+- Never mention Claude/AI in commits or issue comments (see rules file)
 - Always ask before posting to GitHub issues
 - Keep work document updated throughout
 - Test before committing
