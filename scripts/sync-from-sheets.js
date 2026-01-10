@@ -228,7 +228,7 @@ function parseSheetMatrix(rows) {
     }
   }
 
-  return { dogs, presence };
+  return { dogs, presence, dateColumns };
 }
 
 /**
@@ -338,6 +338,40 @@ function convertPresenceToBoardings(presence) {
   return boardings;
 }
 
+// Employee names from sheets (mapped to common format)
+const EMPLOYEE_NAMES = ['Kat', 'Max', 'Myles', 'Kintaro', 'Kentaro', 'Stephen', 'Sierra'];
+
+/**
+ * Parse employee night assignments from sheet rows
+ */
+function parseEmployeeAssignments(rows, dateColumns) {
+  const assignments = []; // Array of { employeeName, date }
+
+  // Find employee rows (after the summary rows)
+  for (const row of rows) {
+    const name = row[1]?.trim();
+    if (!name || !EMPLOYEE_NAMES.some(e => e.toLowerCase() === name.toLowerCase())) {
+      continue;
+    }
+
+    // Check each date column for an amount (indicates assignment)
+    for (const { date, nightCol } of dateColumns) {
+      if (nightCol === null) continue;
+
+      const value = row[nightCol]?.trim();
+      // If there's a non-empty value (usually an amount like $260.00), this employee was assigned
+      if (value && value !== '' && (value.includes('$') || !isNaN(parseFloat(value)))) {
+        assignments.push({
+          employeeName: name,
+          date: date.toISOString().split('T')[0],
+        });
+      }
+    }
+  }
+
+  return assignments;
+}
+
 /**
  * Main sync function
  */
@@ -346,6 +380,7 @@ async function syncFromSheets() {
 
   const allDogs = [];
   const allPresence = [];
+  const allEmployeeAssignments = [];
 
   // Fetch and parse all sheets
   for (const { gid, description } of SHEET_GIDS) {
@@ -353,9 +388,12 @@ async function syncFromSheets() {
     try {
       const csvText = await fetchSheetCSV(gid);
       const rows = parseCSV(csvText);
-      const { dogs, presence } = parseSheetMatrix(rows);
+      const { dogs, presence, dateColumns } = parseSheetMatrix(rows);
 
-      console.log(`   Found ${dogs.length} dogs, ${presence.length} presence records`);
+      // Also parse employee assignments
+      const empAssignments = parseEmployeeAssignments(rows, dateColumns);
+
+      console.log(`   Found ${dogs.length} dogs, ${presence.length} presence records, ${empAssignments.length} employee assignments`);
 
       // Merge dogs (avoid duplicates)
       for (const dog of dogs) {
@@ -365,12 +403,13 @@ async function syncFromSheets() {
       }
 
       allPresence.push(...presence);
+      allEmployeeAssignments.push(...empAssignments);
     } catch (error) {
       console.error(`   ❌ Error: ${error.message}`);
     }
   }
 
-  console.log(`\n📊 Total: ${allDogs.length} unique dogs, ${allPresence.length} presence records\n`);
+  console.log(`\n📊 Total: ${allDogs.length} unique dogs, ${allPresence.length} presence records, ${allEmployeeAssignments.length} employee assignments\n`);
 
   // Convert presence to boardings
   const boardings = convertPresenceToBoardings(allPresence);
@@ -477,12 +516,95 @@ async function syncFromSheets() {
   console.log(`   Created ${boardingsCreated} new boardings`);
   console.log(`   Skipped ${boardingsSkipped} existing/overlapping boardings\n`);
 
+  // Create employees and night assignments
+  console.log('👤 Creating employees and night assignments...');
+
+  // Get existing employees
+  const { data: existingEmployees } = await supabase.from('employees').select('id, name');
+  const employeeNameToId = {};
+
+  for (const emp of existingEmployees || []) {
+    employeeNameToId[emp.name.toLowerCase()] = emp.id;
+  }
+
+  // Get unique employee names from assignments
+  const uniqueEmployeeNames = [...new Set(allEmployeeAssignments.map(a => a.employeeName))];
+  let employeesCreated = 0;
+
+  for (const name of uniqueEmployeeNames) {
+    const key = name.toLowerCase();
+    if (!employeeNameToId[key]) {
+      const { data, error } = await supabase
+        .from('employees')
+        .insert({
+          name,
+          active: true,
+          user_id: seedUserId,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error(`   ❌ ${name}: ${error.message}`);
+      } else {
+        employeeNameToId[key] = data.id;
+        employeesCreated++;
+        console.log(`   ✓ Employee ${name} (created)`);
+      }
+    } else {
+      console.log(`   ✓ Employee ${name} (exists)`);
+    }
+  }
+
+  // Create night assignments
+  const { data: existingAssignments } = await supabase.from('night_assignments').select('id, date');
+  const existingDates = new Set((existingAssignments || []).map(a => a.date));
+
+  let assignmentsCreated = 0;
+  let assignmentsSkipped = 0;
+
+  for (const assignment of allEmployeeAssignments) {
+    const employeeId = employeeNameToId[assignment.employeeName.toLowerCase()];
+    if (!employeeId) {
+      console.error(`   ❌ Unknown employee: ${assignment.employeeName}`);
+      continue;
+    }
+
+    if (existingDates.has(assignment.date)) {
+      assignmentsSkipped++;
+      continue;
+    }
+
+    const { error } = await supabase.from('night_assignments').insert({
+      date: assignment.date,
+      employee_id: employeeId,
+      user_id: seedUserId,
+    });
+
+    if (error) {
+      // Unique constraint violation - date already exists
+      if (error.code === '23505') {
+        assignmentsSkipped++;
+      } else {
+        console.error(`   ❌ ${assignment.date}: ${error.message}`);
+      }
+    } else {
+      assignmentsCreated++;
+      existingDates.add(assignment.date); // Track to avoid duplicates in same run
+    }
+  }
+
+  console.log(`   Created ${employeesCreated} new employees`);
+  console.log(`   Created ${assignmentsCreated} night assignments, skipped ${assignmentsSkipped}\n`);
+
   // Summary
   console.log('═'.repeat(50));
   console.log('✅ Sync complete!');
   console.log('═'.repeat(50));
   console.log(`\n🐕 Dogs: ${dogsCreated} created, ${allDogs.length - dogsCreated} existing`);
   console.log(`📅 Boardings: ${boardingsCreated} created, ${boardingsSkipped} skipped`);
+  console.log(`👤 Employees: ${employeesCreated} created`);
+  console.log(`🌙 Night assignments: ${assignmentsCreated} created, ${assignmentsSkipped} skipped`);
 }
 
 // Run
