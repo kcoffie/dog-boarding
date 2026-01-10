@@ -22,6 +22,7 @@ Items needing attention. Tell me to add, update, or remove items.
 
 ## UAT Feedback
 
+- [x] **#18** - [UAT Feedback]: sync data from Google Sheets (2026-01-10)
 - [ ] **#13** - [UAT Feedback]: new UAT process
 - [ ] **#11** - [UAT Feedback]: embed signup code in signup url
 - [ ] **#10** - [UAT Feedback]: stop using --no-verify
@@ -31,7 +32,10 @@ Items needing attention. Tell me to add, update, or remove items.
 
 ## My Items
 
-_Add personal items here that aren't GitHub issues_
+- [x] **#18** - Sync data from Google Sheets (2026-01-10)
+  - Created `scripts/sync-from-sheets.js` to import boarding data
+  - Synced 31 dogs and 50+ boardings from Nov 18 - Jan 10
+- [ ] Have charlie login and start UAT
 
 ---
 
