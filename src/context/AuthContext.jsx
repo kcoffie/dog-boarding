@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { logger } from '../utils/logger';
 
 const AuthContext = createContext({});
 
@@ -25,11 +26,21 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signIn = async (email, password) => {
+    logger.auth('signIn attempt', { email, supabaseUrl: import.meta.env.VITE_SUPABASE_URL });
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
     });
-    if (error) throw error;
+    if (error) {
+      logger.error('signIn failed', {
+        email,
+        errorMessage: error.message,
+        errorCode: error.code,
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL
+      });
+      throw error;
+    }
+    logger.auth('signIn success', { email, userId: data.user?.id });
     return data;
   };
 
