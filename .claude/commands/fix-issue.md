@@ -64,10 +64,12 @@ At completion, prepare two summaries in the work document:
 - How to verify changes are safe
 - Related issues
 
-### 9. Close Issue
+### 9. Post Summaries to GitHub
 - ASK USER before posting to GitHub
-- Add short summary followed by detailed summary as issue comment
-- Close the issue with reason "completed"
+- Add comment to issue #$1 with:
+  1. Short summary (first)
+  2. Detailed engineering summary (second)
+- After user confirms summaries are posted, ask if issue should be closed
 
 ## Rules
 - Never mention Claude/AI in commits or issue comments
