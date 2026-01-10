@@ -88,7 +88,7 @@ function parseCSV(csvText) {
 /**
  * Parse date from header like "Mon  18 Nov" or "Sat  28 Dec"
  */
-function parseDateFromHeader(header, year = 2024) {
+function parseDateFromHeader(header, year = 2025) {
   if (!header) return null;
 
   const match = header.match(/(\d+)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i);
