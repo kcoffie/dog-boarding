@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process */
 
 /**
  * Requirements Coverage Checker
@@ -28,7 +29,7 @@ const colors = {
 /**
  * Parse requirements from REQUIREMENTS.md
  * @param {string} filePath Path to REQUIREMENTS.md
- * @returns {Array<{id: string, title: string}>} Array of requirement objects
+ * @returns {Array<{id: string, title: string, status: string}>} Array of requirement objects
  */
 function parseRequirements(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -39,14 +40,22 @@ function parseRequirements(filePath) {
   const content = fs.readFileSync(filePath, 'utf-8');
   const requirements = [];
 
-  // Match ### REQ-XXX: Title
-  const reqRegex = /### (REQ-\d+):\s*(.+)/g;
-  let match;
+  // Split content by requirement headers
+  const sections = content.split(/(?=### REQ-\d+:)/);
 
-  while ((match = reqRegex.exec(content)) !== null) {
+  for (const section of sections) {
+    // Match ### REQ-XXX: Title
+    const headerMatch = section.match(/### (REQ-\d+):\s*(.+)/);
+    if (!headerMatch) continue;
+
+    // Extract status from the section
+    const statusMatch = section.match(/\*\*Status:\*\*\s*(\w+)/);
+    const status = statusMatch ? statusMatch[1] : 'Unknown';
+
     requirements.push({
-      id: match[1],
-      title: match[2].trim(),
+      id: headerMatch[1],
+      title: headerMatch[2].trim(),
+      status: status,
     });
   }
 
@@ -163,7 +172,16 @@ function main() {
   let uncovered = 0;
   const uncoveredList = [];
 
+  let skipped = 0;
+
   for (const req of requirements) {
+    // Skip requirements that are Planned (not yet implemented)
+    if (req.status === 'Planned') {
+      console.log(`${colors.yellow}⏸️  ${req.id}${colors.reset}: ${req.title} ${colors.cyan}[Planned - skipped]${colors.reset}`);
+      skipped++;
+      continue;
+    }
+
     const testFiles = tested.get(req.id);
 
     if (testFiles && testFiles.length > 0) {
@@ -180,14 +198,18 @@ function main() {
 
   console.log('='.repeat(60));
 
-  const percentage = Math.round((covered / requirements.length) * 100);
+  const activeRequirements = requirements.length - skipped;
+  const percentage = activeRequirements > 0 ? Math.round((covered / activeRequirements) * 100) : 100;
   const percentColor = percentage === 100 ? colors.green : percentage >= 80 ? colors.yellow : colors.red;
 
   console.log(`\n${colors.bold}Summary:${colors.reset}`);
   console.log(`  Total Requirements: ${requirements.length}`);
+  if (skipped > 0) {
+    console.log(`  ${colors.yellow}Planned (skipped):${colors.reset} ${skipped}`);
+  }
   console.log(`  ${colors.green}Covered:${colors.reset} ${covered}`);
   console.log(`  ${colors.red}Missing:${colors.reset} ${uncovered}`);
-  console.log(`  ${colors.bold}Coverage:${colors.reset} ${percentColor}${percentage}%${colors.reset}`);
+  console.log(`  ${colors.bold}Coverage:${colors.reset} ${percentColor}${percentage}%${colors.reset} (of active requirements)`);
 
   if (uncovered > 0) {
     console.log(`\n${colors.yellow}⚠️  The following requirements need tests:${colors.reset}`);

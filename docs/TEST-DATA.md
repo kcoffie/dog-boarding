@@ -21,6 +21,7 @@ npm run reset-db
 | admin@test.com | TestPass123! | Primary test account |
 | user1@test.com | TestPass123! | Secondary test account |
 | user2@test.com | TestPass123! | Secondary test account |
+| charlie@agirlandyourdog.com | CharliePass123! | Added via Issue #12 fix |
 
 ## Test Invite Codes
 

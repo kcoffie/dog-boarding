@@ -119,6 +119,25 @@ Authenticated users can create and manage invite codes.
 
 ---
 
+### REQ-007: Admin User Management
+**Added:** v1.4 | **Status:** Planned
+
+Admins can manage user accounts from the Settings page.
+
+**Acceptance Criteria:**
+- Settings page shows list of all system users
+- Can update a user's password
+- Can delete a user account
+- Confirmation required before delete
+- Changes persist immediately
+- (Future) Role-based access control - only admins can manage users
+
+**Tests:** TBD
+
+**Related:** GitHub Issue #13
+
+---
+
 ## Dogs
 
 ### REQ-010: Add Dog
