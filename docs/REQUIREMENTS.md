@@ -134,7 +134,7 @@ Admins can manage user accounts from the Settings page.
 
 **Tests:** TBD
 
-**Related:** GitHub Issue #13
+**Related:** GitHub Issue #17
 
 ---
 
