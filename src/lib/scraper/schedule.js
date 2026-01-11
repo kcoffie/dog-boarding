@@ -38,6 +38,11 @@ export function parseSchedulePage(html) {
     }
   }
 
+  console.log(`[Schedule] 🔍 Parsed ${appointments.length} appointment links from HTML (${html.length} chars)`);
+  if (appointments.length > 0) {
+    console.log(`[Schedule] 🔍 First appointment: ${appointments[0].id} - ${appointments[0].title || '(no title)'}`);
+  }
+
   return appointments;
 }
 
@@ -132,15 +137,31 @@ export async function fetchAllSchedulePages(options = {}) {
   let currentUrl = null;
   let pageCount = 0;
 
+  console.log(`[Schedule] 📄 Starting to fetch schedule pages (max: ${maxPages})`);
+
   while (pageCount < maxPages) {
+    const pageStart = Date.now();
+    console.log(`[Schedule] 📄 Fetching page ${pageCount + 1}${currentUrl ? ` (${currentUrl})` : ' (initial)'}`);
+
     const result = currentUrl
       ? await fetchSchedulePageByUrl(currentUrl, fetchOptions.boardingOnly)
       : await fetchSchedulePage(fetchOptions);
+
+    const pageDuration = Date.now() - pageStart;
+    console.log(`[Schedule] ⏱️ Page ${pageCount + 1}: found ${result.appointments.length} appointments in ${pageDuration}ms`);
+    console.log(`[Schedule] 📄 Page ${pageCount + 1}: hasNextPage=${result.hasNextPage}, nextPageUrl=${result.nextPageUrl || 'none'}`);
 
     allAppointments.push(...result.appointments);
     pageCount++;
 
     if (!result.hasNextPage || !result.nextPageUrl) {
+      console.log(`[Schedule] ✅ Finished fetching - no more pages`);
+      break;
+    }
+
+    // Prevent infinite loop - check if nextPageUrl is the same as current
+    if (result.nextPageUrl === currentUrl) {
+      console.log(`[Schedule] ⚠️ Breaking loop - nextPageUrl same as current`);
       break;
     }
 
@@ -154,6 +175,8 @@ export async function fetchAllSchedulePages(options = {}) {
   const uniqueAppointments = Array.from(
     new Map(allAppointments.map(a => [a.id, a])).values()
   );
+
+  console.log(`[Schedule] 📊 Total: ${uniqueAppointments.length} unique appointments from ${pageCount} pages`);
 
   return uniqueAppointments;
 }
@@ -210,6 +233,7 @@ function parsePagination(html) {
       if (!nextUrl.startsWith('http')) {
         nextUrl = `${SCRAPER_CONFIG.baseUrl}${nextUrl}`;
       }
+      console.log(`[Schedule] 🔗 Found pagination link: ${nextUrl}`);
       return {
         hasNextPage: true,
         nextPageUrl: nextUrl,
@@ -217,6 +241,7 @@ function parsePagination(html) {
     }
   }
 
+  console.log(`[Schedule] 🔗 No pagination link found`);
   return {
     hasNextPage: false,
     nextPageUrl: null,

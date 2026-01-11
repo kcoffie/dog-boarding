@@ -86,13 +86,19 @@ ALTER TABLE sync_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sync_logs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Authenticated users full access" ON sync_appointments
-  FOR ALL USING (auth.role() = 'authenticated');
+  FOR ALL
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
 
 CREATE POLICY "Authenticated users full access" ON sync_settings
-  FOR ALL USING (auth.role() = 'authenticated');
+  FOR ALL
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
 
 CREATE POLICY "Authenticated users full access" ON sync_logs
-  FOR ALL USING (auth.role() = 'authenticated');
+  FOR ALL
+  USING (auth.role() = 'authenticated')
+  WITH CHECK (auth.role() = 'authenticated');
 
 -- Add source tracking to existing tables
 ALTER TABLE dogs ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'manual';
