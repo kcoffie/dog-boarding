@@ -44,6 +44,13 @@ export function useSyncSettings() {
       setSyncLogs(logsData);
       setSyncing(running);
     } catch (err) {
+      console.error('[SyncSettings] loadData error:', err);
+      console.error('[SyncSettings] Error details:', {
+        message: err.message,
+        code: err.code,
+        details: err.details,
+        hint: err.hint,
+      });
       setError(err.message);
     } finally {
       setLoading(false);
@@ -59,9 +66,17 @@ export function useSyncSettings() {
   const toggleEnabled = useCallback(async () => {
     try {
       const newEnabled = !settings?.enabled;
+      console.log('[SyncSettings] toggleEnabled:', newEnabled);
       await updateSyncSettings(supabase, { enabled: newEnabled });
       setSettings(prev => ({ ...prev, enabled: newEnabled }));
     } catch (err) {
+      console.error('[SyncSettings] toggleEnabled error:', err);
+      console.error('[SyncSettings] Error details:', {
+        message: err.message,
+        code: err.code,
+        details: err.details,
+        hint: err.hint,
+      });
       setError(err.message);
     }
   }, [settings?.enabled]);
@@ -76,10 +91,18 @@ export function useSyncSettings() {
     }
 
     try {
+      console.log('[SyncSettings] setInterval:', parsedMinutes);
       await updateSyncSettings(supabase, { interval_minutes: parsedMinutes });
       setSettings(prev => ({ ...prev, interval_minutes: parsedMinutes }));
       setError(null);
     } catch (err) {
+      console.error('[SyncSettings] setInterval error:', err);
+      console.error('[SyncSettings] Error details:', {
+        message: err.message,
+        code: err.code,
+        details: err.details,
+        hint: err.hint,
+      });
       setError(err.message);
     }
   }, []);
@@ -89,6 +112,7 @@ export function useSyncSettings() {
     if (syncing) return;
 
     try {
+      console.log('[SyncSettings] triggerSync started');
       setSyncing(true);
       setSyncProgress({ stage: 'starting' });
       setError(null);
@@ -96,15 +120,26 @@ export function useSyncSettings() {
       const result = await runSync({
         supabase,
         onProgress: (progress) => {
+          console.log('[SyncSettings] sync progress:', progress);
           setSyncProgress(progress);
         },
       });
+
+      console.log('[SyncSettings] sync completed:', result);
 
       // Reload data after sync
       await loadData();
 
       return result;
     } catch (err) {
+      console.error('[SyncSettings] triggerSync error:', err);
+      console.error('[SyncSettings] Error details:', {
+        message: err.message,
+        code: err.code,
+        details: err.details,
+        hint: err.hint,
+        stack: err.stack,
+      });
       setError(err.message);
       throw err;
     } finally {
