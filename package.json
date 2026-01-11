@@ -56,6 +56,6 @@
     ]
   },
   "optionalDependencies": {
-    "@rollup/rollup-darwin-x64": "^4.54.0"
+    "@rollup/rollup-darwin-x64": "^4.55.1"
   }
 }
