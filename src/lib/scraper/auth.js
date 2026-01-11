@@ -12,6 +12,15 @@ let sessionCookies = null;
 let sessionExpiry = null;
 
 /**
+ * Check if running in browser environment (not test environment)
+ */
+function isBrowser() {
+  return typeof window !== 'undefined' &&
+    typeof import.meta !== 'undefined' &&
+    import.meta.env?.MODE !== 'test';
+}
+
+/**
  * Authenticate with the external booking system
  * @param {string} username - Login username/email
  * @param {string} password - Login password
@@ -26,6 +35,32 @@ export async function authenticate(username, password) {
   }
 
   try {
+    // Use server-side proxy in browser to bypass CORS
+    if (isBrowser()) {
+      const proxyStart = Date.now();
+      console.log('[Auth] 🔐 Using server-side proxy for authentication...');
+
+      const response = await fetch('/api/sync-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'authenticate', username, password }),
+      });
+
+      const result = await response.json();
+      const proxyDuration = Date.now() - proxyStart;
+
+      if (result.success) {
+        sessionCookies = result.cookies;
+        sessionExpiry = Date.now() + (24 * 60 * 60 * 1000);
+        console.log(`[Auth] ✅ Authentication successful via proxy (${proxyDuration}ms)`);
+      } else {
+        console.log(`[Auth] ❌ Authentication failed via proxy (${proxyDuration}ms): ${result.error}`);
+      }
+
+      return result;
+    }
+
+    // Direct fetch for server-side (Node.js) execution
     const loginUrl = `${SCRAPER_CONFIG.baseUrl}/login`;
 
     // First, get the login page to obtain any CSRF tokens
@@ -160,6 +195,40 @@ export async function authenticatedFetch(url, options = {}) {
     throw new Error('Not authenticated. Call authenticate() first.');
   }
 
+  // Use server-side proxy in browser to bypass CORS
+  if (isBrowser()) {
+    const proxyStart = Date.now();
+    console.log('[Auth] 📡 Fetching via proxy:', url);
+
+    const response = await fetch('/api/sync-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'fetch',
+        url,
+        cookies,
+        method: options.method || 'GET',
+      }),
+    });
+
+    const result = await response.json();
+    const proxyDuration = Date.now() - proxyStart;
+
+    console.log(`[Auth] ⏱️ Proxy fetch completed (${proxyDuration}ms): ${result.success ? 'success' : 'failed'}`);
+
+    // Return a Response-like object that matches the expected interface
+    return {
+      ok: result.success,
+      status: result.status || (result.success ? 200 : 500),
+      text: async () => result.html || '',
+      json: async () => JSON.parse(result.html || '{}'),
+      headers: {
+        get: (name) => name.toLowerCase() === 'set-cookie' ? result.cookies : null,
+      },
+    };
+  }
+
+  // Direct fetch for server-side (Node.js) execution
   const headers = {
     'User-Agent': 'Mozilla/5.0 (compatible; DogBoardingSync/2.0)',
     'Cookie': cookies,
