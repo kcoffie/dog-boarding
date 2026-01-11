@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useInvites } from '../hooks/useInvites';
 import ConfirmDialog from '../components/ConfirmDialog';
-import SyncSettings from '../components/SyncSettings';
 import { getEmployeeName, isEmployeeActive } from '../utils/employeeHelpers';
 
 export default function SettingsPage() {
@@ -463,9 +462,6 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
-
-      {/* External Sync Section */}
-      <SyncSettings />
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
