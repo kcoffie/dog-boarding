@@ -15,7 +15,7 @@ import {
 
 describe('REQ-101: Appointment List Scraping', () => {
   describe('parseSchedulePage()', () => {
-    it('extracts appointment links from schedule page', () => {
+    it('extracts appointment IDs from schedule page', () => {
       const appointments = parseSchedulePage(mockSchedulePage);
 
       expect(appointments).toHaveLength(4);
@@ -32,11 +32,44 @@ describe('REQ-101: Appointment List Scraping', () => {
       expect(appointments[1].url).toContain('/schedule/a/DEF456/');
     });
 
-    it('extracts appointment titles', () => {
+    it('extracts pet names from child elements', () => {
       const appointments = parseSchedulePage(mockSchedulePage);
 
-      expect(appointments[0].title).toContain('Luna');
-      expect(appointments[1].title).toContain('Cooper');
+      expect(appointments[0].petName).toBe('Luna Smith');
+      expect(appointments[1].petName).toBe('Cooper Doe');
+    });
+
+    it('extracts client names from child elements', () => {
+      const appointments = parseSchedulePage(mockSchedulePage);
+
+      expect(appointments[0].clientName).toBe('John Smith');
+      expect(appointments[1].clientName).toBe('Jane Doe');
+    });
+
+    it('extracts time range from day-event-time element', () => {
+      const appointments = parseSchedulePage(mockSchedulePage);
+
+      expect(appointments[0].time).toContain('Dec 21');
+      expect(appointments[0].time).toContain('Dec 23');
+    });
+
+    it('extracts eventType from data-event_type attribute', () => {
+      const appointments = parseSchedulePage(mockSchedulePage);
+
+      expect(appointments[0].eventType).toBe('1');
+      expect(appointments[2].eventType).toBe('2'); // GHI789 is event_type 2
+    });
+
+    it('extracts status from data-status attribute', () => {
+      const appointments = parseSchedulePage(mockSchedulePage);
+
+      expect(appointments[0].status).toBe('6'); // Completed
+    });
+
+    it('extracts date-range title from day-event-title element', () => {
+      const appointments = parseSchedulePage(mockSchedulePage);
+
+      expect(appointments[0].title).toBe('12/21-12/23am');
     });
 
     it('handles page with no appointments', () => {
@@ -46,142 +79,98 @@ describe('REQ-101: Appointment List Scraping', () => {
       expect(appointments).toHaveLength(0);
     });
 
-    it('handles malformed HTML gracefully', () => {
-      const html = '<html><body><a href="/schedule/a/TEST123/999">Test</body>';
+    it('handles minimal appointment anchor with just href', () => {
+      const html = '<html><body><a href="/schedule/a/TEST123/999">Text</a></body></html>';
       const appointments = parseSchedulePage(html);
 
       expect(appointments).toHaveLength(1);
       expect(appointments[0].id).toBe('TEST123');
-    });
-  });
-
-  describe('filterBoardingAppointments()', () => {
-    it('filters to only boarding appointments', () => {
-      const allAppointments = parseSchedulePage(mockSchedulePage);
-      const boardingOnly = filterBoardingAppointments(allAppointments);
-
-      // Should filter out Daycare (GHI789)
-      expect(boardingOnly).toHaveLength(3);
-      expect(boardingOnly.find(a => a.id === 'GHI789')).toBeUndefined();
+      expect(appointments[0].petName).toBe('');
+      expect(appointments[0].clientName).toBe('');
     });
 
-    it('keeps appointments with "boarding" in title', () => {
-      const appointments = [
-        { id: '1', url: '/a/1', title: 'Boarding (Nights) - Fluffy' },
-        { id: '2', url: '/a/2', title: 'Daycare - Spot' },
-      ];
-
-      const filtered = filterBoardingAppointments(appointments);
-
-      expect(filtered).toHaveLength(1);
-      expect(filtered[0].id).toBe('1');
-    });
-
-    it('keeps appointments with "overnight" in title', () => {
-      const appointments = [
-        { id: '1', url: '/a/1', title: 'Overnight Stay - Max' },
-        { id: '2', url: '/a/2', title: 'Grooming - Rex' },
-      ];
-
-      const filtered = filterBoardingAppointments(appointments);
-
-      expect(filtered).toHaveLength(1);
-      expect(filtered[0].id).toBe('1');
-    });
-
-    it('keeps appointments with "nights" in title', () => {
-      const appointments = [
-        { id: '1', url: '/a/1', title: '3 Nights - Buddy' },
-        { id: '2', url: '/a/2', title: 'Training Session - Duke' },
-      ];
-
-      const filtered = filterBoardingAppointments(appointments);
-
-      expect(filtered).toHaveLength(1);
-      expect(filtered[0].id).toBe('1');
-    });
-
-    it('is case-insensitive', () => {
-      const appointments = [
-        { id: '1', url: '/a/1', title: 'BOARDING - Dog1' },
-        { id: '2', url: '/a/2', title: 'boarding - Dog2' },
-        { id: '3', url: '/a/3', title: 'Boarding - Dog3' },
-      ];
-
-      const filtered = filterBoardingAppointments(appointments);
-
-      expect(filtered).toHaveLength(3);
-    });
-
-    it('returns empty array when no boarding appointments', () => {
-      const appointments = [
-        { id: '1', url: '/a/1', title: 'Daycare - Spot' },
-        { id: '2', url: '/a/2', title: 'Grooming - Rex' },
-      ];
-
-      const filtered = filterBoardingAppointments(appointments);
-
-      expect(filtered).toHaveLength(0);
-    });
-  });
-
-  describe('pagination detection', () => {
-    it('detects pagination links', () => {
-      // We can test this by checking the parsed result includes pagination info
-      // The function returns hasNextPage and nextPageUrl
-      const html = mockSchedulePage;
-
-      // Check that the HTML contains pagination
-      expect(html).toContain('class="next"');
-      expect(html).toContain('page=3');
-    });
-
-    it('handles page with no pagination', () => {
-      const html = mockSchedulePageNoPagination;
-
-      // No pagination links
-      expect(html).not.toContain('class="next"');
-    });
-  });
-
-  describe('date range filtering', () => {
-    it('appointment IDs are unique', () => {
-      const appointments = parseSchedulePage(mockSchedulePage);
-      const ids = appointments.map(a => a.id);
-      const uniqueIds = [...new Set(ids)];
-
-      expect(ids.length).toBe(uniqueIds.length);
-    });
-
-    it('handles duplicate appointments gracefully', () => {
+    it('deduplicates appointments by ID', () => {
       const htmlWithDupes = `
         <html><body>
-          <a href="/schedule/a/ABC123/111">Boarding - Dog1</a>
-          <a href="/schedule/a/ABC123/222">Boarding - Dog1 (duplicate)</a>
-          <a href="/schedule/a/DEF456/333">Boarding - Dog2</a>
+          <a href="/schedule/a/ABC123/111" data-id="ABC123">
+            <span class="event-pet pet-1">Dog1</span>
+          </a>
+          <a href="/schedule/a/ABC123/222" data-id="ABC123">
+            <span class="event-pet pet-1">Dog1</span>
+          </a>
+          <a href="/schedule/a/DEF456/333" data-id="DEF456">
+            <span class="event-pet pet-2">Dog2</span>
+          </a>
         </body></html>
       `;
 
       const appointments = parseSchedulePage(htmlWithDupes);
 
-      // Should have all entries initially (dedup happens in fetchAllSchedulePages)
-      expect(appointments.length).toBeGreaterThanOrEqual(2);
+      expect(appointments).toHaveLength(2);
+      expect(appointments.map(a => a.id)).toEqual(['ABC123', 'DEF456']);
+    });
+  });
+
+  describe('filterBoardingAppointments()', () => {
+    it('passes all appointments through (boarding filter is now at detail-page level)', () => {
+      const allAppointments = parseSchedulePage(mockSchedulePage);
+      const result = filterBoardingAppointments(allAppointments);
+
+      // All 4 appointments pass through — GHI789 (day visit) is NOT filtered here
+      expect(result).toHaveLength(4);
+    });
+
+    it('removes entries with no id', () => {
+      const appointments = [
+        { id: 'A1', url: '/a/1', petName: 'Buddy' },
+        { id: '', url: '/a/2', petName: '' },
+        { id: 'A3', url: '/a/3', petName: 'Rex' },
+      ];
+
+      const filtered = filterBoardingAppointments(appointments);
+
+      expect(filtered).toHaveLength(2);
+      expect(filtered.map(a => a.id)).toEqual(['A1', 'A3']);
+    });
+
+    it('returns empty array for empty input', () => {
+      expect(filterBoardingAppointments([])).toHaveLength(0);
+    });
+  });
+
+  describe('pagination detection', () => {
+    it('detects pagination links', () => {
+      expect(mockSchedulePage).toContain('class="next"');
+      expect(mockSchedulePage).toContain('page=3');
+    });
+
+    it('handles page with no pagination', () => {
+      expect(mockSchedulePageNoPagination).not.toContain('class="next"');
     });
   });
 
   describe('URL handling', () => {
-    it('handles relative URLs', () => {
-      const html = '<a href="/schedule/a/REL123/999">Boarding - Test</a>';
+    it('handles relative URLs by prepending base URL', () => {
+      const html = '<html><body><a href="/schedule/a/REL123/999"><span class="event-pet">Dog</span></a></body></html>';
       const appointments = parseSchedulePage(html);
 
       expect(appointments[0].url).toContain('/schedule/a/REL123/');
     });
 
     it('preserves timestamp in URL', () => {
-      const html = '<a href="/schedule/a/TEST123/1234567890">Boarding - Test</a>';
+      const html = '<html><body><a href="/schedule/a/TEST123/1234567890"></a></body></html>';
       const appointments = parseSchedulePage(html);
 
       expect(appointments[0].url).toContain('1234567890');
+      expect(appointments[0].timestamp).toBe('1234567890');
+    });
+
+    it('appointment IDs are unique after deduplication', () => {
+      const appointments = parseSchedulePage(mockSchedulePage);
+      const ids = appointments.map(a => a.id);
+      const uniqueIds = [...new Set(ids)];
+
+      expect(ids.length).toBe(uniqueIds.length);
     });
   });
 });
