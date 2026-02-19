@@ -1,9 +1,11 @@
 /**
  * Data mapping module - maps external data to app schema
- * @requirements REQ-103
+ * @requirements REQ-103, REQ-201.1, REQ-201.3
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { detectChangesSync } from './changeDetection.js';
+import { mappingLogger } from './logger.js';
 
 /**
  * Get Supabase client for database operations
@@ -174,6 +176,32 @@ export async function findBoardingByExternalId(supabase, externalId) {
 }
 
 /**
+ * Find existing boarding by dog + overlapping dates (for duplicate matching)
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} dogId - Dog UUID
+ * @param {string} checkIn - Check-in datetime ISO string
+ * @param {string} checkOut - Check-out datetime ISO string
+ * @returns {Promise<Object|null>}
+ */
+export async function findBoardingByDogAndDates(supabase, dogId, checkIn, checkOut) {
+  // Find boardings for this dog that overlap with the given date range
+  const { data, error } = await supabase
+    .from('boardings')
+    .select('*')
+    .eq('dog_id', dogId)
+    .lte('arrival_datetime', checkOut)
+    .gte('departure_datetime', checkIn)
+    .limit(1)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw error;
+  }
+
+  return data || null;
+}
+
+/**
  * Find existing sync_appointment by external_id
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} externalId
@@ -230,7 +258,23 @@ export async function upsertDog(supabase, dogData, options = {}) {
 
   if (existingByName) {
     if (existingByName.source === 'manual' && !overwriteManual) {
-      // Don't overwrite manual entry, just return it
+      // Link external_id to manual entry but preserve manual data
+      if (!existingByName.external_id) {
+        mappingLogger.log(`[Mapping] Linking dog "${existingByName.name}" (id: ${existingByName.id}) to external_id ${dogData.external_id}`);
+        const { data, error } = await supabase
+          .from('dogs')
+          .update({
+            external_id: dogData.external_id,
+            // Keep source as 'manual' to preserve manual flag
+          })
+          .eq('id', existingByName.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+        return { dog: data, created: false, updated: true };
+      }
+      // Already linked, just return it
       return { dog: existingByName, created: false, updated: false };
     }
 
@@ -263,23 +307,42 @@ export async function upsertDog(supabase, dogData, options = {}) {
 }
 
 /**
- * Upsert a boarding record
+ * Upsert a boarding record with duplicate matching
+ * Matches by external_id first, then by dog + overlapping dates
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {Object} boardingData
  * @returns {Promise<{boarding: Object, created: boolean, updated: boolean}>}
  */
 export async function upsertBoarding(supabase, boardingData) {
   // Check if boarding exists by external_id
-  const existing = await findBoardingByExternalId(supabase, boardingData.external_id);
+  let existing = await findBoardingByExternalId(supabase, boardingData.external_id);
+
+  // If not found by external_id, try matching by dog + overlapping dates
+  if (!existing && boardingData.dog_id && boardingData.arrival_datetime && boardingData.departure_datetime) {
+    existing = await findBoardingByDogAndDates(
+      supabase,
+      boardingData.dog_id,
+      boardingData.arrival_datetime,
+      boardingData.departure_datetime
+    );
+
+    // If we found a match by date overlap, link the external_id
+    if (existing && !existing.external_id) {
+      mappingLogger.log(`[Mapping] Linking boarding ${existing.id} to external_id ${boardingData.external_id}`);
+    }
+  }
 
   if (existing) {
-    // Update existing boarding
+    // Update existing boarding - preserve any manual notes
     const { data, error } = await supabase
       .from('boardings')
       .update({
         arrival_datetime: boardingData.arrival_datetime,
         departure_datetime: boardingData.departure_datetime,
         dog_id: boardingData.dog_id,
+        external_id: boardingData.external_id,
+        source: 'external',
+        // Don't overwrite notes if they exist - they may be manual
       })
       .eq('id', existing.id)
       .select()
@@ -303,21 +366,56 @@ export async function upsertBoarding(supabase, boardingData) {
 }
 
 /**
- * Upsert a sync_appointment record
+ * Upsert a sync_appointment record with content hash change detection
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {Object} syncData
- * @returns {Promise<{syncAppointment: Object, created: boolean, updated: boolean}>}
+ * @param {Object} [options]
+ * @param {boolean} [options.forceUpdate=false] - Force update even if hash matches
+ * @returns {Promise<{syncAppointment: Object, created: boolean, updated: boolean, unchanged: boolean, changeDetails: Object|null}>}
  */
-export async function upsertSyncAppointment(supabase, syncData) {
+export async function upsertSyncAppointment(supabase, syncData, options = {}) {
+  const { forceUpdate = false } = options;
   const existing = await findSyncAppointmentByExternalId(supabase, syncData.external_id);
 
+  // Detect changes using content hash
+  const changeResult = detectChangesSync(existing, syncData);
+  const now = new Date().toISOString();
+
   if (existing) {
-    // Update existing
+    // Check if unchanged (and not forcing update)
+    if (changeResult.type === 'unchanged' && !forceUpdate) {
+      // Just update the last_synced_at timestamp, skip full update
+      const { data, error } = await supabase
+        .from('sync_appointments')
+        .update({
+          last_synced_at: now,
+          last_change_type: 'unchanged',
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return {
+        syncAppointment: data,
+        created: false,
+        updated: false,
+        unchanged: true,
+        changeDetails: null,
+      };
+    }
+
+    // Update existing with change tracking
     const { data, error } = await supabase
       .from('sync_appointments')
       .update({
         ...syncData,
-        last_synced_at: new Date().toISOString(),
+        content_hash: changeResult.hash,
+        last_change_type: changeResult.type,
+        last_changed_at: now,
+        last_synced_at: now,
+        previous_data: changeResult.previousData,
       })
       .eq('id', existing.id)
       .select()
@@ -325,7 +423,21 @@ export async function upsertSyncAppointment(supabase, syncData) {
 
     if (error) throw error;
 
-    return { syncAppointment: data, created: false, updated: true };
+    return {
+      syncAppointment: data,
+      created: false,
+      updated: true,
+      unchanged: false,
+      changeDetails: {
+        external_id: syncData.external_id,
+        dog_name: syncData.pet_name,
+        action: changeResult.type,
+        check_in: syncData.check_in_datetime,
+        check_out: syncData.check_out_datetime,
+        status: syncData.status,
+        changes: changeResult.changedFields,
+      },
+    };
   }
 
   // Create new
@@ -333,15 +445,32 @@ export async function upsertSyncAppointment(supabase, syncData) {
     .from('sync_appointments')
     .insert({
       ...syncData,
-      first_synced_at: new Date().toISOString(),
-      last_synced_at: new Date().toISOString(),
+      content_hash: changeResult.hash,
+      last_change_type: 'created',
+      last_changed_at: now,
+      first_synced_at: now,
+      last_synced_at: now,
     })
     .select()
     .single();
 
   if (error) throw error;
 
-  return { syncAppointment: data, created: true, updated: false };
+  return {
+    syncAppointment: data,
+    created: true,
+    updated: false,
+    unchanged: false,
+    changeDetails: {
+      external_id: syncData.external_id,
+      dog_name: syncData.pet_name,
+      action: 'created',
+      check_in: syncData.check_in_datetime,
+      check_out: syncData.check_out_datetime,
+      status: syncData.status,
+      changes: null,
+    },
+  };
 }
 
 /**
@@ -349,11 +478,12 @@ export async function upsertSyncAppointment(supabase, syncData) {
  * @param {Object} externalData - Data from scraper
  * @param {Object} [options]
  * @param {boolean} [options.overwriteManual=false] - Whether to overwrite manual entries
+ * @param {boolean} [options.forceUpdate=false] - Force update even if unchanged
  * @param {import('@supabase/supabase-js').SupabaseClient} [options.supabase] - Supabase client
- * @returns {Promise<{dog: Object, boarding: Object, syncAppointment: Object, stats: Object}>}
+ * @returns {Promise<{dog: Object, boarding: Object, syncAppointment: Object, stats: Object, changeDetails: Object|null}>}
  */
 export async function mapAndSaveAppointment(externalData, options = {}) {
-  const { overwriteManual = false, supabase = getSupabaseClient() } = options;
+  const { overwriteManual = false, forceUpdate = false, supabase = getSupabaseClient() } = options;
 
   const stats = {
     dogCreated: false,
@@ -362,6 +492,7 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
     boardingUpdated: false,
     syncCreated: false,
     syncUpdated: false,
+    syncUnchanged: false,
   };
 
   // 1. Upsert dog
@@ -384,20 +515,25 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
     stats.boardingUpdated = result.updated;
   }
 
-  // 3. Upsert sync_appointment (raw data storage)
+  // 3. Upsert sync_appointment (raw data storage) with change detection
   const syncData = mapToSyncAppointment(externalData, dog.id, boarding?.id);
-  const { syncAppointment, created: syncCreated, updated: syncUpdated } = await upsertSyncAppointment(
-    supabase,
-    syncData
-  );
+  const {
+    syncAppointment,
+    created: syncCreated,
+    updated: syncUpdated,
+    unchanged: syncUnchanged,
+    changeDetails,
+  } = await upsertSyncAppointment(supabase, syncData, { forceUpdate });
   stats.syncCreated = syncCreated;
   stats.syncUpdated = syncUpdated;
+  stats.syncUnchanged = syncUnchanged;
 
   return {
     dog,
     boarding,
     syncAppointment,
     stats,
+    changeDetails,
   };
 }
 

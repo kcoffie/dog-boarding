@@ -11,6 +11,7 @@ import {
   updateSyncSettings,
   getRecentSyncLogs,
   isSyncRunning,
+  abortStuckSync,
   runSync,
 } from '../lib/scraper/sync.js';
 
@@ -28,11 +29,18 @@ export function useSyncSettings() {
       setLoading(true);
       setError(null);
 
+      // Clean up any sync logs stuck in 'running' state for more than 30 minutes.
+      // This prevents the UI from being permanently blocked after a browser crash
+      // or page close during a previous sync.
+      await abortStuckSync(supabase, 30).catch(() => {});
+
       const [settingsData, logsData, running] = await Promise.all([
         getSyncSettings(supabase),
         getRecentSyncLogs(supabase, 10),
         isSyncRunning(supabase),
       ]);
+
+      console.log('[SyncSettings] loadData result:', { settingsData, logsData, running });
 
       setSettings(settingsData || {
         enabled: false,
@@ -40,6 +48,8 @@ export function useSyncSettings() {
         last_sync_at: null,
         last_sync_status: null,
         last_sync_message: null,
+        setup_mode: true,
+        setup_mode_completed_at: null,
       });
       setSyncLogs(logsData);
       setSyncing(running);
@@ -107,6 +117,27 @@ export function useSyncSettings() {
     }
   }, []);
 
+  // Toggle setup mode
+  const toggleSetupMode = useCallback(async () => {
+    try {
+      const newSetupMode = !settings?.setup_mode;
+      console.log('[SyncSettings] toggleSetupMode:', newSetupMode);
+
+      const updates = { setup_mode: newSetupMode };
+      // Record when setup mode was completed
+      if (!newSetupMode) {
+        updates.setup_mode_completed_at = new Date().toISOString();
+      }
+
+      await updateSyncSettings(supabase, updates);
+      setSettings(prev => ({ ...prev, ...updates }));
+      setError(null);
+    } catch (err) {
+      console.error('[SyncSettings] toggleSetupMode error:', err);
+      setError(err.message);
+    }
+  }, [settings?.setup_mode]);
+
   // Trigger manual sync
   const triggerSync = useCallback(async () => {
     if (syncing) return;
@@ -162,6 +193,7 @@ export function useSyncSettings() {
     error,
     toggleEnabled,
     setInterval,
+    toggleSetupMode,
     triggerSync,
     refresh,
     SyncStatus,

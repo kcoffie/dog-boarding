@@ -1,34 +1,56 @@
 # Handoff Document: External Sync Feature
 
-**Last Updated**: 2026-01-23 17:52 PST
-**Related Issues**: #14 (closed), #22 (ready to close)
+**Last Updated**: 2026-01-23 19:30 PST
+**Related Issues**: #14 (closed), #22 (in progress)
 **Branch**: `develop`
 
 ---
 
 ## Current State
 
-**✅ SYNC PIPELINE VERIFIED WORKING**
+**✅ SYNC PIPELINE VERIFIED WORKING** - Auth and fetch pipeline complete
 
-All bugs have been fixed and tested. The sync pipeline successfully:
-1. Authenticates with the external site (302 redirect)
-2. Fetches schedule page with valid cookies
-3. Parses 199 appointment links from HTML
+**🔨 ISSUE #22 IN PROGRESS** - See [ISSUE_22_PLAN.md](./ISSUE_22_PLAN.md) for detailed plan
 
-### What's Complete
+### Pipeline Status
+
+| Stage | Status | Notes |
+|-------|--------|-------|
+| Auth (302 redirect) | ✅ | Cookie parsing fixed |
+| Schedule fetch | ✅ | Returns 346K HTML |
+| Parse appointments | ✅ | 199 links extracted |
+| Change detection | 🔨 | Code exists, needs integration |
+| Deletion detection | 🔨 | Code exists, needs integration |
+| Database writes | ❓ | Untested in browser |
+
+### Issue #22 Requirements Progress
+
+| REQ | Title | Status |
+|-----|-------|--------|
+| REQ-200 | Initial vs Incremental Sync | 🔨 Chunk 3 |
+| REQ-201 | Change Detection | 🔨 Chunk 1 |
+| REQ-202 | Deletion Detection | 🔨 Chunk 2 |
+| REQ-203 | Data Integrity | 🔨 Chunk 4 |
+| REQ-204 | Reporting | 🔨 Chunk 5 |
+| REQ-205 | Error Recovery | 🔨 Chunk 6 |
+| REQ-206 | Audit Trail | 🔨 Chunk 1 |
+| REQ-207 | User Experience | 🔨 Chunk 7 |
+| REQ-208 | Performance | ✅ batchSync.js |
+| REQ-209 | Configuration | 🔨 Chunk 8 |
+| REQ-210 | Testing | 🔨 Chunk 9 |
+
+### What's Complete (Pre-Issue #22)
 
 1. **Auth fix - wrong field names** - `vite.config.js` ✅
 2. **Cookie parsing fix** - `vite.config.js` ✅
 3. **Batch processing with checkpoints** - `src/lib/scraper/batchSync.js` ✅
-4. **Database migration** - `supabase/migrations/010_add_sync_checkpoints.sql` ✅
-5. **UI for batch sync** - `src/components/SyncSettings.jsx` ✅
-6. **File logging** - `logs/sync.log` ✅
-7. **Staged verification tests** - `test-stages.mjs`, `test-full-sync.mjs` ✅
+4. **Database migrations 007-010** ✅
+5. **File logging** - `logs/sync.log` ✅
 
-### What Remains
+### Next Action
 
-- [ ] **Run browser batch sync** - Test actual database writes (optional - pipeline verified)
-- [ ] **Close issue #22** - All blocking bugs are fixed
+**Start Chunk 1: Wire Up Change Detection**
+- See [ISSUE_22_PLAN.md](./ISSUE_22_PLAN.md) for details
 
 ---
 

@@ -14,13 +14,13 @@
 
 ## Version History
 
-| Version | Focus Area | Status |
-|---------|-----------|--------|
-| v1.0 | Core boarding management | Complete |
-| v1.1 | Payroll & employee management | Complete |
-| v1.2 | CSV import & past boardings | Complete |
-| v1.3 | Authentication & invite system | Complete |
-| v2.0 | External data sync | In Progress |
+| Version | Focus Area                     | Status      |
+| ------- | ------------------------------ | ----------- |
+| v1.0    | Core boarding management       | Complete    |
+| v1.1    | Payroll & employee management  | Complete    |
+| v1.2    | CSV import & past boardings    | Complete    |
+| v1.3    | Authentication & invite system | Complete    |
+| v2.0    | External data sync             | In Progress |
 
 ---
 

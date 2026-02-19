@@ -9,6 +9,12 @@ import { authenticate, isAuthenticated } from './auth.js';
 import { fetchAllSchedulePages } from './schedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
 import { mapAndSaveAppointment } from './mapping.js';
+import { syncLogger, logSyncStart, logSyncEnd } from './logger.js';
+
+// Use timestamped logging
+const syncLog = syncLogger.log;
+const syncError = syncLogger.error;
+const syncWarn = syncLogger.warn;
 
 /**
  * Get Supabase client
@@ -36,7 +42,7 @@ export const SyncStatus = {
  * @returns {Promise<Object>}
  */
 export async function createSyncLog(supabase) {
-  console.log('[Sync] Creating sync log entry...');
+  syncLog('[Sync] Creating sync log entry...');
   const { data, error } = await supabase
     .from('sync_logs')
     .insert({
@@ -47,8 +53,8 @@ export async function createSyncLog(supabase) {
     .single();
 
   if (error) {
-    console.error('[Sync] createSyncLog error:', error);
-    console.error('[Sync] Error details:', {
+    syncError('[Sync] createSyncLog error:', error);
+    syncError('[Sync] Error details:', {
       message: error.message,
       code: error.code,
       details: error.details,
@@ -56,7 +62,7 @@ export async function createSyncLog(supabase) {
     });
     throw error;
   }
-  console.log('[Sync] Sync log created:', data.id);
+  syncLog('[Sync] Sync log created:', data.id);
   return data;
 }
 
@@ -84,7 +90,7 @@ export async function updateSyncLog(supabase, logId, updates) {
  * @returns {Promise<Object|null>}
  */
 export async function getSyncSettings(supabase) {
-  console.log('[Sync] Getting sync settings...');
+  syncLog('[Sync] Getting sync settings...');
   const { data, error } = await supabase
     .from('sync_settings')
     .select('*')
@@ -92,10 +98,10 @@ export async function getSyncSettings(supabase) {
     .single();
 
   if (error && error.code !== 'PGRST116') {
-    console.error('[Sync] getSyncSettings error:', error);
+    syncError('[Sync] getSyncSettings error:', error);
     throw error;
   }
-  console.log('[Sync] Sync settings:', data ? 'found' : 'not found');
+  syncLog('[Sync] Sync settings:', data ? 'found' : 'not found');
   return data;
 }
 
@@ -105,11 +111,11 @@ export async function getSyncSettings(supabase) {
  * @param {Object} updates
  */
 export async function updateSyncSettings(supabase, updates) {
-  console.log('[Sync] Updating sync settings:', updates);
+  syncLog('[Sync] Updating sync settings:', updates);
   const settings = await getSyncSettings(supabase);
 
   if (settings) {
-    console.log('[Sync] Updating existing settings:', settings.id);
+    syncLog('[Sync] Updating existing settings:', settings.id);
     const { error } = await supabase
       .from('sync_settings')
       .update({
@@ -119,11 +125,11 @@ export async function updateSyncSettings(supabase, updates) {
       .eq('id', settings.id);
 
     if (error) {
-      console.error('[Sync] updateSyncSettings (update) error:', error);
+      syncError('[Sync] updateSyncSettings (update) error:', error);
       throw error;
     }
   } else {
-    console.log('[Sync] Creating new sync settings...');
+    syncLog('[Sync] Creating new sync settings...');
     const { error } = await supabase
       .from('sync_settings')
       .insert({
@@ -133,11 +139,11 @@ export async function updateSyncSettings(supabase, updates) {
       });
 
     if (error) {
-      console.error('[Sync] updateSyncSettings (insert) error:', error);
+      syncError('[Sync] updateSyncSettings (insert) error:', error);
       throw error;
     }
   }
-  console.log('[Sync] Sync settings updated successfully');
+  syncLog('[Sync] Sync settings updated successfully');
 }
 
 /**
@@ -231,12 +237,15 @@ export async function runSync(options = {}) {
 
   const startTime = Date.now();
   const timings = {};
-  let syncLog = null;
+  let syncLogRecord = null;
+
+  // Log sync start to file
+  logSyncStart('manual');
 
   const logTiming = (label, startMs) => {
     const duration = Date.now() - startMs;
     timings[label] = duration;
-    console.log(`[Sync] ⏱️ ${label}: ${duration}ms`);
+    syncLog(`[Sync] ⏱️ ${label}: ${duration}ms`);
     return duration;
   };
 
@@ -244,19 +253,29 @@ export async function runSync(options = {}) {
     success: false,
     status: SyncStatus.FAILED,
     appointmentsFound: 0,
+    appointmentsSkipped: 0,
     appointmentsCreated: 0,
     appointmentsUpdated: 0,
+    appointmentsUnchanged: 0,
     appointmentsFailed: 0,
     errors: [],
+    changeDetails: [],
     durationMs: 0,
   };
 
   try {
-    // Create sync log
+    // Clean up any stuck syncs first (running > 30 min)
     let stepStart = Date.now();
-    syncLog = await createSyncLog(supabase);
+    await abortStuckSync(supabase, 30).catch((err) => {
+      syncWarn('[Sync] ⚠️ Failed to abort stuck syncs:', err.message);
+    });
+    logTiming('abortStuckSync', stepStart);
+
+    // Create sync log
+    stepStart = Date.now();
+    syncLogRecord = await createSyncLog(supabase);
     logTiming('createSyncLog', stepStart);
-    onProgress?.({ stage: 'started', logId: syncLog.id });
+    onProgress?.({ stage: 'started', logId: syncLogRecord.id });
 
     // Authenticate if needed
     if (!isAuthenticated()) {
@@ -266,7 +285,7 @@ export async function runSync(options = {}) {
 
       onProgress?.({ stage: 'authenticating' });
       stepStart = Date.now();
-      console.log('[Sync] 🔐 Starting authentication...');
+      syncLog('[Sync] 🔐 Starting authentication...');
       const authResult = await withRetry(() => authenticate(username, password));
       logTiming('authentication', stepStart);
 
@@ -274,7 +293,7 @@ export async function runSync(options = {}) {
         throw new Error(`Authentication failed: ${authResult.error}`);
       }
     } else {
-      console.log('[Sync] ✅ Already authenticated, skipping login');
+      syncLog('[Sync] ✅ Already authenticated, skipping login');
     }
 
     onProgress?.({ stage: 'authenticated' });
@@ -282,7 +301,7 @@ export async function runSync(options = {}) {
     // Fetch schedule
     onProgress?.({ stage: 'fetching_schedule' });
     stepStart = Date.now();
-    console.log('[Sync] 📅 Fetching schedule pages...');
+    syncLog('[Sync] 📅 Fetching schedule pages...');
     const appointments = await withRetry(() =>
       fetchAllSchedulePages({ startDate, endDate, boardingOnly })
     );
@@ -308,6 +327,22 @@ export async function runSync(options = {}) {
           appointment: appt.id,
         });
 
+        // Pre-filter using schedule page title — avoids fetching the detail page
+        // for obvious non-boarding appointments (saves ~8s per skip).
+        // Daycare: "DC:FT", "D/C M/T/W/TH", etc.
+        // Pack group: "PG FT", "P/G MTWTH", etc.
+        if (boardingOnly) {
+          const titleLower = (appt.title || '').toLowerCase();
+          const isKnownNonBoarding =
+            /(d\/c|\bdc\b)/i.test(titleLower) ||
+            /(p\/g|g\/p|\bpg\b)/i.test(titleLower);
+          if (isKnownNonBoarding) {
+            syncLog(`[Sync] ⏭️ Skipping non-boarding appointment ${appt.id} (title: "${appt.title}")`);
+            result.appointmentsSkipped++;
+            continue;
+          }
+        }
+
         // Rate limiting delay
         if (i > 0) {
           await delay(SCRAPER_CONFIG.delayBetweenRequests);
@@ -324,6 +359,20 @@ export async function runSync(options = {}) {
         );
         const fetchDuration = Date.now() - fetchStart;
 
+        // Post-fetch filter: catch any non-boarding that slipped past the pre-filter.
+        // The service_type from the detail page uses the same shorthand titles.
+        if (boardingOnly) {
+          const checkLower = (details.service_type || appt.title || '').toLowerCase();
+          const isKnownNonBoarding =
+            /(d\/c|\bdc\b)/i.test(checkLower) ||
+            /(p\/g|g\/p|\bpg\b)/i.test(checkLower);
+          if (isKnownNonBoarding) {
+            syncLog(`[Sync] ⏭️ Skipping non-boarding appointment ${appt.id} (service_type: "${details.service_type || appt.title}")`);
+            result.appointmentsSkipped++;
+            continue;
+          }
+        }
+
         // Map and save
         const saveStart = Date.now();
         const saveResult = await mapAndSaveAppointment(details, { supabase });
@@ -334,10 +383,17 @@ export async function runSync(options = {}) {
 
         console.log(`[Sync] ⏱️ Appointment ${i + 1}/${appointments.length} (${appt.id}): fetch=${fetchDuration}ms, save=${saveDuration}ms, total=${totalDuration}ms`);
 
-        if (saveResult.stats.dogCreated || saveResult.stats.boardingCreated) {
+        if (saveResult.stats.syncCreated || saveResult.stats.dogCreated || saveResult.stats.boardingCreated) {
           result.appointmentsCreated++;
-        } else if (saveResult.stats.dogUpdated || saveResult.stats.boardingUpdated) {
+        } else if (saveResult.stats.syncUnchanged && !saveResult.stats.dogUpdated && !saveResult.stats.boardingUpdated) {
+          result.appointmentsUnchanged++;
+        } else if (saveResult.stats.syncUpdated || saveResult.stats.dogUpdated || saveResult.stats.boardingUpdated) {
           result.appointmentsUpdated++;
+        }
+
+        // Collect change details for sync log
+        if (saveResult.changeDetails) {
+          result.changeDetails.push(saveResult.changeDetails);
         }
       } catch (error) {
         result.appointmentsFailed++;
@@ -385,13 +441,16 @@ export async function runSync(options = {}) {
 
     // Update sync log
     stepStart = Date.now();
-    await updateSyncLog(supabase, syncLog.id, {
+    await updateSyncLog(supabase, syncLogRecord.id, {
       status: result.status,
       appointments_found: result.appointmentsFound,
+      appointments_skipped: result.appointmentsSkipped,
       appointments_created: result.appointmentsCreated,
       appointments_updated: result.appointmentsUpdated,
+      appointments_unchanged: result.appointmentsUnchanged,
       appointments_failed: result.appointmentsFailed,
       errors: result.errors,
+      change_details: result.changeDetails,
       duration_ms: result.durationMs,
     });
     logTiming('updateSyncLog', stepStart);
@@ -408,15 +467,18 @@ export async function runSync(options = {}) {
     logTiming('updateSyncSettings', stepStart);
 
     // Final timing summary
-    console.log('[Sync] ═══════════════════════════════════════════════════');
-    console.log(`[Sync] ✅ SYNC COMPLETED - ${result.status.toUpperCase()}`);
-    console.log(`[Sync] 📊 Results: ${result.appointmentsFound} found, ${result.appointmentsCreated} created, ${result.appointmentsUpdated} updated, ${result.appointmentsFailed} failed`);
-    console.log('[Sync] ⏱️ Timing breakdown:');
+    syncLog('[Sync] ═══════════════════════════════════════════════════');
+    syncLog(`[Sync] ✅ SYNC COMPLETED - ${result.status.toUpperCase()}`);
+    syncLog(`[Sync] 📊 Results: ${result.appointmentsFound} found, ${result.appointmentsSkipped} skipped (non-boarding), ${result.appointmentsCreated} created, ${result.appointmentsUpdated} updated, ${result.appointmentsUnchanged} unchanged, ${result.appointmentsFailed} failed`);
+    syncLog('[Sync] ⏱️ Timing breakdown:');
     Object.entries(timings).forEach(([key, value]) => {
-      console.log(`[Sync]    - ${key}: ${value}ms`);
+      syncLog(`[Sync]    - ${key}: ${value}ms`);
     });
-    console.log(`[Sync] ⏱️ TOTAL: ${result.durationMs}ms (${(result.durationMs / 1000).toFixed(1)}s)`);
-    console.log('[Sync] ═══════════════════════════════════════════════════');
+    syncLog(`[Sync] ⏱️ TOTAL: ${result.durationMs}ms (${(result.durationMs / 1000).toFixed(1)}s)`);
+    syncLog('[Sync] ═══════════════════════════════════════════════════');
+
+    // Log sync end to file
+    logSyncEnd(result);
 
     onProgress?.({ stage: 'completed', result });
 
@@ -427,24 +489,29 @@ export async function runSync(options = {}) {
     const sanitizedMsg = sanitizeError(error.message);
 
     // Error timing summary
-    console.log('[Sync] ═══════════════════════════════════════════════════');
-    console.log(`[Sync] ❌ SYNC FAILED after ${result.durationMs}ms (${(result.durationMs / 1000).toFixed(1)}s)`);
-    console.log(`[Sync] 💥 Error: ${sanitizedMsg}`);
-    console.log('[Sync] ⏱️ Timing breakdown:');
+    syncLog('[Sync] ═══════════════════════════════════════════════════');
+    syncLog(`[Sync] ❌ SYNC FAILED after ${result.durationMs}ms (${(result.durationMs / 1000).toFixed(1)}s)`);
+    syncLog(`[Sync] 💥 Error: ${sanitizedMsg}`);
+    syncLog('[Sync] ⏱️ Timing breakdown:');
     Object.entries(timings).forEach(([key, value]) => {
-      console.log(`[Sync]    - ${key}: ${value}ms`);
+      syncLog(`[Sync]    - ${key}: ${value}ms`);
     });
-    console.log('[Sync] ═══════════════════════════════════════════════════');
+    syncLog('[Sync] ═══════════════════════════════════════════════════');
+
+    // Log sync end to file
+    logSyncEnd(result);
 
     // Update sync log if it was created
-    if (syncLog) {
-      await updateSyncLog(supabase, syncLog.id, {
+    if (syncLogRecord) {
+      await updateSyncLog(supabase, syncLogRecord.id, {
         status: SyncStatus.FAILED,
         appointments_found: result.appointmentsFound,
         appointments_failed: result.appointmentsFailed,
         errors: result.errors,
         duration_ms: result.durationMs,
-      }).catch(() => {}); // Ignore errors updating log
+      }).catch((updateErr) => {
+        syncError('[Sync] ⚠️ Failed to update sync log on error:', updateErr.message);
+      });
     }
 
     // Update sync settings
@@ -452,7 +519,9 @@ export async function runSync(options = {}) {
       last_sync_at: new Date().toISOString(),
       last_sync_status: SyncStatus.FAILED,
       last_sync_message: sanitizedMsg,
-    }).catch(() => {});
+    }).catch((updateErr) => {
+      syncError('[Sync] ⚠️ Failed to update sync settings on error:', updateErr.message);
+    });
 
     onProgress?.({ stage: 'failed', error: sanitizedMsg });
 

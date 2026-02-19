@@ -17,16 +17,67 @@ export const mockLoginPage = `
 </html>
 `;
 
+// Schedule page HTML matches the actual external site structure.
+// Appointment titles are rendered by JavaScript (not present in static HTML),
+// so we extract data from data-* attributes and child elements instead.
 export const mockSchedulePage = `
 <!DOCTYPE html>
 <html>
 <head><title>Schedule</title></head>
 <body>
   <div class="schedule">
-    <a href="/schedule/a/ABC123/1234567890">Boarding (Nights) - Luna - Dec 21-23</a>
-    <a href="/schedule/a/DEF456/1234567891">Boarding (Overnight) - Cooper - Dec 22-25</a>
-    <a href="/schedule/a/GHI789/1234567892">Daycare - Max - Dec 21</a>
-    <a href="/schedule/a/JKL012/1234567893">Boarding (Nights) - Bella - Dec 24-26</a>
+    <a class="day-event a-ABC123"
+       data-id="ABC123"
+       data-ts="1234567890"
+       href="/schedule/a/ABC123/1234567890"
+       data-event_type="1"
+       data-status="6">
+      <div class="time"><div class="day-event-time">Dec 21, 5:00pm - Dec 23, 10:00am</div></div>
+      <div class="day-event-title">12/21-12/23am</div>
+      <span class="pets">
+        <span class="event-client-wrapper"><span class="event-client">John Smith</span></span>
+        <div class="event-pets"><span class="event-pet pet-1">Luna Smith</span></div>
+      </span>
+    </a>
+    <a class="day-event a-DEF456"
+       data-id="DEF456"
+       data-ts="1234567891"
+       href="/schedule/a/DEF456/1234567891"
+       data-event_type="1"
+       data-status="1">
+      <div class="time"><div class="day-event-time">Dec 22, 5:00pm - Dec 25, 10:00am</div></div>
+      <div class="day-event-title">12/22-12/25am</div>
+      <span class="pets">
+        <span class="event-client-wrapper"><span class="event-client">Jane Doe</span></span>
+        <div class="event-pets"><span class="event-pet pet-2">Cooper Doe</span></div>
+      </span>
+    </a>
+    <a class="day-event a-GHI789"
+       data-id="GHI789"
+       data-ts="1234567892"
+       href="/schedule/a/GHI789/1234567892"
+       data-event_type="2"
+       data-status="1">
+      <div class="time"><div class="day-event-time">Dec 21, 9:00am - Dec 21, 5:00pm</div></div>
+      <div class="day-event-title">Day Visit</div>
+      <span class="pets">
+        <span class="event-client-wrapper"><span class="event-client">Bob Jones</span></span>
+        <div class="event-pets"><span class="event-pet pet-3">Max Jones</span></div>
+      </span>
+    </a>
+    <a class="day-event a-JKL012"
+       data-id="JKL012"
+       data-ts="1234567893"
+       href="/schedule/a/JKL012/1234567893"
+       data-event_type="1"
+       data-status="1">
+      <div class="time"><div class="day-event-time">Dec 24, 5:00pm - Dec 26, 10:00am</div></div>
+      <div class="day-event-title">12/24-12/26am</div>
+      <span class="pets">
+        <span class="event-client-wrapper"><span class="event-client">Alice Brown</span></span>
+        <div class="event-pets"><span class="event-pet pet-4">Bella Brown</span></div>
+      </span>
+    </a>
   </div>
   <div class="pagination">
     <a href="/schedule?page=1" class="prev">Previous</a>
@@ -42,7 +93,19 @@ export const mockSchedulePageNoPagination = `
 <head><title>Schedule</title></head>
 <body>
   <div class="schedule">
-    <a href="/schedule/a/ABC123/1234567890">Boarding (Nights) - Luna - Dec 21-23</a>
+    <a class="day-event a-ABC123"
+       data-id="ABC123"
+       data-ts="1234567890"
+       href="/schedule/a/ABC123/1234567890"
+       data-event_type="1"
+       data-status="6">
+      <div class="time"><div class="day-event-time">Dec 21, 5:00pm - Dec 23, 10:00am</div></div>
+      <div class="day-event-title">12/21-12/23am</div>
+      <span class="pets">
+        <span class="event-client-wrapper"><span class="event-client">John Smith</span></span>
+        <div class="event-pets"><span class="event-pet pet-1">Luna Smith</span></div>
+      </span>
+    </a>
   </div>
 </body>
 </html>
