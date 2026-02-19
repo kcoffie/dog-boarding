@@ -5,59 +5,87 @@
 
 import { SCRAPER_CONFIG } from './config.js';
 import { authenticatedFetch, isAuthenticated } from './auth.js';
+import { syncLogger } from './logger.js';
+
+const log = syncLogger.log;
+const logError = syncLogger.error;
 
 /**
- * Parse appointment links from schedule page HTML
+ * Parse appointment data from schedule page HTML using DOMParser.
+ *
+ * The external site renders appointment titles via JavaScript, so the fetched
+ * HTML has empty title text nodes. We instead extract data from attributes and
+ * child elements that ARE present in the static HTML:
+ *   - id / timestamp / eventType / status  →  data-* attributes on <a>
+ *   - petName   →  <span class="event-pet ...">
+ *   - clientName →  <span class="event-client">
+ *   - time       →  <div class="day-event-time">
+ *   - title      →  <div class="day-event-title"> (date-range label, e.g. "1/31-2/1pm")
+ *
  * @param {string} html - Schedule page HTML
- * @returns {Array<{id: string, url: string, title: string}>}
+ * @returns {Array<{id, url, timestamp, eventType, status, petName, clientName, time, title}>}
  */
 export function parseSchedulePage(html) {
   const appointments = [];
 
-  // Match appointment links: /schedule/a/{id}/{timestamp}
-  const linkPattern = /href="([^"]*\/schedule\/a\/([^/"]+)\/(\d+)[^"]*)"/gi;
-  const titlePattern = /<a[^>]*href="[^"]*\/schedule\/a\/([^/"]+)\/\d+[^"]*"[^>]*>([^<]+)</gi;
+  // DOMParser is available natively in browsers; jsdom provides it in tests.
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
 
-  // Extract URLs and IDs
-  let match;
-  while ((match = linkPattern.exec(html)) !== null) {
-    const [, url, id] = match;
+  const links = doc.querySelectorAll('a[href*="/schedule/a/"]');
+
+  for (const link of links) {
+    const href = link.getAttribute('href') || '';
+    const urlMatch = href.match(/\/schedule\/a\/([^/]+)\/(\d+)/);
+    if (!urlMatch) continue;
+
+    const id = urlMatch[1];
+    const timestamp = urlMatch[2];
+
+    const petEl = link.querySelector('.event-pet');
+    const clientEl = link.querySelector('.event-client');
+    const timeEl = link.querySelector('.day-event-time');
+    const titleEl = link.querySelector('.day-event-title');
+
     appointments.push({
       id,
-      url: url.startsWith('http') ? url : `${SCRAPER_CONFIG.baseUrl}${url}`,
-      title: '', // Will be filled below
+      url: href.startsWith('http') ? href : `${SCRAPER_CONFIG.baseUrl}${href}`,
+      timestamp,
+      eventType: link.getAttribute('data-event_type') || '',
+      status: link.getAttribute('data-status') || '',
+      petName: petEl?.textContent?.trim() || '',
+      clientName: clientEl?.textContent?.trim() || '',
+      time: timeEl?.textContent?.trim() || '',
+      title: titleEl?.textContent?.trim() || '',
     });
   }
 
-  // Extract titles
-  while ((match = titlePattern.exec(html)) !== null) {
-    const [, id, title] = match;
-    const appt = appointments.find(a => a.id === id);
-    if (appt) {
-      appt.title = title.trim();
-    }
+  // Deduplicate by appointment ID (same appointment can appear on multiple schedule weeks)
+  const unique = Array.from(new Map(appointments.map(a => [a.id, a])).values());
+
+  log(`[Schedule] 🔍 Parsed ${unique.length} appointments from HTML (${html.length} chars)`);
+  if (unique.length > 0) {
+    const first = unique[0];
+    log(`[Schedule] 🔍 First: id=${first.id}, pet="${first.petName}", client="${first.clientName}", time="${first.time}"`);
   }
 
-  console.log(`[Schedule] 🔍 Parsed ${appointments.length} appointment links from HTML (${html.length} chars)`);
-  if (appointments.length > 0) {
-    console.log(`[Schedule] 🔍 First appointment: ${appointments[0].id} - ${appointments[0].title || '(no title)'}`);
-  }
-
-  return appointments;
+  return unique;
 }
 
 /**
- * Filter appointments to only boarding-related ones
- * @param {Array<{id: string, url: string, title: string}>} appointments
- * @returns {Array<{id: string, url: string, title: string}>}
+ * Filter to appointments that have meaningful data.
+ *
+ * NOTE: Boarding-type filtering now happens in sync.js after the detail page
+ * is fetched, because the external site renders appointment type labels via
+ * JavaScript (not present in the static schedule HTML). This function only
+ * removes clearly empty/invalid entries.
+ *
+ * @param {Array} appointments
+ * @returns {Array}
  */
 export function filterBoardingAppointments(appointments) {
-  const boardingKeywords = ['boarding', 'overnight', 'nights', 'stay'];
-
-  return appointments.filter(appt => {
-    const titleLower = appt.title.toLowerCase();
-    return boardingKeywords.some(keyword => titleLower.includes(keyword));
-  });
+  // Keep all appointments that have at least an ID (they do — this is a safety check)
+  return appointments.filter(appt => Boolean(appt.id));
 }
 
 /**
@@ -70,6 +98,8 @@ export function filterBoardingAppointments(appointments) {
  */
 export async function fetchSchedulePage(options = {}) {
   const { startDate, endDate, boardingOnly = true } = options;
+
+  log(`[Schedule] fetchSchedulePage called with startDate=${startDate}, endDate=${endDate}`);
 
   if (!isAuthenticated()) {
     throw new Error('Not authenticated. Call authenticate() first.');
@@ -91,21 +121,28 @@ export async function fetchSchedulePage(options = {}) {
     scheduleUrl += `?${queryString}`;
   }
 
+  log(`[Schedule] Fetching URL: ${scheduleUrl}`);
+
   const response = await authenticatedFetch(scheduleUrl, {
     timeout: SCRAPER_CONFIG.pageTimeout,
   });
+
+  log(`[Schedule] Response ok: ${response.ok}, status: ${response.status}`);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch schedule: ${response.status}`);
   }
 
   const html = await response.text();
+  log(`[Schedule] Got HTML response, length: ${html.length}`);
 
   // Check if we need to re-authenticate (redirected to login)
   if (html.includes('login') && html.includes('password')) {
+    logError(`[Schedule] Session expired - got login page`);
     throw new Error('Session expired. Re-authentication required.');
   }
 
+  log(`[Schedule] Parsing schedule page...`);
   let appointments = parseSchedulePage(html);
 
   if (boardingOnly) {
@@ -137,31 +174,38 @@ export async function fetchAllSchedulePages(options = {}) {
   let currentUrl = null;
   let pageCount = 0;
 
-  console.log(`[Schedule] 📄 Starting to fetch schedule pages (max: ${maxPages})`);
+  log(`[Schedule] 📄 Starting to fetch schedule pages (max: ${maxPages})`);
+  log(`[Schedule] 📄 Options: startDate=${fetchOptions.startDate}, endDate=${fetchOptions.endDate}, boardingOnly=${fetchOptions.boardingOnly}`);
 
   while (pageCount < maxPages) {
     const pageStart = Date.now();
-    console.log(`[Schedule] 📄 Fetching page ${pageCount + 1}${currentUrl ? ` (${currentUrl})` : ' (initial)'}`);
+    log(`[Schedule] 📄 Fetching page ${pageCount + 1}${currentUrl ? ` (${currentUrl})` : ' (initial)'}`);
 
-    const result = currentUrl
-      ? await fetchSchedulePageByUrl(currentUrl, fetchOptions.boardingOnly)
-      : await fetchSchedulePage(fetchOptions);
+    let result;
+    try {
+      result = currentUrl
+        ? await fetchSchedulePageByUrl(currentUrl, fetchOptions.boardingOnly)
+        : await fetchSchedulePage(fetchOptions);
+    } catch (fetchError) {
+      logError(`[Schedule] ❌ Error fetching page ${pageCount + 1}: ${fetchError.message}`);
+      throw fetchError;
+    }
 
     const pageDuration = Date.now() - pageStart;
-    console.log(`[Schedule] ⏱️ Page ${pageCount + 1}: found ${result.appointments.length} appointments in ${pageDuration}ms`);
-    console.log(`[Schedule] 📄 Page ${pageCount + 1}: hasNextPage=${result.hasNextPage}, nextPageUrl=${result.nextPageUrl || 'none'}`);
+    log(`[Schedule] ⏱️ Page ${pageCount + 1}: found ${result.appointments.length} appointments in ${pageDuration}ms`);
+    log(`[Schedule] 📄 Page ${pageCount + 1}: hasNextPage=${result.hasNextPage}, nextPageUrl=${result.nextPageUrl || 'none'}`);
 
     allAppointments.push(...result.appointments);
     pageCount++;
 
     if (!result.hasNextPage || !result.nextPageUrl) {
-      console.log(`[Schedule] ✅ Finished fetching - no more pages`);
+      log(`[Schedule] ✅ Finished fetching - no more pages`);
       break;
     }
 
     // Prevent infinite loop - check if nextPageUrl is the same as current
     if (result.nextPageUrl === currentUrl) {
-      console.log(`[Schedule] ⚠️ Breaking loop - nextPageUrl same as current`);
+      log(`[Schedule] ⚠️ Breaking loop - nextPageUrl same as current`);
       break;
     }
 
@@ -176,7 +220,7 @@ export async function fetchAllSchedulePages(options = {}) {
     new Map(allAppointments.map(a => [a.id, a])).values()
   );
 
-  console.log(`[Schedule] 📊 Total: ${uniqueAppointments.length} unique appointments from ${pageCount} pages`);
+  log(`[Schedule] 📊 Total: ${uniqueAppointments.length} unique appointments from ${pageCount} pages`);
 
   return uniqueAppointments;
 }
@@ -233,7 +277,7 @@ function parsePagination(html) {
       if (!nextUrl.startsWith('http')) {
         nextUrl = `${SCRAPER_CONFIG.baseUrl}${nextUrl}`;
       }
-      console.log(`[Schedule] 🔗 Found pagination link: ${nextUrl}`);
+      log(`[Schedule] 🔗 Found pagination link: ${nextUrl}`);
       return {
         hasNextPage: true,
         nextPageUrl: nextUrl,
@@ -241,7 +285,7 @@ function parsePagination(html) {
     }
   }
 
-  console.log(`[Schedule] 🔗 No pagination link found`);
+  log(`[Schedule] 🔗 No pagination link found`);
   return {
     hasNextPage: false,
     nextPageUrl: null,
