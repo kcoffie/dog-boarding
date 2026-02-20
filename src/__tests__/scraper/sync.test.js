@@ -342,6 +342,22 @@ describe('REQ-106: Sync Error Handling', () => {
   });
 });
 
+describe('REQ-108: Archive Reconciliation', () => {
+  it('updateSyncLog accepts appointments_archived field', async () => {
+    const supabase = createMockSupabase();
+    const log = await createSyncLog(supabase);
+
+    await updateSyncLog(supabase, log.id, {
+      status: SyncStatus.SUCCESS,
+      appointments_found: 10,
+      appointments_archived: 2,
+    });
+
+    const updated = supabase._mockData.sync_logs[0];
+    expect(updated.appointments_archived).toBe(2);
+  });
+});
+
 describe('Security: sanitizeError()', () => {
   it('returns "Unknown error" for null/undefined input', () => {
     expect(sanitizeError(null)).toBe('Unknown error');
