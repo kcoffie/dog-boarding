@@ -31,27 +31,17 @@ export const SCRAPER_CONFIG = {
     appointmentLinks: 'a[href*="/schedule/a/"]',
     paginationNext: '.pagination .next, a[rel="next"]',
 
-    // Appointment detail page
-    serviceType: 'h1, .service-type, .appointment-type',
-    status: '.status, .appointment-status',
-    checkIn: '.check-in, .checkin-date, [data-field="checkin"]',
-    checkOut: '.check-out, .checkout-date, [data-field="checkout"]',
-    duration: '.duration, .nights',
-    assignedStaff: '.staff, .assigned-to',
+    // Appointment detail page — selectors verified against real HTML 2026-02-19
+    // Only these fields use extractText()/selectorToRegex(); everything else
+    // is extracted by dedicated helpers in extraction.js.
+    serviceType: 'h1',
+    status: '.appt-change-status',
 
     // Client info
-    clientName: '.client-name, .owner-name',
-    clientEmail: '.client-email, .email',
-    clientPhone: '.client-phone, .phone',
-    clientAddress: '.client-address, .address',
+    clientName: '.event-client',
 
     // Pet info
-    petName: '.pet-name, .dog-name',
-    petBreed: '.pet-breed, .breed',
-    petBirthdate: '.pet-birthdate, .birthdate',
-    petNotes: '.pet-notes, .special-notes',
-    petMedical: '.pet-medical, .medical-info',
-    petBehavioral: '.pet-behavioral, .behavioral-info',
+    petName: '.event-pet',
   },
 };
 

@@ -329,17 +329,27 @@ export async function runSync(options = {}) {
 
         // Pre-filter using schedule page title — avoids fetching the detail page
         // for obvious non-boarding appointments (saves ~8s per skip).
-        // Daycare: "DC:FT", "D/C M/T/W/TH", etc.
-        // Pack group: "PG FT", "P/G MTWTH", etc.
+        //
+        // Confirmed non-boarding patterns (business owner verified):
+        //   DC:FT / D/C M/T/W/TH  — daycare
+        //   PG FT / P/G MTWTH     — pack group (group daycare)
+        //   ADD Leo T/TH           — dog added to recurring daycare schedule
+        //   Brinkley switch day    — daycare day swap (not overnight)
+        //   mav back to 4 days    — daycare schedule change note
         if (boardingOnly) {
           const titleLower = (appt.title || '').toLowerCase();
           const isKnownNonBoarding =
             /(d\/c|\bdc\b)/i.test(titleLower) ||
-            /(p\/g|g\/p|\bpg\b)/i.test(titleLower);
+            /(p\/g|g\/p|\bpg\b)/i.test(titleLower) ||
+            /\badd\b/.test(titleLower) ||
+            /switch\s+day/i.test(titleLower) ||
+            /back\s+to\s+\d+/i.test(titleLower);
           if (isKnownNonBoarding) {
             syncLog(`[Sync] ⏭️ Skipping non-boarding appointment ${appt.id} (title: "${appt.title}")`);
             result.appointmentsSkipped++;
             continue;
+          } else {
+            syncLog(`[Sync] 🏠 Processing boarding candidate ${appt.id} (title: "${appt.title}")`);
           }
         }
 
@@ -365,13 +375,22 @@ export async function runSync(options = {}) {
           const checkLower = (details.service_type || appt.title || '').toLowerCase();
           const isKnownNonBoarding =
             /(d\/c|\bdc\b)/i.test(checkLower) ||
-            /(p\/g|g\/p|\bpg\b)/i.test(checkLower);
+            /(p\/g|g\/p|\bpg\b)/i.test(checkLower) ||
+            /\badd\b/.test(checkLower) ||
+            /switch\s+day/i.test(checkLower) ||
+            /back\s+to\s+\d+/i.test(checkLower);
           if (isKnownNonBoarding) {
             syncLog(`[Sync] ⏭️ Skipping non-boarding appointment ${appt.id} (service_type: "${details.service_type || appt.title}")`);
             result.appointmentsSkipped++;
             continue;
           }
         }
+
+        // Use schedule-page data as fallback for fields the detail-page selectors
+        // can't extract yet.  Without this, pet_name falls back to "Unknown" and
+        // all null-name dogs collapse into a single DB record.
+        details.pet_name    = details.pet_name    || appt.petName    || null;
+        details.client_name = details.client_name || appt.clientName || null;
 
         // Map and save
         const saveStart = Date.now();
