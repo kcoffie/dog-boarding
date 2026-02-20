@@ -7,49 +7,115 @@ import { SCRAPER_CONFIG } from './config.js';
 import { authenticatedFetch, isAuthenticated } from './auth.js';
 
 /**
+ * Parse check-in and check-out dates from a service_type string.
+ *
+ * The external site encodes boarding dates directly in the appointment title:
+ *   "2/13-18"          → Feb 13 – Feb 18 (same month)
+ *   "2/14-15am"        → Feb 14 – Feb 15 AM
+ *   "2/15-21"          → Feb 15 – Feb 21
+ *   "3/3-19 (Thur)"    → Mar 3  – Mar 19 (ignore suffix)
+ *   "B/O Pepper 2/9PM-17" → Feb 9 – Feb 17 (ignore leading label)
+ *   "2/28-3/5"         → Feb 28 – Mar 5 (cross-month)
+ *
+ * Returns { checkIn: Date, checkOut: Date } or null if the pattern is not found.
+ *
+ * @param {string|null} serviceType
+ * @param {number} [year] - Calendar year (defaults to current year)
+ * @returns {{ checkIn: Date, checkOut: Date } | null}
+ */
+export function parseServiceTypeDates(serviceType, year = new Date().getFullYear()) {
+  if (!serviceType) return null;
+
+  // Match M/D[am|pm]-D (same month) or M/D[am|pm]-M/D (cross-month)
+  const match = serviceType.match(
+    /(\d{1,2})\/(\d{1,2})(?:am|pm)?-(\d{1,2})(?:\/(\d{1,2}))?(?:am|pm)?/i
+  );
+  if (!match) return null;
+
+  const startMonth = parseInt(match[1], 10) - 1; // 0-indexed
+  const startDay   = parseInt(match[2], 10);
+
+  let endMonth, endDay;
+  if (match[4]) {
+    // Cross-month form: M/D-M/D
+    endMonth = parseInt(match[3], 10) - 1;
+    endDay   = parseInt(match[4], 10);
+  } else {
+    // Same-month form: M/D-D
+    endMonth = startMonth;
+    endDay   = parseInt(match[3], 10);
+    // If end day is before start day, the stay crosses into the next month
+    if (endDay < startDay) {
+      endMonth = (startMonth + 1) % 12;
+    }
+  }
+
+  return {
+    checkIn:  new Date(year, startMonth, startDay),
+    checkOut: new Date(year, endMonth,   endDay),
+  };
+}
+
+/**
  * Extract appointment details from HTML
  * @param {string} html - Appointment detail page HTML
  * @param {string} sourceUrl - URL of the page (for reference)
  * @returns {Object} Extracted appointment data
  */
 export function parseAppointmentPage(html, sourceUrl = '') {
+  const serviceType = extractText(html, SCRAPER_CONFIG.selectors.serviceType);
+
+  // Primary: extract scheduled timestamps from data attributes on #when-wrapper.
+  // These are Unix timestamps (seconds) and are more reliable than parsing the
+  // service_type string. Fallback to parseServiceTypeDates() if not found.
+  const timestamps = extractScheduledTimestamps(html);
+  let checkInDatetime  = timestamps?.checkIn  || null;
+  let checkOutDatetime = timestamps?.checkOut || null;
+  if (!checkInDatetime || !checkOutDatetime) {
+    const parsed = parseServiceTypeDates(serviceType);
+    if (parsed) {
+      checkInDatetime  = checkInDatetime  || parsed.checkIn.toISOString();
+      checkOutDatetime = checkOutDatetime || parsed.checkOut.toISOString();
+    }
+  }
+
   return {
     source_url: sourceUrl,
 
     // Appointment info
-    service_type: extractText(html, SCRAPER_CONFIG.selectors.serviceType),
+    service_type: serviceType,
     status: extractText(html, SCRAPER_CONFIG.selectors.status),
-    scheduled_check_in: extractText(html, SCRAPER_CONFIG.selectors.checkIn),
-    scheduled_check_out: extractText(html, SCRAPER_CONFIG.selectors.checkOut),
-    check_in_datetime: parseDateTime(extractText(html, SCRAPER_CONFIG.selectors.checkIn)),
-    check_out_datetime: parseDateTime(extractText(html, SCRAPER_CONFIG.selectors.checkOut)),
-    duration: extractText(html, SCRAPER_CONFIG.selectors.duration),
-    assigned_staff: extractText(html, SCRAPER_CONFIG.selectors.assignedStaff),
+    scheduled_check_in: null,
+    scheduled_check_out: null,
+    check_in_datetime: checkInDatetime,
+    check_out_datetime: checkOutDatetime,
+    duration: extractDuration(html),
+    assigned_staff: null, // not shown for overnight boardings
 
     // Client info
     client_name: extractText(html, SCRAPER_CONFIG.selectors.clientName),
-    client_email_primary: extractEmail(html, SCRAPER_CONFIG.selectors.clientEmail),
-    client_email_secondary: extractSecondaryEmail(html),
-    client_phone: extractPhone(html, SCRAPER_CONFIG.selectors.clientPhone),
-    client_address: extractText(html, SCRAPER_CONFIG.selectors.clientAddress),
+    client_email_primary: extractEmailFromDataAttr(html),
+    client_email_secondary: null,
+    client_phone: extractPhoneFromMobileContact(html),
+    client_address: extractAddressFromDataAttr(html),
 
     // Instructions
-    access_instructions: extractTextByLabel(html, ['access', 'entry', 'key', 'gate']),
-    drop_off_instructions: extractTextByLabel(html, ['drop off', 'drop-off', 'arrival']),
-    special_notes: extractTextByLabel(html, ['special notes', 'notes', 'additional']),
+    access_instructions: extractByLabelContains(html, 'Access Home or Apartment'),
+    drop_off_instructions: extractByLabelContains(html, 'Drop Off'),
+    special_notes: extractAppointmentNotes(html),
 
     // Pet info
     pet_name: extractText(html, SCRAPER_CONFIG.selectors.petName),
-    pet_photo_url: extractImageUrl(html, ['pet', 'dog', 'photo']),
-    pet_birthdate: parseBirthdate(extractText(html, SCRAPER_CONFIG.selectors.petBirthdate)),
-    pet_breed: extractText(html, SCRAPER_CONFIG.selectors.petBreed),
-    pet_breed_type: extractBreedType(html),
-    pet_food_allergies: extractTextByLabel(html, ['food', 'allergies', 'diet']),
-    pet_health_mobility: extractTextByLabel(html, ['health', 'mobility', 'medical']),
-    pet_medications: extractTextByLabel(html, ['medication', 'medicine', 'prescription']),
-    pet_veterinarian: extractVetInfo(html),
-    pet_behavioral: extractTextByLabel(html, ['behavioral', 'behavior', 'temperament']),
-    pet_bite_history: extractTextByLabel(html, ['bite', 'aggression', 'incident']),
+    pet_photo_url: null,
+    pet_birthdate: parseBirthdate(extractByLabelContains(html, 'Birthdate')),
+    pet_breed: extractByLabelContains(html, 'Breed(s)'),
+    pet_breed_type: extractByLabelContains(html, 'Breed Type'),
+    pet_food_allergies: extractByLabelContains(html, 'Food Allergies'),
+    pet_health_mobility: extractByLabelContains(html, 'Health and Mobility'),
+    pet_medications: extractByLabelContains(html, 'Medications'),
+    pet_veterinarian: extractByLabelContains(html, 'Veterinarian'),
+    pet_behavioral: extractByLabelContains(html, 'Behavioral'),
+    pet_bite_history: extractByLabelContains(html, 'Bite History'),
   };
 }
 
@@ -88,6 +154,113 @@ export async function fetchAppointmentDetails(appointmentId, timestamp = '') {
 
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Helpers backed by real HTML structure (verified 2026-02-19)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract scheduled check-in and check-out timestamps from the #when-wrapper
+ * data attributes. Returns ISO strings, or null if the element is not found.
+ * These Unix timestamps (seconds) are more reliable than parsing service_type.
+ */
+function extractScheduledTimestamps(html) {
+  const tagMatch = html.match(/<div[^>]*id="when-wrapper"[^>]*>/);
+  if (!tagMatch) return null;
+  const tag = tagMatch[0];
+  const startMatch = tag.match(/data-start_scheduled="(\d+)"/);
+  const endMatch   = tag.match(/data-end_scheduled="(\d+)"/);
+  if (!startMatch || !endMatch) return null;
+  return {
+    checkIn:  new Date(parseInt(startMatch[1], 10) * 1000).toISOString(),
+    checkOut: new Date(parseInt(endMatch[1],   10) * 1000).toISOString(),
+  };
+}
+
+/**
+ * Extract client email from the data-emails attribute on the message button.
+ * More reliable than a global regex scan (which can match unrelated emails).
+ */
+function extractEmailFromDataAttr(html) {
+  const match = html.match(/data-emails=\s*"([^"]+)"/);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Extract phone from the data-value attribute on the .mobile-contact element.
+ * Returns the raw value (e.g. "+14156065390"), not the formatted display text.
+ */
+function extractPhoneFromMobileContact(html) {
+  // Attribute order in the real HTML: class first, then data-value
+  const m = html.match(/class="mobile-contact"[^>]*data-value="([^"]+)"/) ||
+            html.match(/data-value="([^"]+)"[^>]*class="mobile-contact"/);
+  return m ? m[1].trim() : null;
+}
+
+/**
+ * Extract client address from the data-address attribute.
+ */
+function extractAddressFromDataAttr(html) {
+  const match = html.match(/data-address="([^"]+)"/);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Extract scheduled duration from the .scheduled-duration element.
+ * e.g. "(Scheduled: 10 d)" → "10 d"
+ */
+function extractDuration(html) {
+  const match = html.match(/class="scheduled-duration"[^>]*>\(Scheduled:\s*([^)]+)\)/);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Extract a field value by matching its label in the .field-label / .field-value
+ * div pattern used throughout the appointment detail page.
+ *
+ * The real HTML structure is:
+ *   <div class="field-label">LABEL TEXT</div>
+ *   <div class="field-value">VALUE (may include <br/> tags)</div>
+ *
+ * @param {string} html
+ * @param {string} labelSubstring - Case-insensitive substring to match in the label
+ * @returns {string|null}
+ */
+function extractByLabelContains(html, labelSubstring) {
+  const escaped = labelSubstring.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `class="field-label">[^<]*${escaped}[^<]*<\\/div>\\s*<div[^>]*class="field-value"[^>]*>([\\s\\S]*?)<\\/div>`,
+    'i'
+  );
+  const match = html.match(pattern);
+  if (!match) return null;
+  const raw = match[1]
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
+  return raw || null;
+}
+
+/**
+ * Extract appointment notes from the .notes-wrapper section.
+ * Joins all note texts with newlines.
+ */
+function extractAppointmentNotes(html) {
+  const pattern = /class="note"[^>]*>([^<]+)/g;
+  const notes = [];
+  let match;
+  while ((match = pattern.exec(html)) !== null) {
+    const text = cleanText(match[1]);
+    if (text) notes.push(text);
+  }
+  return notes.length ? notes.join('\n') : null;
+}
+
+// ---------------------------------------------------------------------------
 
 /**
  * Extract text from HTML using CSS selector pattern
@@ -141,219 +314,6 @@ function selectorToRegex(selector) {
   return new RegExp(`<${selector}[^>]*>([^<]+)</${selector}>`, 'i');
 }
 
-/**
- * Extract email from HTML
- * @param {string} html
- * @param {string} [selectorPattern]
- * @returns {string|null}
- */
-function extractEmail(html, selectorPattern) {
-  // First try selector
-  if (selectorPattern) {
-    const text = extractText(html, selectorPattern);
-    if (text && text.includes('@')) {
-      return text;
-    }
-  }
-
-  // Fallback to email pattern matching
-  const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-  const match = html.match(emailPattern);
-  return match ? match[0] : null;
-}
-
-/**
- * Extract secondary email from HTML
- * @param {string} html
- * @returns {string|null}
- */
-function extractSecondaryEmail(html) {
-  const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-  const emails = html.match(emailPattern) || [];
-  const uniqueEmails = [...new Set(emails)];
-  return uniqueEmails.length > 1 ? uniqueEmails[1] : null;
-}
-
-/**
- * Extract phone number from HTML
- * @param {string} html
- * @param {string} [selectorPattern]
- * @returns {string|null}
- */
-function extractPhone(html, selectorPattern) {
-  // First try selector
-  if (selectorPattern) {
-    const text = extractText(html, selectorPattern);
-    if (text) {
-      const phone = text.match(/[\d\s\-().+]+/);
-      if (phone && phone[0].replace(/\D/g, '').length >= 10) {
-        return phone[0].trim();
-      }
-    }
-  }
-
-  // Fallback to phone pattern matching
-  const phonePattern = /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
-  const match = html.match(phonePattern);
-  return match ? match[0] : null;
-}
-
-/**
- * Extract image URL from HTML
- * @param {string} html
- * @param {string[]} keywords
- * @returns {string|null}
- */
-function extractImageUrl(html, keywords) {
-  // Look for img tags near keywords
-  for (const keyword of keywords) {
-    const pattern = new RegExp(
-      `<img[^>]*(?:${keyword})[^>]*src="([^"]+)"`,
-      'i'
-    );
-    const match = html.match(pattern);
-    if (match) {
-      return match[1];
-    }
-  }
-
-  // Try reverse pattern (src before keyword)
-  for (const keyword of keywords) {
-    const pattern = new RegExp(
-      `<img[^>]*src="([^"]+)"[^>]*(?:${keyword})`,
-      'i'
-    );
-    const match = html.match(pattern);
-    if (match) {
-      return match[1];
-    }
-  }
-
-  return null;
-}
-
-/**
- * Extract text by looking for labels
- * @param {string} html
- * @param {string[]} labelKeywords
- * @returns {string|null}
- */
-function extractTextByLabel(html, labelKeywords) {
-  for (const keyword of labelKeywords) {
-    // Pattern: Label: Value or Label</...>Value
-    const patterns = [
-      new RegExp(`${keyword}[:\\s]*</[^>]+>\\s*([^<]+)`, 'i'),
-      new RegExp(`${keyword}[:\\s]+([^<]+)`, 'i'),
-      new RegExp(`>${keyword}</[^>]+>\\s*<[^>]+>([^<]+)`, 'i'),
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) {
-        const text = cleanText(match[1]);
-        if (text && text.length > 0) {
-          return text;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Extract breed type (e.g., "Large", "Small")
- * @param {string} html
- * @returns {string|null}
- */
-function extractBreedType(html) {
-  const patterns = [
-    /breed\s*type[:\s]*([^<]+)/i,
-    /size[:\s]*(small|medium|large|giant|toy)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match) {
-      return cleanText(match[1]);
-    }
-  }
-
-  return null;
-}
-
-/**
- * Extract veterinarian information
- * @param {string} html
- * @returns {Object|null}
- */
-function extractVetInfo(html) {
-  const vetSection = html.match(/veterinarian[^]*?(?=<\/(?:div|section|table)>)/i);
-  if (!vetSection) return null;
-
-  const section = vetSection[0];
-  const name = extractTextByLabel(section, ['vet', 'clinic', 'hospital']);
-  const phone = extractPhone(section);
-  const address = extractTextByLabel(section, ['address', 'location']);
-
-  if (!name && !phone) return null;
-
-  return {
-    name,
-    phone,
-    address,
-  };
-}
-
-/**
- * Parse date/time string to ISO format
- * @param {string|null} dateStr
- * @returns {string|null}
- */
-function parseDateTime(dateStr) {
-  if (!dateStr) return null;
-
-  try {
-    // Handle common formats
-    // "PM, Saturday, December 21, 2025" -> "2025-12-21T17:00:00Z"
-    // "AM, Monday, December 23, 2025" -> "2025-12-23T10:00:00Z"
-
-    const isPM = /pm/i.test(dateStr);
-    const isAM = /am/i.test(dateStr);
-
-    // Extract date parts
-    const months = {
-      january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
-      july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
-    };
-
-    const monthMatch = dateStr.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december)/i);
-    const dayMatch = dateStr.match(/\b(\d{1,2})\b/);
-    const yearMatch = dateStr.match(/\b(20\d{2})\b/);
-
-    if (monthMatch && dayMatch && yearMatch) {
-      const month = months[monthMatch[0].toLowerCase()];
-      const day = parseInt(dayMatch[1], 10);
-      const year = parseInt(yearMatch[1], 10);
-
-      // Default times: PM = 5:00 PM, AM = 10:00 AM
-      const hour = isPM ? 17 : (isAM ? 10 : 12);
-
-      const date = new Date(Date.UTC(year, month, day, hour, 0, 0));
-      return date.toISOString();
-    }
-
-    // Try native Date parsing as fallback
-    const parsed = new Date(dateStr);
-    if (!isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  } catch {
-    // Parsing failed
-  }
-
-  return null;
-}
 
 /**
  * Parse birthdate string to date

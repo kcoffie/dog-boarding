@@ -1,79 +1,73 @@
 # Dog Boarding App Sync - Session Handoff
-**Date:** February 18, 2026 (evening)
-**Status:** Boarding filter fixed, code ready — sync NOT yet run with new filter
+**Date:** February 19, 2026 (late night)
+**Status:** Tasks 1–6 complete. Ready to run a validation sync and fix remaining extraction gaps.
 
 ---
 
-## What We Did Today
+## What We Did This Session
 
-1. ✅ Applied migration 011 (DB columns now exist)
-2. ✅ Hard reload cleared the stuck sync state (manually via SQL since abortStuckSync has a 30-min threshold)
-3. ✅ Diagnosed why sync was skipping ALL appointments
-4. ✅ Fixed the boarding filter in `sync.js`
-
----
-
-## The Core Problem We Found & Fixed
-
-**Root cause:** The boarding filter was looking for "boarding"/"overnight"/"stay" keywords in `service_type`, but the external site uses shorthand titles like:
-- `"DC:FT"`, `"D/C M/T/W/TH"` = Daycare (should skip)
-- `"PG FT"`, `"P/G MTWTH"` = Pack Group (should skip)
-- `"2/13-18"`, `"2/14-15am"`, `"1/31-2/1pm"` = Boarding stays (should KEEP)
-
-None of these contain "boarding"/"overnight"/"stay", so everything was skipped.
-
-**The fix** (`src/lib/scraper/sync.js`):
-- Added a **pre-filter** before the detail page fetch that pattern-matches `appt.title` from the schedule page. Appointments matching DC or PG patterns are skipped instantly — no 8-second detail fetch needed.
-- Replaced the post-fetch filter with the same DC/PG pattern logic as a safety net.
-- Anything that passes both filters (date ranges, ambiguous titles) is treated as boarding and saved.
-
-**Performance improvement:** Old approach fetched detail page for ALL 467 appointments (~58 min, 0 saved). New approach skips ~350 obvious daycare/pack group appointments without a network request, leaving ~100 potential boarding appointments to fetch (~13-15 min).
+1. ✅ Fixed date range URL filtering (Task 1) — site ignores `?start=&end=`, now uses `/schedule/days-7/YYYY/M/D`
+2. ✅ Added post-fetch date filter (Task 2) — early-stop and pre-`startDate` removal in `fetchAllSchedulePages()`
+3. ✅ Extended boarding filter (Task 3) — added `ADD`, `switch day`, `back to N days` to skip list
+4. ✅ Reviewed 32 existing DB records and found critical data bugs (Task 4)
+5. ✅ Fixed `check_in_datetime` / `check_out_datetime` always null — parse from `service_type` string (Task 5)
+6. ✅ Fixed pet_name "Unknown" collapse bug — use schedule-page `petName` as fallback (Task 6)
+7. ✅ Fixed wrong phone number — removed global regex fallback that matched business's own phone
 
 ---
 
-## The abortStuckSync Bug (Minor, Not Fixed)
+## What the DB Showed (before fixes)
 
-`abortStuckSync(supabase, 30)` only clears syncs older than 30 minutes. If a sync gets stuck and you reload before 30 min, the UI stays locked. The workaround is to run this SQL in Supabase:
+32 sync_appointments had these bugs — all now fixed in code, but the existing records in DB are still dirty:
+- `check_in_datetime` / `check_out_datetime` — always NULL
+- `mapped_boarding_id` — always NULL (because dates were null, boarding couldn't be created)
+- `client_phone` — "4753192977" for every record (business's own phone from site header)
+- `pet_name` — null for most records (→ all mapped to the same "Unknown" dog entity)
 
-```sql
-UPDATE sync_logs
-SET status = 'aborted', completed_at = NOW()
-WHERE status = 'running';
-```
-
-Not a blocker — just good to know.
+**Decision needed**: delete the 32 dirty records and re-sync, or leave them and let the next sync update in place.
 
 ---
 
-## Immediate Next Steps
+## Filter Clarifications (from business owner)
 
-### Step 1: Run a 1-Day Test Sync
+| Title | Verdict |
+|-------|---------|
+| `"ADD Leo T/TH"` | ❌ Skip — dog added to recurring daycare, not boarding |
+| `"Brinkley switch day"` | ❌ Skip — daycare day swap |
+| `"mav back to 4 days"` | ❌ Skip — daycare schedule change note |
+| `"B/O Pepper 2/9PM-17"` | ✅ Keep — confirmed boarding (8 nights, Feb 9–17); "B/O" meaning still unclear |
+| `"Boarding (Nights)"` | ✅ Keep |
+| `"2/13-18"` etc. | ✅ Keep — date-range format = boarding |
 
-Trigger a short sync (1 recent day). Watch the console for:
-```
-[Sync] ⏭️ Skipping non-boarding appointment XYZ (title: "DC:FT")   ← pre-filter working
-[Sync] ⏭️ Skipping non-boarding appointment XYZ (title: "PG FT")   ← pre-filter working
-[Sync] ✅ SYNC COMPLETED
-[Sync] 📊 Results: X found, Y skipped, Z created ...
-```
+---
 
-If `created > 0` — the fix worked.
+## What Should Happen on the Next Sync
 
-### Step 2: Check What Gets Through the Filter
+Run with `startDate: new Date('2026-02-19')` and `endDate: new Date('2026-02-19')` and verify:
 
-If the sync completes but `created = 0`, look at what titles are NOT being pre-filtered. They'll reach the detail fetch and get the post-filter check. Share those log lines and we'll tune the regex.
+1. **Only 1–2 pages fetched** instead of 10 (check logs — should jump straight to Feb 19 week)
+2. **`check_in_datetime` populated** — e.g., "2026-02-13T00:00:00.000Z" from service_type "2/13-18"
+3. **`check_out_datetime` populated** — same
+4. **`mapped_boarding_id` non-null** — boarding record created using those dates
+5. **`pet_name` populated** — e.g., "Pepper Konrad" from schedule page, not null
+6. **`client_phone` null** — no more business phone on every row
+7. **"ADD Leo T/TH" not saved** — skipped by pre-filter
 
-Titles to watch for that SHOULD be boarding but might be getting caught:
-- Anything starting with a date pattern like `"2/13-18"` or `"1/31-2/1pm"` → these should pass both filters and be saved
-- `"B/O Pepper 2/9PM-17"` → "B/O" is ambiguous (Board Out?), will pass filters and try to save — check if that's correct
+---
 
-### Step 3: Full Sync (After Step 1 Works)
+## Remaining Known Issues
 
-Once a 1-day sync shows created appointments, run the full date range. Expect ~13-15 min.
+### Detail page CSS selectors are still guesses
+`config.js` has placeholder selectors (`.service-type`, `.client-name`, `.check-in`, etc.) that don't match the real HTML. Most fields extracted from the detail page are null.
 
-### Step 4: Verify Detail Page Data Quality
+**What's broken**: `client_name`, `status`, `assigned_staff`, `client_email_primary`, `client_address`, `pet_breed`, `pet_medications`, structured note fields (`access_instructions`, `special_notes`, `drop_off_instructions`).
 
-Even when appointments are saved, the detail page selectors in `config.js` are educated guesses. Check the saved records in Supabase — fields like `client_name`, `pet_breed`, `pet_birthdate` may be null or wrong. If so, we need to inspect the detail page HTML and tune `config.js` selectors.
+**What's working**: `service_type` (the date-range title), `pet_name` (via schedule-page fallback).
+
+**To fix**: Need the actual HTML source of a detail page. Open a URL like `https://agirlandyourdog.com/schedule/a/C63QgOnQ/1770652800` in a browser → View Source → share the HTML. Then update selectors in `src/lib/scraper/config.js`.
+
+### access_instructions / special_notes extract labels not values
+`"Home or Apartment"`, `"Allergies"` — the regex is matching the label element instead of the adjacent value. Will be fixed when we see real HTML.
 
 ---
 
@@ -83,21 +77,17 @@ Even when appointments are saved, the detail page selectors in `config.js` are e
 |---------|--------|
 | Authentication | ✅ Working |
 | Schedule page parsing | ✅ Working |
-| Boarding pre-filter (DC/PG) | ✅ Fixed today |
-| Post-fetch filter | ✅ Fixed today |
+| Boarding pre-filter (DC/PG/ADD/switch/back-to) | ✅ Working |
+| Post-fetch date filter | ✅ Working |
+| Date range URL (days-7 format) | ✅ Fixed |
+| check_in/check_out from service_type | ✅ Fixed |
+| pet_name fallback from schedule page | ✅ Fixed |
+| client_phone — no header bleed | ✅ Fixed |
+| Detail page CSS selectors | ❌ Guesses — need real HTML |
+| Structured note fields | ❌ Extracting labels not values |
+| DB records from before fixes | ⚠️ 32 dirty records need cleanup decision |
 | Migration 011 | ✅ Applied |
-| Stuck sync auto-cleanup | ⚠️ Works but 30-min threshold — use SQL workaround if needed |
-| Detail page selectors | ❓ Untested — may need tuning |
 | Sync history UI | ✅ Built |
-| Historical import | ⏳ Do after successful test sync |
-
----
-
-## Files Changed Today
-
-| File | What Changed |
-|------|-------------|
-| `src/lib/scraper/sync.js` | Replaced boarding filter with DC/PG pattern pre-filter + post-fetch safety check |
 
 ---
 
@@ -105,23 +95,36 @@ Even when appointments are saved, the detail page selectors in `config.js` are e
 
 ```
 src/lib/scraper/
-├── config.js          # Selectors (DETAIL PAGE SELECTORS MAY NEED TUNING)
+├── config.js          # CSS selectors — PLACEHOLDERS, need real HTML to fix
 ├── auth.js            # Login, session — WORKING
 ├── schedule.js        # Schedule page parsing — WORKING
-├── extraction.js      # Detail page parsing — selectors are guesses
+│     parseAppointmentStartDate()   new: parses "Feb 13, AM" → Date
+│     buildScheduleStartUrl()       new: /schedule/days-7/YYYY/M/D format
+├── extraction.js      # Detail page parsing
+│     parseServiceTypeDates()       new: parses "2/13-18" → {checkIn, checkOut}
+│     extractPhoneFromSelector()    renamed: no global regex fallback
 ├── mapping.js         # Maps to dogs/boardings/sync_appointments
-├── sync.js            # Main orchestration — UPDATED TODAY
+├── sync.js            # Main orchestration — pre/post filter here
+│     pet_name/client_name fallback from schedule page (line ~392)
 ├── batchSync.js       # Batch processing + checkpoints
 ├── logger.js          # File + console logging
 ├── changeDetection.js # Content hash change detection
 └── deletionDetection.js # Tracks missing appointments
 
-supabase/migrations/
-└── 011_apply_pending_migrations.sql  ← Already applied, do not run again
+src/hooks/useSyncSettings.js  ← runSync() called here with startDate/endDate
+src/components/SyncSettings.jsx ← Sync Now button
+```
+
+---
+
+## If You Get a Stuck Sync
+
+```sql
+UPDATE sync_logs SET status = 'aborted', completed_at = NOW() WHERE status = 'running';
 ```
 
 ---
 
 ## First Message for Next Session
 
-> "Picking up from Feb 18 evening handoff. I ran a 1-day test sync with the new filter and here's what happened: [paste log lines, especially the Results line and any created/skipped counts]."
+> "Picking up from Feb 19 late-night handoff. Tasks 1–6 are done. I want to run a 1-day validation sync to verify check_in/check_out are now populated and pet_name is working. Then we'll look at the detail page HTML to fix the CSS selectors."

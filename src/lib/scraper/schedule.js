@@ -89,6 +89,66 @@ export function filterBoardingAppointments(appointments) {
 }
 
 /**
+ * Build the schedule URL for a given start date.
+ *
+ * The external site ignores ?start=&end= query params — it always returns the
+ * full schedule view.  The actual paginated URL format it uses internally is:
+ *   /schedule/days-7/YYYY/M/D
+ * where YYYY/M/D is the START date of the 7-day window to display.
+ *
+ * When startDate is provided we jump directly to the right week instead of
+ * starting from the beginning of the schedule.
+ *
+ * @param {Date} [startDate]
+ * @returns {string}
+ */
+function buildScheduleStartUrl(startDate) {
+  if (!startDate) {
+    return `${SCRAPER_CONFIG.baseUrl}/schedule`;
+  }
+  const y = startDate.getFullYear();
+  const m = startDate.getMonth() + 1; // 0-indexed
+  const d = startDate.getDate();
+  return `${SCRAPER_CONFIG.baseUrl}/schedule/days-7/${y}/${m}/${d}`;
+}
+
+/**
+ * Parse the start date from a schedule-page `time` string.
+ *
+ * Examples seen in the wild:
+ *   "Feb 9, 4:58pm - 7:24pm"   → Feb 9
+ *   "Feb 13, 11:49am ..."       → Feb 13
+ *   "Feb 27, AM - PM"           → Feb 27
+ *   "Apr 01, AM - Apr 13, PM"   → Apr 1
+ *   "Pick-Up ( 9 am - 10 am )"  → null (no month)
+ *
+ * Returns a Date set to midnight local time on the parsed date, or null if
+ * the string cannot be parsed.
+ *
+ * @param {string} timeStr
+ * @param {number} [year] - Defaults to current year
+ * @returns {Date|null}
+ */
+export function parseAppointmentStartDate(timeStr, year = new Date().getFullYear()) {
+  if (!timeStr) return null;
+
+  const MONTHS = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+  };
+
+  const match = timeStr.match(/([A-Za-z]{3})\w*\s+(\d{1,2})/);
+  if (!match) return null;
+
+  const monthKey = match[1].toLowerCase();
+  const day = parseInt(match[2], 10);
+  const month = MONTHS[monthKey];
+  if (month === undefined) return null;
+
+  return new Date(year, month, day);
+}
+
+/**
  * Fetch and parse the schedule page
  * @param {Object} [options]
  * @param {Date} [options.startDate] - Start of date range
@@ -105,21 +165,9 @@ export async function fetchSchedulePage(options = {}) {
     throw new Error('Not authenticated. Call authenticate() first.');
   }
 
-  // Build schedule URL with date parameters if provided
-  let scheduleUrl = `${SCRAPER_CONFIG.baseUrl}/schedule`;
-  const params = new URLSearchParams();
-
-  if (startDate) {
-    params.append('start', formatDateParam(startDate));
-  }
-  if (endDate) {
-    params.append('end', formatDateParam(endDate));
-  }
-
-  const queryString = params.toString();
-  if (queryString) {
-    scheduleUrl += `?${queryString}`;
-  }
+  // Use the days-7 URL format to jump to the right week.
+  // The ?start=&end= query params are ignored by the external site.
+  const scheduleUrl = buildScheduleStartUrl(startDate);
 
   log(`[Schedule] Fetching URL: ${scheduleUrl}`);
 
@@ -209,6 +257,26 @@ export async function fetchAllSchedulePages(options = {}) {
       break;
     }
 
+    // Early stop: if an endDate is set and every appointment with a parseable
+    // start date on this page begins AFTER endDate, later pages won't help.
+    // We ignore appointments whose time can't be parsed (daycare recurring
+    // entries like "DC:FT") — those appear on every page and would otherwise
+    // prevent the stop from ever firing.
+    if (fetchOptions.endDate && result.appointments.length > 0) {
+      const endDateMidnight = new Date(fetchOptions.endDate);
+      endDateMidnight.setHours(23, 59, 59, 999);
+      const parseableDates = result.appointments
+        .map(appt => parseAppointmentStartDate(appt.time))
+        .filter(Boolean);
+      const allBeyondRange =
+        parseableDates.length > 0 &&
+        parseableDates.every(d => d > endDateMidnight);
+      if (allBeyondRange) {
+        log(`[Schedule] ✅ Early stop — all parseable dates on page ${pageCount} are beyond endDate`);
+        break;
+      }
+    }
+
     currentUrl = result.nextPageUrl;
 
     // Rate limiting delay between pages
@@ -216,9 +284,15 @@ export async function fetchAllSchedulePages(options = {}) {
   }
 
   // Deduplicate by ID
-  const uniqueAppointments = Array.from(
+  let uniqueAppointments = Array.from(
     new Map(allAppointments.map(a => [a.id, a])).values()
   );
+
+  // NOTE: We do NOT filter by startDate here. A boarding that started before
+  // startDate (e.g. Feb 13) may still be active during the target window
+  // (e.g. a 10-night stay ending Feb 23). Filtering by appointment start date
+  // would incorrectly drop those. Date-range filtering happens in sync.js
+  // after check_in_datetime / check_out_datetime are available from the detail page.
 
   log(`[Schedule] 📊 Total: ${uniqueAppointments.length} unique appointments from ${pageCount} pages`);
 
@@ -292,14 +366,6 @@ function parsePagination(html) {
   };
 }
 
-/**
- * Format date for URL parameter
- * @param {Date} date
- * @returns {string}
- */
-function formatDateParam(date) {
-  return date.toISOString().split('T')[0];
-}
 
 /**
  * Delay utility
