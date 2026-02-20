@@ -148,8 +148,18 @@ export function useSyncSettings() {
       setSyncProgress({ stage: 'starting' });
       setError(null);
 
-      const result = await runSync({
-        supabase,
+      // const result = await runSync({
+      //   supabase,
+      //   onProgress: (progress) => {
+      //     console.log('[SyncSettings] sync progress:', progress);
+      //     setSyncProgress(progress);
+      //   },
+      // });
+
+        const result = await runSync({
+    supabase,
+    startDate: new Date(2026, 1, 18), // Feb 18 local time (string form parses as UTC → wrong day in PST)
+    endDate: new Date(2026, 1, 19),
         onProgress: (progress) => {
           console.log('[SyncSettings] sync progress:', progress);
           setSyncProgress(progress);
