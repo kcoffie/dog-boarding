@@ -63,20 +63,27 @@ export function parseServiceTypeDates(serviceType, year = new Date().getFullYear
  * @returns {Object} Extracted appointment data
  */
 export function parseAppointmentPage(html, sourceUrl = '') {
-  const serviceType = extractText(html, SCRAPER_CONFIG.selectors.serviceType);
+  // h1 is null for "Boarding (Nights)" appointments (no h1 on that page type).
+  // Fall back to the <title> tag, which always has the appointment name.
+  const serviceType = extractText(html, SCRAPER_CONFIG.selectors.serviceType)
+                    || extractPageTitle(html);
 
-  // Primary: extract scheduled timestamps from data attributes on #when-wrapper.
-  // These are Unix timestamps (seconds) and are more reliable than parsing the
-  // service_type string. Fallback to parseServiceTypeDates() if not found.
-  const timestamps = extractScheduledTimestamps(html);
-  let checkInDatetime  = timestamps?.checkIn  || null;
-  let checkOutDatetime = timestamps?.checkOut || null;
-  if (!checkInDatetime || !checkOutDatetime) {
-    const parsed = parseServiceTypeDates(serviceType);
-    if (parsed) {
-      checkInDatetime  = checkInDatetime  || parsed.checkIn.toISOString();
-      checkOutDatetime = checkOutDatetime || parsed.checkOut.toISOString();
-    }
+  // Primary: parse dates from the service_type title (e.g. "2/13-18" → Feb 13–18).
+  // The title date is the accurate boarding range per the business owner.
+  // The system timestamp (data-start_scheduled) can be off by a day (appointment
+  // creation time vs actual check-in date).
+  // Fallback: use system timestamps for appointments without dates in the title
+  // (e.g. "Boarding (Nights)").
+  let checkInDatetime  = null;
+  let checkOutDatetime = null;
+  const parsedDates = parseServiceTypeDates(serviceType);
+  if (parsedDates) {
+    checkInDatetime  = parsedDates.checkIn.toISOString();
+    checkOutDatetime = parsedDates.checkOut.toISOString();
+  } else {
+    const timestamps = extractScheduledTimestamps(html);
+    checkInDatetime  = timestamps?.checkIn  || null;
+    checkOutDatetime = timestamps?.checkOut || null;
   }
 
   return {
@@ -158,6 +165,18 @@ export async function fetchAppointmentDetails(appointmentId, timestamp = '') {
 // ---------------------------------------------------------------------------
 // Helpers backed by real HTML structure (verified 2026-02-19)
 // ---------------------------------------------------------------------------
+
+/**
+ * Extract appointment title from the <title> tag.
+ * Used as fallback when the h1 is absent (e.g. "Boarding (Nights)" pages).
+ * Strips the site name suffix: "Boarding (Nights) | A Girl and Your Dog" → "Boarding (Nights)"
+ */
+function extractPageTitle(html) {
+  const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (!match) return null;
+  // Strip site name suffix (e.g., " | A Girl and Your Dog")
+  return match[1].replace(/\s*\|[^|]*$/, '').trim() || null;
+}
 
 /**
  * Extract scheduled check-in and check-out timestamps from the #when-wrapper
