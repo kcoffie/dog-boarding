@@ -9,6 +9,7 @@ import { authenticate, isAuthenticated } from './auth.js';
 import { fetchAllSchedulePages } from './schedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
 import { mapAndSaveAppointment } from './mapping.js';
+import { reconcileArchivedAppointments } from './reconcile.js';
 import { syncLogger, logSyncStart, logSyncEnd } from './logger.js';
 
 // Use timestamped logging
@@ -258,6 +259,7 @@ export async function runSync(options = {}) {
     appointmentsUpdated: 0,
     appointmentsUnchanged: 0,
     appointmentsFailed: 0,
+    appointmentsArchived: 0,
     errors: [],
     changeDetails: [],
     durationMs: 0,
@@ -314,10 +316,15 @@ export async function runSync(options = {}) {
     // Process each appointment
     const appointmentTimings = [];
     const processingStart = Date.now();
+    const seenExternalIds = new Set();
 
     for (let i = 0; i < appointments.length; i++) {
       const appt = appointments[i];
       const apptStart = Date.now();
+
+      // Track every appointment seen on the schedule page before any filtering.
+      // Used by reconciliation to detect appointments removed from the external site.
+      seenExternalIds.add(appt.id);
 
       try {
         onProgress?.({
@@ -465,6 +472,20 @@ export async function runSync(options = {}) {
     }
     console.log(`[Sync] ⏱️ Total processing time: ${processingDuration}ms`);
 
+    // Archive reconciliation: find active DB records not seen this sync and
+    // confirm via source_url whether they've been removed from the external site.
+    // Runs in its own try/catch — failures are logged but do not affect sync status.
+    try {
+      syncLog('[Sync] 🔍 Running archive reconciliation...');
+      const reconcileResult = await reconcileArchivedAppointments(
+        supabase, seenExternalIds, startDate, endDate
+      );
+      result.appointmentsArchived = reconcileResult.archived;
+      syncLog(`[Sync] 🔍 Reconciliation complete: ${reconcileResult.archived} archived, ${reconcileResult.warnings} warnings, ${reconcileResult.errors} errors`);
+    } catch (reconcileErr) {
+      syncError('[Sync] ⚠️ Reconciliation threw unexpectedly (sync result unaffected):', reconcileErr.message);
+    }
+
     // Determine final status
     result.durationMs = Date.now() - startTime;
 
@@ -488,6 +509,7 @@ export async function runSync(options = {}) {
       appointments_updated: result.appointmentsUpdated,
       appointments_unchanged: result.appointmentsUnchanged,
       appointments_failed: result.appointmentsFailed,
+      appointments_archived: result.appointmentsArchived,
       errors: result.errors,
       change_details: result.changeDetails,
       duration_ms: result.durationMs,
@@ -508,7 +530,7 @@ export async function runSync(options = {}) {
     // Final timing summary
     syncLog('[Sync] ═══════════════════════════════════════════════════');
     syncLog(`[Sync] ✅ SYNC COMPLETED - ${result.status.toUpperCase()}`);
-    syncLog(`[Sync] 📊 Results: ${result.appointmentsFound} found, ${result.appointmentsSkipped} skipped (non-boarding), ${result.appointmentsCreated} created, ${result.appointmentsUpdated} updated, ${result.appointmentsUnchanged} unchanged, ${result.appointmentsFailed} failed`);
+    syncLog(`[Sync] 📊 Results: ${result.appointmentsFound} found, ${result.appointmentsSkipped} skipped (non-boarding), ${result.appointmentsCreated} created, ${result.appointmentsUpdated} updated, ${result.appointmentsUnchanged} unchanged, ${result.appointmentsFailed} failed, ${result.appointmentsArchived} archived`);
     syncLog('[Sync] ⏱️ Timing breakdown:');
     Object.entries(timings).forEach(([key, value]) => {
       syncLog(`[Sync]    - ${key}: ${value}ms`);
