@@ -8,6 +8,7 @@
  * These are the key fields that, if changed, indicate a meaningful update
  */
 const HASH_FIELDS = [
+  'service_type',
   'check_in_datetime',
   'check_out_datetime',
   'status',
