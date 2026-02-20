@@ -343,7 +343,9 @@ export async function runSync(options = {}) {
             /(p\/g|g\/p|\bpg\b)/i.test(titleLower) ||
             /\badd\b/.test(titleLower) ||
             /switch\s+day/i.test(titleLower) ||
-            /back\s+to\s+\d+/i.test(titleLower);
+            /back\s+to\s+\d+/i.test(titleLower) ||
+            /initial\s+eval/i.test(titleLower) ||
+            /^busy$/i.test(titleLower.trim());
           if (isKnownNonBoarding) {
             syncLog(`[Sync] ⏭️ Skipping non-boarding appointment ${appt.id} (title: "${appt.title}")`);
             result.appointmentsSkipped++;
@@ -378,9 +380,27 @@ export async function runSync(options = {}) {
             /(p\/g|g\/p|\bpg\b)/i.test(checkLower) ||
             /\badd\b/.test(checkLower) ||
             /switch\s+day/i.test(checkLower) ||
-            /back\s+to\s+\d+/i.test(checkLower);
+            /back\s+to\s+\d+/i.test(checkLower) ||
+            /initial\s+eval/i.test(checkLower) ||
+            /\bbusy\b/i.test(checkLower);
           if (isKnownNonBoarding) {
             syncLog(`[Sync] ⏭️ Skipping non-boarding appointment ${appt.id} (service_type: "${details.service_type || appt.title}")`);
+            result.appointmentsSkipped++;
+            continue;
+          }
+        }
+
+        // Date-range overlap filter: skip boardings that don't overlap [startDate, endDate].
+        // We check AFTER fetching details so we have the real check_in/check_out timestamps.
+        // Active long-stay boardings (e.g. Feb 13–23 stay) pass because they overlap the window.
+        if ((startDate || endDate) && details.check_in_datetime && details.check_out_datetime) {
+          const checkIn  = new Date(details.check_in_datetime);
+          const checkOut = new Date(details.check_out_datetime);
+          // Use >= for checkOut so that a boarding ending exactly on startDate
+          // (midnight, from title-parsed dates) is still counted as overlapping.
+          const overlaps = (!endDate || checkIn < endDate) && (!startDate || checkOut >= startDate);
+          if (!overlaps) {
+            syncLog(`[Sync] ⏭️ Skipping out-of-range boarding ${appt.id} (${details.check_in_datetime} → ${details.check_out_datetime})`);
             result.appointmentsSkipped++;
             continue;
           }
