@@ -1,6 +1,6 @@
 # Dog Boarding App Sync - Session Handoff
-**Date:** February 20, 2026 (evening session, ended ~1:30pm)
-**Status:** Planning complete for REQ-108 (archive reconciliation). No code written yet. Ready to implement.
+**Date:** February 20, 2026 (evening session, ended ~5pm)
+**Status:** REQ-108 (archive reconciliation) fully implemented and committed. DB is clean. Ready for next feature.
 
 ---
 
@@ -35,20 +35,19 @@
 18. ✅ Validated all fixes via two sync runs + DB spot-checks
 
 ### Session 3 (Feb 20, ~12:30–1:30pm) — planning only, no commits
-19. ✅ Planned REQ-108: Archive Reconciliation (see full plan below)
-20. ✅ Clarified full sync trigger (see TODO #1 below)
+19. ✅ Planned REQ-108: Archive Reconciliation
 
-### Session 4 (Feb 20, evening)
-21. ✅ Deleted 13 dirty non-boarding records (ADD Leo T/TH, switch day, back to N days) — pre-filter was correctly skipping them so they'd never self-clean
-22. ✅ Verified client_phone '4753192977' fully cleaned (count = 0) — TODO #1 DONE
-23. ✅ Implemented REQ-108: Archive Reconciliation
-    - New: `src/lib/scraper/reconcile.js` (4 exported functions)
-    - Modified: `sync.js` — seenExternalIds, reconcile call, appointmentsArchived in result/log
-    - Added: REQ-108 to `docs/REQUIREMENTS.md`
-    - New: `src/__tests__/scraper/reconcile.test.js` (20 tests)
-    - Updated: `sync.test.js` (1 new test, 26 total)
-    - All 46 tests pass
-    - **PENDING: Run DB migration before first sync** (see below)
+### Session 4 (Feb 20, ~3–5pm) — committed `cf4f49a`
+20. ✅ DB cleanup: deleted 13 non-boarding records (ADD Leo T/TH, switch day, back to N days)
+    that the pre-filter was correctly skipping and would never self-clean
+21. ✅ Verified `client_phone = '4753192977'` fully cleaned (count = 0)
+22. ✅ Implemented REQ-108: Archive Reconciliation
+    - New: `src/lib/scraper/reconcile.js` — 4 exported functions
+    - Modified: `src/lib/scraper/sync.js` — seenExternalIds, reconcile call, appointmentsArchived
+    - New: `src/__tests__/scraper/reconcile.test.js` — 20 tests
+    - Updated: `src/__tests__/scraper/sync.test.js` — 1 new test (26 total)
+    - Updated: `docs/REQUIREMENTS.md` — REQ-108 added
+    - All 46 tests pass, 100% requirement coverage
 
 ---
 
@@ -69,192 +68,42 @@
 
 ## Pending TODOs (priority order)
 
-### ~~1. Run full sync to clean 13 dirty DB records~~ ✅ DONE
-Dirty records cleaned. 13 non-boarding records deleted manually. Phone '4753192977' count = 0.
-
-**How to run a full sync:**
-In `useSyncSettings.js:159`, remove `startDate`/`endDate` from the `runSync` call:
-```js
-// Change this:
-const result = await runSync({
-  supabase,
-  startDate: new Date(2026, 1, 18),
-  endDate: new Date(2026, 1, 19),
-  onProgress: ...
-});
-
-// To this:
-const result = await runSync({
-  supabase,
-  onProgress: ...
-});
-```
-Expect ~5 min / ~499 appointments. Revert after running (TODO #2 will replace with proper UI).
-
-Verify after:
+### 1. ⚠️ Run DB migration before next sync
 ```sql
-SELECT COUNT(*) FROM sync_appointments WHERE check_in_datetime IS NULL;
-SELECT COUNT(*) FROM sync_appointments WHERE client_phone = '4753192977';
+ALTER TABLE sync_logs ADD COLUMN appointments_archived INTEGER DEFAULT 0;
 ```
+Without this, the first sync after REQ-108 will fail when trying to write `appointments_archived` to `sync_logs`.
 
-### 2. Build date range UI in SyncSettings (TODO #2 from before)
-Dates are hardcoded in `useSyncSettings.js`. Need date picker in `SyncSettings.jsx`.
-- Default: "last 30 days" or "today"
+### 2. Build date range UI in SyncSettings
+Dates are still hardcoded in `useSyncSettings.js:159`. Need a date picker in `SyncSettings.jsx`.
+- Default: "today" or "last 30 days"
 - "Full sync" option (no date range)
+- Until this is built, manually edit `useSyncSettings.js` to change the date range.
 
-### 3. ~~Implement REQ-108: Archive Reconciliation~~ ✅ DONE — Run DB migration first
-Run this SQL before the next sync (adds `appointments_archived` column to sync_logs):
-```sql
-ALTER TABLE sync_logs ADD COLUMN appointments_archived INTEGER DEFAULT 0;
-```
-Then restore `useSyncSettings.js` to use hardcoded dates (or build TODO #2 UI).
+### 3. Investigate `status` extraction
+Always returns `null`. `.appt-change-status` selector may need to handle `<i>` icon inside anchor:
+`<a ...><i ...></i> Completed</a>` — try `$('.appt-change-status').text().trim()` or similar.
 
-### 4. Investigate `status` extraction
-Always returns `null`. `.appt-change-status` may need to handle `<i>` icon inside anchor:
-`<a ...><i ...></i> Completed</a>`
-
-### 5. (Low priority) Pre-detail-fetch date filter
+### 4. (Low priority) Pre-detail-fetch date filter
 For boardings with parseable title dates, run `parseServiceTypeDates()` BEFORE fetching detail page.
-If out of range, skip the fetch. Saves ~48s per 1-day sync.
-
----
-
-## REQ-108: Archive Reconciliation — Full Implementation Plan
-
-### Problem
-When an appointment is amended on the external site, a NEW appointment is created and the OLD one
-disappears from the schedule page. The old record sits in our DB as `sync_status: 'active'` forever.
-
-The old URL (e.g. `https://agirlandyourdog.com/schedule/a/C63QgS0U/1771581600`) returns the
-`/schedule` page with a JS-rendered popup "You cannot view appointment" — not in page source.
-Our scraper (no JS) receives the `/schedule` page HTML (no `data-start_scheduled`).
-
-### Inaccessible page detection
-Valid appointment pages always have `data-start_scheduled` on `#when-wrapper`.
-Inaccessible URLs serve the schedule page HTML (no appointment content).
-
-```js
-function isAccessDeniedPage(html, response) {
-  if (!response.ok) return true;
-  const isLoginPage = html.includes('login') && html.includes('password');
-  const isAppointmentPage = html.includes('data-start_scheduled');
-  return !isLoginPage && !isAppointmentPage;
-}
-```
-
-### Reconciliation approach
-After the main sync loop:
-1. Collect `seenExternalIds` — add each `external_id` RIGHT AFTER the URL match in sync.js
-   (before any filter/fetch), so appointments that errored during processing are still "seen"
-2. Query DB: active records overlapping the sync window NOT in `seenExternalIds`
-   - `sync_status = 'active'`
-   - `check_in_datetime < endDate` (we fetched the pages where it would appear)
-   - `check_out_datetime >= startDate` (overlaps window)
-   - For null startDate/endDate (full sync): query ALL active records not in seenIds
-3. For each candidate: fetch `source_url` to confirm inaccessibility
-4. If access-denied confirmed → mark `sync_status: 'archived'`
-5. If URL loads fine → log **warn** ("not seen but accessible — possible sync bug"), do NOT archive
-6. If fetch throws → log **error** with full details, do NOT archive
-
-### Files to create/modify
-
-**New file: `src/lib/scraper/reconcile.js`**
-Exports:
-- `reconcileArchivedAppointments(supabase, seenExternalIds, startDate, endDate)` — main entry
-- `findReconciliationCandidates(supabase, seenExternalIds, startDate, endDate)` — exported for testing
-- `isAccessDeniedPage(html, response)` — exported for testing
-- `archiveSyncAppointment(supabase, externalId)` — exported for testing
-
-**`src/lib/scraper/sync.js`** changes:
-- Build `seenExternalIds` Set — populated right after URL match, before filters
-- After main loop: call `reconcileArchivedAppointments()` in its own try/catch
-- Add `appointmentsArchived: 0` to result object
-- Add `appointments_archived` to `updateSyncLog` call
-
-**DB migration needed:**
-```sql
-ALTER TABLE sync_logs ADD COLUMN appointments_archived INTEGER DEFAULT 0;
-```
-
-**`docs/REQUIREMENTS.md`** — add REQ-108
-
-### Logging (all via syncLog/syncWarn/syncError)
-| Point | Level | Content |
-|-------|-------|---------|
-| Reconciliation start | log | candidate count, sync window dates |
-| Per candidate | log | external_id, source_url |
-| Confirmed archived | log | external_id, HTTP status |
-| URL loads fine | **warn** | external_id, URL — "NOT archiving" |
-| Fetch throws | **error** | external_id, error.message, error.stack |
-| DB query fails | **error** | full error — "reconciliation skipped" |
-| Archive upsert fails | **error** | external_id + error — "continuing" |
-| Summary | log | `{ archived, warnings, errors }` |
-
-### Exception handling
-| Scenario | Handling |
-|----------|----------|
-| DB query for candidates fails | catch → log full error → return `{archived:0, warnings:0, errors:1}` — don't throw |
-| `source_url` fetch throws | catch → log message + stack → skip archive for this candidate |
-| `source_url` returns valid page | log warn → don't archive |
-| Archive upsert fails | catch → log external_id + error → continue to next |
-| Entire reconciliation throws | outer catch in sync.js → log → sync continues as partial |
-
-Rate limiting: respect `SCRAPER_CONFIG.delayBetweenRequests` between confirmation fetches.
-
-### Tests: `src/__tests__/scraper/reconcile.test.js`
-```
-findReconciliationCandidates()
-  ✓ returns active records overlapping window not in seenIds
-  ✓ does NOT return records outside the window
-  ✓ does NOT return records already in seenIds
-  ✓ does NOT return records with sync_status != 'active'
-  ✓ null startDate/endDate → returns all active records not in seenIds
-
-isAccessDeniedPage()
-  ✓ returns true for non-200 status
-  ✓ returns true for 200 response with no data-start_scheduled (schedule page)
-  ✓ returns false for valid appointment HTML (has data-start_scheduled)
-  ✓ returns false for login page HTML (session expired, not inaccessible)
-
-reconcileArchivedAppointments()
-  ✓ archives candidate when source_url is access-denied
-  ✓ logs warn and does NOT archive when source_url loads fine
-  ✓ logs error and does NOT archive when source_url fetch throws
-  ✓ logs error and returns zeros when DB query fails (does NOT throw)
-  ✓ continues to next candidate after individual fetch error
-  ✓ returns correct { archived, warnings, errors } counts
-  ✓ respects rate limiting delay between fetches
-```
-
-Updates to `sync.test.js`:
-```
-  ✓ seenExternalIds populated from schedule page (before filters)
-  ✓ appointmentsArchived in result after sync
-  ✓ appointments_archived passed to updateSyncLog
-  ✓ reconciliation error does NOT fail the overall sync
-```
-
-### Known examples of archived pairs
-| Old (to archive) | New (active) | Dog |
-|---|---|---|
-| C63QgS0U (2/20-24) | C63QgQz4 (2/20-25) | Captain Morgan |
-| C63QgNGU (4/1-13) | C63QfyoF (4/2-13) | same dog |
-| C63QgH5K (3/3-19) | C63QgNHs (3/4-19) | same dog |
+If out of range, skip. Saves ~48s per 1-day sync.
 
 ---
 
 ## Known Data Issues
 
-### Dirty records (pre-fix, still present)
-13 rows with NULL check_in or phone '4753192977'. Clean with full sync (TODO #1).
+### Known null service_types in DB
+These were out of range for the Feb 18–19 sync window and will self-correct when their date range is synced:
+`C63QgKsL, C63QfyoF, C63QgNGU, C63QgP2y, C63QgOHe`
 
-### Known null service_types still in DB
-Out-of-range for Feb 18–19 sync, will self-correct when their date range is synced:
-C63QgKsL, C63QfyoF, C63QgNGU, C63QgP2y, C63QgOHe
-
-### Duplicate/amended bookings (expected behavior)
-External site creates a new appointment when a booking is amended. Both records appear in DB.
-Old record eventually disappears from schedule page → handled by REQ-108 reconciliation.
+### Known amended bookings (will be archived by REQ-108)
+These old external IDs were amended on the external site. Their source_url now serves the schedule page.
+On next sync covering their date range, reconciliation will confirm and archive them:
+| Old (to archive) | New (active) | Dog |
+|---|---|---|
+| C63QgS0U (2/20-24) | C63QgQz4 (2/20-25) | Captain Morgan |
+| C63QgNGU (4/1-13) | C63QfyoF (4/2-13) | same dog |
+| C63QgH5K (3/3-19) | C63QgNHs (3/4-19) | same dog |
 
 ---
 
@@ -264,6 +113,7 @@ Old record eventually disappears from schedule page → handled by REQ-108 recon
 src/lib/scraper/
 ├── config.js          ✅ 4 verified selectors: h1, .appt-change-status, .event-client, .event-pet
 ├── auth.js            ✅ Login + session management
+│     authenticatedFetch() — routes through /api/sync-proxy (CORS); used by extraction + reconcile
 ├── schedule.js        ✅ Schedule page parsing, pagination, early-stop
 │     parseAppointmentStartDate()   — parses "Feb 13, AM" → Date (used for early-stop)
 │     buildScheduleStartUrl()       — /schedule/days-7/YYYY/M/D format
@@ -278,20 +128,24 @@ src/lib/scraper/
 │     extractAddressFromDataAttr()  — data-address= attribute
 │     extractDuration()             — .scheduled-duration
 │     extractAppointmentNotes()     — .notes-wrapper .note divs
-├── reconcile.js       🆕 TO BUILD — REQ-108 archive reconciliation
-│     reconcileArchivedAppointments() — main entry, called from sync.js
-│     findReconciliationCandidates() — DB query for unseen active records
+├── reconcile.js       ✅ REQ-108 implemented (cf4f49a)
 │     isAccessDeniedPage()          — detects schedule page served instead of appointment
-│     archiveSyncAppointment()      — upserts sync_status: 'archived'
+│     findReconciliationCandidates() — DB query for unseen active records in window
+│     archiveSyncAppointment()      — sets sync_status: 'archived'
+│     reconcileArchivedAppointments() — main entry, called from sync.js after main loop
 ├── changeDetection.js ✅ service_type in HASH_FIELDS (2469d5a)
-├── mapping.js         — Maps to dogs/boardings/sync_appointments tables
-├── sync.js            ✅ All fixes committed (2469d5a) — needs seenExternalIds + reconcile call
-├── logger.js          — File + console logging
-└── changeDetection.js — Content hash change detection
+├── mapping.js         ✅ Maps to dogs/boardings/sync_appointments tables
+├── sync.js            ✅ All fixes + REQ-108 (cf4f49a)
+│     seenExternalIds Set populated at start of loop (before filters)
+│     reconcileArchivedAppointments() called after main loop, own try/catch
+│     result.appointmentsArchived + updateSyncLog appointments_archived
+├── logger.js          ✅ File + console logging
+└── changeDetection.js ✅ Content hash change detection
 
 src/hooks/useSyncSettings.js
   ← triggerSync() calls runSync() with HARDCODED test dates (need UI — see TODO #2)
-  ← For full sync: remove startDate/endDate (see TODO #1)
+  ← Hardcoded: new Date(2026, 1, 18) / new Date(2026, 1, 19) at line ~159
+  ← For full sync: remove startDate/endDate from the runSync call
 
 src/components/SyncSettings.jsx ← Sync Now button, sync history display
 ```
@@ -333,6 +187,10 @@ Inaccessible URLs serve the `/schedule` page HTML (JS popup not in source).
 Detect by absence of `data-start_scheduled` (unique to valid appointment pages).
 Do NOT match popup text — it's not in the raw HTML.
 
+### 9. Non-boarding records won't self-clean via sync
+The pre-filter skips them before detail fetch → no upsert → they stay dirty forever.
+Delete them manually with SQL filtered by service_type.
+
 ---
 
 ## If You Get a Stuck Sync
@@ -346,8 +204,9 @@ WHERE status = 'running' AND started_at < NOW() - INTERVAL '5 minutes';
 
 ## First Message for Next Session
 
-> "Picking up from Feb 20 evening handoff. Plan for REQ-108 (archive reconciliation) is fully documented in SESSION_HANDOFF.md. No code written yet.
+> "Picking up from Feb 20 evening handoff. DB is clean, REQ-108 is fully implemented (commit cf4f49a).
 >
-> Start with TODO #1: run a full sync to clean 13 dirty DB records. In useSyncSettings.js, remove startDate/endDate from the runSync call, trigger the sync, verify with the SQL checks, then restore the hardcoded dates.
+> First: run the DB migration before any sync:
+> `ALTER TABLE sync_logs ADD COLUMN appointments_archived INTEGER DEFAULT 0;`
 >
-> Then implement REQ-108 per the plan in SESSION_HANDOFF.md: new reconcile.js, seenExternalIds in sync.js, DB migration for appointments_archived column, REQ-108 in REQUIREMENTS.md, tests in reconcile.test.js and sync.test.js."
+> Then pick up with TODO #2: build a date range UI in SyncSettings.jsx so dates don't need to be hardcoded in useSyncSettings.js. See SESSION_HANDOFF.md for details."
