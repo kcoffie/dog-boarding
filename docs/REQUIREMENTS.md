@@ -638,6 +638,28 @@ Sync failures are handled gracefully and reported.
 
 ---
 
+### REQ-108: Archive Reconciliation
+**Added:** v2.0 | **Status:** In Progress
+
+When an appointment is amended on the external site, a new appointment is created
+and the old one disappears from the schedule page. The old record must be detected
+and archived so it doesn't appear as an active boarding.
+
+**Acceptance Criteria:**
+- After each sync, active DB records not seen on the schedule are identified as candidates
+- Candidates whose `source_url` returns a valid appointment page are NOT archived (warn + log)
+- Candidates whose `source_url` returns an access-denied page are marked `sync_status: 'archived'`
+- Fetch errors for individual candidates are logged but do not stop reconciliation or the sync
+- A DB query failure in reconciliation is logged and reconciliation is skipped (sync still succeeds)
+- `sync_logs` records the count of archived appointments (`appointments_archived`)
+- For date-range syncs, only records overlapping the sync window are checked
+- For full syncs (no date range), all active records not seen are checked
+- Rate limiting between confirmation fetches (same delay as detail page fetches)
+
+**Tests:** `src/__tests__/scraper/reconcile.test.js`
+
+---
+
 ### REQ-107: Sync Admin UI
 **Added:** v2.0 | **Status:** Planned
 
