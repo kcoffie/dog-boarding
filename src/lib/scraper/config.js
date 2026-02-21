@@ -5,7 +5,7 @@
 
 export const SCRAPER_CONFIG = {
   // Base URL for external site
-  baseUrl: import.meta.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com',
+  baseUrl: import.meta.env.VITE_EXTERNAL_SITE_URL ?? (typeof process !== 'undefined' ? process.env.VITE_EXTERNAL_SITE_URL : undefined) ?? 'https://agirlandyourdog.com',
 
   // Rate limiting
   delayBetweenRequests: 1500, // 1.5 seconds between requests
