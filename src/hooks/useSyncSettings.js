@@ -138,28 +138,22 @@ export function useSyncSettings() {
     }
   }, [settings?.setup_mode]);
 
-  // Trigger manual sync
-  const triggerSync = useCallback(async () => {
+  // Trigger manual sync with optional date range.
+  // startDate/endDate are local-time Date objects (use new Date(y, m-1, d) — NOT new Date('YYYY-MM-DD')).
+  // Pass null for either to run a full sync with no date bounds.
+  const triggerSync = useCallback(async (startDate = null, endDate = null) => {
     if (syncing) return;
 
     try {
-      console.log('[SyncSettings] triggerSync started');
+      console.log('[SyncSettings] triggerSync started', { startDate, endDate });
       setSyncing(true);
       setSyncProgress({ stage: 'starting' });
       setError(null);
 
-      // const result = await runSync({
-      //   supabase,
-      //   onProgress: (progress) => {
-      //     console.log('[SyncSettings] sync progress:', progress);
-      //     setSyncProgress(progress);
-      //   },
-      // });
-
-        const result = await runSync({
-    supabase,
-    startDate: new Date(2026, 1, 18), // Feb 18 local time (string form parses as UTC → wrong day in PST)
-    endDate: new Date(2026, 1, 19),
+      const result = await runSync({
+        supabase,
+        ...(startDate != null ? { startDate } : {}),
+        ...(endDate != null ? { endDate } : {}),
         onProgress: (progress) => {
           console.log('[SyncSettings] sync progress:', progress);
           setSyncProgress(progress);
