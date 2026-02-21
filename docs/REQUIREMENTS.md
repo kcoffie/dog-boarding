@@ -660,6 +660,63 @@ and archived so it doesn't appear as an active boarding.
 
 ---
 
+### REQ-109: Automated Scheduled Sync (micro mode)
+**Added:** v2.0 | **Status:** In Progress
+
+The system automatically syncs appointment data on a schedule using three Vercel
+cron functions that each complete within the Hobby plan's 10-second limit.
+
+**Architecture:**
+
+| Cron | Schedule | Function |
+|------|----------|----------|
+| `cron-auth` | Every 6h | Re-authenticate and cache session in DB |
+| `cron-schedule` | Every 1h | Scan 2 schedule pages, queue boarding candidates |
+| `cron-detail` | Every 5min | Process 1 queued appointment detail |
+
+**Acceptance Criteria:**
+- `cron-auth` skips re-authentication when a valid session is still cached in `sync_settings`
+- `cron-auth` stores new session cookies and expiry in `sync_settings` after successful auth
+- `cron-schedule` fetches the current week + a rotating cursor week per call
+- `cron-schedule` cursor advances 7 days each call, wraps back to today after 8 weeks (~today+56d)
+- `cron-schedule` filters known non-boarding titles before enqueueing (same patterns as `sync.js`)
+- `cron-detail` picks the oldest pending item from `sync_queue`, fetches the detail page, upserts to DB
+- `cron-detail` resets items stuck in `processing` for more than 10 minutes at the start of each run
+- Failed detail fetches retry up to 3 times with backoff: +5m, +10m, then permanently `failed`
+- All cron handlers verify `CRON_SECRET` header when the env var is set (skipped in local dev)
+- Session error (server rejects cached cookies) → clear DB session + return 200 (cron-auth will re-auth)
+- Reconciliation (REQ-108) does NOT run in micro mode — only via manual sync or standard mode
+- `SYNC_MODE=standard` env var enables upgrade path to full `runSync()` without code changes
+- All env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_EXTERNAL_SITE_*`) accessible
+  via `process.env` fallback in cron context (where `import.meta.env` is unavailable)
+
+**DB schema additions (run migration before first deploy):**
+```sql
+ALTER TABLE sync_settings
+  ADD COLUMN sync_mode VARCHAR DEFAULT 'micro',
+  ADD COLUMN session_cookies TEXT,
+  ADD COLUMN session_expires_at TIMESTAMPTZ,
+  ADD COLUMN schedule_cursor_date DATE;
+
+CREATE TABLE sync_queue (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  external_id TEXT NOT NULL UNIQUE,
+  source_url TEXT NOT NULL,
+  title TEXT,
+  status VARCHAR DEFAULT 'pending',
+  retry_count INTEGER DEFAULT 0,
+  last_error TEXT,
+  queued_at TIMESTAMPTZ DEFAULT NOW(),
+  processing_started_at TIMESTAMPTZ,
+  processed_at TIMESTAMPTZ,
+  next_retry_at TIMESTAMPTZ
+);
+```
+
+**Tests:** `src/__tests__/scraper/sessionCache.test.js`, `src/__tests__/scraper/syncQueue.test.js`
+
+---
+
 ### REQ-107: Sync Admin UI
 **Added:** v2.0 | **Status:** Planned
 
