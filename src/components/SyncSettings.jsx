@@ -27,6 +27,19 @@ export default function SyncSettings() {
   const [showSetupModeConfirm, setShowSetupModeConfirm] = useState(false);
   const [showHistoricalImport, setShowHistoricalImport] = useState(false);
   const [historicalStartDate, setHistoricalStartDate] = useState('2024-09-01');
+
+  // Date range for manual sync (today → today+60 days by default).
+  // Use local-time constructor to avoid UTC midnight = wrong day in PST.
+  const [syncStartDate, setSyncStartDate] = useState(() => {
+    const t = new Date();
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate())
+      .toISOString().slice(0, 10);
+  });
+  const [syncEndDate, setSyncEndDate] = useState(() => {
+    const t = new Date();
+    return new Date(t.getFullYear(), t.getMonth(), t.getDate() + 60)
+      .toISOString().slice(0, 10);
+  });
   const [historicalImporting, setHistoricalImporting] = useState(false);
   const [historicalProgress, setHistoricalProgress] = useState(null);
 
@@ -108,9 +121,21 @@ export default function SyncSettings() {
     }
   };
 
-  const handleSync = async () => {
+  const handleSync = async (fullSync = false) => {
     try {
-      await triggerSync();
+      let startDate = null;
+      let endDate = null;
+      if (!fullSync) {
+        if (syncStartDate) {
+          const [y, m, d] = syncStartDate.split('-').map(Number);
+          startDate = new Date(y, m - 1, d); // local time — NOT new Date('YYYY-MM-DD')
+        }
+        if (syncEndDate) {
+          const [y, m, d] = syncEndDate.split('-').map(Number);
+          endDate = new Date(y, m - 1, d);
+        }
+      }
+      await triggerSync(startDate, endDate);
     } catch {
       // Error is already handled by the hook
     }
@@ -374,10 +399,33 @@ export default function SyncSettings() {
           </div>
         )}
 
-        {/* Manual Sync Button */}
-        <div className="pt-2">
+        {/* Manual Sync — Date Range + Button */}
+        <div className="pt-2 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-slate-500 mb-1">From</label>
+              <input
+                type="date"
+                value={syncStartDate}
+                onChange={(e) => setSyncStartDate(e.target.value)}
+                disabled={syncing}
+                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 disabled:bg-slate-100"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-slate-500 mb-1">To</label>
+              <input
+                type="date"
+                value={syncEndDate}
+                onChange={(e) => setSyncEndDate(e.target.value)}
+                disabled={syncing}
+                className="w-full text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 disabled:bg-slate-100"
+              />
+            </div>
+          </div>
+
           <button
-            onClick={handleSync}
+            onClick={() => handleSync(false)}
             disabled={syncing}
             className={`w-full inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all shadow-sm ${
               syncing
@@ -402,6 +450,16 @@ export default function SyncSettings() {
               </>
             )}
           </button>
+
+          <div className="text-center">
+            <button
+              onClick={() => handleSync(true)}
+              disabled={syncing}
+              className="text-xs text-slate-400 hover:text-slate-600 disabled:cursor-not-allowed"
+            >
+              Full sync (no date filter, ~5 min)
+            </button>
+          </div>
         </div>
 
         {/* Historical Import Section */}
