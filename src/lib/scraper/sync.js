@@ -477,8 +477,12 @@ export async function runSync(options = {}) {
     // Runs in its own try/catch — failures are logged but do not affect sync status.
     try {
       syncLog('[Sync] 🔍 Running archive reconciliation...');
+      // For full syncs (no startDate), the schedule starts from today and paginates forward.
+      // Past-ended boardings won't appear on any fetched page — use today as the effective
+      // lower bound so they don't generate false-positive "possible sync bug" warnings.
+      const reconcileStart = startDate ?? new Date();
       const reconcileResult = await reconcileArchivedAppointments(
-        supabase, seenExternalIds, startDate, endDate
+        supabase, seenExternalIds, reconcileStart, endDate
       );
       result.appointmentsArchived = reconcileResult.archived;
       syncLog(`[Sync] 🔍 Reconciliation complete: ${reconcileResult.archived} archived, ${reconcileResult.warnings} warnings, ${reconcileResult.errors} errors`);
