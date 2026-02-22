@@ -1,6 +1,6 @@
 # Dog Boarding App Sync - Session Handoff
 **Date:** February 22, 2026
-**Status:** REQ-109 fully integrated and tested locally. All 553 tests passing. 4 bugs fixed during integration testing (see Session 9). Phases 1-6 complete. Remaining: Phase 7 (session expiry failure path), Phase 8 (UI smoke), Phase 9 (Vercel production crons + SUPABASE_SERVICE_ROLE_KEY env var).
+**Status:** ✅ REQ-109 COMPLETE AND IN PRODUCTION. All 9 phases done. 553/553 tests passing. develop merged to main. Vercel deployed successfully with 3 daily crons registered.
 
 ---
 
@@ -108,6 +108,24 @@
     - cron-auth: authenticated, session cached (2237-char cookie, expires 24h) ✅
     - cron-schedule: 71 found, 67 non-boarding skipped, 4 queued ✅
     - cron-detail: Maverick (C63QgKsK), Captain Morgan (C63QgQz4), Chewy (C63QgOHe) all saved ✅
+
+### Session 10 (Feb 22) — REQ-109 fully shipped to production
+
+33. ✅ Phase 7: session expiry failure path verified
+    - Corrupted session → cron-schedule returned `{ action: 'skipped', reason: 'no_session' }` ✅
+    - cron-auth recovered → `{ action: 'refreshed' }` in ~3s ✅
+    - cron-schedule resumed normal operation ✅
+34. ✅ Phase 8: UI smoke test passed
+    - Date pickers default today → today+60d ✅
+    - Sync Now uses those dates (confirmed in logs) ✅
+    - Full sync button present and works ✅
+    - Fixed false-positive reconciliation warnings on full sync:
+      `reconcile.js` now applies date filters independently;
+      `sync.js` passes today as effective reconcile start for full syncs
+35. ✅ Phase 9: production deployment complete
+    - develop merged to main (resolved modify/delete conflicts from old revert)
+    - Cron schedules changed to once-per-day (Hobby plan limit)
+    - Vercel deployed successfully, all 3 crons registered
 
 ### Session 8 (Feb 22) — no new commits (test fixes only)
 31. ✅ Fixed 34 pre-existing test failures — all 553 tests now passing (36 files)
@@ -299,7 +317,7 @@ Verify in Supabase: check `sync_queue` item is now `status = 'done'`.
 
 ---
 
-### Phase 7: Session expiry failure path
+### Phase 7: ✅ Session expiry failure path (DONE — Feb 22)
 Corrupt the session to verify graceful recovery:
 ```sql
 UPDATE sync_settings SET session_expires_at = '2020-01-01' WHERE id = (SELECT id FROM sync_settings LIMIT 1);
@@ -319,7 +337,7 @@ curl -s http://localhost:3000/api/cron-auth | jq
 
 ---
 
-### Phase 8: UI smoke test
+### Phase 8: ✅ UI smoke test (DONE — Feb 22)
 Open the app in the browser (http://localhost:5173 or deployed URL):
 - Navigate to Settings → External Sync
 - Verify date range pickers default to today → today+60d
@@ -328,16 +346,17 @@ Open the app in the browser (http://localhost:5173 or deployed URL):
 
 ---
 
-### Phase 9: 🔴 Verify Vercel production crons + add SUPABASE_SERVICE_ROLE_KEY
-⚠️ **BLOCKER**: `SUPABASE_SERVICE_ROLE_KEY` must be added to Vercel env vars before crons can write to DB.
-
-1. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel dashboard → project → Settings → Environment Variables
-   (same value as in `.env.local`)
-2. Redeploy (or push any commit to trigger new deploy)
-3. Go to Vercel dashboard → project → Settings → Crons
-4. Confirm 3 cron jobs are registered with correct schedules
-5. Check Vercel Functions logs 10–20 minutes after deploy for first automatic cron-auth run
-6. If logs show `[CronAuth] ✅ Session cached`, the end-to-end pipeline is live
+### Phase 9: ✅ Vercel production crons live (DONE — Feb 22)
+- `SUPABASE_SERVICE_ROLE_KEY` added to Vercel environment variables
+- develop merged to main (16 commits, all 553 tests passing)
+- Vercel deployed successfully
+- All 3 crons registered and visible in Vercel dashboard
+- Schedules adjusted to Hobby plan limits (once per day, staggered):
+  - cron-auth:     0:00am UTC
+  - cron-schedule: 0:05am UTC
+  - cron-detail:   0:10am UTC
+- Pro plan upgrade path documented in each handler's JSDoc header
+- First automated run will occur tonight at midnight UTC
 
 ---
 
@@ -724,42 +743,25 @@ WHERE status = 'failed';
 
 ## First Message for Next Session
 
-> "Picking up from Feb 22 (Session 9). REQ-109 is fully built, tested locally, and pushed.
-> All 553 tests pass. 4 bugs were found and fixed during integration testing — see Session 9 notes.
+> "Picking up from Feb 22 (Session 10). REQ-109 is COMPLETE and live in production.
+> All 553 tests pass. develop merged to main. Vercel deployed with 3 daily crons.
 >
-> **Current state:**
-> - Phases 1–6 complete: DB migration done, code deployed, all 3 cron handlers verified locally
-> - cron-auth: authenticates and caches session (2237-char cookie, 24h expiry) ✅
-> - cron-schedule: scans schedule page, skips non-boardings, enqueues candidates ✅
-> - cron-detail: fetches detail page and upserts to DB ✅
+> **Current state — everything done:**
+> - All 9 phases complete ✅
+> - Production URL: Vercel qboard project (main branch)
+> - Crons run daily at midnight UTC (Hobby plan limit):
+>   cron-auth 0:00 → cron-schedule 0:05 → cron-detail 0:10
+> - Manual sync fully operational via UI (Settings → External Sync)
+> - SUPABASE_SERVICE_ROLE_KEY set in Vercel env vars ✅
 >
-> **Priority 1 — Vercel env var (BLOCKER for production crons):**
-> Add SUPABASE_SERVICE_ROLE_KEY to Vercel dashboard → project → Settings → Environment Variables.
-> Without it, cron functions are blocked by Supabase RLS and can't write session/queue to DB.
-> After adding: redeploy (push any commit, or manually trigger in Vercel dashboard).
+> **To verify first automated cron run:**
+> - Check Vercel Functions logs after midnight UTC for [CronAuth] ✅ Session cached
 >
-> **Priority 2 — Phase 7: session expiry failure path (local, ~5 min):**
-> Corrupt the session to verify graceful recovery:
->   sql: UPDATE sync_settings SET session_expires_at = '2020-01-01' WHERE id = (SELECT id FROM sync_settings LIMIT 1);
->   Then: node scripts/test-cron.mjs schedule  → expect { action: 'session_cleared' }
->   Then: node scripts/test-cron.mjs auth      → expect { action: 'refreshed' }
->   Then: node scripts/test-cron.mjs schedule  → expect normal scan results
+> **Known limitation (Hobby plan):**
+> - cron-detail processes 1 appointment per day (10s Vercel timeout)
+> - For immediate multi-appointment sync, use 'Sync Now' in the UI
+> - Pro plan upgrade path: update vercel.json schedules (documented in each handler JSDoc)
 >
-> **Priority 3 — Phase 8: UI smoke test (local, ~5 min):**
-> npm run dev → open http://localhost:5173 → Settings → External Sync
-> - Verify date range pickers default to today → today+60d
-> - Click Sync Now — should trigger sync with those dates
-> - Verify 'Full sync (no date filter)' link works
->
-> **Priority 4 — Phase 9: verify Vercel production crons:**
-> After env var added + redeploy:
-> - Vercel dashboard → Settings → Crons: confirm 3 jobs (cron-auth every 6h, cron-schedule hourly, cron-detail every 5min)
-> - Wait 10-20 min, check Vercel Functions logs for [CronAuth] ✅ Session cached
->
-> **Local test utilities (in scripts/):**
-> - node scripts/test-cron.mjs [auth|schedule|detail|all]
-> - node scripts/clear-session.mjs  (clears session from DB for failure-path testing)
->
-> **Low priority (after all phases pass):**
+> **Low priority remaining work:**
 > - Investigate status extraction (always null — .appt-change-status selector may need text() on <a> containing <i>)
 > - Pre-detail-fetch date filter (parse service_type dates BEFORE fetching detail page; saves ~48s/sync)"
