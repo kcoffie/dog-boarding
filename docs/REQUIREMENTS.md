@@ -14,13 +14,13 @@
 
 ## Version History
 
-| Version | Focus Area | Status |
-|---------|-----------|--------|
-| v1.0 | Core boarding management | Complete |
-| v1.1 | Payroll & employee management | Complete |
-| v1.2 | CSV import & past boardings | Complete |
-| v1.3 | Authentication & invite system | Complete |
-| v1.4 | TBD | Planned |
+| Version | Focus Area                     | Status      |
+| ------- | ------------------------------ | ----------- |
+| v1.0    | Core boarding management       | Complete    |
+| v1.1    | Payroll & employee management  | Complete    |
+| v1.2    | CSV import & past boardings    | Complete    |
+| v1.3    | Authentication & invite system | Complete    |
+| v2.0    | External data sync             | In Progress |
 
 ---
 
@@ -520,6 +520,217 @@ System calculates revenue correctly.
 - calculateBoardingGross computes single boarding revenue
 
 **Tests:** `src/utils/calculations.test.js`
+
+---
+
+## v2.0: External Data Sync
+
+### REQ-100: External Source Authentication
+**Added:** v2.0 | **Status:** Planned
+
+Scraper can authenticate with the external booking system.
+
+**Acceptance Criteria:**
+- Can store authentication credentials securely (not in code)
+- Can authenticate using stored session/cookies
+- Can re-authenticate when session expires
+- Authentication failures logged with clear error messages
+- Credentials stored in environment variables, not database
+
+**Tests:** `scraper/auth.test.js`
+
+---
+
+### REQ-101: Appointment List Scraping
+**Added:** v2.0 | **Status:** Planned
+
+Scraper can retrieve list of appointments from schedule page.
+
+**Acceptance Criteria:**
+- Can navigate to schedule page
+- Can extract all appointment links from page
+- Can filter for boarding appointments only
+- Can handle pagination if present
+- Can specify date range to scrape
+
+**Tests:** `scraper/schedule.test.js`
+
+---
+
+### REQ-102: Appointment Detail Extraction
+**Added:** v2.0 | **Status:** Planned
+
+Scraper can extract full details from individual appointment pages.
+
+**Acceptance Criteria:**
+- Extracts appointment info (service type, status, dates, duration, staff)
+- Extracts client info (name, emails, phone, address)
+- Extracts access instructions and notes
+- Extracts pet info (name, breed, medical, behavioral)
+- Handles missing fields gracefully (null, not error)
+- Stores source URL for reference
+
+**Tests:** `scraper/extraction.test.js`
+
+---
+
+### REQ-103: Data Mapping to App Schema
+**Added:** v2.0 | **Status:** Planned
+
+Scraped data maps correctly to existing app data models.
+
+**Acceptance Criteria:**
+- External appointments create/update Dog records
+- External appointments create/update Boarding records
+- Client info stored appropriately (new table or notes)
+- Duplicate detection by external_id
+- Existing manual entries not overwritten without flag
+
+**Tests:** `scraper/mapping.test.js`
+
+---
+
+### REQ-104: Sync Scheduling
+**Added:** v2.0 | **Status:** Planned
+
+Sync can run automatically on a schedule.
+
+**Acceptance Criteria:**
+- Can configure sync interval (hourly, daily, manual)
+- Sync runs in background without blocking UI
+- Last sync timestamp displayed in app
+- Can trigger manual sync from UI
+- Sync status visible (running, success, failed)
+
+**Tests:** `scraper/scheduler.test.js`, `components/SyncStatus.test.jsx`
+
+---
+
+### REQ-105: Sync Conflict Resolution
+**Added:** v2.0 | **Status:** Planned
+
+System handles conflicts between external and local data.
+
+**Acceptance Criteria:**
+- External data marked with `source: 'external'`
+- Local edits to external data flagged as overridden
+- Option to prefer external or local on conflict
+- Sync log shows what changed
+- Can revert local changes to external data
+
+**Tests:** `scraper/conflicts.test.js`
+
+---
+
+### REQ-106: Sync Error Handling
+**Added:** v2.0 | **Status:** Planned
+
+Sync failures are handled gracefully and reported.
+
+**Acceptance Criteria:**
+- Individual appointment failures don't stop full sync
+- Failed extractions logged for manual review
+- Rate limiting handled (automatic delays)
+- Network failures trigger retry with backoff
+- Error notifications to admin (optional)
+
+**Tests:** `scraper/errors.test.js`
+
+---
+
+### REQ-108: Archive Reconciliation
+**Added:** v2.0 | **Status:** In Progress
+
+When an appointment is amended on the external site, a new appointment is created
+and the old one disappears from the schedule page. The old record must be detected
+and archived so it doesn't appear as an active boarding.
+
+**Acceptance Criteria:**
+- After each sync, active DB records not seen on the schedule are identified as candidates
+- Candidates whose `source_url` returns a valid appointment page are NOT archived (warn + log)
+- Candidates whose `source_url` returns an access-denied page are marked `sync_status: 'archived'`
+- Fetch errors for individual candidates are logged but do not stop reconciliation or the sync
+- A DB query failure in reconciliation is logged and reconciliation is skipped (sync still succeeds)
+- `sync_logs` records the count of archived appointments (`appointments_archived`)
+- For date-range syncs, only records overlapping the sync window are checked
+- For full syncs (no date range), all active records not seen are checked
+- Rate limiting between confirmation fetches (same delay as detail page fetches)
+
+**Tests:** `src/__tests__/scraper/reconcile.test.js`
+
+---
+
+### REQ-109: Automated Scheduled Sync (micro mode)
+**Added:** v2.0 | **Status:** In Progress
+
+The system automatically syncs appointment data on a schedule using three Vercel
+cron functions that each complete within the Hobby plan's 10-second limit.
+
+**Architecture:**
+
+| Cron | Schedule | Function |
+|------|----------|----------|
+| `cron-auth` | Every 6h | Re-authenticate and cache session in DB |
+| `cron-schedule` | Every 1h | Scan 2 schedule pages, queue boarding candidates |
+| `cron-detail` | Every 5min | Process 1 queued appointment detail |
+
+**Acceptance Criteria:**
+- `cron-auth` skips re-authentication when a valid session is still cached in `sync_settings`
+- `cron-auth` stores new session cookies and expiry in `sync_settings` after successful auth
+- `cron-schedule` fetches the current week + a rotating cursor week per call
+- `cron-schedule` cursor advances 7 days each call, wraps back to today after 8 weeks (~today+56d)
+- `cron-schedule` filters known non-boarding titles before enqueueing (same patterns as `sync.js`)
+- `cron-detail` picks the oldest pending item from `sync_queue`, fetches the detail page, upserts to DB
+- `cron-detail` resets items stuck in `processing` for more than 10 minutes at the start of each run
+- Failed detail fetches retry up to 3 times with backoff: +5m, +10m, then permanently `failed`
+- All cron handlers verify `CRON_SECRET` header when the env var is set (skipped in local dev)
+- Session error (server rejects cached cookies) → clear DB session + return 200 (cron-auth will re-auth)
+- Reconciliation (REQ-108) does NOT run in micro mode — only via manual sync or standard mode
+- `SYNC_MODE=standard` env var enables upgrade path to full `runSync()` without code changes
+- All env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_EXTERNAL_SITE_*`) accessible
+  via `process.env` fallback in cron context (where `import.meta.env` is unavailable)
+
+**DB schema additions (run migration before first deploy):**
+```sql
+ALTER TABLE sync_settings
+  ADD COLUMN sync_mode VARCHAR DEFAULT 'micro',
+  ADD COLUMN session_cookies TEXT,
+  ADD COLUMN session_expires_at TIMESTAMPTZ,
+  ADD COLUMN schedule_cursor_date DATE;
+
+CREATE TABLE sync_queue (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  external_id TEXT NOT NULL UNIQUE,
+  source_url TEXT NOT NULL,
+  title TEXT,
+  status VARCHAR DEFAULT 'pending',
+  retry_count INTEGER DEFAULT 0,
+  last_error TEXT,
+  queued_at TIMESTAMPTZ DEFAULT NOW(),
+  processing_started_at TIMESTAMPTZ,
+  processed_at TIMESTAMPTZ,
+  next_retry_at TIMESTAMPTZ
+);
+```
+
+**Tests:** `src/__tests__/scraper/sessionCache.test.js`, `src/__tests__/scraper/syncQueue.test.js`
+
+---
+
+### REQ-107: Sync Admin UI
+**Added:** v2.0 | **Status:** Planned
+
+Administrators can manage sync settings and view status.
+
+**Acceptance Criteria:**
+- Settings page has "External Sync" section
+- Can enable/disable automatic sync
+- Can configure sync interval
+- Can view sync history (last 10 syncs)
+- Can view sync errors
+- Can trigger manual sync
+
+**Tests:** `pages/SyncSettings.test.jsx`
 
 ---
 
