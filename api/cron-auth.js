@@ -1,5 +1,8 @@
 /**
- * Cron handler: refresh the external-site session every 6 hours.
+ * Cron handler: refresh the external-site session.
+ *
+ * Hobby plan schedule (vercel.json): "0 0 * * *" — once per day at midnight UTC
+ * Pro plan schedule (upgrade path):  "0 *\/6 * * *" — every 6 hours
  *
  * If the cached session is still valid, skips re-authentication.
  * If expired or missing, authenticates fresh and stores the new session in DB.
