@@ -1,5 +1,8 @@
 /**
- * Cron handler: scan schedule pages and queue new appointments every hour.
+ * Cron handler: scan schedule pages and queue new appointments.
+ *
+ * Hobby plan schedule (vercel.json): "5 0 * * *" — once per day at 12:05am UTC
+ * Pro plan schedule (upgrade path):  "0 * * * *" — every hour
  *
  * Strategy: fetch TWO pages per call —
  *   1. Current week (always) — catches active long-stay boardings
