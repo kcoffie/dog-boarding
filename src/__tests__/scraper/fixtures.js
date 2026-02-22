@@ -111,49 +111,76 @@ export const mockSchedulePageNoPagination = `
 </html>
 `;
 
+// mockAppointmentPage uses the verified real HTML structure from the external site.
+// Selectors confirmed against actual appointment page C63QgKsK (Feb 19, 2026).
+//
+// Key structural notes:
+//  - "Boarding (Nights)" pages have NO <h1>; service_type falls back to <title> tag
+//  - status (.appt-change-status) has an <i> child — extractText captures empty string → null
+//  - dates come from #when-wrapper Unix timestamps (data-start_scheduled / data-end_scheduled)
+//    1766336400 = 2025-12-21T17:00:00Z, 1766484000 = 2025-12-23T10:00:00Z
+//  - phone is the raw E.164 value from data-value on .mobile-contact
+//  - all label-based fields use <div class="field-label"> / <div class="field-value"> pairs
 export const mockAppointmentPage = `
 <!DOCTYPE html>
 <html>
-<head><title>Appointment Details</title></head>
+<head><title>Boarding (Nights) | A Girl and Your Dog</title></head>
 <body>
-  <h1>Boarding (Nights)</h1>
-  <div class="status">Scheduled</div>
+  <!-- No h1 on "Boarding (Nights)" pages — service_type uses <title> fallback -->
 
-  <div class="appointment-details">
-    <div class="check-in">PM, Saturday, December 21, 2025</div>
-    <div class="check-out">AM, Monday, December 23, 2025</div>
-    <div class="duration">2 nights</div>
-    <div class="staff">Sarah</div>
+  <!-- Status anchor has <i> child; extractText returns null for this field (known limitation) -->
+  <a class="appt-change-status"><i class="icon-status"></i> Scheduled</a>
+
+  <!-- Timing: Unix timestamps (seconds) on #when-wrapper -->
+  <div id="when-wrapper"
+       data-start_scheduled="1766336400"
+       data-end_scheduled="1766484000">
+    <span class="scheduled-duration">(Scheduled: 2 d)</span>
   </div>
 
-  <div class="client-info">
-    <div class="client-name">John Smith</div>
-    <div class="email">john.smith@example.com</div>
-    <div class="phone">(555) 123-4567</div>
-    <div class="address">123 Main St, Austin, TX 78701</div>
-  </div>
+  <!-- Client info -->
+  <span class="event-client">John Smith</span>
+  <button class="message-client" data-emails= "john.smith@example.com">Message</button>
+  <a class="mobile-contact" data-value="+15551234567">Call</a>
+  <div class="client-address" data-address="123 Main St, Austin, TX 78701"></div>
 
-  <div class="instructions">
-    <p>Access Instructions: Gate code is 1234, key under mat</p>
-    <p>Drop off Instructions: Please arrive between 4-6 PM</p>
-    <p>Special Notes: Luna loves belly rubs!</p>
-  </div>
+  <!-- Pet info -->
+  <span class="event-pet">Luna</span>
 
-  <div class="pet-info">
-    <img src="/images/pets/luna.jpg" class="pet-photo" alt="Luna">
-    <div class="pet-name">Luna</div>
-    <div class="breed">Golden Retriever</div>
-    <div class="birthdate">March 15, 2020</div>
-    <p>Food/Allergies: Grain-free diet, no chicken</p>
-    <p>Health/Mobility: Healthy, high energy</p>
-    <p>Medications: None</p>
-    <p>Behavioral: Friendly with other dogs</p>
-    <p>Bite History: None</p>
-  </div>
+  <!-- Field label/value pairs (verified real HTML structure) -->
+  <div class="field-label">Access Home or Apartment</div>
+  <div class="field-value">Gate code is 1234, key under mat</div>
 
-  <div class="veterinarian">
-    <p>Vet: Austin Pet Clinic</p>
-    <p>Phone: (555) 987-6543</p>
+  <div class="field-label">Drop Off</div>
+  <div class="field-value">Please arrive between 4-6 PM</div>
+
+  <div class="field-label">Breed(s)</div>
+  <div class="field-value">Golden Retriever</div>
+
+  <div class="field-label">Birthdate</div>
+  <div class="field-value">March 15, 2020</div>
+
+  <div class="field-label">Food Allergies</div>
+  <div class="field-value">Grain-free diet, no chicken</div>
+
+  <div class="field-label">Health and Mobility</div>
+  <div class="field-value">Healthy, high energy</div>
+
+  <div class="field-label">Medications</div>
+  <div class="field-value">None</div>
+
+  <div class="field-label">Behavioral</div>
+  <div class="field-value">Friendly with other dogs</div>
+
+  <div class="field-label">Bite History</div>
+  <div class="field-value">None</div>
+
+  <div class="field-label">Veterinarian</div>
+  <div class="field-value">Austin Pet Clinic, (555) 987-6543</div>
+
+  <!-- Appointment notes -->
+  <div class="notes-wrapper">
+    <div class="note">Luna loves belly rubs!</div>
   </div>
 </body>
 </html>
@@ -162,10 +189,9 @@ export const mockAppointmentPage = `
 export const mockAppointmentPageMinimal = `
 <!DOCTYPE html>
 <html>
-<head><title>Appointment Details</title></head>
+<head><title>Boarding | A Girl and Your Dog</title></head>
 <body>
   <h1>Boarding</h1>
-  <div class="pet-name">Unknown Dog</div>
 </body>
 </html>
 `;

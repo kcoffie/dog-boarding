@@ -99,7 +99,9 @@ describe('REQ-107: Sync Admin UI', () => {
 
       render(<SyncSettings />);
 
-      const toggle = screen.getByRole('button', { name: '' });
+      // Two unnamed toggle buttons exist (enabled + setup_mode). The enabled toggle
+      // is first in the DOM, so take index 0 to avoid ambiguity.
+      const toggle = screen.getAllByRole('button', { name: '' })[0];
       fireEvent.click(toggle);
 
       expect(toggleEnabled).toHaveBeenCalled();
