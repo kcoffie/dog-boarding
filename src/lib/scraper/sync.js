@@ -21,8 +21,8 @@ const syncWarn = syncLogger.warn;
  * Get Supabase client
  */
 function getSupabaseClient() {
-  const url = import.meta.env.VITE_SUPABASE_URL ?? (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : undefined);
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY ?? (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : undefined);
+  const url = import.meta.env?.VITE_SUPABASE_URL ?? (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : undefined);
+  const key = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : undefined);
   if (!url || !key) throw new Error('Supabase URL and key required');
   return createClient(url, key);
 }
@@ -227,8 +227,8 @@ async function withRetry(fn, options = {}) {
  */
 export async function runSync(options = {}) {
   const {
-    username = import.meta.env.VITE_EXTERNAL_SITE_USERNAME ?? (typeof process !== 'undefined' ? process.env.VITE_EXTERNAL_SITE_USERNAME : undefined),
-    password = import.meta.env.VITE_EXTERNAL_SITE_PASSWORD ?? (typeof process !== 'undefined' ? process.env.VITE_EXTERNAL_SITE_PASSWORD : undefined),
+    username = import.meta.env?.VITE_EXTERNAL_SITE_USERNAME ?? (typeof process !== 'undefined' ? process.env.VITE_EXTERNAL_SITE_USERNAME : undefined),
+    password = import.meta.env?.VITE_EXTERNAL_SITE_PASSWORD ?? (typeof process !== 'undefined' ? process.env.VITE_EXTERNAL_SITE_PASSWORD : undefined),
     startDate,
     endDate,
     boardingOnly = true,
