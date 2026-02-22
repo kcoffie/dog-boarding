@@ -676,12 +676,26 @@ not when the appointment was created. Can coincide with booking but isn't guaran
 ### 12. Deployment is Vercel, not Netlify
 `api/` directory = Vercel convention. `export const config = { runtime: 'edge' }` = Vercel.
 Vercel Hobby plan: 10s function timeout. Pro plan: 300s. Cron jobs available on both.
-Cron functions must use Node.js runtime (NOT edge) — `import.meta.env` not available in Node.js,
-use `process.env` fallbacks (`import.meta.env.X ?? process.env.X`).
+Cron functions must use Node.js runtime (NOT edge).
 
-### 13. `import.meta.env` is Vite-only — not available in Node.js/Vercel functions
-Anywhere the scraper uses `import.meta.env`, add `?? process.env.*` fallback.
-Only 3 locations need this: `config.js:8`, `sync.js:24-25`, `sync.js:230-231`.
+### 13. `import.meta.env` is undefined (not {}) in Node.js — use optional chaining
+`import.meta.env` is undefined in Node.js. Accessing `.VITE_X` on undefined throws BEFORE
+the `??` fallback can run. Fix: `import.meta.env?.VITE_X ?? process.env.VITE_X`.
+Fixed in `config.js:8`, `sync.js:24-25`, `sync.js:230-231` (Feb 22).
+
+### 14. Cron functions must use SUPABASE_SERVICE_ROLE_KEY (not anon key)
+The anon key is restricted by RLS — server-side writes to sync_settings/sync_queue fail.
+All three cron handlers (`cron-auth.js`, `cron-schedule.js`, `cron-detail.js`) now use:
+`SUPABASE_SERVICE_ROLE_KEY ?? VITE_SUPABASE_ANON_KEY` in their `getSupabase()` helper.
+This key must also be set in Vercel environment variables for production crons to work.
+
+### 15. External site login form uses `email`/`passwd`/`nonce` — not `username`/`password`
+The actual form fields are `email`, `passwd`, and several hidden fields including `nonce`.
+Old hardcoded field names caused auth to silently fail (POST returned 200 instead of 302).
+Fix: `extractLoginFormFields()` in auth.js discovers field names dynamically from the login
+page HTML and auto-includes all hidden fields. `cookiesArrayToHeader()` replaces the broken
+`combineCookies()` — uses `indexOf('=')` to preserve base64 values containing `=` signs,
+and `getSetCookie()` array API instead of fragile comma-split of a single header string.
 
 ---
 
@@ -710,25 +724,42 @@ WHERE status = 'failed';
 
 ## First Message for Next Session
 
-> "Picking up from Feb 22. REQ-109 integration testing complete (Phases 1-6 done).
-> All 553 tests pass. 4 bugs were found and fixed during integration testing.
+> "Picking up from Feb 22 (Session 9). REQ-109 is fully built, tested locally, and pushed.
+> All 553 tests pass. 4 bugs were found and fixed during integration testing — see Session 9 notes.
 >
-> **One remaining blocker before Vercel crons go live (Phase 9):**
-> Add SUPABASE_SERVICE_ROLE_KEY to Vercel dashboard → Environment Variables
-> (without this, cron functions can't write to the DB — blocked by RLS)
+> **Current state:**
+> - Phases 1–6 complete: DB migration done, code deployed, all 3 cron handlers verified locally
+> - cron-auth: authenticates and caches session (2237-char cookie, 24h expiry) ✅
+> - cron-schedule: scans schedule page, skips non-boardings, enqueues candidates ✅
+> - cron-detail: fetches detail page and upserts to DB ✅
 >
-> After adding the env var and redeploying:
-> - Check Vercel → Settings → Crons: 3 jobs registered
-> - Wait 10-20 min for first cron-auth run — look for [CronAuth] ✅ Session cached in logs
+> **Priority 1 — Vercel env var (BLOCKER for production crons):**
+> Add SUPABASE_SERVICE_ROLE_KEY to Vercel dashboard → project → Settings → Environment Variables.
+> Without it, cron functions are blocked by Supabase RLS and can't write session/queue to DB.
+> After adding: redeploy (push any commit, or manually trigger in Vercel dashboard).
 >
-> **Remaining phases:**
-> - Phase 7: Session expiry failure path (corrupt session in DB, verify graceful recovery)
->   SQL: UPDATE sync_settings SET session_expires_at = '2020-01-01' WHERE id = (SELECT id FROM sync_settings LIMIT 1);
->   Then: node scripts/test-cron.mjs schedule → expect session_cleared
->   Then: node scripts/test-cron.mjs auth → expect refreshed
-> - Phase 8: UI smoke test (open app, verify date range pickers, test manual Sync Now)
-> - Phase 9: Vercel production crons (see above)
+> **Priority 2 — Phase 7: session expiry failure path (local, ~5 min):**
+> Corrupt the session to verify graceful recovery:
+>   sql: UPDATE sync_settings SET session_expires_at = '2020-01-01' WHERE id = (SELECT id FROM sync_settings LIMIT 1);
+>   Then: node scripts/test-cron.mjs schedule  → expect { action: 'session_cleared' }
+>   Then: node scripts/test-cron.mjs auth      → expect { action: 'refreshed' }
+>   Then: node scripts/test-cron.mjs schedule  → expect normal scan results
 >
-> Local test utilities:
+> **Priority 3 — Phase 8: UI smoke test (local, ~5 min):**
+> npm run dev → open http://localhost:5173 → Settings → External Sync
+> - Verify date range pickers default to today → today+60d
+> - Click Sync Now — should trigger sync with those dates
+> - Verify 'Full sync (no date filter)' link works
+>
+> **Priority 4 — Phase 9: verify Vercel production crons:**
+> After env var added + redeploy:
+> - Vercel dashboard → Settings → Crons: confirm 3 jobs (cron-auth every 6h, cron-schedule hourly, cron-detail every 5min)
+> - Wait 10-20 min, check Vercel Functions logs for [CronAuth] ✅ Session cached
+>
+> **Local test utilities (in scripts/):**
 > - node scripts/test-cron.mjs [auth|schedule|detail|all]
-> - node scripts/clear-session.mjs  (wipes session from DB for testing)"
+> - node scripts/clear-session.mjs  (clears session from DB for failure-path testing)
+>
+> **Low priority (after all phases pass):**
+> - Investigate status extraction (always null — .appt-change-status selector may need text() on <a> containing <i>)
+> - Pre-detail-fetch date filter (parse service_type dates BEFORE fetching detail page; saves ~48s/sync)"
