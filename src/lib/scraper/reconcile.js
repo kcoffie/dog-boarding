@@ -52,12 +52,15 @@ export async function findReconciliationCandidates(supabase, seenExternalIds, st
     .select('id, external_id, source_url, check_in_datetime, check_out_datetime')
     .eq('sync_status', 'active');
 
-  if (startDate && endDate) {
-    // Only check records that overlap the sync window —
-    // i.e., records we would have seen on the schedule pages if still present.
-    query = query
-      .lt('check_in_datetime', endDate.toISOString())
-      .gte('check_out_datetime', startDate.toISOString());
+  // Filter to records that overlap the fetch window. Apply each bound independently
+  // so callers can supply only startDate (e.g. full sync defaulting to today) without
+  // requiring an endDate. Without any filter, past-ended records generate false-positive
+  // "possible sync bug" warnings because the schedule never shows them.
+  if (startDate) {
+    query = query.gte('check_out_datetime', startDate.toISOString());
+  }
+  if (endDate) {
+    query = query.lt('check_in_datetime', endDate.toISOString());
   }
 
   const { data, error } = await query;
