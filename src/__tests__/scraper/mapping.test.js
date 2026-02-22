@@ -26,6 +26,8 @@ const createMockSupabase = () => {
 
   const createQueryBuilder = (table) => {
     let filters = {};
+    let lteFilters = {};
+    let gteFilters = {};
     let limitCount = null;
     let isSingle = false;
 
@@ -41,6 +43,14 @@ const createMockSupabase = () => {
         filters[`${field}_ilike`] = value.toLowerCase();
         return builder;
       },
+      lte: (field, value) => {
+        lteFilters[field] = value;
+        return builder;
+      },
+      gte: (field, value) => {
+        gteFilters[field] = value;
+        return builder;
+      },
       limit: (count) => {
         limitCount = count;
         return builder;
@@ -52,7 +62,7 @@ const createMockSupabase = () => {
       execute: () => {
         let results = [...mockData[table]];
 
-        // Apply filters
+        // Apply eq / ilike filters
         for (const [key, value] of Object.entries(filters)) {
           if (key.endsWith('_ilike')) {
             const field = key.replace('_ilike', '');
@@ -60,6 +70,14 @@ const createMockSupabase = () => {
           } else {
             results = results.filter(r => r[key] === value);
           }
+        }
+
+        // Apply range filters (used by findBoardingByDogAndDates)
+        for (const [k, v] of Object.entries(lteFilters)) {
+          results = results.filter(r => r[k] <= v);
+        }
+        for (const [k, v] of Object.entries(gteFilters)) {
+          results = results.filter(r => r[k] >= v);
         }
 
         if (limitCount) {
@@ -293,8 +311,12 @@ describe('REQ-103: Data Mapping to App Schema', () => {
       const result = await upsertDog(supabase, dogData, { overwriteManual: false });
 
       expect(result.created).toBe(false);
-      expect(result.updated).toBe(false);
+      // When a manual dog has no external_id, upsertDog links the external_id to it
+      // (soft link — preserves source: 'manual' and all manual fields like day_rate).
+      // This counts as an update even though no manual data was overwritten.
+      expect(result.updated).toBe(true);
       expect(result.dog.source).toBe('manual');
+      expect(result.dog.external_id).toBe('ABC123');
     });
 
     it('links manual entry when overwriteManual is true', async () => {
@@ -407,9 +429,11 @@ describe('REQ-103: Data Mapping to App Schema', () => {
 
       // Should not create new dog
       expect(result.stats.dogCreated).toBe(false);
-      expect(result.stats.dogUpdated).toBe(false);
+      // upsertDog links external_id to the manual dog (soft link, source stays 'manual')
+      // so dogUpdated is true even though no manual data was overwritten
+      expect(result.stats.dogUpdated).toBe(true);
 
-      // Original manual dog preserved
+      // Original manual dog source preserved
       expect(result.dog.source).toBe('manual');
     });
   });
