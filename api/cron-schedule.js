@@ -40,7 +40,8 @@ const NON_BOARDING_RE = [
 
 function getSupabase() {
   const url = process.env.VITE_SUPABASE_URL;
-  const key = process.env.VITE_SUPABASE_ANON_KEY;
+  // Prefer service role key (bypasses RLS) for server-side cron operations
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
   if (!url || !key) throw new Error('Supabase env vars not configured');
   return createClient(url, key);
 }
