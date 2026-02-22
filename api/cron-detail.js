@@ -1,5 +1,11 @@
 /**
- * Cron handler: fetch one detail page and upsert to DB every 5 minutes.
+ * Cron handler: fetch one detail page and upsert to DB.
+ *
+ * Hobby plan schedule (vercel.json): "10 0 * * *" — once per day at 12:10am UTC
+ * Pro plan schedule (upgrade path):  "*\/5 * * * *" — every 5 minutes
+ *
+ * NOTE: Hobby plan processes 1 queue item per day (Vercel 10s timeout).
+ * Use manual "Sync Now" in the UI for immediate processing of multiple items.
  *
  * Picks the oldest pending item from sync_queue, fetches its detail page,
  * and saves the appointment data. On success marks as 'done'; on failure
