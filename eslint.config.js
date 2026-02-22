@@ -26,4 +26,12 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  // api/ cron handlers and scraper modules that bridge browser + Node.js context
+  // intentionally use process.env as fallback when import.meta.env is unavailable.
+  {
+    files: ['api/**/*.js', 'src/lib/scraper/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+    },
+  },
 ])
