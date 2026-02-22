@@ -25,47 +25,35 @@ function sanitizeError(message) {
 }
 
 /**
- * Extract CSRF token from HTML
+ * Parse all input fields from a login form in HTML.
+ * Returns a map of { fieldName: { type, value } }.
  */
-function extractCsrfToken(html) {
-  const patterns = [
-    /<input[^>]*name="_token"[^>]*value="([^"]+)"/i,
-    /<input[^>]*name="csrf_token"[^>]*value="([^"]+)"/i,
-    /<meta[^>]*name="csrf-token"[^>]*content="([^"]+)"/i,
-    /csrfToken['"]\s*:\s*['"]([^'"]+)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match) {
-      return match[1];
-    }
+function extractLoginFormFields(html) {
+  const fields = {};
+  for (const [input] of html.matchAll(/<input[^>]*>/gi)) {
+    const type = (input.match(/type="([^"]+)"/i)?.[1] || 'text').toLowerCase();
+    const name = input.match(/name="([^"]+)"/i)?.[1];
+    const value = input.match(/value="([^"]+)"/i)?.[1] ?? '';
+    if (name) fields[name] = { type, value };
   }
-  return null;
+  return fields;
 }
 
 /**
- * Combine cookies from Set-Cookie headers
+ * Build a Cookie request header from an array of Set-Cookie strings.
+ * Uses indexOf('=') to handle cookie values containing '=' signs.
  */
-function combineCookies(...cookieStrings) {
+function cookiesArrayToHeader(setCookieArr) {
   const cookies = new Map();
-
-  for (const cookieString of cookieStrings) {
-    if (!cookieString) continue;
-    const parts = cookieString.split(/,(?=[^;]+=[^;]+)/);
-
-    for (const part of parts) {
-      const [nameValue] = part.split(';');
-      const [name, value] = nameValue.split('=');
-      if (name && value) {
-        cookies.set(name.trim(), value.trim());
-      }
-    }
+  for (const setCookie of setCookieArr) {
+    const [nameValue] = setCookie.split(';');
+    const eqIdx = nameValue.indexOf('=');
+    if (eqIdx < 0) continue;
+    const name = nameValue.slice(0, eqIdx).trim();
+    const value = nameValue.slice(eqIdx + 1).trim().replace(/^"|"$/g, '');
+    if (name) cookies.set(name, value);
   }
-
-  return Array.from(cookies.entries())
-    .map(([name, value]) => `${name}=${value}`)
-    .join('; ');
+  return Array.from(cookies.entries()).map(([n, v]) => `${n}=${v}`).join('; ');
 }
 
 export default async function handler(request) {
@@ -114,17 +102,21 @@ export default async function handler(request) {
           });
         }
 
-        const initialCookies = loginPageResponse.headers.get('set-cookie') || '';
+        const initialCookiesArr = loginPageResponse.headers.getSetCookie?.() ?? [];
+        const initialCookieHeader = cookiesArrayToHeader(initialCookiesArr);
         const loginPageHtml = await loginPageResponse.text();
-        const csrfToken = extractCsrfToken(loginPageHtml);
+        const formFields = extractLoginFormFields(loginPageHtml);
 
-        // Prepare form data
+        // Build form data: use discovered field names + include all hidden fields
         const formData = new URLSearchParams();
-        formData.append('username', username);
-        formData.append('password', password);
-        if (csrfToken) {
-          formData.append('_token', csrfToken);
-          formData.append('csrf_token', csrfToken);
+        for (const [name, { type, value }] of Object.entries(formFields)) {
+          if (type === 'hidden') {
+            formData.append(name, value);
+          } else if (type === 'text' || type === 'email') {
+            formData.append(name, username);
+          } else if (type === 'password') {
+            formData.append(name, password);
+          }
         }
 
         // Submit login
@@ -133,17 +125,18 @@ export default async function handler(request) {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'User-Agent': 'Mozilla/5.0 (compatible; DogBoardingSync/2.0)',
-            'Cookie': initialCookies,
+            'Cookie': initialCookieHeader,
           },
           body: formData.toString(),
           redirect: 'manual',
         });
 
+        // Successful login returns 302 redirect to schedule/dashboard
         const isRedirect = loginResponse.status >= 300 && loginResponse.status < 400;
-        const newCookies = loginResponse.headers.get('set-cookie') || '';
-        const allCookies = combineCookies(initialCookies, newCookies);
+        const newCookiesArr = loginResponse.headers.getSetCookie?.() ?? [];
+        const allCookies = cookiesArrayToHeader([...initialCookiesArr, ...newCookiesArr]);
 
-        if (isRedirect || loginResponse.ok) {
+        if (isRedirect) {
           return new Response(JSON.stringify({
             success: true,
             cookies: allCookies,
