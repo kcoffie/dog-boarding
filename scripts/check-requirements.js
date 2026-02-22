@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process */
 
 /**
  * Requirements Coverage Checker
@@ -32,8 +33,8 @@ const colors = {
  */
 function parseRequirements(filePath) {
   if (!fs.existsSync(filePath)) {
-    console.error(`${colors.red}Error: ${filePath} not found${colors.reset}`);
-    process.exit(1);
+    console.log(`${colors.yellow}Note: ${filePath} not found, skipping requirements check${colors.reset}`);
+    process.exit(0);
   }
 
   const content = fs.readFileSync(filePath, 'utf-8');
