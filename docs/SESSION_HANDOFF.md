@@ -1,6 +1,6 @@
 # Dog Boarding App Sync - Session Handoff
 **Date:** February 22, 2026
-**Status:** REQ-109 fully built. All 553 tests passing (36 files). DB migration NOT yet run. Commits NOT yet pushed. Integration testing NOT yet done — see Phase 2–9 below.
+**Status:** REQ-109 fully integrated and tested locally. All 553 tests passing. 4 bugs fixed during integration testing (see Session 9). Phases 1-6 complete. Remaining: Phase 7 (session expiry failure path), Phase 8 (UI smoke), Phase 9 (Vercel production crons + SUPABASE_SERVICE_ROLE_KEY env var).
 
 ---
 
@@ -73,6 +73,42 @@
     - `useSyncSettings.js`: cleaned up commented-out code; `triggerSync(startDate, endDate)` now accepts optional params
     - Modified: `src/hooks/useSyncSettings.js`, `src/components/SyncSettings.jsx`
 
+### Session 9 (Feb 22) — integration testing, 4 bugs found and fixed
+
+32. ✅ Integration testing phases 4-6 completed (cron-auth, cron-schedule, cron-detail)
+    Bugs found and fixed in commit 8a43ed8:
+
+    **Bug 1: import.meta.env throws in Node.js** (config.js:8, sync.js:24-25, sync.js:230-231)
+    - `import.meta.env` is undefined in Node.js (not an empty object)
+    - Accessing `.VITE_X` on undefined throws immediately before `??` can catch it
+    - Fix: add `?.` optional chaining → `import.meta.env?.VITE_X`
+
+    **Bug 2: Cron functions used anon key — blocked by RLS**
+    - `getSupabase()` in all 3 cron handlers used `VITE_SUPABASE_ANON_KEY`
+    - anon key is restricted by RLS; server-side writes to sync_settings/sync_queue fail
+    - Fix: prefer `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS)
+    - ⚠️ This key MUST be added to Vercel environment variables (see Phase 9)
+
+    **Bug 3: Auth used wrong form field names**
+    - External site form: `email`, `passwd`, `nonce` (hidden)
+    - Old code hardcoded: `username`, `password` → login returned 200 (fail) not 302 (success)
+    - The "success" check `isRedirect || loginResponse.ok` silently stored bad cookies
+    - Fix: `extractLoginFormFields()` discovers fields dynamically from login page HTML
+    - All hidden fields (nonce, attempt, op, tz_off, dst) auto-included
+    - Success check now requires 302 redirect only (not 200)
+    - Same fix applied to sync-proxy.js
+
+    **Bug 4: combineCookies() truncated base64 cookie values with '=' signs**
+    - `const [name, value] = nameValue.split('=')` loses trailing `=` in base64
+    - Result: cookie value was 50 chars (truncated) instead of 2237 chars (correct)
+    - Fix: replaced with `cookiesArrayToHeader()` using `indexOf('=')` + quote-strip
+    - Uses `getSetCookie()` array API (Node 18.14+) for reliable multi-cookie handling
+
+    After all fixes:
+    - cron-auth: authenticated, session cached (2237-char cookie, expires 24h) ✅
+    - cron-schedule: 71 found, 67 non-boarding skipped, 4 queued ✅
+    - cron-detail: Maverick (C63QgKsK), Captain Morgan (C63QgQz4), Chewy (C63QgOHe) all saved ✅
+
 ### Session 8 (Feb 22) — no new commits (test fixes only)
 31. ✅ Fixed 34 pre-existing test failures — all 553 tests now passing (36 files)
     - `src/__tests__/scraper/fixtures.js`: replaced stale `mockAppointmentPage` HTML with verified
@@ -128,7 +164,7 @@
 
 ---
 
-### Phase 2: 🔴 Run DB migration in Supabase
+### Phase 2: ✅ Run DB migration in Supabase (DONE — Feb 22)
 **Required before cron functions can work.** Run this SQL in the Supabase dashboard → SQL Editor:
 ```sql
 ALTER TABLE sync_settings
@@ -168,7 +204,7 @@ ORDER BY ordinal_position;
 
 ---
 
-### Phase 3: 🔴 Push commits + deploy to Vercel
+### Phase 3: ✅ Push commits + deploy to Vercel (DONE — Feb 22)
 Branch `develop` is commits ahead of `origin/develop`. Push to deploy:
 ```bash
 git push origin develop
@@ -181,7 +217,12 @@ After push, check Vercel dashboard → Settings → Crons to confirm 3 jobs regi
 
 ---
 
-### Phase 4: Test cron-auth locally
+### Phase 4: ✅ Test cron-auth locally (DONE — Feb 22)
+Passed after fixing bugs 1-4. Use `node scripts/test-cron.mjs auth` to re-run.
+
+---
+
+### Phase 4 (original):
 Start local dev server first: `npx vercel dev`
 
 ```bash
@@ -201,7 +242,13 @@ Should show a non-null cookie and a future expiry timestamp.
 
 ---
 
-### Phase 5: Test cron-schedule locally
+### Phase 5: ✅ Test cron-schedule locally (DONE — Feb 22)
+71 found, 67 skipped (non-boarding), 4 queued. Cursor advanced to 2026-03-01.
+Use `node scripts/test-cron.mjs schedule` to re-run.
+
+---
+
+### Phase 5 (original):
 ```bash
 curl -s http://localhost:3000/api/cron-schedule | jq
 ```
@@ -227,7 +274,13 @@ SELECT schedule_cursor_date FROM sync_settings;
 
 ---
 
-### Phase 6: Test cron-detail locally
+### Phase 6: ✅ Test cron-detail locally (DONE — Feb 22)
+Maverick, Captain Morgan, Chewy all processed. Use `node scripts/test-cron.mjs detail` to process one item.
+Use `node scripts/test-cron.mjs all` to run all three in sequence.
+
+---
+
+### Phase 6 (original):
 ```bash
 curl -s http://localhost:3000/api/cron-detail | jq
 ```
@@ -275,12 +328,16 @@ Open the app in the browser (http://localhost:5173 or deployed URL):
 
 ---
 
-### Phase 9: Verify Vercel production crons
-After deploy:
-- Go to Vercel dashboard → project → Settings → Crons
-- Confirm 3 cron jobs are registered with correct schedules
-- Check Vercel Functions logs 10–20 minutes after deploy for first automatic cron-auth run
-- If logs show `[CronAuth] ✅ Session cached`, the end-to-end pipeline is live
+### Phase 9: 🔴 Verify Vercel production crons + add SUPABASE_SERVICE_ROLE_KEY
+⚠️ **BLOCKER**: `SUPABASE_SERVICE_ROLE_KEY` must be added to Vercel env vars before crons can write to DB.
+
+1. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel dashboard → project → Settings → Environment Variables
+   (same value as in `.env.local`)
+2. Redeploy (or push any commit to trigger new deploy)
+3. Go to Vercel dashboard → project → Settings → Crons
+4. Confirm 3 cron jobs are registered with correct schedules
+5. Check Vercel Functions logs 10–20 minutes after deploy for first automatic cron-auth run
+6. If logs show `[CronAuth] ✅ Session cached`, the end-to-end pipeline is live
 
 ---
 
@@ -373,6 +430,7 @@ These are likely already set for the deployed app. The cron functions read the s
 - `VITE_EXTERNAL_SITE_PASSWORD`
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` ⚠️ **Required for cron functions** — bypasses RLS for server-side DB writes
 - `CRON_SECRET` (auto-set by Vercel, used to authenticate cron requests)
 
 ### Logging Plan
@@ -652,25 +710,25 @@ WHERE status = 'failed';
 
 ## First Message for Next Session
 
-> "Picking up from Feb 21 morning session 2. REQ-109 (Automated Scheduled Sync) is fully
-> built and committed but not yet deployed. The DB migration has NOT been run yet.
+> "Picking up from Feb 22. REQ-109 integration testing complete (Phases 1-6 done).
+> All 553 tests pass. 4 bugs were found and fixed during integration testing.
 >
-> Priority order:
-> 1. Run the DB migration SQL in Supabase (in 'Pending TODOs' section of SESSION_HANDOFF.md)
->    — adds 4 columns to sync_settings + creates sync_queue table
-> 2. git push origin develop to deploy to Vercel (4 commits ahead of origin)
->    — cron schedules are already in vercel.json; they activate automatically on deploy
-> 3. Test locally: curl http://localhost:3000/api/cron-auth (CRON_SECRET check skipped locally)
+> **One remaining blocker before Vercel crons go live (Phase 9):**
+> Add SUPABASE_SERVICE_ROLE_KEY to Vercel dashboard → Environment Variables
+> (without this, cron functions can't write to the DB — blocked by RLS)
 >
-> What's built (all committed, not yet deployed):
-> - src/lib/scraper/sessionCache.js — session caching in sync_settings
-> - src/lib/scraper/syncQueue.js — queue management with retry backoff
-> - api/cron-auth.js — re-auth every 6h (Node.js runtime)
-> - api/cron-schedule.js — scans 2 schedule pages/hour, enqueues candidates
-> - api/cron-detail.js — processes 1 queued item every 5min
-> - src/components/SyncSettings.jsx — date range UI (today → today+60d default)
-> - 42/42 requirements at 100% test coverage
+> After adding the env var and redeploying:
+> - Check Vercel → Settings → Crons: 3 jobs registered
+> - Wait 10-20 min for first cron-auth run — look for [CronAuth] ✅ Session cached in logs
 >
-> Low priority after deploy:
-> - Investigate status extraction (always null, .appt-change-status selector issue)
-> - Pre-detail-fetch date filter (skip out-of-range before fetching detail page)"
+> **Remaining phases:**
+> - Phase 7: Session expiry failure path (corrupt session in DB, verify graceful recovery)
+>   SQL: UPDATE sync_settings SET session_expires_at = '2020-01-01' WHERE id = (SELECT id FROM sync_settings LIMIT 1);
+>   Then: node scripts/test-cron.mjs schedule → expect session_cleared
+>   Then: node scripts/test-cron.mjs auth → expect refreshed
+> - Phase 8: UI smoke test (open app, verify date range pickers, test manual Sync Now)
+> - Phase 9: Vercel production crons (see above)
+>
+> Local test utilities:
+> - node scripts/test-cron.mjs [auth|schedule|detail|all]
+> - node scripts/clear-session.mjs  (wipes session from DB for testing)"
