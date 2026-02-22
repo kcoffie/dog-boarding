@@ -63,7 +63,7 @@ export async function authenticate(username, password) {
     // Direct fetch for server-side (Node.js) execution
     const loginUrl = `${SCRAPER_CONFIG.baseUrl}/login`;
 
-    // First, get the login page to obtain any CSRF tokens
+    // Get login page to discover form fields (field names + hidden values like nonce)
     const loginPageResponse = await fetch(loginUrl, {
       method: 'GET',
       headers: {
@@ -78,20 +78,24 @@ export async function authenticate(username, password) {
       };
     }
 
-    // Extract cookies from login page
-    const initialCookies = loginPageResponse.headers.get('set-cookie') || '';
+    // Use getSetCookie() (Node.js 18.14+) for proper multi-cookie handling
+    const initialCookiesArr = loginPageResponse.headers.getSetCookie?.() ?? [];
+    const initialCookieHeader = cookiesArrayToHeader(initialCookiesArr);
 
-    // Parse login page for CSRF token if present
+    // Parse login page to extract all form fields
     const loginPageHtml = await loginPageResponse.text();
-    const csrfToken = extractCsrfToken(loginPageHtml);
+    const formFields = extractLoginFormFields(loginPageHtml);
 
-    // Prepare login form data
+    // Build form data: use discovered field names + include all hidden fields
     const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('password', password);
-    if (csrfToken) {
-      formData.append('_token', csrfToken);
-      formData.append('csrf_token', csrfToken);
+    for (const [name, { type, value }] of Object.entries(formFields)) {
+      if (type === 'hidden') {
+        formData.append(name, value);
+      } else if (type === 'text' || type === 'email') {
+        formData.append(name, username); // first text/email field = username/email
+      } else if (type === 'password') {
+        formData.append(name, password);
+      }
     }
 
     // Submit login
@@ -100,20 +104,18 @@ export async function authenticate(username, password) {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': 'Mozilla/5.0 (compatible; DogBoardingSync/2.0)',
-        'Cookie': initialCookies,
+        'Cookie': initialCookieHeader,
       },
       body: formData.toString(),
       redirect: 'manual', // Don't follow redirects automatically
     });
 
-    // Check for successful login (usually a redirect to dashboard/schedule)
+    // Successful login returns 302 redirect to schedule/dashboard
     const isRedirect = loginResponse.status >= 300 && loginResponse.status < 400;
-    const newCookies = loginResponse.headers.get('set-cookie') || '';
+    const newCookiesArr = loginResponse.headers.getSetCookie?.() ?? [];
+    const allCookies = cookiesArrayToHeader([...initialCookiesArr, ...newCookiesArr]);
 
-    // Combine cookies
-    const allCookies = combineCookies(initialCookies, newCookies);
-
-    if (isRedirect || loginResponse.ok) {
+    if (isRedirect) {
       // Store session
       sessionCookies = allCookies;
       sessionExpiry = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
@@ -124,7 +126,7 @@ export async function authenticate(username, password) {
       };
     }
 
-    // Check response for error messages
+    // 200 means login form returned (failed login)
     const responseText = await loginResponse.text();
     if (responseText.includes('invalid') || responseText.includes('incorrect')) {
       return {
@@ -242,55 +244,42 @@ export async function authenticatedFetch(url, options = {}) {
 }
 
 /**
- * Extract CSRF token from HTML
+ * Parse all input fields from a login form in HTML.
+ * Returns a map of { fieldName: { type, value } }.
+ * Used to discover actual field names (e.g. "email"/"passwd") and
+ * include hidden fields like nonce/CSRF tokens automatically.
  * @param {string} html
- * @returns {string|null}
+ * @returns {Object}
  */
-function extractCsrfToken(html) {
-  // Try common CSRF token patterns
-  const patterns = [
-    /<input[^>]*name="_token"[^>]*value="([^"]+)"/i,
-    /<input[^>]*name="csrf_token"[^>]*value="([^"]+)"/i,
-    /<meta[^>]*name="csrf-token"[^>]*content="([^"]+)"/i,
-    /csrfToken['"]\s*:\s*['"]([^'"]+)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match) {
-      return match[1];
-    }
+function extractLoginFormFields(html) {
+  const fields = {};
+  for (const [input] of html.matchAll(/<input[^>]*>/gi)) {
+    const type = (input.match(/type="([^"]+)"/i)?.[1] || 'text').toLowerCase();
+    const name = input.match(/name="([^"]+)"/i)?.[1];
+    const value = input.match(/value="([^"]+)"/i)?.[1] ?? '';
+    if (name) fields[name] = { type, value };
   }
-
-  return null;
+  return fields;
 }
 
 /**
- * Combine multiple Set-Cookie headers
- * @param {...string} cookieStrings
+ * Build a Cookie request header from an array of Set-Cookie strings.
+ * Uses indexOf('=') to correctly handle cookie values containing '=' signs.
+ * Strips surrounding quotes from cookie values.
+ * @param {string[]} setCookieArr
  * @returns {string}
  */
-function combineCookies(...cookieStrings) {
+function cookiesArrayToHeader(setCookieArr) {
   const cookies = new Map();
-
-  for (const cookieString of cookieStrings) {
-    if (!cookieString) continue;
-
-    // Split multiple cookies
-    const parts = cookieString.split(/,(?=[^;]+=[^;]+)/);
-
-    for (const part of parts) {
-      const [nameValue] = part.split(';');
-      const [name, value] = nameValue.split('=');
-      if (name && value) {
-        cookies.set(name.trim(), value.trim());
-      }
-    }
+  for (const setCookie of setCookieArr) {
+    const [nameValue] = setCookie.split(';');
+    const eqIdx = nameValue.indexOf('=');
+    if (eqIdx < 0) continue;
+    const name = nameValue.slice(0, eqIdx).trim();
+    const value = nameValue.slice(eqIdx + 1).trim().replace(/^"|"$/g, '');
+    if (name) cookies.set(name, value);
   }
-
-  return Array.from(cookies.entries())
-    .map(([name, value]) => `${name}=${value}`)
-    .join('; ');
+  return Array.from(cookies.entries()).map(([n, v]) => `${n}=${v}`).join('; ');
 }
 
 export default {
