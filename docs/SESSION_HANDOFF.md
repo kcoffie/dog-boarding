@@ -1,6 +1,6 @@
 # Dog Boarding App — Session Handoff (v2.1)
-**Started:** February 24, 2026
-**Status:** v2.1 in progress
+**Started:** February 23, 2026
+**Status:** v2.1 in progress — 2 of 3 items done
 
 ---
 
@@ -18,11 +18,11 @@
 
 ## v2.1 Scope
 
-| # | Item | Status | REQ |
-|---|------|--------|-----|
-| 1 | Fix `/api/log` 405 in production | ✅ Done | — |
-| 2 | Update GitHub README (v2.0 external sync / cron docs) | ⬜ Todo | — |
-| 3 | REQ-110: HTML parse degradation detection | ⬜ Todo | REQ-110 |
+| # | Item | Status | Commit | REQ |
+|---|------|--------|--------|-----|
+| 1 | Fix `/api/log` 405 in production | ✅ Done | `a363b09` | — |
+| 2 | Update GitHub README (v2.0 external sync / cron docs) | ✅ Done | `c31e24d` | — |
+| 3 | REQ-110: HTML parse degradation detection | ⬜ Next | — | REQ-110 |
 
 **Low priority (not v2.1):**
 - REQ-107: Sync history UI + enable/disable toggle
@@ -33,7 +33,7 @@
 
 ## v2.1 Work Log
 
-### Fix 1: `/api/log` 405 in production (Feb 24)
+### Fix 1: `/api/log` 405 in production (`a363b09`, Feb 23)
 `logger.js` and `fileLogger.js` were POSTing to `/api/log` unconditionally.
 This endpoint only exists in local dev (Vite handles it); it's never deployed to Vercel.
 **Fix:** Guard all `/api/log` calls with `if (!import.meta.env?.DEV)`.
@@ -41,6 +41,15 @@ This endpoint only exists in local dev (Vite handles it); it's never deployed to
 Files changed:
 - `src/lib/scraper/logger.js` — guarded `sendToFile()` and `clearLogFile()`
 - `src/lib/scraper/fileLogger.js` — guarded `sendLog()`, `clearLog()`, `getRecentLogs()`
+
+Also in this commit: archived v2.0 SESSION_HANDOFF, created fresh v2.1 handoff, updated
+REQUIREMENTS.md version table (v2.0 → Complete, v2.1 → In Progress).
+
+### Fix 2: GitHub README (`c31e24d`, Feb 23)
+README was v1-only with no mention of external sync.
+**Added:** External Sync section (manual + cron), env var table, cron architecture diagram,
+cron local dev instructions, expanded project structure with `api/` and `src/lib/scraper/`.
+Corrected "each user sees own data" → shared org model.
 
 ---
 
