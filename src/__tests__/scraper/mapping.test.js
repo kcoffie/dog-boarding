@@ -519,6 +519,20 @@ describe('REQ-103: Data Mapping to App Schema', () => {
         expect(result.dog.night_rate).toBe(65);
         expect(result.dog.day_rate).toBe(45);
       });
+
+      it('preserves existing rates when single-line pricing yields 0 (cannot classify)', async () => {
+        const supabase = createMockSupabase();
+        // Dog already has a rate set; single-line pricing can't classify night vs day
+        supabase._addDog({ external_id: 'SNG123', name: 'Cooper', night_rate: 65, day_rate: 0, source: 'external' });
+        const dogData = mapToDog(mockExternalAppointmentSingleLinePricing);
+        // mapToDog returns night_rate: 0 (single line → no classified nightItem)
+        expect(dogData.night_rate).toBe(0);
+
+        // updateRates: true because pricing was extracted — but rate is 0, so should NOT overwrite
+        const result = await upsertDog(supabase, dogData, { updateRates: true });
+
+        expect(result.dog.night_rate).toBe(65);
+      });
     });
   });
 
