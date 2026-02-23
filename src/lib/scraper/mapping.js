@@ -286,8 +286,11 @@ export async function upsertDog(supabase, dogData, options = {}) {
       active: dogData.active,
     };
     if (updateRates) {
-      updateFields.night_rate = dogData.night_rate;
-      updateFields.day_rate   = dogData.day_rate;
+      // Only write rates when a non-zero value was actually classified from pricing.
+      // mapToDog returns 0 when no night/day item was found (e.g. single service line);
+      // don't overwrite existing rates with 0 in that case (see comment above).
+      if (dogData.night_rate > 0) updateFields.night_rate = dogData.night_rate;
+      if (dogData.day_rate   > 0) updateFields.day_rate   = dogData.day_rate;
     }
     const { data, error } = await supabase
       .from('dogs')
