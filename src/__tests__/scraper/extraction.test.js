@@ -1,13 +1,18 @@
 /**
  * Appointment detail extraction tests
- * @requirements REQ-102
+ * @requirements REQ-102, REQ-200
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseAppointmentPage } from '../../lib/scraper/extraction.js';
+import { parseAppointmentPage, extractPricing } from '../../lib/scraper/extraction.js';
 import {
   mockAppointmentPage,
   mockAppointmentPageMinimal,
+  mockAppointmentPageWithPricing,
+  mockPricingSingleLine,
+  mockPricingBadTotal,
+  mockPricingMalformedItem,
+  mockPricingDecimalTotal,
 } from './fixtures.js';
 
 describe('REQ-102: Appointment Detail Extraction', () => {
@@ -288,5 +293,101 @@ describe('REQ-102: Appointment Detail Extraction', () => {
         expect(data.pet_name).toBe('Luna Dog');
       });
     });
+  });
+});
+
+describe('REQ-200: extractPricing()', () => {
+  it('returns null when #confirm-price is absent', () => {
+    expect(extractPricing(mockAppointmentPage)).toBeNull();
+    expect(extractPricing('')).toBeNull();
+    expect(extractPricing('<html><body></body></html>')).toBeNull();
+  });
+
+  it('returns null when total anchor is not found', () => {
+    const html = '<fieldset id="confirm-price"><div>no anchor</div></fieldset>';
+    expect(extractPricing(html)).toBeNull();
+  });
+
+  it('returns null when total amount is unparseable', () => {
+    expect(extractPricing(mockPricingBadTotal)).toBeNull();
+  });
+
+  it('parses integer total correctly', () => {
+    const result = extractPricing(mockAppointmentPageWithPricing);
+    expect(result).not.toBeNull();
+    expect(result.total).toBe(750);
+  });
+
+  it('parses decimal total correctly', () => {
+    const result = extractPricing(mockPricingDecimalTotal);
+    expect(result).not.toBeNull();
+    expect(result.total).toBe(750.50);
+  });
+
+  it('returns the correct number of line items', () => {
+    const result = extractPricing(mockAppointmentPageWithPricing);
+    expect(result.lineItems).toHaveLength(2);
+  });
+
+  it('parses integer data-rate as cents divided by 100', () => {
+    const result = extractPricing(mockAppointmentPageWithPricing);
+    // Night item: data-rate="5500" → 5500 / 100 = 55.00
+    expect(result.lineItems[0].rate).toBe(55);
+  });
+
+  it('parses decimal data-rate correctly', () => {
+    const result = extractPricing(mockAppointmentPageWithPricing);
+    // Day item: data-rate="5000.00" → 5000.00 / 100 = 50.00
+    expect(result.lineItems[1].rate).toBe(50);
+  });
+
+  it('parses data-qty as qty divided by 100', () => {
+    const result = extractPricing(mockAppointmentPageWithPricing);
+    // Night: data-qty="1000" → 1000 / 100 = 10
+    expect(result.lineItems[0].qty).toBe(10);
+    // Day: data-qty="400.00" → 400 / 100 = 4
+    expect(result.lineItems[1].qty).toBe(4);
+  });
+
+  it('parses data-amount as-is (already in dollars)', () => {
+    const result = extractPricing(mockAppointmentPageWithPricing);
+    expect(result.lineItems[0].amount).toBe(550);
+    expect(result.lineItems[1].amount).toBe(200);
+  });
+
+  it('trims whitespace from service names', () => {
+    const result = extractPricing(mockAppointmentPageWithPricing);
+    // Second item has leading space: " Boarding (Days)" → trimmed
+    expect(result.lineItems[1].serviceName).toBe('Boarding (Days)');
+  });
+
+  it('handles single line item without throwing', () => {
+    const result = extractPricing(mockPricingSingleLine);
+    expect(result).not.toBeNull();
+    expect(result.total).toBe(550);
+    expect(result.lineItems).toHaveLength(1);
+    expect(result.lineItems[0].serviceName).toBe('Boarding');
+  });
+
+  it('skips malformed line item but returns remaining valid items', () => {
+    // First item is missing data-qty → should be skipped
+    // Second item is valid → should be returned
+    const result = extractPricing(mockPricingMalformedItem);
+    expect(result).not.toBeNull();
+    expect(result.total).toBe(200);
+    expect(result.lineItems).toHaveLength(1);
+    expect(result.lineItems[0].serviceName).toBe('Boarding (Days)');
+  });
+
+  it('parseAppointmentPage includes pricing field', () => {
+    const data = parseAppointmentPage(mockAppointmentPageWithPricing);
+    expect(data.pricing).not.toBeNull();
+    expect(data.pricing.total).toBe(750);
+    expect(data.pricing.lineItems).toHaveLength(2);
+  });
+
+  it('parseAppointmentPage sets pricing to null when absent', () => {
+    const data = parseAppointmentPage(mockAppointmentPage);
+    expect(data.pricing).toBeNull();
   });
 });
