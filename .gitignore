@@ -26,3 +26,13 @@ coverage
 .vercel
 .env.seed
 logs/
+
+# Generated data exports
+*.csv
+
+# Editor config
+docs/.obsidian/
+settings.json
+
+# Claude auto-memory
+docs/MEMORY.md
