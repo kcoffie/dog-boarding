@@ -1,12 +1,12 @@
 # Dog Boarding App — Session Handoff (v2.2)
 **Last updated:** February 23, 2026
-**Status:** v2.2 complete — all 4 REQs done, 616 tests pass
+**Status:** v2.2 complete — all 4 REQs done + DC pattern fix, 619 tests pass
 
 ---
 
 ## Current State
 
-- **616 tests pass.** Chunk A + Chunk B both on `main`, not yet deployed.
+- **619 tests pass.** Chunk A + Chunk B + DC pattern fix all on `main`, not yet deployed.
 - Migrations 012 and 013 already applied in production Supabase.
 - 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
 - Manual sync working end-to-end in production.
@@ -23,7 +23,11 @@
 
 No migrations needed — 012 and 013 already applied. Just deploy.
 
-After deploying, verify with:
+**After deploying, do these in order:**
+
+1. Run the dog rate recovery SQL (see Useful SQL below) to restore rates zeroed by the bug
+2. Trigger a manual sync for any date range to re-populate `boardings.night_rate` with the DC fix
+3. Verify rates populated:
 ```sql
 SELECT b.billed_amount, b.night_rate, b.day_rate, d.name, d.night_rate as dog_night_rate
 FROM boardings b
@@ -46,14 +50,45 @@ LIMIT 20;
 
 ---
 
-## Chunk A — What Was Done (this session)
+## This Session (Feb 23, 2026)
+
+**Co-Authored-By slug removed** from commit 31ae04f (previous session had added one — stripped via git filter-branch).
+
+**REQ-203: Payroll rate fallback chain**
+- `calculateGross` / `calculateBoardingGross` in `src/utils/calculations.js` now use `boarding.nightRate ?? dog.nightRate ?? 0`
+- `PayrollPage.jsx:calculateDayNet` now calls shared `calculateGross` (no inline duplicate)
+- `SummaryCards.jsx:periodRevenue` now calls `calculateGross`
+- `src/hooks/useBoardings.js` maps `night_rate → nightRate`, `billed_amount → billedAmount`, `source → source`
+- Tests: `src/__tests__/utils/calculations.test.js` — 10 new tests
+
+**REQ-202: Revenue reporting view**
+- `src/components/RevenueView.jsx` (NEW) — table of boardings whose check-in falls in the selected period
+- Shows `billedAmount` exact, or `rate × nights` with "est." label when no billedAmount
+- Period Total row at bottom; added to `MatrixPage.jsx` below Employee Totals
+- Tests: `src/__tests__/pages/RevenueView.test.jsx` — 10 new tests
+
+**Bug fix: upsertDog zero-overwrite**
+- `upsertDog` was writing `night_rate: 0` to the dogs table when single-line pricing couldn't classify rates
+- Fixed: only write `night_rate`/`day_rate` to DB when value > 0
+- Regression test added to `mapping.test.js`
+- **Action needed:** Run recovery SQL below to restore zeroed dog rates from existing sync data
+
+**Bug fix: /DC /i false positive in dayServicePatterns**
+- "Boarding discounted nights for DC full-time" (Captain Morgan) was being classified as a day service
+- Fixed: `/DC /i` → `/^DC/i` in `SCRAPER_CONFIG.dayServicePatterns` — anchors to start of service name
+- Next sync after deploy will correctly populate `night_rate: 55` for affected boardings
+- Tests added to `mapping.test.js`
+
+---
+
+## Chunk A — What Was Done (previous session)
 
 **New file:** `supabase/migrations/013_add_pricing_columns.sql`
 - `boardings`: +`billed_amount`, `night_rate`, `day_rate` (all `NUMERIC(10,2)`, nullable)
 - `sync_appointments`: +`appointment_total NUMERIC(10,2)`, `pricing_line_items JSONB`
 
 **`src/lib/scraper/config.js`**
-- Added `dayServicePatterns: [/day/i, /daycare/i, /DC /i, /pack/i]`
+- Added `dayServicePatterns: [/day/i, /daycare/i, /^DC/i, /pack/i]` — originally `/DC /i`, anchored to `^` on Feb 23 to fix false positive
 - Used to classify pricing line items as night vs day services
 
 **`src/lib/scraper/extraction.js`**
@@ -133,10 +168,9 @@ Per-night revenue for a boarding =
 </fieldset>
 ```
 
-**Known edge case:** "Boarding discounted nights for DC full-time" contains "DC " and would
-false-positive against the `/DC /i` dayServicePattern. The test fixtures use "Boarding" (no
-DC in the name) to avoid this. In production, the first non-day line item is taken as night,
-so if both items match a day pattern the night_rate will be null. Low-priority fix for later.
+**DC pattern fixed (Feb 23):** Changed `/DC /i` → `/^DC/i` in `SCRAPER_CONFIG.dayServicePatterns`.
+"Boarding discounted nights for DC full-time" now correctly classifies as a night service
+because "DC" does not appear at the start of the service name. Tests added for this case.
 
 ---
 
@@ -173,6 +207,34 @@ WHERE b.source = 'external' ORDER BY b.created_at DESC LIMIT 20;
 SELECT external_id, pet_name, appointment_total, pricing_line_items
 FROM sync_appointments WHERE appointment_total IS NOT NULL
 ORDER BY last_synced_at DESC LIMIT 10;
+
+-- Recover dog night_rates that were zeroed by the upsertDog bug.
+-- Reads from the most recent sync_appointment that has pricing_line_items for each dog,
+-- extracts the first non-day line item rate (the night rate).
+-- Review before running — only updates dogs whose current night_rate is 0.
+WITH latest_pricing AS (
+  SELECT DISTINCT ON (mapped_dog_id)
+    mapped_dog_id,
+    pricing_line_items
+  FROM sync_appointments
+  WHERE pricing_line_items IS NOT NULL
+    AND mapped_dog_id IS NOT NULL
+  ORDER BY mapped_dog_id, last_synced_at DESC
+)
+UPDATE dogs d
+SET night_rate = (
+  SELECT (item->>'rate')::numeric
+  FROM jsonb_array_elements(lp.pricing_line_items) AS item
+  WHERE NOT (item->>'serviceName' ~* '^DC|day|daycare|pack')
+  LIMIT 1
+)
+FROM latest_pricing lp
+WHERE d.id = lp.mapped_dog_id
+  AND d.night_rate = 0
+  AND EXISTS (
+    SELECT 1 FROM jsonb_array_elements(lp.pricing_line_items) AS item
+    WHERE NOT (item->>'serviceName' ~* '^DC|day|daycare|pack')
+  );
 ```
 
 ---
