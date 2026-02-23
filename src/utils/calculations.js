@@ -13,7 +13,7 @@ export function calculateGross(dogs, boardings, dateStr) {
     const dogBoardings = boardings.filter(b => b.dogId === dog.id);
     for (const boarding of dogBoardings) {
       if (isOvernight(boarding, dateStr)) {
-        total += dog.nightRate;
+        total += (boarding.nightRate ?? dog.nightRate ?? 0);
         break; // Only count once per dog per night
       }
     }
@@ -91,9 +91,10 @@ export function calculateEmployeeTotals(nightAssignments, dogs, boardings, dates
  */
 export function calculateBoardingGross(dog, boarding, dates) {
   let total = 0;
+  const rate = boarding.nightRate ?? dog.nightRate ?? 0;
   for (const dateStr of dates) {
     if (isOvernight(boarding, dateStr)) {
-      total += dog.nightRate;
+      total += rate;
     }
   }
   return total;

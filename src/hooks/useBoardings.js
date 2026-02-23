@@ -31,6 +31,9 @@ export function useBoardings() {
         dogId: b.dog_id,
         arrivalDateTime: b.arrival_datetime,
         departureDateTime: b.departure_datetime,
+        nightRate: b.night_rate != null ? parseFloat(b.night_rate) : null,
+        billedAmount: b.billed_amount != null ? parseFloat(b.billed_amount) : null,
+        source: b.source ?? null,
       })));
     } catch (err) {
       console.error('Error fetching boardings:', err);
