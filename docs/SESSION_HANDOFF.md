@@ -1,6 +1,6 @@
 # Dog Boarding App Sync - Session Handoff
-**Date:** February 22, 2026 (updated end of day)
-**Status:** ✅ REQ-109 COMPLETE AND IN PRODUCTION. Project housekeeping done. Repo clean. 2 unpushed commits on main. Ready for next feature work.
+**Date:** February 23, 2026 (updated end of day)
+**Status:** ✅ Production fully verified working. Manual sync confirmed live. 1 new bug logged: /api/log 405. Ready for next feature work.
 
 ---
 
@@ -741,6 +741,39 @@ WHERE status = 'failed';
 
 ---
 
+### Session 12 (Feb 23) — production debugging + SyncSettings fix
+
+41. ✅ Fixed 3 production deployment issues after v2 release:
+
+    **Issue 1: Wrong Supabase URL in Vercel**
+    - Vercel had `VITE_SUPABASE_URL=https://watdarwisvzmctpaxbtb.supabase.co` (old/invalid project)
+    - Local `.env.local` has `https://sefyibwepcezafpyncak.supabase.co` (correct)
+    - Fix: updated Vercel env var + redeployed
+    - Also: browser localStorage held a stale Supabase session for the old project
+      (caused `_refreshAccessToken` → `ERR_NAME_NOT_RESOLVED` on load). Fix: clear localStorage.
+
+    **Issue 2: SyncSettings component orphaned**
+    - `src/components/SyncSettings.jsx` existed but was not imported anywhere
+    - Was removed from `SettingsPage.jsx` at some point during develop→main merge
+    - Fix: re-added `import SyncSettings` + `<SyncSettings />` to `SettingsPage.jsx`
+    - Commit: `aa5e915`
+
+    **Issue 3: Missing external site credentials in Vercel**
+    - `VITE_EXTERNAL_SITE_USERNAME` and `VITE_EXTERNAL_SITE_PASSWORD` not set in Vercel
+    - Caused `Error: External site credentials required` on every sync attempt
+    - Fix: added both to Vercel env vars + redeployed
+    - Values match `.env.local`
+
+42. 🐛 New bug logged: `/api/log` returns 405 in production
+    - `src/lib/scraper/logger.js` and `src/lib/scraper/fileLogger.js` POST to `/api/log`
+    - This endpoint only exists in local dev (dev server handles it); never deployed to Vercel
+    - Appears as `POST /api/log 405 Method Not Allowed` in browser console during sync
+    - Sync still completes — the logger failure is non-fatal
+    - **Fix needed:** either create a no-op `/api/log` handler on Vercel, or guard the
+      POST call with `if (import.meta.env?.DEV)` so it only fires locally
+
+---
+
 ### Session 11 (Feb 22, end of day) — housekeeping, no new features
 
 36. ✅ Requirements audit and status updates
@@ -775,27 +808,29 @@ Run `git push` at start of next session.
 
 ## First Message for Next Session
 
-> "Picking up from Feb 22 (Session 11 — end of day housekeeping).
->
-> **Push first:** `git push` — 2 unpushed commits on main (housekeeping only, safe to push).
+> "Picking up from Feb 23 (Session 12 — production debugging).
 >
 > **Production state:**
 > - REQ-109 live. Crons run daily midnight UTC: cron-auth 0:00 → cron-schedule 0:05 → cron-detail 0:10
 > - All 553 tests pass. 100% requirement coverage (42 enforced, 1 exempt: REQ-110).
-> - Manual sync working: Settings → External Sync → date pickers → Sync Now
+> - Manual sync confirmed working in production: Settings → External Sync → date pickers → Sync Now
+> - Vercel env vars confirmed set: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+>   VITE_EXTERNAL_SITE_USERNAME, VITE_EXTERNAL_SITE_PASSWORD
 >
 > **Check first thing:**
 > - Did the automated crons run overnight? Vercel dashboard → Functions logs → look for [CronAuth], [CronSchedule], [CronDetail]
-> - Run a manual prod sync and spot-check Supabase: do Maverick, Captain Morgan, Chewy look right?
 >
 > **Priority queue (in order):**
-> 1. REQ-110: HTML parse degradation detection — ~30 lines in sync.js + UI warning in SyncSettings.jsx
+> 1. Fix `/api/log` 405 in production — `src/lib/scraper/logger.js` POSTs to `/api/log` (dev-only endpoint).
+>    Easiest fix: wrap the fetch call with `if (import.meta.env?.DEV)` so it only fires locally.
+>    Files: `src/lib/scraper/logger.js:7` and `src/lib/scraper/fileLogger.js:7`
+> 2. REQ-110: HTML parse degradation detection — ~30 lines in sync.js + UI warning in SyncSettings.jsx
 >    After each sync: if >X% of detail fetches return null for pet_name or check_in_datetime,
 >    write status='parse_degraded' to sync_logs. Surface warning in UI.
 >    Threshold constant in config.js. Tests in sync.test.js.
-> 2. Fix status extraction always null — .appt-change-status selector needs textContent on <a><i> structure
-> 3. Update GitHub README — missing all v2.0 external sync / cron documentation
-> 4. Pre-detail-fetch date filter — parse service_type dates BEFORE fetching detail page (saves ~48s/sync)
+> 3. Fix status extraction always null — .appt-change-status selector needs textContent on <a><i> structure
+> 4. Update GitHub README — missing all v2.0 external sync / cron documentation
+> 5. Pre-detail-fetch date filter — parse service_type dates BEFORE fetching detail page (saves ~48s/sync)
 >
 > **Known data issues (self-resolving on sync):**
 > - Null service_types: C63QgKsL, C63QfyoF, C63QgNGU, C63QgP2y, C63QgOHe — will fix on next sync of their date range
