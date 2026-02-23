@@ -19,6 +19,7 @@ import {
   mockExternalAppointmentWithPricing,
   mockExternalAppointmentNoPricing,
   mockExternalAppointmentSingleLinePricing,
+  mockExternalAppointmentDcMidPhrase,
 } from './fixtures.js';
 
 // Mock Supabase client
@@ -492,6 +493,22 @@ describe('REQ-103: Data Mapping to App Schema', () => {
         const sync = mapToSyncAppointment(mockExternalAppointmentNoPricing, 'dog-id', 'boarding-id');
         expect(sync.appointment_total).toBeNull();
         expect(sync.pricing_line_items).toBeNull();
+      });
+    });
+
+    describe('"DC" mid-phrase false-positive fix', () => {
+      it('classifies line 1 as night when "DC" appears mid-phrase (not at start)', () => {
+        // "Boarding discounted nights for DC full-time" contains "DC" but does NOT
+        // start with it — should be treated as the night service, not day.
+        const boarding = mapToBoarding(mockExternalAppointmentDcMidPhrase, 'dog-id');
+        expect(boarding.night_rate).toBe(55);
+        expect(boarding.day_rate).toBe(50);
+      });
+
+      it('sets dog night_rate from the non-day line even when service name contains "DC" mid-phrase', () => {
+        const dog = mapToDog(mockExternalAppointmentDcMidPhrase);
+        expect(dog.night_rate).toBe(55);
+        expect(dog.day_rate).toBe(50);
       });
     });
 

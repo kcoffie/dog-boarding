@@ -15,7 +15,7 @@ export const SCRAPER_CONFIG = {
   // A line item whose service name matches ANY of these is treated as a day-boarding
   // or daycare charge, not a night-boarding charge.
   // Note: applied to the service name WITHIN #confirm-price, not to appointment titles.
-  dayServicePatterns: [/day/i, /daycare/i, /DC /i, /pack/i],
+  dayServicePatterns: [/day/i, /daycare/i, /^DC/i, /pack/i],
 
   // Parse degradation detection (REQ-110)
   // If more than this fraction of detail fetches have a null pet_name OR null
