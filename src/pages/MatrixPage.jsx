@@ -3,6 +3,7 @@ import SummaryCards from '../components/SummaryCards';
 import DateNavigator from '../components/DateNavigator';
 import BoardingMatrix from '../components/BoardingMatrix';
 import EmployeeTotals from '../components/EmployeeTotals';
+import RevenueView from '../components/RevenueView';
 
 export default function MatrixPage() {
   const [startDate, setStartDate] = useState(() => {
@@ -64,6 +65,9 @@ export default function MatrixPage() {
 
       {/* Employee Totals */}
       <EmployeeTotals startDate={startDate} days={daysDiff} />
+
+      {/* Revenue View */}
+      <RevenueView startDate={startDate} days={daysDiff} />
     </div>
   );
 }
