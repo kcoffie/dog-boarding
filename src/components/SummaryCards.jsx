@@ -1,5 +1,6 @@
 import { useData } from '../context/DataContext';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
+import { calculateGross } from '../utils/calculations';
 
 export default function SummaryCards({ startDate, days }) {
   const { dogs, boardings, getNightAssignment } = useData();
@@ -13,19 +14,9 @@ export default function SummaryCards({ startDate, days }) {
     return dogBoardings.some(b => isOvernight(b, todayStr));
   }).length;
 
-  // Revenue this period (gross)
+  // Revenue this period (gross) — uses boarding.nightRate ?? dog.nightRate ?? 0 per night (REQ-203)
   const periodRevenue = dates.reduce((total, dateStr) => {
-    let dayGross = 0;
-    for (const dog of dogs) {
-      const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-      for (const boarding of dogBoardings) {
-        if (isOvernight(boarding, dateStr)) {
-          dayGross += dog.nightRate;
-          break;
-        }
-      }
-    }
-    return total + dayGross;
+    return total + calculateGross(dogs, boardings, dateStr);
   }, 0);
 
   // Helper to check if date has any dogs boarding
