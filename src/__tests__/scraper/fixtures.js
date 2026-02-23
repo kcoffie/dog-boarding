@@ -351,6 +351,23 @@ export const mockExternalAppointmentNoPricing = {
   pricing: null,
 };
 
+// Two-line pricing where line 1 has "DC" mid-phrase (not at start of service name).
+// Real-world case: "Boarding discounted nights for DC full-time" is a night service
+// but previously false-positived against /DC /i. Line 2 is a genuine day service.
+export const mockExternalAppointmentDcMidPhrase = {
+  external_id: 'DCM123',
+  pet_name: 'Captain',
+  check_in_datetime: '2026-03-01T00:00:00.000Z',
+  check_out_datetime: '2026-03-06T00:00:00.000Z',
+  pricing: {
+    total: 375,
+    lineItems: [
+      { serviceName: 'Boarding discounted nights for DC full-time', rate: 55, qty: 5, amount: 275 },
+      { serviceName: 'Boarding (Days)', rate: 50, qty: 2, amount: 100 },
+    ],
+  },
+};
+
 // Single-line pricing (total only, no night/day breakdown)
 export const mockExternalAppointmentSingleLinePricing = {
   external_id: 'SNG123',
