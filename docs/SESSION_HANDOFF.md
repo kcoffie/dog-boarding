@@ -1,6 +1,6 @@
 # Dog Boarding App Sync - Session Handoff
-**Date:** February 22, 2026
-**Status:** ✅ REQ-109 COMPLETE AND IN PRODUCTION. All 9 phases done. 553/553 tests passing. develop merged to main. Vercel deployed successfully with 3 daily crons registered.
+**Date:** February 22, 2026 (updated end of day)
+**Status:** ✅ REQ-109 COMPLETE AND IN PRODUCTION. Project housekeeping done. Repo clean. 2 unpushed commits on main. Ready for next feature work.
 
 ---
 
@@ -741,27 +741,66 @@ WHERE status = 'failed';
 
 ---
 
+### Session 11 (Feb 22, end of day) — housekeeping, no new features
+
+36. ✅ Requirements audit and status updates
+    - REQ-100–104: Planned → Complete
+    - REQ-105: Planned → Deferred (conflict resolution, not needed for MVP)
+    - REQ-106, REQ-107: Planned → In Progress
+    - REQ-108, REQ-109: In Progress → Complete
+    - Added REQ-110: HTML Parse Degradation Detection (Planned)
+    - Commits: `24bdd39`
+
+37. ✅ check-requirements.js updated: Planned/Deferred requirements now show as ⏭️ (exempt)
+    — pre-commit hook no longer fails on unimplemented future requirements
+    — 100% coverage on 42 enforced requirements
+
+38. ✅ Archived 12 stale planning docs to `docs/archive/`
+    — Created `docs/archive/README.md` with index of what's there and why
+    — `docs/` now clean: REQUIREMENTS.md, SESSION_HANDOFF.md, ROLLBACK.md, TEST-DATA.md, specs/, archive/
+
+39. ✅ MEMORY.md updated with current production state, corrected key files list, cleaned stale data quality notes
+
+40. ✅ Repo cleanup
+    - Deleted: `api/test-db.js`, `boarding-report.csv`, `scripts/debug-auth.mjs`, `scripts/debug-login-full.mjs`, `scripts/debug-login-page.mjs`, `scripts/debug-session.mjs`
+    - Updated `.gitignore`: added `*.csv`, `docs/.obsidian/`, `settings.json`, `docs/MEMORY.md`
+    - Commit: `960d924`
+
+**⚠️ 2 commits not yet pushed to origin/main:**
+- `24bdd39` docs: update requirement statuses and archive stale planning docs
+- `960d924` chore: delete debug scripts and update gitignore
+Run `git push` at start of next session.
+
+---
+
 ## First Message for Next Session
 
-> "Picking up from Feb 22 (Session 10). REQ-109 is COMPLETE and live in production.
-> All 553 tests pass. develop merged to main. Vercel deployed with 3 daily crons.
+> "Picking up from Feb 22 (Session 11 — end of day housekeeping).
 >
-> **Current state — everything done:**
-> - All 9 phases complete ✅
-> - Production URL: Vercel qboard project (main branch)
-> - Crons run daily at midnight UTC (Hobby plan limit):
->   cron-auth 0:00 → cron-schedule 0:05 → cron-detail 0:10
-> - Manual sync fully operational via UI (Settings → External Sync)
-> - SUPABASE_SERVICE_ROLE_KEY set in Vercel env vars ✅
+> **Push first:** `git push` — 2 unpushed commits on main (housekeeping only, safe to push).
 >
-> **To verify first automated cron run:**
-> - Check Vercel Functions logs after midnight UTC for [CronAuth] ✅ Session cached
+> **Production state:**
+> - REQ-109 live. Crons run daily midnight UTC: cron-auth 0:00 → cron-schedule 0:05 → cron-detail 0:10
+> - All 553 tests pass. 100% requirement coverage (42 enforced, 1 exempt: REQ-110).
+> - Manual sync working: Settings → External Sync → date pickers → Sync Now
+>
+> **Check first thing:**
+> - Did the automated crons run overnight? Vercel dashboard → Functions logs → look for [CronAuth], [CronSchedule], [CronDetail]
+> - Run a manual prod sync and spot-check Supabase: do Maverick, Captain Morgan, Chewy look right?
+>
+> **Priority queue (in order):**
+> 1. REQ-110: HTML parse degradation detection — ~30 lines in sync.js + UI warning in SyncSettings.jsx
+>    After each sync: if >X% of detail fetches return null for pet_name or check_in_datetime,
+>    write status='parse_degraded' to sync_logs. Surface warning in UI.
+>    Threshold constant in config.js. Tests in sync.test.js.
+> 2. Fix status extraction always null — .appt-change-status selector needs textContent on <a><i> structure
+> 3. Update GitHub README — missing all v2.0 external sync / cron documentation
+> 4. Pre-detail-fetch date filter — parse service_type dates BEFORE fetching detail page (saves ~48s/sync)
+>
+> **Known data issues (self-resolving on sync):**
+> - Null service_types: C63QgKsL, C63QfyoF, C63QgNGU, C63QgP2y, C63QgOHe — will fix on next sync of their date range
+> - Amended appts not yet archived (out of sync window): C63QgNGU→C63QfyoF (4/1-13), C63QgH5K→C63QgNHs (3/3-19)
 >
 > **Known limitation (Hobby plan):**
-> - cron-detail processes 1 appointment per day (10s Vercel timeout)
-> - For immediate multi-appointment sync, use 'Sync Now' in the UI
-> - Pro plan upgrade path: update vercel.json schedules (documented in each handler JSDoc)
->
-> **Low priority remaining work:**
-> - Investigate status extraction (always null — .appt-change-status selector may need text() on <a> containing <i>)
-> - Pre-detail-fetch date filter (parse service_type dates BEFORE fetching detail page; saves ~48s/sync)"
+> - cron-detail processes 1 appointment per day. Use 'Sync Now' UI for multi-appointment syncs.
+> - Pro plan upgrade path: update vercel.json schedules (documented in each handler JSDoc)"
