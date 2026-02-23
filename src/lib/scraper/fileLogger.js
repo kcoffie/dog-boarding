@@ -32,6 +32,7 @@ async function sendLog(level, message, context = null) {
   consoleMethod(`[${timestamp}] [${level.toUpperCase()}] ${message}`, context || '');
 
   // Send to file endpoint (don't await - fire and forget to avoid blocking)
+  if (!import.meta.env?.DEV) return;
   try {
     fetch(LOG_ENDPOINT, {
       method: 'POST',
@@ -98,6 +99,7 @@ export function createLogger(prefix) {
  * Clear the log file
  */
 export async function clearLog() {
+  if (!import.meta.env?.DEV) return;
   try {
     await fetch('/api/log/clear', { method: 'POST' });
   } catch {
@@ -110,6 +112,7 @@ export async function clearLog() {
  * @returns {Promise<string[]>} Array of log lines
  */
 export async function getRecentLogs() {
+  if (!import.meta.env?.DEV) return [];
   try {
     const response = await fetch('/api/log/tail');
     const data = await response.json();
