@@ -3,6 +3,7 @@ import { useData } from '../context/DataContext';
 import { useInvites } from '../hooks/useInvites';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getEmployeeName, isEmployeeActive } from '../utils/employeeHelpers';
+import SyncSettings from '../components/SyncSettings';
 
 export default function SettingsPage() {
   const { settings, settingsLoading, sortEmployees, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
@@ -462,6 +463,9 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* External Sync Section */}
+      <SyncSettings />
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
