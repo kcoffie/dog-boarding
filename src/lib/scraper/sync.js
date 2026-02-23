@@ -35,7 +35,21 @@ export const SyncStatus = {
   SUCCESS: 'success',
   PARTIAL: 'partial',
   FAILED: 'failed',
+  PARSE_DEGRADED: 'parse_degraded',
 };
+
+/**
+ * Check whether a sync's null rate exceeds the parse degradation threshold.
+ * Returns false when parseTotalCount is 0 (no detail fetches — nothing to evaluate).
+ * @param {number} parseNullCount - Fetches where pet_name or check_in_datetime was null
+ * @param {number} parseTotalCount - Total detail fetches that reached the save stage
+ * @returns {boolean}
+ * @requirements REQ-110
+ */
+export function checkParseDegradation(parseNullCount, parseTotalCount) {
+  if (parseTotalCount === 0) return false;
+  return parseNullCount / parseTotalCount > SCRAPER_CONFIG.parseNullThreshold;
+}
 
 /**
  * Create a new sync log entry
@@ -260,6 +274,8 @@ export async function runSync(options = {}) {
     appointmentsUnchanged: 0,
     appointmentsFailed: 0,
     appointmentsArchived: 0,
+    parseNullCount: 0,   // REQ-110: detail fetches with null pet_name or check_in_datetime
+    parseTotalCount: 0,  // REQ-110: total detail fetches that reached the save stage
     errors: [],
     changeDetails: [],
     durationMs: 0,
@@ -419,6 +435,21 @@ export async function runSync(options = {}) {
         details.pet_name    = details.pet_name    || appt.petName    || null;
         details.client_name = details.client_name || appt.clientName || null;
 
+        // Parse degradation tracking (REQ-110).
+        // Counted here — after all filters pass and after schedule-page fallbacks are
+        // applied — so the count reflects what actually gets saved, not raw extraction.
+        result.parseTotalCount++;
+        const _nullPetName = !details.pet_name;
+        const _nullCheckIn = !details.check_in_datetime;
+        if (_nullPetName || _nullCheckIn) {
+          result.parseNullCount++;
+          syncWarn(
+            `[Sync] ⚠️ Parse null for ${appt.id}:` +
+            ` pet_name=${_nullPetName ? 'NULL' : JSON.stringify(details.pet_name)}` +
+            `, check_in_datetime=${_nullCheckIn ? 'NULL' : details.check_in_datetime}`
+          );
+        }
+
         // Map and save
         const saveStart = Date.now();
         const saveResult = await mapAndSaveAppointment(details, { supabase });
@@ -503,6 +534,44 @@ export async function runSync(options = {}) {
       result.status = SyncStatus.FAILED;
     }
 
+    // Parse degradation check (REQ-110).
+    // Runs after final status is set so we can see what we're overriding.
+    // Wrapped in its own try/catch — an unexpected error here must not corrupt
+    // the sync result or prevent the sync log from being written.
+    try {
+      const nullRate = result.parseTotalCount > 0
+        ? (result.parseNullCount / result.parseTotalCount * 100).toFixed(1)
+        : 'N/A';
+      syncLog(
+        `[Sync] 🔍 Parse degradation check: ${result.parseNullCount} nulls / ` +
+        `${result.parseTotalCount} fetches (${nullRate}%) — ` +
+        `threshold ${(SCRAPER_CONFIG.parseNullThreshold * 100).toFixed(0)}%`
+      );
+
+      if (checkParseDegradation(result.parseNullCount, result.parseTotalCount)) {
+        syncWarn(`[Sync] ⚠️ PARSE DEGRADATION DETECTED — null rate ${nullRate}% exceeds threshold`);
+        syncWarn('[Sync] ⚠️ External site HTML structure may have changed — review selectors in extraction.js');
+        if (result.status === SyncStatus.SUCCESS || result.status === SyncStatus.PARTIAL) {
+          syncWarn(`[Sync] ⚠️ Overriding status ${result.status} → ${SyncStatus.PARSE_DEGRADED}`);
+          result.status = SyncStatus.PARSE_DEGRADED;
+          // result.success stays true — the sync ran; data quality is the concern
+        } else {
+          // Already FAILED; don't mask the root cause
+          syncWarn(
+            `[Sync] ⚠️ Sync already has status=${result.status}; ` +
+            `not overriding with ${SyncStatus.PARSE_DEGRADED}`
+          );
+        }
+      } else if (result.parseTotalCount === 0) {
+        syncLog('[Sync] ℹ️ Parse degradation check skipped — no detail fetches in this run');
+      } else {
+        syncLog(`[Sync] ✅ Parse degradation check passed — null rate ${nullRate}% within threshold`);
+      }
+    } catch (degradationErr) {
+      syncError('[Sync] ❌ Parse degradation check threw unexpectedly (sync result unaffected):', degradationErr.message);
+      syncError('[Sync] Stack:', degradationErr.stack);
+    }
+
     // Update sync log
     stepStart = Date.now();
     await updateSyncLog(supabase, syncLogRecord.id, {
@@ -514,6 +583,8 @@ export async function runSync(options = {}) {
       appointments_unchanged: result.appointmentsUnchanged,
       appointments_failed: result.appointmentsFailed,
       appointments_archived: result.appointmentsArchived,
+      parse_null_count: result.parseNullCount,
+      parse_total_count: result.parseTotalCount,
       errors: result.errors,
       change_details: result.changeDetails,
       duration_ms: result.durationMs,
@@ -522,12 +593,21 @@ export async function runSync(options = {}) {
 
     // Update sync settings
     stepStart = Date.now();
+    let lastSyncMessage;
+    if (result.status === SyncStatus.PARSE_DEGRADED) {
+      lastSyncMessage =
+        `Parse warning: ${result.parseNullCount}/${result.parseTotalCount} appointments had missing fields`;
+    } else if (result.success) {
+      lastSyncMessage =
+        `Synced ${result.appointmentsCreated + result.appointmentsUpdated} appointments`;
+    } else {
+      lastSyncMessage =
+        `Failed: ${sanitizeError(result.errors[0]?.error) || 'Unknown error'}`;
+    }
     await updateSyncSettings(supabase, {
       last_sync_at: new Date().toISOString(),
       last_sync_status: result.status,
-      last_sync_message: result.success
-        ? `Synced ${result.appointmentsCreated + result.appointmentsUpdated} appointments`
-        : `Failed: ${sanitizeError(result.errors[0]?.error) || 'Unknown error'}`,
+      last_sync_message: lastSyncMessage,
     });
     logTiming('updateSyncSettings', stepStart);
 
@@ -655,6 +735,7 @@ export async function abortStuckSync(supabase, maxAgeMinutes = 30) {
 
 export default {
   SyncStatus,
+  checkParseDegradation,
   createSyncLog,
   updateSyncLog,
   getSyncSettings,

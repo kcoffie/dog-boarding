@@ -1,11 +1,12 @@
 /**
  * Sync service tests
- * @requirements REQ-104, REQ-106
+ * @requirements REQ-104, REQ-106, REQ-110
  */
 
 import { describe, it, expect } from 'vitest';
 import {
   SyncStatus,
+  checkParseDegradation,
   createSyncLog,
   updateSyncLog,
   getSyncSettings,
@@ -15,6 +16,7 @@ import {
   abortStuckSync,
   sanitizeError,
 } from '../../lib/scraper/sync.js';
+import { SCRAPER_CONFIG } from '../../lib/scraper/config.js';
 
 // Create mock Supabase client
 const createMockSupabase = () => {
@@ -430,5 +432,91 @@ describe('Security: sanitizeError()', () => {
     const sanitized = sanitizeError(message);
 
     expect(sanitized).toBe('Network timeout after 30 seconds');
+  });
+});
+
+describe('REQ-110: HTML Parse Degradation Detection', () => {
+  describe('SyncStatus.PARSE_DEGRADED', () => {
+    it('has the correct string value', () => {
+      expect(SyncStatus.PARSE_DEGRADED).toBe('parse_degraded');
+    });
+  });
+
+  describe('SCRAPER_CONFIG.parseNullThreshold', () => {
+    it('is defined and is a number between 0 and 1', () => {
+      expect(typeof SCRAPER_CONFIG.parseNullThreshold).toBe('number');
+      expect(SCRAPER_CONFIG.parseNullThreshold).toBeGreaterThan(0);
+      expect(SCRAPER_CONFIG.parseNullThreshold).toBeLessThan(1);
+    });
+  });
+
+  describe('checkParseDegradation()', () => {
+    it('returns false when parseTotalCount is 0 (no fetches — do not fire)', () => {
+      expect(checkParseDegradation(0, 0)).toBe(false);
+    });
+
+    it('returns false when null rate is 0%', () => {
+      expect(checkParseDegradation(0, 10)).toBe(false);
+    });
+
+    it('returns false when null rate is below the threshold (10% < 20%)', () => {
+      expect(checkParseDegradation(1, 10)).toBe(false);
+    });
+
+    it('returns false when null rate equals the threshold exactly (20% is not > 20%)', () => {
+      // Boundary: exactly at threshold should NOT trigger — threshold is a strict >
+      expect(checkParseDegradation(2, 10)).toBe(false);
+      expect(checkParseDegradation(20, 100)).toBe(false);
+    });
+
+    it('returns true when null rate exceeds the threshold (30% > 20%)', () => {
+      expect(checkParseDegradation(3, 10)).toBe(true);
+    });
+
+    it('returns true when null rate is 21% (just over threshold)', () => {
+      expect(checkParseDegradation(21, 100)).toBe(true);
+    });
+
+    it('returns true when every fetch is null (100%)', () => {
+      expect(checkParseDegradation(5, 5)).toBe(true);
+    });
+
+    it('returns false when only 1 out of 100 fetches is null (well below threshold)', () => {
+      expect(checkParseDegradation(1, 100)).toBe(false);
+    });
+  });
+
+  describe('sync log parse degradation columns', () => {
+    it('updateSyncLog accepts parse_null_count and parse_total_count', async () => {
+      const supabase = createMockSupabase();
+      const log = await createSyncLog(supabase);
+
+      await updateSyncLog(supabase, log.id, {
+        status: SyncStatus.PARSE_DEGRADED,
+        appointments_found: 10,
+        parse_null_count: 4,
+        parse_total_count: 10,
+      });
+
+      const updated = supabase._mockData.sync_logs[0];
+      expect(updated.status).toBe(SyncStatus.PARSE_DEGRADED);
+      expect(updated.parse_null_count).toBe(4);
+      expect(updated.parse_total_count).toBe(10);
+    });
+
+    it('parse_null_count and parse_total_count default to 0 when omitted', async () => {
+      const supabase = createMockSupabase();
+      const log = await createSyncLog(supabase);
+
+      await updateSyncLog(supabase, log.id, {
+        status: SyncStatus.SUCCESS,
+        appointments_found: 5,
+      });
+
+      const updated = supabase._mockData.sync_logs[0];
+      // Columns were not set — should remain absent or 0 (mock returns whatever was inserted)
+      expect(updated.parse_null_count == null || updated.parse_null_count === 0).toBe(true);
+      expect(updated.parse_total_count == null || updated.parse_total_count === 0).toBe(true);
+    });
   });
 });
