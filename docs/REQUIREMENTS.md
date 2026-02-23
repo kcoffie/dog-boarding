@@ -20,7 +20,7 @@
 | v1.1    | Payroll & employee management  | Complete    |
 | v1.2    | CSV import & past boardings    | Complete    |
 | v1.3    | Authentication & invite system | Complete    |
-| v2.0    | External data sync             | In Progress |
+| v2.0    | External data sync             | In Progress (REQ-100–109) |
 
 ---
 
@@ -526,7 +526,7 @@ System calculates revenue correctly.
 ## v2.0: External Data Sync
 
 ### REQ-100: External Source Authentication
-**Added:** v2.0 | **Status:** Planned
+**Added:** v2.0 | **Status:** Complete
 
 Scraper can authenticate with the external booking system.
 
@@ -542,7 +542,7 @@ Scraper can authenticate with the external booking system.
 ---
 
 ### REQ-101: Appointment List Scraping
-**Added:** v2.0 | **Status:** Planned
+**Added:** v2.0 | **Status:** Complete
 
 Scraper can retrieve list of appointments from schedule page.
 
@@ -558,7 +558,7 @@ Scraper can retrieve list of appointments from schedule page.
 ---
 
 ### REQ-102: Appointment Detail Extraction
-**Added:** v2.0 | **Status:** Planned
+**Added:** v2.0 | **Status:** Complete
 
 Scraper can extract full details from individual appointment pages.
 
@@ -575,7 +575,7 @@ Scraper can extract full details from individual appointment pages.
 ---
 
 ### REQ-103: Data Mapping to App Schema
-**Added:** v2.0 | **Status:** Planned
+**Added:** v2.0 | **Status:** Complete
 
 Scraped data maps correctly to existing app data models.
 
@@ -591,7 +591,7 @@ Scraped data maps correctly to existing app data models.
 ---
 
 ### REQ-104: Sync Scheduling
-**Added:** v2.0 | **Status:** Planned
+**Added:** v2.0 | **Status:** Complete
 
 Sync can run automatically on a schedule.
 
@@ -607,7 +607,7 @@ Sync can run automatically on a schedule.
 ---
 
 ### REQ-105: Sync Conflict Resolution
-**Added:** v2.0 | **Status:** Planned
+**Added:** v2.0 | **Status:** Deferred
 
 System handles conflicts between external and local data.
 
@@ -623,7 +623,7 @@ System handles conflicts between external and local data.
 ---
 
 ### REQ-106: Sync Error Handling
-**Added:** v2.0 | **Status:** Planned
+**Added:** v2.0 | **Status:** In Progress
 
 Sync failures are handled gracefully and reported.
 
@@ -639,7 +639,7 @@ Sync failures are handled gracefully and reported.
 ---
 
 ### REQ-108: Archive Reconciliation
-**Added:** v2.0 | **Status:** In Progress
+**Added:** v2.0 | **Status:** Complete
 
 When an appointment is amended on the external site, a new appointment is created
 and the old one disappears from the schedule page. The old record must be detected
@@ -661,7 +661,7 @@ and archived so it doesn't appear as an active boarding.
 ---
 
 ### REQ-109: Automated Scheduled Sync (micro mode)
-**Added:** v2.0 | **Status:** In Progress
+**Added:** v2.0 | **Status:** Complete
 
 The system automatically syncs appointment data on a schedule using three Vercel
 cron functions that each complete within the Hobby plan's 10-second limit.
@@ -718,19 +718,38 @@ CREATE TABLE sync_queue (
 ---
 
 ### REQ-107: Sync Admin UI
-**Added:** v2.0 | **Status:** Planned
+**Added:** v2.0 | **Status:** In Progress
 
 Administrators can manage sync settings and view status.
 
 **Acceptance Criteria:**
-- Settings page has "External Sync" section
-- Can enable/disable automatic sync
-- Can configure sync interval
-- Can view sync history (last 10 syncs)
-- Can view sync errors
-- Can trigger manual sync
+- Settings page has "External Sync" section ✅
+- Can enable/disable automatic sync (deferred)
+- Can configure sync interval (deferred)
+- Can view sync history (last 10 syncs) (not yet built)
+- Can view sync errors (not yet built)
+- Can trigger manual sync with date range ✅ (`SyncSettings.jsx`, date pickers added v2.0)
 
 **Tests:** `pages/SyncSettings.test.jsx`
+
+---
+
+### REQ-110: HTML Parse Degradation Detection
+**Added:** v2.0 | **Status:** Planned
+
+The scraper parses third-party HTML using CSS selectors. If agirlandyourdog.com updates
+their appointment page template, extraction silently returns nulls — the business owner
+would notice bad data before we do.
+
+**Acceptance Criteria:**
+- After each sync run, count detail fetches where `pet_name` is null OR `check_in_datetime` is null
+- If null rate exceeds threshold (e.g., >20% of fetches), write `status: 'parse_degraded'` to `sync_logs`
+- Include `parse_null_count` and `parse_total_count` in the degraded log entry
+- UI surfaces a visible warning when latest sync log has `status: 'parse_degraded'`
+- Threshold is configurable (constant in `config.js`, not hardcoded)
+- Does not fire on syncs with 0 detail fetches (e.g., all appointments unchanged)
+
+**Tests:** `src/__tests__/scraper/sync.test.js`
 
 ---
 
