@@ -1,6 +1,6 @@
 /**
  * Data mapping tests
- * @requirements REQ-103
+ * @requirements REQ-103, REQ-201
  */
 
 import { describe, it, expect } from 'vitest';
@@ -14,7 +14,12 @@ import {
   upsertBoarding,
   mapAndSaveAppointment,
 } from '../../lib/scraper/mapping.js';
-import { mockExternalAppointments } from './fixtures.js';
+import {
+  mockExternalAppointments,
+  mockExternalAppointmentWithPricing,
+  mockExternalAppointmentNoPricing,
+  mockExternalAppointmentSingleLinePricing,
+} from './fixtures.js';
 
 // Mock Supabase client
 const createMockSupabase = () => {
@@ -398,6 +403,122 @@ describe('REQ-103: Data Mapping to App Schema', () => {
 
       expect(result.dog).toBeDefined();
       expect(result.boarding).toBeNull();
+    });
+  });
+
+  describe('REQ-201: pricing fields', () => {
+    describe('mapToBoarding() with pricing', () => {
+      it('populates billed_amount from pricing.total', () => {
+        const boarding = mapToBoarding(mockExternalAppointmentWithPricing, 'dog-id');
+        expect(boarding.billed_amount).toBe(750);
+      });
+
+      it('populates night_rate from first non-day line item', () => {
+        const boarding = mapToBoarding(mockExternalAppointmentWithPricing, 'dog-id');
+        // "Boarding" does not match any dayServicePattern → night item
+        expect(boarding.night_rate).toBe(55);
+      });
+
+      it('populates day_rate from day-matching line item', () => {
+        const boarding = mapToBoarding(mockExternalAppointmentWithPricing, 'dog-id');
+        // "Boarding (Days)" matches /day/i → day item
+        expect(boarding.day_rate).toBe(50);
+      });
+
+      it('sets billed_amount null when pricing is absent', () => {
+        const boarding = mapToBoarding(mockExternalAppointmentNoPricing, 'dog-id');
+        expect(boarding.billed_amount).toBeNull();
+      });
+
+      it('sets night_rate and day_rate null when pricing is absent', () => {
+        const boarding = mapToBoarding(mockExternalAppointmentNoPricing, 'dog-id');
+        expect(boarding.night_rate).toBeNull();
+        expect(boarding.day_rate).toBeNull();
+      });
+
+      it('sets night_rate null when only one line item (cannot classify)', () => {
+        const boarding = mapToBoarding(mockExternalAppointmentSingleLinePricing, 'dog-id');
+        expect(boarding.night_rate).toBeNull();
+        expect(boarding.day_rate).toBeNull();
+        // But billed_amount should still be populated
+        expect(boarding.billed_amount).toBe(550);
+      });
+    });
+
+    describe('mapToDog() with pricing', () => {
+      it('sets night_rate from non-day line item when pricing available', () => {
+        const dog = mapToDog(mockExternalAppointmentWithPricing);
+        expect(dog.night_rate).toBe(55);
+      });
+
+      it('sets day_rate from day-matching line item when pricing available', () => {
+        const dog = mapToDog(mockExternalAppointmentWithPricing);
+        expect(dog.day_rate).toBe(50);
+      });
+
+      it('defaults rates to 0 when pricing is null (existing behavior)', () => {
+        const dog = mapToDog(mockExternalAppointments[0]);
+        expect(dog.night_rate).toBe(0);
+        expect(dog.day_rate).toBe(0);
+      });
+
+      it('defaults rates to 0 when pricing is null (explicit null)', () => {
+        const dog = mapToDog(mockExternalAppointmentNoPricing);
+        expect(dog.night_rate).toBe(0);
+        expect(dog.day_rate).toBe(0);
+      });
+
+      it('sets rates to 0 when single line item (cannot classify)', () => {
+        const dog = mapToDog(mockExternalAppointmentSingleLinePricing);
+        expect(dog.night_rate).toBe(0);
+        expect(dog.day_rate).toBe(0);
+      });
+    });
+
+    describe('mapToSyncAppointment() with pricing', () => {
+      it('populates appointment_total from pricing.total', () => {
+        const sync = mapToSyncAppointment(mockExternalAppointmentWithPricing, 'dog-id', 'boarding-id');
+        expect(sync.appointment_total).toBe(750);
+      });
+
+      it('populates pricing_line_items from lineItems array', () => {
+        const sync = mapToSyncAppointment(mockExternalAppointmentWithPricing, 'dog-id', 'boarding-id');
+        expect(sync.pricing_line_items).toHaveLength(2);
+        expect(sync.pricing_line_items[0].serviceName).toBe('Boarding');
+        expect(sync.pricing_line_items[1].serviceName).toBe('Boarding (Days)');
+      });
+
+      it('sets appointment_total and pricing_line_items null when no pricing', () => {
+        const sync = mapToSyncAppointment(mockExternalAppointmentNoPricing, 'dog-id', 'boarding-id');
+        expect(sync.appointment_total).toBeNull();
+        expect(sync.pricing_line_items).toBeNull();
+      });
+    });
+
+    describe('upsertDog() rate update behavior', () => {
+      it('updates rates on existing external dog when updateRates is true', async () => {
+        const supabase = createMockSupabase();
+        supabase._addDog({ external_id: 'PRC123', name: 'Old', night_rate: 0, day_rate: 0, source: 'external' });
+        const dogData = mapToDog(mockExternalAppointmentWithPricing);
+
+        const result = await upsertDog(supabase, dogData, { updateRates: true });
+
+        expect(result.dog.night_rate).toBe(55);
+        expect(result.dog.day_rate).toBe(50);
+      });
+
+      it('preserves rates on existing external dog when updateRates is false', async () => {
+        const supabase = createMockSupabase();
+        // external_id must match mockExternalAppointmentNoPricing.external_id ('NOP123')
+        supabase._addDog({ external_id: 'NOP123', name: 'Luna', night_rate: 65, day_rate: 45, source: 'external' });
+        const dogData = mapToDog(mockExternalAppointmentNoPricing);
+
+        // No pricing → updateRates false → rates not touched
+        const result = await upsertDog(supabase, dogData, { updateRates: false });
+
+        expect(result.dog.night_rate).toBe(65);
+        expect(result.dog.day_rate).toBe(45);
+      });
     });
   });
 
