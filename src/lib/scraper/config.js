@@ -11,6 +11,18 @@ export const SCRAPER_CONFIG = {
   delayBetweenRequests: 1500, // 1.5 seconds between requests
   maxRequestsPerMinute: 30,
 
+  // Day-service name patterns used to classify pricing line items (REQ-200).
+  // A line item whose service name matches ANY of these is treated as a day-boarding
+  // or daycare charge, not a night-boarding charge.
+  // Note: applied to the service name WITHIN #confirm-price, not to appointment titles.
+  dayServicePatterns: [/day/i, /daycare/i, /DC /i, /pack/i],
+
+  // Parse degradation detection (REQ-110)
+  // If more than this fraction of detail fetches have a null pet_name OR null
+  // check_in_datetime, the sync log is written with status 'parse_degraded'.
+  // Tweak this value if the external site legitimately has sparse fields.
+  parseNullThreshold: 0.20, // 20%
+
   // Timeouts
   authTimeout: 30000, // 30 seconds for auth
   pageTimeout: 15000, // 15 seconds per page

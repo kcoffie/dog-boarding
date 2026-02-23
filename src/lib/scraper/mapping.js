@@ -1,11 +1,35 @@
 /**
  * Data mapping module - maps external data to app schema
- * @requirements REQ-103, REQ-201.1, REQ-201.3
+ * @requirements REQ-103, REQ-201
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { SCRAPER_CONFIG } from './config.js';
 import { detectChangesSync } from './changeDetection.js';
 import { mappingLogger } from './logger.js';
+
+/**
+ * Identify night and day line items from a pricing result.
+ * Night = first line item whose name does NOT match SCRAPER_CONFIG.dayServicePatterns.
+ * Day   = first line item whose name DOES match any dayServicePattern.
+ * Returns null for both when fewer than 2 line items (cannot classify safely — REQ-201).
+ *
+ * @param {{ total: number, lineItems: Array } | null} pricing
+ * @returns {{ nightItem: Object|null, dayItem: Object|null }}
+ */
+function classifyPricingItems(pricing) {
+  if (!pricing || !pricing.lineItems || pricing.lineItems.length < 2) {
+    return { nightItem: null, dayItem: null };
+  }
+  const { dayServicePatterns } = SCRAPER_CONFIG;
+  const nightItem = pricing.lineItems.find(
+    item => !dayServicePatterns.some(p => p.test(item.serviceName))
+  ) ?? null;
+  const dayItem = pricing.lineItems.find(
+    item => dayServicePatterns.some(p => p.test(item.serviceName))
+  ) ?? null;
+  return { nightItem, dayItem };
+}
 
 /**
  * Get Supabase client for database operations
@@ -23,35 +47,46 @@ function getSupabaseClient() {
 }
 
 /**
- * Map external appointment data to Dog record
- * @param {Object} externalData - Data from scraper
+ * Map external appointment data to Dog record.
+ * Sets night_rate/day_rate from extracted pricing when available (REQ-201).
+ * Falls back to 0 when pricing is absent (new dogs get a $0 default).
+ *
+ * @param {Object} externalData - Data from scraper (may include .pricing)
  * @returns {Object} Dog record for database
  */
 export function mapToDog(externalData) {
+  const { nightItem, dayItem } = classifyPricingItems(externalData.pricing);
   return {
     name: externalData.pet_name || 'Unknown',
-    day_rate: 0, // Default, can be updated manually
-    night_rate: 0, // Default, can be updated manually
+    night_rate: nightItem ? nightItem.rate : 0,
+    day_rate:   dayItem   ? dayItem.rate   : 0,
     active: true,
     source: 'external',
     external_id: externalData.external_id,
-    // Store additional info in notes or separate fields if needed
   };
 }
 
 /**
- * Map external appointment data to Boarding record
- * @param {Object} externalData - Data from scraper
+ * Map external appointment data to Boarding record.
+ * Populates billed_amount, night_rate, day_rate from pricing when available (REQ-201).
+ * All three are null when pricing is absent — no error.
+ *
+ * @param {Object} externalData - Data from scraper (may include .pricing)
  * @param {string} dogId - UUID of the mapped dog
  * @returns {Object} Boarding record for database
  */
 export function mapToBoarding(externalData, dogId) {
+  const pricing = externalData.pricing ?? null;
+  const { nightItem, dayItem } = classifyPricingItems(pricing);
   return {
     dog_id: dogId,
     arrival_datetime: externalData.check_in_datetime,
     departure_datetime: externalData.check_out_datetime,
     source: 'external',
     external_id: externalData.external_id,
+    billed_amount: pricing ? pricing.total : null,
+    night_rate:    nightItem ? nightItem.rate : null,
+    day_rate:      dayItem   ? dayItem.rate   : null,
   };
 }
 
@@ -101,6 +136,12 @@ export function mapToSyncAppointment(externalData, dogId = null, boardingId = nu
     pet_veterinarian: externalData.pet_veterinarian,
     pet_behavioral: externalData.pet_behavioral,
     pet_bite_history: externalData.pet_bite_history,
+
+    // Pricing (REQ-200/201)
+    appointment_total: externalData.pricing?.total ?? null,
+    pricing_line_items: externalData.pricing?.lineItems?.length
+      ? externalData.pricing.lineItems
+      : null,
 
     // Store raw data for debugging
     raw_data: externalData,
@@ -230,20 +271,27 @@ export async function findSyncAppointmentByExternalId(supabase, externalId) {
  * @returns {Promise<{dog: Object, created: boolean, updated: boolean}>}
  */
 export async function upsertDog(supabase, dogData, options = {}) {
-  const { overwriteManual = false } = options;
+  const { overwriteManual = false, updateRates = false } = options;
 
   // First, check if dog exists by external_id
   const existingByExternalId = await findDogByExternalId(supabase, dogData.external_id);
 
   if (existingByExternalId) {
-    // Update existing external dog
+    // Update existing external dog.
+    // Only update rates when pricing was extracted this sync (REQ-201):
+    // external site is source of truth for rates, but don't overwrite with 0
+    // when pricing data was simply absent from this appointment.
+    const updateFields = {
+      name: dogData.name,
+      active: dogData.active,
+    };
+    if (updateRates) {
+      updateFields.night_rate = dogData.night_rate;
+      updateFields.day_rate   = dogData.day_rate;
+    }
     const { data, error } = await supabase
       .from('dogs')
-      .update({
-        name: dogData.name,
-        // Don't overwrite rates - they're set manually
-        active: dogData.active,
-      })
+      .update(updateFields)
       .eq('id', existingByExternalId.id)
       .select()
       .single();
@@ -333,17 +381,22 @@ export async function upsertBoarding(supabase, boardingData) {
   }
 
   if (existing) {
-    // Update existing boarding - preserve any manual notes
+    // Update existing boarding - preserve any manual notes.
+    // Pricing fields only written when present in boardingData (REQ-201).
+    const updateFields = {
+      arrival_datetime: boardingData.arrival_datetime,
+      departure_datetime: boardingData.departure_datetime,
+      dog_id: boardingData.dog_id,
+      external_id: boardingData.external_id,
+      source: 'external',
+    };
+    if ('billed_amount' in boardingData) updateFields.billed_amount = boardingData.billed_amount;
+    if ('night_rate'    in boardingData) updateFields.night_rate    = boardingData.night_rate;
+    if ('day_rate'      in boardingData) updateFields.day_rate      = boardingData.day_rate;
+
     const { data, error } = await supabase
       .from('boardings')
-      .update({
-        arrival_datetime: boardingData.arrival_datetime,
-        departure_datetime: boardingData.departure_datetime,
-        dog_id: boardingData.dog_id,
-        external_id: boardingData.external_id,
-        source: 'external',
-        // Don't overwrite notes if they exist - they may be manual
-      })
+      .update(updateFields)
       .eq('id', existing.id)
       .select()
       .single();
@@ -496,11 +549,13 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
   };
 
   // 1. Upsert dog
+  // Pass updateRates=true when pricing was extracted so existing dogs get
+  // their rates refreshed from the external site (source of truth, REQ-201).
   const dogData = mapToDog(externalData);
   const { dog, created: dogCreated, updated: dogUpdated } = await upsertDog(
     supabase,
     dogData,
-    { overwriteManual }
+    { overwriteManual, updateRates: externalData.pricing != null }
   );
   stats.dogCreated = dogCreated;
   stats.dogUpdated = dogUpdated;

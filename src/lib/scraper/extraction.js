@@ -123,6 +123,9 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     pet_veterinarian: extractByLabelContains(html, 'Veterinarian'),
     pet_behavioral: extractByLabelContains(html, 'Behavioral'),
     pet_bite_history: extractByLabelContains(html, 'Bite History'),
+
+    // Pricing (REQ-200): null when #confirm-price is absent (not an error)
+    pricing: extractPricing(html),
   };
 }
 
@@ -371,7 +374,98 @@ function cleanText(text) {
     .trim();
 }
 
+// ---------------------------------------------------------------------------
+// Pricing extraction (REQ-200)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract pricing information from the #confirm-price fieldset.
+ *
+ * Returns { total, lineItems } or null when the section is absent (null is
+ * normal — not all appointments have machine-readable pricing).
+ *
+ * Parsing rules:
+ *  - total:      regex /\$(\d+(?:\.\d+)?)/ on `.toggle-field.text.quote` text
+ *  - data-rate:  parseFloat(attr) / 100  (stored as cents on the site)
+ *  - data-qty:   parseFloat(attr) / 100  (stored as qty × 100 on the site)
+ *  - data-amount: parseFloat(attr)       (already in dollars)
+ *
+ * Individual line items with missing attributes are skipped (warn + continue).
+ * If the total text is unparseable the whole result is null (warn + return null).
+ *
+ * @requirements REQ-200
+ * @param {string} html
+ * @returns {{ total: number, lineItems: Array<{serviceName: string, rate: number, qty: number, amount: number}> } | null}
+ */
+export function extractPricing(html) {
+  if (!html || !html.includes('id="confirm-price"')) return null;
+
+  const fieldsetMatch = html.match(/<fieldset[^>]*id="confirm-price"[^>]*>([\s\S]*?)<\/fieldset>/i);
+  if (!fieldsetMatch) return null;
+  const fieldset = fieldsetMatch[1];
+
+  // Extract total from the .toggle-field.text.quote anchor text.
+  // The anchor is: <a class="btn toggle-field text quote">Total $750 <i ...></i></a>
+  // We stop capture at the first <i> child or closing </a>.
+  const totalAnchorMatch = fieldset.match(
+    /class="[^"]*toggle-field[^"]*text[^"]*quote[^"]*"[^>]*>([\s\S]*?)(?:<i\b|<\/a>)/i
+  );
+  if (!totalAnchorMatch) {
+    console.warn('[extractPricing] Could not find total anchor in #confirm-price');
+    return null;
+  }
+  const totalAmountMatch = totalAnchorMatch[1].match(/\$(\d+(?:\.\d+)?)/);
+  if (!totalAmountMatch) {
+    console.warn('[extractPricing] Could not parse total amount from:', totalAnchorMatch[1].trim());
+    return null;
+  }
+  const total = parseFloat(totalAmountMatch[1]);
+
+  // Collect service names from all .service-name spans in order.
+  const serviceNames = [];
+  const serviceNameRegex = /class="service-name"[^>]*>([^<]+)</gi;
+  let nameMatch;
+  while ((nameMatch = serviceNameRegex.exec(fieldset)) !== null) {
+    serviceNames.push(nameMatch[1].trim());
+  }
+
+  // Collect the full opening tag of each .price div (for attribute parsing).
+  const priceTags = [];
+  const priceTagRegex = /<div[^>]*class="price"[^>]*>/gi;
+  let priceTagMatch;
+  while ((priceTagMatch = priceTagRegex.exec(fieldset)) !== null) {
+    priceTags.push(priceTagMatch[0]);
+  }
+
+  // Pair service names with price tags in document order.
+  const lineItems = [];
+  const count = Math.min(serviceNames.length, priceTags.length);
+  for (let i = 0; i < count; i++) {
+    try {
+      const tag = priceTags[i];
+      const rateMatch = tag.match(/data-rate="([^"]+)"/);
+      const qtyMatch  = tag.match(/data-qty="([^"]+)"/);
+      const amtMatch  = tag.match(/data-amount="([^"]+)"/);
+      if (!rateMatch || !qtyMatch || !amtMatch) {
+        console.warn('[extractPricing] Missing price attributes for service:', serviceNames[i]);
+        continue;
+      }
+      lineItems.push({
+        serviceName: serviceNames[i],
+        rate:   parseFloat(rateMatch[1]) / 100,
+        qty:    parseFloat(qtyMatch[1])  / 100,
+        amount: parseFloat(amtMatch[1]),
+      });
+    } catch (err) {
+      console.warn('[extractPricing] Error parsing line item:', serviceNames[i], err.message);
+    }
+  }
+
+  return { total, lineItems };
+}
+
 export default {
   parseAppointmentPage,
   fetchAppointmentDetails,
+  extractPricing,
 };
