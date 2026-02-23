@@ -1,12 +1,13 @@
 # Dog Boarding App — Session Handoff (v2.2)
 **Last updated:** February 23, 2026
-**Status:** Chunk A complete (REQ-200, REQ-201) — ready for Chunk B
+**Status:** v2.2 complete — all 4 REQs done, 616 tests pass
 
 ---
 
 ## Current State
 
-- **596 tests pass.** Chunk A is on `main` but not yet deployed (migration must run first).
+- **616 tests pass.** Chunk A + Chunk B both on `main`, not yet deployed.
+- Migrations 012 and 013 already applied in production Supabase.
 - 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
 - Manual sync working end-to-end in production.
 - Vercel env vars confirmed set: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
@@ -18,13 +19,11 @@
 
 ---
 
-## Pending Before Deploying Chunk A
+## Pending Before Deploying
 
-Run **both** migrations in Supabase SQL editor (in order):
-1. `supabase/migrations/012_add_parse_degradation_columns.sql` (v2.1 — if not yet applied)
-2. `supabase/migrations/013_add_pricing_columns.sql` (v2.2 Chunk A)
+No migrations needed — 012 and 013 already applied. Just deploy.
 
-After deploying + running migration 013, verify with:
+After deploying, verify with:
 ```sql
 SELECT b.billed_amount, b.night_rate, b.day_rate, d.name, d.night_rate as dog_night_rate
 FROM boardings b
@@ -42,8 +41,8 @@ LIMIT 20;
 | ------- | ------------------------------------------- | -------- |
 | REQ-200 | Extract pricing from appointment pages      | Complete |
 | REQ-201 | Sync rates and billed amount to app records | Complete |
-| REQ-202 | Revenue reporting view                      | Planned  |
-| REQ-203 | Payroll uses extracted rates                | Planned  |
+| REQ-202 | Revenue reporting view                      | Complete |
+| REQ-203 | Payroll uses extracted rates                | Complete |
 
 ---
 
@@ -79,28 +78,25 @@ LIMIT 20;
 
 ---
 
-## Chunk B — What's Next
-
-**REQ-202: Revenue Reporting View**
-- New "Revenue" section (probably on matrix page or new tab)
-- List boardings in date range: dog, check-in/out, revenue
-- Revenue = `billed_amount` when available; fallback = `night_rate × nights` with "est." label
-- Period total at bottom; "Period Revenue" summary card uses `billed_amount` for external boardings
-- Tests: `src/__tests__/pages/RevenueView.test.jsx` (new) or extend `BoardingMatrix.test.jsx`
+## Chunk B — COMPLETE
 
 **REQ-203: Payroll Uses Extracted Rates**
-- Rate per dog per night: `boarding.night_rate` → `dog.night_rate` → 0
-- Calculation change only — no payroll UI layout changes
-- Tests: extend `src/__tests__/utils/calculations.test.js` (min 6 new tests)
+- `calculateGross` and `calculateBoardingGross` now use `boarding.nightRate ?? dog.nightRate ?? 0`
+- `PayrollPage.jsx:calculateDayNet` now calls `calculateGross` from utils (no inline duplicate)
+- `SummaryCards.jsx:periodRevenue` now calls `calculateGross` (same fallback chain, REQ-202 card)
+- `useBoardings.js` now maps `night_rate → nightRate`, `billed_amount → billedAmount`, `source → source`
+- Tests: `src/__tests__/utils/calculations.test.js` — 10 new tests (7 calculateGross, 3 calculateBoardingGross)
 
-**Files for Chunk B:**
-- `src/utils/calculations.js` — update night revenue calc to use boarding.night_rate fallback
-- `src/pages/PayrollPage.jsx` — uses updated calculations (may need no code change)
-- New revenue view component (location TBD)
+**REQ-202: Revenue Reporting View**
+- `src/components/RevenueView.jsx` (NEW) — table of boardings whose check-in falls in the selected period
+- Shows `billedAmount` (exact, no label) or `rate × nights` with "est." label
+- Period Total row at bottom
+- Added to `MatrixPage.jsx` below Employee Totals
+- Tests: `src/__tests__/pages/RevenueView.test.jsx` — 10 new tests
 
 ---
 
-## Rate Fallback Chain (for Chunk B)
+## Rate Fallback Chain (IMPLEMENTED)
 
 ```
 Per-night revenue for a boarding =

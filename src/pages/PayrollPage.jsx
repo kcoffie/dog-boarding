@@ -3,7 +3,8 @@ import { useData } from '../context/DataContext';
 import DateNavigator from '../components/DateNavigator';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PaymentDialog from '../components/PaymentDialog';
-import { getDateRange, isOvernight } from '../utils/dateUtils';
+import { getDateRange } from '../utils/dateUtils';
+import { calculateGross } from '../utils/calculations';
 
 export default function PayrollPage() {
   const {
@@ -58,16 +59,7 @@ export default function PayrollPage() {
 
   // Calculate net for a specific date
   const calculateDayNet = (dateStr) => {
-    let gross = 0;
-    for (const dog of dogs) {
-      const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-      for (const boarding of dogBoardings) {
-        if (isOvernight(boarding, dateStr)) {
-          gross += dog.nightRate;
-          break;
-        }
-      }
-    }
+    const gross = calculateGross(dogs, boardings, dateStr);
     const percentage = getNetPercentageForDate(dateStr);
     return gross * (percentage / 100);
   };
