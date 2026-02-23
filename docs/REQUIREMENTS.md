@@ -20,7 +20,8 @@
 | v1.1    | Payroll & employee management  | Complete    |
 | v1.2    | CSV import & past boardings    | Complete    |
 | v1.3    | Authentication & invite system | Complete    |
-| v2.0    | External data sync             | In Progress (REQ-100–109) |
+| v2.0    | External data sync             | Complete (REQ-100–109)    |
+| v2.1    | Bug fixes & parse degradation  | In Progress (REQ-110)     |
 
 ---
 

@@ -19,6 +19,7 @@ export function getLogTimestamp() {
  * Send log to file endpoint (fire and forget)
  */
 function sendToFile(level, message, context = null) {
+  if (!import.meta.env?.DEV) return;
   try {
     fetch(LOG_ENDPOINT, {
       method: 'POST',
@@ -100,6 +101,7 @@ export const batchLogger = createSyncLogger('Batch');
  * Clear the log file
  */
 export async function clearLogFile() {
+  if (!import.meta.env?.DEV) return;
   try {
     await fetch('/api/log/clear', { method: 'POST' });
     console.log('[Logger] Log file cleared');
