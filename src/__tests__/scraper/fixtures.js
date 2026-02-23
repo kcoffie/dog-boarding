@@ -223,6 +223,148 @@ export const mockExternalAppointments = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Pricing fixtures (REQ-200)
+// ---------------------------------------------------------------------------
+
+// Appointment page with two pricing line items: one night service, one day service.
+// Night: "Boarding" ($55/night × 10 nights = $550), data-rate in cents (5500 ÷ 100 = $55),
+//        data-qty × 100 (1000 ÷ 100 = 10 nights)
+// Day:   "Boarding (Days)" ($50/day × 4 days = $200), data-rate="5000.00" (decimal string ok)
+// Total: $750
+export const mockAppointmentPageWithPricing = `
+<!DOCTYPE html>
+<html>
+<head><title>Boarding (Nights) | A Girl and Your Dog</title></head>
+<body>
+  <div id="when-wrapper" data-start_scheduled="1766336400" data-end_scheduled="1766484000"></div>
+  <span class="event-pet">Maverick</span>
+  <span class="event-client">Sasha Basso</span>
+  <fieldset id="confirm-price" class="no-legend">
+    <a class="btn toggle-field text quote">Total $750 <i class="fa fa-fw"></i></a>
+    <div class="toggle-field-content hidden">
+      <div class="service-wrapper" data-service="22215-0">
+        <span class="service-name">Boarding</span>
+        <div class="price" data-amount="550.00" data-rate="5500" data-qty="1000">
+          <span class="qty-rate">$55 x 10</span>
+        </div>
+      </div>
+      <div class="service-wrapper" data-service="11778-0">
+        <span class="service-name"> Boarding (Days)</span>
+        <div class="price" data-amount="200.00" data-rate="5000.00" data-qty="400.00">
+          <span class="qty-rate">$50 x 4</span>
+        </div>
+      </div>
+    </div>
+  </fieldset>
+</body>
+</html>
+`;
+
+// Single pricing line item — cannot classify as night or day (REQ-200 rule)
+export const mockPricingSingleLine = `
+<fieldset id="confirm-price" class="no-legend">
+  <a class="btn toggle-field text quote">Total $550 <i class="fa fa-fw"></i></a>
+  <div class="toggle-field-content hidden">
+    <div class="service-wrapper" data-service="22215-0">
+      <span class="service-name">Boarding</span>
+      <div class="price" data-amount="550.00" data-rate="5500" data-qty="1000">
+        <span class="qty-rate">$55 x 10</span>
+      </div>
+    </div>
+  </div>
+</fieldset>
+`;
+
+// Pricing section with unparseable total
+export const mockPricingBadTotal = `
+<fieldset id="confirm-price" class="no-legend">
+  <a class="btn toggle-field text quote">Total TBD <i class="fa fa-fw"></i></a>
+  <div class="toggle-field-content hidden">
+    <div class="service-wrapper" data-service="1-0">
+      <span class="service-name">Boarding</span>
+      <div class="price" data-amount="550.00" data-rate="5500" data-qty="1000">
+        <span class="qty-rate">$55 x 10</span>
+      </div>
+    </div>
+  </div>
+</fieldset>
+`;
+
+// Pricing section missing data-qty on first item (malformed line item)
+export const mockPricingMalformedItem = `
+<fieldset id="confirm-price" class="no-legend">
+  <a class="btn toggle-field text quote">Total $200 <i class="fa fa-fw"></i></a>
+  <div class="toggle-field-content hidden">
+    <div class="service-wrapper" data-service="1-0">
+      <span class="service-name">Boarding</span>
+      <div class="price" data-amount="550.00" data-rate="5500">
+        <span class="qty-rate">missing qty</span>
+      </div>
+    </div>
+    <div class="service-wrapper" data-service="2-0">
+      <span class="service-name">Boarding (Days)</span>
+      <div class="price" data-amount="200.00" data-rate="5000" data-qty="400">
+        <span class="qty-rate">$50 x 4</span>
+      </div>
+    </div>
+  </div>
+</fieldset>
+`;
+
+// Decimal total
+export const mockPricingDecimalTotal = `
+<fieldset id="confirm-price" class="no-legend">
+  <a class="btn toggle-field text quote">Total $750.50 <i class="fa fa-fw"></i></a>
+  <div class="toggle-field-content hidden">
+    <div class="service-wrapper" data-service="1-0">
+      <span class="service-name">Boarding</span>
+      <div class="price" data-amount="750.50" data-rate="5500" data-qty="1000">
+        <span class="qty-rate">$55 x 10</span>
+      </div>
+    </div>
+  </div>
+</fieldset>
+`;
+
+// External appointment data with pricing (for mapping tests)
+export const mockExternalAppointmentWithPricing = {
+  external_id: 'PRC123',
+  pet_name: 'Maverick',
+  check_in_datetime: '2026-02-13T00:00:00.000Z',
+  check_out_datetime: '2026-02-18T00:00:00.000Z',
+  pricing: {
+    total: 750,
+    lineItems: [
+      { serviceName: 'Boarding', rate: 55, qty: 10, amount: 550 },
+      { serviceName: 'Boarding (Days)', rate: 50, qty: 4, amount: 200 },
+    ],
+  },
+};
+
+// External appointment data without pricing
+export const mockExternalAppointmentNoPricing = {
+  external_id: 'NOP123',
+  pet_name: 'Luna',
+  check_in_datetime: '2026-02-15T00:00:00.000Z',
+  check_out_datetime: '2026-02-20T00:00:00.000Z',
+  pricing: null,
+};
+
+// Single-line pricing (total only, no night/day breakdown)
+export const mockExternalAppointmentSingleLinePricing = {
+  external_id: 'SNG123',
+  pet_name: 'Cooper',
+  check_in_datetime: '2026-02-10T00:00:00.000Z',
+  check_out_datetime: '2026-02-15T00:00:00.000Z',
+  pricing: {
+    total: 550,
+    lineItems: [
+      { serviceName: 'Boarding', rate: 55, qty: 10, amount: 550 },
+    ],
+  },
+};
+
 export const mockSyncLog = {
   id: 'test-sync-1',
   started_at: '2025-12-20T10:00:00Z',
