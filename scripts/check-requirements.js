@@ -29,7 +29,7 @@ const colors = {
 /**
  * Parse requirements from REQUIREMENTS.md
  * @param {string} filePath Path to REQUIREMENTS.md
- * @returns {Array<{id: string, title: string}>} Array of requirement objects
+ * @returns {Array<{id: string, title: string, status: string}>} Array of requirement objects
  */
 function parseRequirements(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -40,14 +40,20 @@ function parseRequirements(filePath) {
   const content = fs.readFileSync(filePath, 'utf-8');
   const requirements = [];
 
-  // Match ### REQ-XXX: Title
-  const reqRegex = /### (REQ-\d+):\s*(.+)/g;
-  let match;
+  // Split on requirement headings and parse each block
+  const blocks = content.split(/(?=### REQ-\d+:)/);
 
-  while ((match = reqRegex.exec(content)) !== null) {
+  for (const block of blocks) {
+    const headingMatch = block.match(/^### (REQ-\d+):\s*(.+)/);
+    if (!headingMatch) continue;
+
+    const statusMatch = block.match(/\*\*Status:\*\*\s*([^\n|]+)/);
+    const status = statusMatch ? statusMatch[1].trim() : 'Unknown';
+
     requirements.push({
-      id: match[1],
-      title: match[2].trim(),
+      id: headingMatch[1],
+      title: headingMatch[2].trim(),
+      status,
     });
   }
 
@@ -160,17 +166,25 @@ function main() {
   console.log(`\n${colors.bold}${colors.cyan}📋 Requirements Coverage Report${colors.reset}\n`);
   console.log('='.repeat(60));
 
+  // Statuses that are not yet implemented — skip test enforcement
+  const EXEMPT_STATUSES = new Set(['Planned', 'Deferred']);
+
   let covered = 0;
   let uncovered = 0;
+  let exempt = 0;
   const uncoveredList = [];
 
   for (const req of requirements) {
     const testFiles = tested.get(req.id);
+    const isExempt = EXEMPT_STATUSES.has(req.status);
 
     if (testFiles && testFiles.length > 0) {
       console.log(`${colors.green}✅ ${req.id}${colors.reset}: ${req.title}`);
       console.log(`   ${colors.cyan}└─${colors.reset} ${testFiles.join(', ')}`);
       covered++;
+    } else if (isExempt) {
+      console.log(`${colors.yellow}⏭️  ${req.id}${colors.reset}: ${req.title} ${colors.yellow}[${req.status} — no tests required]${colors.reset}`);
+      exempt++;
     } else {
       console.log(`${colors.red}❌ ${req.id}${colors.reset}: ${req.title}`);
       console.log(`   ${colors.yellow}└─ NO TESTS${colors.reset}`);
@@ -181,14 +195,16 @@ function main() {
 
   console.log('='.repeat(60));
 
-  const percentage = Math.round((covered / requirements.length) * 100);
+  const enforced = requirements.length - exempt;
+  const percentage = enforced > 0 ? Math.round((covered / enforced) * 100) : 100;
   const percentColor = percentage === 100 ? colors.green : percentage >= 80 ? colors.yellow : colors.red;
 
   console.log(`\n${colors.bold}Summary:${colors.reset}`);
   console.log(`  Total Requirements: ${requirements.length}`);
   console.log(`  ${colors.green}Covered:${colors.reset} ${covered}`);
   console.log(`  ${colors.red}Missing:${colors.reset} ${uncovered}`);
-  console.log(`  ${colors.bold}Coverage:${colors.reset} ${percentColor}${percentage}%${colors.reset}`);
+  console.log(`  ${colors.yellow}Exempt (Planned/Deferred):${colors.reset} ${exempt}`);
+  console.log(`  ${colors.bold}Coverage:${colors.reset} ${percentColor}${percentage}%${colors.reset} (of ${enforced} enforced)`);
 
   if (uncovered > 0) {
     console.log(`\n${colors.yellow}⚠️  The following requirements need tests:${colors.reset}`);
@@ -199,7 +215,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log(`\n${colors.green}✅ All requirements have test coverage!${colors.reset}\n`);
+  console.log(`\n${colors.green}✅ All enforced requirements have test coverage!${colors.reset}\n`);
 }
 
 main();
