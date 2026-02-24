@@ -1,12 +1,12 @@
 # Dog Boarding App — Session Handoff (v2.2)
-**Last updated:** February 23, 2026
-**Status:** v2.2 complete — all 4 REQs done + DC pattern fix, 619 tests pass
+**Last updated:** February 24, 2026
+**Status:** v2.2 complete — 620 tests (619 pass, 1 pre-existing date-flaky in DateNavigator)
 
 ---
 
 ## Current State
 
-- **619 tests pass.** Chunk A + Chunk B + DC pattern fix all on `main`, not yet deployed.
+- **620 tests, 619 pass.** The 1 failure (`DateNavigator.test.jsx` expects diffDays=13, gets 12) is a pre-existing date-flaky test unrelated to pricing — was 619/619 on Feb 23. Not introduced by this session.
 - Migrations 012 and 013 already applied in production Supabase.
 - 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
 - Manual sync working end-to-end in production.
@@ -19,23 +19,72 @@
 
 ---
 
-## Pending Before Deploying
+## What's Pending
 
-No migrations needed — 012 and 013 already applied. Just deploy.
+### Deploy + sync (REQUIRED to get night_rates populated)
 
-**After deploying, do these in order:**
+This session's commit fixes the root cause of `night_rate = null` on all boardings. Changes need to be deployed, then a manual sync run.
 
-1. Run the dog rate recovery SQL (see Useful SQL below) to restore rates zeroed by the bug
-2. Trigger a manual sync for any date range to re-populate `boardings.night_rate` with the DC fix
-3. Verify rates populated:
+1. **Deploy to Vercel** — no migrations needed
+2. **Trigger a manual sync** (any date range with boardings) — this will populate `boardings.night_rate` and update `dogs.night_rate` correctly for the first time
+3. **Verify with this query:**
+
 ```sql
-SELECT b.billed_amount, b.night_rate, b.day_rate, d.name, d.night_rate as dog_night_rate
+SELECT b.billed_amount, b.night_rate, b.day_rate, d.name, d.night_rate as dog_night_rate,
+       b.arrival_datetime, b.departure_datetime
 FROM boardings b
 JOIN dogs d ON b.dog_id = d.id
-WHERE b.source = 'external'
-ORDER BY b.created_at DESC
-LIMIT 20;
+WHERE b.billed_amount IS NOT NULL
+ORDER BY b.departure_datetime DESC;
 ```
+
+Expected: `night_rate` and `day_rate` now non-null for boardings with 2+ service lines. Dog rates updated too.
+
+4. **If dog rates are still 0** after the sync, run the recovery SQL (see Useful SQL section) — it reads rates from `sync_appointments.pricing_line_items` which is already populated.
+
+---
+
+## This Session (Feb 24, 2026) — Night Rate Extraction Bug
+
+### Root cause
+
+`extractPricing` in `extraction.js` used this regex to find `.price` divs:
+```js
+/<div[^>]*class="price"[^>]*>/gi   // WRONG — exact class match only
+```
+
+Real production HTML has **multiple CSS classes** on price divs:
+```html
+<div class="price p-7 has-outstanding" id="price-0" data-rate="5500" data-qty="500" ...>
+```
+
+The regex matched bare `class="price"` in test fixtures but **never** matched production HTML. Result: `priceTags = []` → `lineItems = []` → `classifyPricingItems` bailed at `length < 2` → `night_rate = null` silently for every boarding. All tests passed because fixtures used the simplified (wrong) class format.
+
+### Fix
+
+`extraction.js:434` — changed to word-boundary match:
+```js
+/<div[^>]*class="[^"]*\bprice\b[^"]*"[^>]*>/gi   // matches "price" among multiple classes
+```
+
+### Additional changes
+
+**`extraction.js` — `extractPricing` now has step-by-step logging:**
+- Logs fieldset snippet, total parsed, service names found, each price tag matched, each line item
+- If Vercel logs show `[extractPricing] priceTags found: 2` and line items → working correctly
+- If logs show `[extractPricing] priceTags found: 0` → regex still not matching, investigate fieldset snippet
+
+**`extraction.js` — throws instead of silent null on structural failure:**
+- Previously: service names found + zero price divs → silently returned `{ total, lineItems: [] }` → null rates stored
+- Now: throws `EXTRACTION FAILURE` error when service names > 0 but price divs = 0
+- Caller (`mapAndSaveAppointment`) catches this, logs to `summary.errors`, skips upsert — no bad data written
+
+**`fixtures.js` — all price divs updated to real HTML structure:**
+- All 7 occurrences of bare `class="price"` → `class="price p-0 has-outstanding"` / `class="price p-1 has-outstanding"`
+- Added `mockPricingNoPriceDivs`: valid service names but wrong div class — used to test the throw
+
+**`extraction.test.js` — new test:**
+- `'throws when service names exist but no .price divs match (extraction failure)'` — expects `toThrow(/EXTRACTION FAILURE/)`
 
 ---
 
@@ -50,127 +99,69 @@ LIMIT 20;
 
 ---
 
-## This Session (Feb 23, 2026)
-
-**Co-Authored-By slug removed** from commit 31ae04f (previous session had added one — stripped via git filter-branch).
+## Feb 23 Session — What Was Done
 
 **REQ-203: Payroll rate fallback chain**
 - `calculateGross` / `calculateBoardingGross` in `src/utils/calculations.js` now use `boarding.nightRate ?? dog.nightRate ?? 0`
 - `PayrollPage.jsx:calculateDayNet` now calls shared `calculateGross` (no inline duplicate)
 - `SummaryCards.jsx:periodRevenue` now calls `calculateGross`
 - `src/hooks/useBoardings.js` maps `night_rate → nightRate`, `billed_amount → billedAmount`, `source → source`
-- Tests: `src/__tests__/utils/calculations.test.js` — 10 new tests
 
 **REQ-202: Revenue reporting view**
 - `src/components/RevenueView.jsx` (NEW) — table of boardings whose check-in falls in the selected period
 - Shows `billedAmount` exact, or `rate × nights` with "est." label when no billedAmount
 - Period Total row at bottom; added to `MatrixPage.jsx` below Employee Totals
-- Tests: `src/__tests__/pages/RevenueView.test.jsx` — 10 new tests
 
 **Bug fix: upsertDog zero-overwrite**
-- `upsertDog` was writing `night_rate: 0` to the dogs table when single-line pricing couldn't classify rates
+- `upsertDog` was writing `night_rate: 0` when single-line pricing couldn't classify rates
 - Fixed: only write `night_rate`/`day_rate` to DB when value > 0
-- Regression test added to `mapping.test.js`
-- **Action needed:** Run recovery SQL below to restore zeroed dog rates from existing sync data
 
-**Bug fix: /DC /i false positive in dayServicePatterns**
-- "Boarding discounted nights for DC full-time" (Captain Morgan) was being classified as a day service
-- Fixed: `/DC /i` → `/^DC/i` in `SCRAPER_CONFIG.dayServicePatterns` — anchors to start of service name
-- Next sync after deploy will correctly populate `night_rate: 55` for affected boardings
-- Tests added to `mapping.test.js`
+**Bug fix: /DC /i false positive**
+- "Boarding discounted nights for DC full-time" was classified as a day service
+- Fixed: `/DC /i` → `/^DC/i` in `SCRAPER_CONFIG.dayServicePatterns`
 
 ---
 
-## Chunk A — What Was Done (previous session)
-
-**New file:** `supabase/migrations/013_add_pricing_columns.sql`
-- `boardings`: +`billed_amount`, `night_rate`, `day_rate` (all `NUMERIC(10,2)`, nullable)
-- `sync_appointments`: +`appointment_total NUMERIC(10,2)`, `pricing_line_items JSONB`
-
-**`src/lib/scraper/config.js`**
-- Added `dayServicePatterns: [/day/i, /daycare/i, /^DC/i, /pack/i]` — originally `/DC /i`, anchored to `^` on Feb 23 to fix false positive
-- Used to classify pricing line items as night vs day services
-
-**`src/lib/scraper/extraction.js`**
-- New exported `extractPricing(html)` — parses `#confirm-price` fieldset
-- Returns `{ total, lineItems }` or `null` (null = no pricing section, not an error)
-- `data-rate` / `data-qty` → `parseFloat(attr) / 100` (site stores cents / qty×100)
-- `parseAppointmentPage()` now includes `pricing` field in its return object
-
-**`src/lib/scraper/mapping.js`**
-- New private `classifyPricingItems(pricing)` helper — identifies night/day line items
-- `mapToDog()` — sets `night_rate`/`day_rate` from pricing when available (0 when absent)
-- `mapToBoarding()` — populates `billed_amount`, `night_rate`, `day_rate`
-- `mapToSyncAppointment()` — populates `appointment_total`, `pricing_line_items`
-- `upsertDog()` — new `updateRates` option; only overwrites DB rates when pricing was extracted
-- `upsertBoarding()` — pricing fields only written when present in boarding data
-- `mapAndSaveAppointment()` — passes `updateRates: externalData.pricing != null`
-
-**Tests added:**
-- `src/__tests__/scraper/extraction.test.js` — 14 new `extractPricing` tests
-- `src/__tests__/scraper/mapping.test.js` — 12 new REQ-201 pricing/mapping tests
-- `src/__tests__/scraper/fixtures.js` — pricing HTML fixtures + mock external appointment objects
-
----
-
-## Chunk B — COMPLETE
-
-**REQ-203: Payroll Uses Extracted Rates**
-- `calculateGross` and `calculateBoardingGross` now use `boarding.nightRate ?? dog.nightRate ?? 0`
-- `PayrollPage.jsx:calculateDayNet` now calls `calculateGross` from utils (no inline duplicate)
-- `SummaryCards.jsx:periodRevenue` now calls `calculateGross` (same fallback chain, REQ-202 card)
-- `useBoardings.js` now maps `night_rate → nightRate`, `billed_amount → billedAmount`, `source → source`
-- Tests: `src/__tests__/utils/calculations.test.js` — 10 new tests (7 calculateGross, 3 calculateBoardingGross)
-
-**REQ-202: Revenue Reporting View**
-- `src/components/RevenueView.jsx` (NEW) — table of boardings whose check-in falls in the selected period
-- Shows `billedAmount` (exact, no label) or `rate × nights` with "est." label
-- Period Total row at bottom
-- Added to `MatrixPage.jsx` below Employee Totals
-- Tests: `src/__tests__/pages/RevenueView.test.jsx` — 10 new tests
-
----
-
-## Rate Fallback Chain (IMPLEMENTED)
+## Rate Fallback Chain
 
 ```
 Per-night revenue for a boarding =
-  boarding.night_rate           ← from sync (preferred, set by Chunk A)
+  boarding.night_rate           ← from sync (preferred, set by REQ-201)
   ?? dog.night_rate             ← fallback for manual boardings or pre-v2.2 records
   ?? 0                          ← last resort (show in UI as "no rate set")
 ```
 
 ---
 
-## Pricing HTML Structure (confirmed from C63QgKsK)
+## Pricing HTML Structure (CORRECTED Feb 24)
+
+Real HTML — price divs have multiple classes:
 
 ```html
 <fieldset id="confirm-price" class="no-legend">
-  <a class="btn toggle-field text quote">Total $750 <i class="fa fa-fw"></i></a>
+  <a class="btn toggle-field text quote">Total $375 <i class="fa fa-fw"></i></a>
   <div class="toggle-field-content hidden">
     <div class="service-wrapper" data-service="22215-0">
       <span class="service-name">Boarding discounted nights for DC full-time</span>
-      <div class="price"
-        data-amount="550.00"
+      <div class="price p-7 has-outstanding" id="price-0"
+        data-amount="275.00"
         data-rate="5500"       <!-- cents ÷ 100 = $55.00 -->
-        data-qty="1000">       <!-- qty × 100 ÷ 100 = 10 nights -->
+        data-qty="500">        <!-- qty × 100 ÷ 100 = 5 nights -->
       </div>
     </div>
     <div class="service-wrapper" data-service="11778-0">
       <span class="service-name"> Boarding (Days)</span>
-      <div class="price"
-        data-amount="200.00"
-        data-rate="5000.00"    <!-- decimal string ok -->
-        data-qty="400.00">
+      <div class="price p-3 has-outstanding" id="price-1"
+        data-amount="100.00"
+        data-rate="5000.00"
+        data-qty="200.00">
       </div>
     </div>
   </div>
 </fieldset>
 ```
 
-**DC pattern fixed (Feb 23):** Changed `/DC /i` → `/^DC/i` in `SCRAPER_CONFIG.dayServicePatterns`.
-"Boarding discounted nights for DC full-time" now correctly classifies as a night service
-because "DC" does not appear at the start of the service name. Tests added for this case.
+Key: `class="price p-N has-outstanding"` — the `p-N` suffix increments per line item. The original `class="price"` regex never matched this.
 
 ---
 
@@ -184,10 +175,18 @@ because "DC" does not appear at the start of the service name. Tests added for t
 
 ---
 
-## Known Data Issues (self-resolving on next sync)
+## Known Data Issues
 
-- Null service_types: C63QgKsL, C63QfyoF, C63QgNGU, C63QgP2y, C63QgOHe
+- Null service_types in DB (self-correct on next sync): C63QgKsL, C63QfyoF, C63QgNGU, C63QgP2y, C63QgOHe
 - Amended appts not yet archived: C63QgNGU→C63QfyoF (4/1-13), C63QgH5K→C63QgNHs (3/3-19)
+
+---
+
+## Low-Priority Backlog
+
+- REQ-107: Sync history UI + enable/disable toggle
+- Fix status field extraction (always null — `.appt-change-status` needs textContent on `<a><i>`)
+- Pre-detail-fetch date filter (~48s perf gain per sync)
 
 ---
 
@@ -198,20 +197,21 @@ because "DC" does not appear at the start of the service name. Tests added for t
 UPDATE sync_logs SET status = 'failed', completed_at = NOW()
 WHERE status = 'running' AND started_at < NOW() - INTERVAL '5 minutes';
 
--- Check rate extraction after Chunk A deploys
-SELECT b.billed_amount, b.night_rate, b.day_rate, d.name, d.night_rate as dog_night_rate
+-- Verify night_rate populated after sync
+SELECT b.billed_amount, b.night_rate, b.day_rate, d.name, d.night_rate as dog_night_rate,
+       b.arrival_datetime, b.departure_datetime
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
-WHERE b.source = 'external' ORDER BY b.created_at DESC LIMIT 20;
+WHERE b.billed_amount IS NOT NULL
+ORDER BY b.departure_datetime DESC;
 
 -- Check pricing in sync_appointments
 SELECT external_id, pet_name, appointment_total, pricing_line_items
 FROM sync_appointments WHERE appointment_total IS NOT NULL
 ORDER BY last_synced_at DESC LIMIT 10;
 
--- Recover dog night_rates that were zeroed by the upsertDog bug.
--- Reads from the most recent sync_appointment that has pricing_line_items for each dog,
--- extracts the first non-day line item rate (the night rate).
--- Review before running — only updates dogs whose current night_rate is 0.
+-- Recover dog night_rates if still 0 after sync.
+-- Reads rates from sync_appointments.pricing_line_items.
+-- Only updates dogs whose current night_rate is 0.
 WITH latest_pricing AS (
   SELECT DISTINCT ON (mapped_dog_id)
     mapped_dog_id,
