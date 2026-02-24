@@ -13,6 +13,7 @@ import {
   mockPricingBadTotal,
   mockPricingMalformedItem,
   mockPricingDecimalTotal,
+  mockPricingNoPriceDivs,
 } from './fixtures.js';
 
 describe('REQ-102: Appointment Detail Extraction', () => {
@@ -361,12 +362,19 @@ describe('REQ-200: extractPricing()', () => {
     expect(result.lineItems[1].serviceName).toBe('Boarding (Days)');
   });
 
-  it('handles single line item without throwing', () => {
+  it('handles single line item (total + 1 line item returned)', () => {
     const result = extractPricing(mockPricingSingleLine);
     expect(result).not.toBeNull();
     expect(result.total).toBe(550);
     expect(result.lineItems).toHaveLength(1);
     expect(result.lineItems[0].serviceName).toBe('Boarding');
+  });
+
+  it('throws when service names exist but no .price divs match (extraction failure)', () => {
+    // This catches site structure changes or regex regressions where price divs
+    // are visible but the regex fails to capture them — silent null would store
+    // bad data; a throw forces the caller to flag it as a bad data read.
+    expect(() => extractPricing(mockPricingNoPriceDivs)).toThrow(/EXTRACTION FAILURE/);
   });
 
   it('skips malformed line item but returns remaining valid items', () => {
