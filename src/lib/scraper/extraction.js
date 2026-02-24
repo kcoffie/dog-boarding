@@ -401,8 +401,13 @@ export function extractPricing(html) {
   if (!html || !html.includes('id="confirm-price"')) return null;
 
   const fieldsetMatch = html.match(/<fieldset[^>]*id="confirm-price"[^>]*>([\s\S]*?)<\/fieldset>/i);
-  if (!fieldsetMatch) return null;
+  if (!fieldsetMatch) {
+    console.warn('[extractPricing] id="confirm-price" found in HTML but fieldset regex did not match');
+    return null;
+  }
   const fieldset = fieldsetMatch[1];
+  console.log('[extractPricing] fieldset length:', fieldset.length,
+    '| snippet:', fieldset.substring(0, 200).replace(/\s+/g, ' ').trim());
 
   // Extract total from the .toggle-field.text.quote anchor text.
   // The anchor is: <a class="btn toggle-field text quote">Total $750 <i ...></i></a>
@@ -411,15 +416,16 @@ export function extractPricing(html) {
     /class="[^"]*toggle-field[^"]*text[^"]*quote[^"]*"[^>]*>([\s\S]*?)(?:<i\b|<\/a>)/i
   );
   if (!totalAnchorMatch) {
-    console.warn('[extractPricing] Could not find total anchor in #confirm-price');
+    console.warn('[extractPricing] Could not find total anchor (.toggle-field.text.quote) in #confirm-price');
     return null;
   }
   const totalAmountMatch = totalAnchorMatch[1].match(/\$(\d+(?:\.\d+)?)/);
   if (!totalAmountMatch) {
-    console.warn('[extractPricing] Could not parse total amount from:', totalAnchorMatch[1].trim());
+    console.warn('[extractPricing] Could not parse total amount from anchor text:', totalAnchorMatch[1].trim());
     return null;
   }
   const total = parseFloat(totalAmountMatch[1]);
+  console.log('[extractPricing] total:', total);
 
   // Collect service names from all .service-name spans in order.
   const serviceNames = [];
@@ -428,13 +434,29 @@ export function extractPricing(html) {
   while ((nameMatch = serviceNameRegex.exec(fieldset)) !== null) {
     serviceNames.push(nameMatch[1].trim());
   }
+  console.log('[extractPricing] serviceNames:', serviceNames);
 
   // Collect the full opening tag of each .price div (for attribute parsing).
+  // Real HTML uses multiple classes: class="price p-7 has-outstanding" — match
+  // with \bprice\b so we catch "price" anywhere in the class list.
   const priceTags = [];
-  const priceTagRegex = /<div[^>]*class="price"[^>]*>/gi;
+  const priceTagRegex = /<div[^>]*class="[^"]*\bprice\b[^"]*"[^>]*>/gi;
   let priceTagMatch;
   while ((priceTagMatch = priceTagRegex.exec(fieldset)) !== null) {
+    console.log('[extractPricing] price tag matched:', priceTagMatch[0].substring(0, 120).replace(/\s+/g, ' '));
     priceTags.push(priceTagMatch[0]);
+  }
+  console.log('[extractPricing] priceTags found:', priceTags.length);
+
+  // If service names are present but NO price divs matched, extraction has failed —
+  // the site structure may have changed. Throw so the caller can flag this appointment
+  // as a bad data read rather than silently storing null rates.
+  if (priceTags.length === 0 && serviceNames.length > 0) {
+    const snippet = fieldset.substring(0, 500).replace(/\s+/g, ' ').trim();
+    throw new Error(
+      `[extractPricing] EXTRACTION FAILURE: found ${serviceNames.length} service name(s) but 0 .price divs matched. ` +
+      `priceTagRegex=${priceTagRegex.source} | fieldset snippet: ${snippet}`
+    );
   }
 
   // Pair service names with price tags in document order.
@@ -447,15 +469,17 @@ export function extractPricing(html) {
       const qtyMatch  = tag.match(/data-qty="([^"]+)"/);
       const amtMatch  = tag.match(/data-amount="([^"]+)"/);
       if (!rateMatch || !qtyMatch || !amtMatch) {
-        console.warn('[extractPricing] Missing price attributes for service:', serviceNames[i]);
+        console.warn('[extractPricing] Missing price attributes for service:', serviceNames[i], '| tag:', tag);
         continue;
       }
-      lineItems.push({
+      const item = {
         serviceName: serviceNames[i],
         rate:   parseFloat(rateMatch[1]) / 100,
         qty:    parseFloat(qtyMatch[1])  / 100,
         amount: parseFloat(amtMatch[1]),
-      });
+      };
+      console.log('[extractPricing] line item:', item);
+      lineItems.push(item);
     } catch (err) {
       console.warn('[extractPricing] Error parsing line item:', serviceNames[i], err.message);
     }
