@@ -245,13 +245,13 @@ export const mockAppointmentPageWithPricing = `
     <div class="toggle-field-content hidden">
       <div class="service-wrapper" data-service="22215-0">
         <span class="service-name">Boarding</span>
-        <div class="price" data-amount="550.00" data-rate="5500" data-qty="1000">
+        <div class="price p-0 has-outstanding" data-amount="550.00" data-rate="5500" data-qty="1000">
           <span class="qty-rate">$55 x 10</span>
         </div>
       </div>
       <div class="service-wrapper" data-service="11778-0">
         <span class="service-name"> Boarding (Days)</span>
-        <div class="price" data-amount="200.00" data-rate="5000.00" data-qty="400.00">
+        <div class="price p-1 has-outstanding" data-amount="200.00" data-rate="5000.00" data-qty="400.00">
           <span class="qty-rate">$50 x 4</span>
         </div>
       </div>
@@ -268,7 +268,7 @@ export const mockPricingSingleLine = `
   <div class="toggle-field-content hidden">
     <div class="service-wrapper" data-service="22215-0">
       <span class="service-name">Boarding</span>
-      <div class="price" data-amount="550.00" data-rate="5500" data-qty="1000">
+      <div class="price p-0 has-outstanding" data-amount="550.00" data-rate="5500" data-qty="1000">
         <span class="qty-rate">$55 x 10</span>
       </div>
     </div>
@@ -283,7 +283,7 @@ export const mockPricingBadTotal = `
   <div class="toggle-field-content hidden">
     <div class="service-wrapper" data-service="1-0">
       <span class="service-name">Boarding</span>
-      <div class="price" data-amount="550.00" data-rate="5500" data-qty="1000">
+      <div class="price p-0 has-outstanding" data-amount="550.00" data-rate="5500" data-qty="1000">
         <span class="qty-rate">$55 x 10</span>
       </div>
     </div>
@@ -298,13 +298,13 @@ export const mockPricingMalformedItem = `
   <div class="toggle-field-content hidden">
     <div class="service-wrapper" data-service="1-0">
       <span class="service-name">Boarding</span>
-      <div class="price" data-amount="550.00" data-rate="5500">
+      <div class="price p-0 has-outstanding" data-amount="550.00" data-rate="5500">
         <span class="qty-rate">missing qty</span>
       </div>
     </div>
     <div class="service-wrapper" data-service="2-0">
       <span class="service-name">Boarding (Days)</span>
-      <div class="price" data-amount="200.00" data-rate="5000" data-qty="400">
+      <div class="price p-1 has-outstanding" data-amount="200.00" data-rate="5000" data-qty="400">
         <span class="qty-rate">$50 x 4</span>
       </div>
     </div>
@@ -319,7 +319,23 @@ export const mockPricingDecimalTotal = `
   <div class="toggle-field-content hidden">
     <div class="service-wrapper" data-service="1-0">
       <span class="service-name">Boarding</span>
-      <div class="price" data-amount="750.50" data-rate="5500" data-qty="1000">
+      <div class="price p-0 has-outstanding" data-amount="750.50" data-rate="5500" data-qty="1000">
+        <span class="qty-rate">$55 x 10</span>
+      </div>
+    </div>
+  </div>
+</fieldset>
+`;
+
+// Pricing section where service names exist but price divs use a non-matching class.
+// Simulates a site structure change — should trigger a throw (not silent null).
+export const mockPricingNoPriceDivs = `
+<fieldset id="confirm-price" class="no-legend">
+  <a class="btn toggle-field text quote">Total $550 <i class="fa fa-fw"></i></a>
+  <div class="toggle-field-content hidden">
+    <div class="service-wrapper" data-service="1-0">
+      <span class="service-name">Boarding</span>
+      <div class="pricing-row" data-amount="550.00" data-rate="5500" data-qty="1000">
         <span class="qty-rate">$55 x 10</span>
       </div>
     </div>
