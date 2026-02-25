@@ -1,12 +1,13 @@
 # Dog Boarding App — Session Handoff (v2.2)
-**Last updated:** February 24, 2026
-**Status:** v2.2 complete — 620 tests (619 pass, 1 pre-existing date-flaky in DateNavigator)
+**Last updated:** February 25, 2026
+**Status:** v2.2 deployed — 627 tests (626 pass, 1 pre-existing date-flaky in DateNavigator)
 
 ---
 
 ## Current State
 
-- **620 tests, 619 pass.** The 1 failure (`DateNavigator.test.jsx` expects diffDays=13, gets 12) is a pre-existing date-flaky test unrelated to pricing — was 619/619 on Feb 23. Not introduced by this session.
+- **627 tests, 626 pass.** The 1 failure (`DateNavigator.test.jsx`) is the pre-existing DST-flaky test — unrelated.
+- v2.2 deployed. Two post-deploy data quality bugs fixed this session (code committed, not yet deployed).
 - Migrations 012 and 013 already applied in production Supabase.
 - 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
 - Manual sync working end-to-end in production.
@@ -21,26 +22,39 @@
 
 ## What's Pending
 
-### Deploy + sync (REQUIRED to get night_rates populated)
+### 1. Deploy this session's fixes (REQUIRED before next sync)
 
-This session's commit fixes the root cause of `night_rate = null` on all boardings. Changes need to be deployed, then a manual sync run.
-
+Two code bugs fixed this session — deploy before running any more syncs:
 1. **Deploy to Vercel** — no migrations needed
-2. **Trigger a manual sync** (any date range with boardings) — this will populate `boardings.night_rate` and update `dogs.night_rate` correctly for the first time
-3. **Verify with this query:**
+2. **Run SQL data cleanup** (see SQL section below) — fix Millie's date + archive stale records
+3. **Trigger a manual sync** to verify multi-pet pricing works for Mochi (C63QfLnk)
 
-```sql
-SELECT b.billed_amount, b.night_rate, b.day_rate, d.name, d.night_rate as dog_night_rate,
-       b.arrival_datetime, b.departure_datetime
-FROM boardings b
-JOIN dogs d ON b.dog_id = d.id
-WHERE b.billed_amount IS NOT NULL
-ORDER BY b.departure_datetime DESC;
-```
+### 2. Post-deploy data quality issues found after v2.2 sync
 
-Expected: `night_rate` and `day_rate` now non-null for boardings with 2+ service lines. Dog rates updated too.
+#### Issue 1 — Bronwyn: "Initial Evaluation" showing as boarding (STALE DATA)
+- External IDs: C63QgPJz, C63QgTPD, C63QgTPE
+- Sync now correctly skips these (logs show `⏭️ Skipping non-boarding`), but old DB records remain
+- **Fix: SQL cleanup** (see below) — no code change needed
 
-4. **If dog rates are still 0** after the sync, run the recovery SQL (see Useful SQL section) — it reads rates from `sync_appointments.pricing_line_items` which is already populated.
+#### Issue 2 — Gulliver (C63QgSiD): showing as boarding on 2/28 but not on external site (CANCELLED APPT)
+- Reconciler logged: `valid appointment page but was NOT seen during sync — NOT archiving`
+- Root cause: cancelled appointment's direct URL still returns a valid page with `data-start_scheduled`
+- Reconciler correctly warned but conservatively did not archive
+- **Fix: SQL cleanup** (see below) — no code change needed; reconciler limitation is acceptable behavior
+
+#### Issue 3 — Millie McSpadden: app shows March 4–19, external site shows March 3–19 (CODE FIXED)
+- Root cause: `upsertBoarding` overlap fallback was overwriting existing boarding with a different `external_id`
+  - C63QgH5K (March 3–19) was in DB. C63QgNHs (March 4–19, amended) was processed.
+  - Both have overlapping dates → overlap match found C63QgH5K → overwrote it with NHs data (March 4 date, NHs external_id)
+- **Code fix:** `mapping.js:upsertBoarding` — overlap fallback now only uses the match when the found boarding has NO external_id (manual boarding waiting to be linked). If it already has a different external_id, creates a new boarding instead.
+- **SQL data fix also needed** — restore Millie's boarding to March 3 before re-sync (see SQL below)
+
+#### Issue 4 — Mochi Hill (C63QfLnk): wrong line item pairing for multi-pet appointments (CODE FIXED)
+- Root cause: C63QfLnk has 2 pets (Mochi + Marlee). HTML has `pets-2` class → 4 price divs for 2 services.
+  - Old code: `serviceNames[i]` paired with `priceTags[i]` — treated "Boarding (Days)" as paired with Marlee's night price div
+  - Result: day_rate=45 (Marlee's night rate), wrong amount
+- **Code fix:** `extraction.js:extractPricing` — extracts `numPets` from `pets-N` wrapper class. Uses `priceTags[i * numPets]` for rate/qty (first pet's div). Sums amounts across all pets for the service total.
+- Expected after fix: nights line item rate=$55 (Mochi), amount=$800 (440+360); days line item rate=$50, amount=$85 (50+35)
 
 ---
 
@@ -179,6 +193,10 @@ Key: `class="price p-N has-outstanding"` — the `p-N` suffix increments per lin
 
 - Null service_types in DB (self-correct on next sync): C63QgKsL, C63QfyoF, C63QgNGU, C63QgP2y, C63QgOHe
 - Amended appts not yet archived: C63QgNGU→C63QfyoF (4/1-13), C63QgH5K→C63QgNHs (3/3-19)
+- Bronwyn (Initial Evaluation): SQL cleanup needed — archive C63QgPJz, C63QgTPD, C63QgTPE
+- Gulliver (C63QgSiD): SQL cleanup needed — archive cancelled appointment
+- Millie (C63QgNHs): SQL data fix needed — restore March 3 before next sync
+- Mochi (C63QfLnk): multi-pet pricing will be correct after deploy + re-sync
 
 ---
 
@@ -193,6 +211,38 @@ Key: `class="price p-N has-outstanding"` — the `p-N` suffix increments per lin
 ## Useful SQL
 
 ```sql
+-- ============================================================
+-- POST-DEPLOY DATA CLEANUP (run before next manual sync)
+-- ============================================================
+
+-- Issue 1: Archive stale sync_appointments for Initial Evaluation appointments (Bronwyn)
+UPDATE sync_appointments
+SET is_archived = true
+WHERE external_id IN ('C63QgPJz', 'C63QgTPD', 'C63QgTPE');
+
+-- Issue 1: Check if any boardings were incorrectly created from these appts
+SELECT b.id, b.external_id, d.name, b.arrival_datetime
+FROM boardings b
+JOIN dogs d ON d.id = b.dog_id
+WHERE b.external_id IN ('C63QgPJz', 'C63QgTPD', 'C63QgTPE');
+-- If rows returned, delete them:
+-- DELETE FROM boardings WHERE external_id IN ('C63QgPJz', 'C63QgTPD', 'C63QgTPE');
+
+-- Issue 2: Archive Gulliver's cancelled appointment (was not seen in sync, reconciler warned)
+UPDATE sync_appointments
+SET is_archived = true
+WHERE external_id = 'C63QgSiD';
+
+-- Issue 3: Restore Millie's boarding to March 3 (original C63QgH5K, before overlap overwrite)
+-- Run BEFORE next sync (after sync the code fix handles it correctly going forward)
+UPDATE boardings
+SET arrival_datetime = '2026-03-03T00:00:00.000Z',
+    external_id = 'C63QgH5K'
+WHERE external_id = 'C63QgNHs'
+  AND dog_id = (SELECT id FROM dogs WHERE name ILIKE 'Millie%' LIMIT 1);
+
+-- ============================================================
+
 -- If sync gets stuck
 UPDATE sync_logs SET status = 'failed', completed_at = NOW()
 WHERE status = 'running' AND started_at < NOW() - INTERVAL '5 minutes';
