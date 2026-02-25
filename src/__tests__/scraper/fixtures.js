@@ -330,8 +330,9 @@ export const mockPricingDecimalTotal = `
 // Multi-pet pricing fixture: 2 pets (Mochi + Marlee), 2 services.
 // The `pets-2` class on the wrapper signals 2 price divs per service.
 // Nights: Mochi @ $55 × 8 = $440, Marlee @ $45 × 8 = $360 → combined $800
-// Days:   Mochi @ $50 × 1 = $50,  Marlee @ $50 × 1 = $35  → combined $85
+// Days:   Mochi @ $50 × 1 = $50,  Marlee @ $35 × 1 = $35  → combined $85
 // Total:  $885
+// data-rate values are in cents (÷100). Marlee's day rate is 3500 → $35, not 5000.
 export const mockPricingMultiPet = `
 <fieldset id="confirm-price" class="no-legend">
   <a class="btn toggle-field text quote">Total $885 <i class="fa fa-fw"></i></a>
@@ -344,10 +345,30 @@ export const mockPricingMultiPet = `
     <div class="service-wrapper">
       <span class="service-name">Boarding (Days)</span>
       <div class="price p-2 has-outstanding" data-rate="5000" data-qty="100" data-amount="50.00"></div>
-      <div class="price p-3 has-outstanding" data-rate="5000" data-qty="100" data-amount="35.00"></div>
+      <div class="price p-3 has-outstanding" data-rate="3500" data-qty="100" data-amount="35.00"></div>
     </div>
   </div>
 </fieldset>
+`;
+
+// Full appointment page fixture with two pets (Mochi + Marlee).
+// Used to test extractAllPetNames and all_pet_names field.
+export const mockAppointmentPageMultiPet = `
+<!DOCTYPE html>
+<html>
+<head><title>3/6-14 | A Girl and Your Dog</title></head>
+<body>
+  <h1>3/6-14</h1>
+  <div id="when-wrapper" data-start_scheduled="1772812800" data-end_scheduled="1773504000"></div>
+  <span class="event-client">Tiffany Hill</span>
+  <a class="mobile-contact" data-value="+14153078433">Call</a>
+  <a class="appointment-email" data-emails= "tifhill@gmail.com">Message</a>
+  <div data-address="272 Missouri St, San Francisco, CA, 94107"></div>
+  <a href="/pets/90053" class="event-pet pet-90053" data-pet="90053">Mochi Hill</a>
+  <a href="/pets/201014" class="event-pet pet-201014" data-pet="201014">Marlee Hill</a>
+  ${mockPricingMultiPet}
+</body>
+</html>
 `;
 
 // Pricing section where service names exist but price divs use a non-matching class.
@@ -403,6 +424,27 @@ export const mockExternalAppointmentDcMidPhrase = {
     lineItems: [
       { serviceName: 'Boarding discounted nights for DC full-time', rate: 55, qty: 5, amount: 275 },
       { serviceName: 'Boarding (Days)', rate: 50, qty: 2, amount: 100 },
+    ],
+  },
+};
+
+// Multi-pet external appointment (Mochi + Marlee Hill).
+// Mirrors what parseAppointmentPage returns for a 2-pet booking.
+export const mockExternalAppointmentMultiPet = {
+  external_id: 'MPT123',
+  pet_name: 'Mochi Hill',
+  all_pet_names: ['Mochi Hill', 'Marlee Hill'],
+  check_in_datetime: '2026-03-06T00:00:00.000Z',
+  check_out_datetime: '2026-03-14T00:00:00.000Z',
+  pricing: {
+    total: 885,
+    lineItems: [
+      { serviceName: 'Boarding discounted nights for DC full-time', rate: 55, qty: 8, amount: 800 },
+      { serviceName: 'Boarding (Days)', rate: 50, qty: 1, amount: 85 },
+    ],
+    perPetRates: [
+      { nightRate: 55, dayRate: 50 },  // Mochi
+      { nightRate: 45, dayRate: 35 },  // Marlee
     ],
   },
 };

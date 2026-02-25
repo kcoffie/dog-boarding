@@ -20,6 +20,7 @@ import {
   mockExternalAppointmentNoPricing,
   mockExternalAppointmentSingleLinePricing,
   mockExternalAppointmentDcMidPhrase,
+  mockExternalAppointmentMultiPet,
 } from './fixtures.js';
 
 // Mock Supabase client
@@ -610,6 +611,91 @@ describe('REQ-103: Data Mapping to App Schema', () => {
 
         expect(result.dog.night_rate).toBe(65);
       });
+    });
+  });
+
+  describe('multi-pet appointments', () => {
+    it('creates a dog record for each pet', async () => {
+      const supabase = createMockSupabase();
+
+      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
+
+      const dogs = supabase._mockData.dogs;
+      expect(dogs.length).toBe(2);
+      const names = dogs.map(d => d.name);
+      expect(names).toContain('Mochi Hill');
+      expect(names).toContain('Marlee Hill');
+    });
+
+    it('creates a boarding for each pet with same dates', async () => {
+      const supabase = createMockSupabase();
+
+      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
+
+      const boardings = supabase._mockData.boardings;
+      expect(boardings.length).toBe(2);
+      boardings.forEach(b => {
+        expect(b.arrival_datetime).toBe('2026-03-06T00:00:00.000Z');
+        expect(b.departure_datetime).toBe('2026-03-14T00:00:00.000Z');
+      });
+    });
+
+    it('stores per-pet night rates on each dog', async () => {
+      const supabase = createMockSupabase();
+
+      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
+
+      const mochi = supabase._mockData.dogs.find(d => d.name === 'Mochi Hill');
+      const marlee = supabase._mockData.dogs.find(d => d.name === 'Marlee Hill');
+      expect(mochi.night_rate).toBe(55);
+      expect(marlee.night_rate).toBe(45);
+    });
+
+    it('stores per-pet day rates on each dog', async () => {
+      const supabase = createMockSupabase();
+
+      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
+
+      const mochi = supabase._mockData.dogs.find(d => d.name === 'Mochi Hill');
+      const marlee = supabase._mockData.dogs.find(d => d.name === 'Marlee Hill');
+      expect(mochi.day_rate).toBe(50);
+      expect(marlee.day_rate).toBe(35);
+    });
+
+    it('stores per-pet night rates on each boarding', async () => {
+      const supabase = createMockSupabase();
+
+      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
+
+      const dogs = supabase._mockData.dogs;
+      const mochiDog = dogs.find(d => d.name === 'Mochi Hill');
+      const marleeDog = dogs.find(d => d.name === 'Marlee Hill');
+      const boardings = supabase._mockData.boardings;
+      const mochiBoarding = boardings.find(b => b.dog_id === mochiDog.id);
+      const marleeBoarding = boardings.find(b => b.dog_id === marleeDog.id);
+      expect(mochiBoarding.night_rate).toBe(55);
+      expect(marleeBoarding.night_rate).toBe(45);
+    });
+
+    it('gives secondary boarding a unique external_id suffix', async () => {
+      const supabase = createMockSupabase();
+
+      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
+
+      const boardings = supabase._mockData.boardings;
+      const ids = boardings.map(b => b.external_id);
+      expect(ids).toContain('MPT123');
+      expect(ids).toContain('MPT123_p1');
+    });
+
+    it('does not create duplicates on re-sync', async () => {
+      const supabase = createMockSupabase();
+
+      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
+      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
+
+      expect(supabase._mockData.dogs.length).toBe(2);
+      expect(supabase._mockData.boardings.length).toBe(2);
     });
   });
 

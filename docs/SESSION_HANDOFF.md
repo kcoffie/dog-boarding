@@ -234,8 +234,11 @@ Key: `class="price p-N has-outstanding"` — the `p-N` suffix increments per lin
 -- ============================================================
 
 -- Issue 1: Archive stale sync_appointments for Initial Evaluation appointments (Bronwyn)
+-- NOTE: column is sync_status, NOT is_archived (is_archived does not exist)
 UPDATE sync_appointments
-SET is_archived = true
+SET sync_status = 'archived',
+    last_change_type = 'archived',
+    last_changed_at = NOW()
 WHERE external_id IN ('C63QgPJz', 'C63QgTPD', 'C63QgTPE');
 
 -- Issue 1: Check if any boardings were incorrectly created from these appts
@@ -248,7 +251,9 @@ WHERE b.external_id IN ('C63QgPJz', 'C63QgTPD', 'C63QgTPE');
 
 -- Issue 2: Archive Gulliver's cancelled appointment (was not seen in sync, reconciler warned)
 UPDATE sync_appointments
-SET is_archived = true
+SET sync_status = 'archived',
+    last_change_type = 'archived',
+    last_changed_at = NOW()
 WHERE external_id = 'C63QgSiD';
 
 -- Issue 3: Restore Millie's boarding to March 3 (original C63QgH5K, before overlap overwrite)
