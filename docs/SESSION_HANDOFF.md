@@ -1,18 +1,19 @@
 # Dog Boarding App — Session Handoff (v2.2)
-**Last updated:** February 25, 2026
-**Status:** v2.2 deployed — 627 tests (626 pass, 1 pre-existing date-flaky in DateNavigator)
+**Last updated:** February 25, 2026 (v2 — multi-pet fix)
+**Status:** v2.2 deployed — 641 tests (640 pass, 1 pre-existing date-flaky in DateNavigator)
 
 ---
 
 ## Current State
 
-- **627 tests, 626 pass.** The 1 failure (`DateNavigator.test.jsx`) is the pre-existing DST-flaky test — unrelated.
-- v2.2 deployed. Two post-deploy data quality bugs fixed this session (code committed, not yet deployed).
-- Migrations 012 and 013 already applied in production Supabase.
+- **641 tests, 640 pass.** The 1 failure (`DateNavigator.test.jsx`) is the pre-existing DST-flaky test — unrelated.
+- v2.2 deployed. Multi-pet fix committed locally — **NOT YET DEPLOYED** (deploy + SQL cleanup required).
+- Migrations 012 and 013 already applied in production Supabase. No new migrations needed.
 - 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
 - Manual sync working end-to-end in production.
 - Vercel env vars confirmed set: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY, VITE_EXTERNAL_SITE_USERNAME, VITE_EXTERNAL_SITE_PASSWORD
+- Issues 1 (Bronwyn), 3 (Millie) fixed via SQL this session. Issues 2 (Gulliver) and 4 (Mochi/Marlee) need next-session SQL + deploy.
 
 > **Check first thing each session:** Did overnight crons run?
 > Vercel dashboard → Logs (left nav) → filter by `/api/cron-auth`, `/api/cron-schedule`, `/api/cron-detail`
