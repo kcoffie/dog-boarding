@@ -273,8 +273,11 @@ export async function findSyncAppointmentByExternalId(supabase, externalId) {
 export async function upsertDog(supabase, dogData, options = {}) {
   const { overwriteManual = false, updateRates = false } = options;
 
-  // First, check if dog exists by external_id
-  const existingByExternalId = await findDogByExternalId(supabase, dogData.external_id);
+  // First, check if dog exists by external_id (skip when none provided — secondary pets)
+  let existingByExternalId = null;
+  if (dogData.external_id) {
+    existingByExternalId = await findDogByExternalId(supabase, dogData.external_id);
+  }
 
   if (existingByExternalId) {
     // Update existing external dog.
@@ -309,8 +312,9 @@ export async function upsertDog(supabase, dogData, options = {}) {
 
   if (existingByName) {
     if (existingByName.source === 'manual' && !overwriteManual) {
-      // Link external_id to manual entry but preserve manual data
-      if (!existingByName.external_id) {
+      // Link external_id to manual entry but preserve manual data.
+      // Only link when we have an external_id to set (secondary pets don't have one).
+      if (!existingByName.external_id && dogData.external_id) {
         mappingLogger.log(`[Mapping] Linking dog "${existingByName.name}" (id: ${existingByName.id}) to external_id ${dogData.external_id}`);
         const { data, error } = await supabase
           .from('dogs')
@@ -325,17 +329,16 @@ export async function upsertDog(supabase, dogData, options = {}) {
         if (error) throw error;
         return { dog: data, created: false, updated: true };
       }
-      // Already linked, just return it
+      // Already linked (or no external_id to set), just return it
       return { dog: existingByName, created: false, updated: false };
     }
 
-    // Update the existing dog with external_id
+    // Update the existing dog — only include external_id when provided
+    const nameMatchUpdate = { source: 'external' };
+    if (dogData.external_id) nameMatchUpdate.external_id = dogData.external_id;
     const { data, error } = await supabase
       .from('dogs')
-      .update({
-        external_id: dogData.external_id,
-        source: 'external',
-      })
+      .update(nameMatchUpdate)
       .eq('id', existingByName.id)
       .select()
       .single();
@@ -579,6 +582,41 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
     boarding = result.boarding;
     stats.boardingCreated = result.created;
     stats.boardingUpdated = result.updated;
+  }
+
+  // 2b. Process secondary pets for multi-pet appointments.
+  // Each secondary pet gets their own dog record and boarding (same dates),
+  // using their individual rates from pricing.perPetRates.
+  const allPetNames = externalData.all_pet_names ?? [];
+  const perPetRates = externalData.pricing?.perPetRates ?? [];
+  for (let p = 1; p < allPetNames.length; p++) {
+    const petName = allPetNames[p];
+    const petRates = perPetRates[p] ?? {};
+    const secondaryDogData = {
+      name: petName,
+      night_rate: petRates.nightRate ?? 0,
+      day_rate: petRates.dayRate ?? 0,
+      active: true,
+      source: 'external',
+      // No external_id — secondary pets are matched by name, not appointment id
+    };
+    const { dog: secondaryDog } = await upsertDog(
+      supabase,
+      secondaryDogData,
+      { overwriteManual, updateRates: externalData.pricing != null }
+    );
+    if (externalData.check_in_datetime && externalData.check_out_datetime) {
+      await upsertBoarding(supabase, {
+        dog_id: secondaryDog.id,
+        arrival_datetime: externalData.check_in_datetime,
+        departure_datetime: externalData.check_out_datetime,
+        source: 'external',
+        external_id: `${externalData.external_id}_p${p}`,
+        billed_amount: null,
+        night_rate: petRates.nightRate ?? null,
+        day_rate: petRates.dayRate ?? null,
+      });
+    }
   }
 
   // 3. Upsert sync_appointment (raw data storage) with change detection

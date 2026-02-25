@@ -113,6 +113,7 @@ export function parseAppointmentPage(html, sourceUrl = '') {
 
     // Pet info
     pet_name: extractText(html, SCRAPER_CONFIG.selectors.petName),
+    all_pet_names: extractAllPetNames(html),
     pet_photo_url: null,
     pet_birthdate: parseBirthdate(extractByLabelContains(html, 'Birthdate')),
     pet_breed: extractByLabelContains(html, 'Breed(s)'),
@@ -358,6 +359,25 @@ function parseBirthdate(dateStr) {
 }
 
 /**
+ * Extract all pet names from the appointment page in DOM order.
+ * Single-pet appointments return a one-element array.
+ * Used to identify secondary pets in multi-pet bookings.
+ *
+ * @param {string} html
+ * @returns {string[]}
+ */
+function extractAllPetNames(html) {
+  const names = [];
+  const regex = /class="[^"]*event-pet[^"]*"[^>]*>([^<]+)/g;
+  let m;
+  while ((m = regex.exec(html)) !== null) {
+    const name = cleanText(m[1]);
+    if (name) names.push(name);
+  }
+  return names;
+}
+
+/**
  * Clean extracted text
  * @param {string} text
  * @returns {string}
@@ -503,7 +523,29 @@ export function extractPricing(html) {
     }
   }
 
-  return { total, lineItems };
+  // Build per-pet rate breakdown for multi-pet appointments.
+  // perPetRates[p].nightRate = rate from the first non-day service for pet p.
+  // perPetRates[p].dayRate   = rate from the first day service for pet p.
+  // Single-pet appointments: one entry, rates match lineItems[x].rate.
+  const perPetRates = [];
+  const { dayServicePatterns } = SCRAPER_CONFIG;
+  for (let p = 0; p < numPets; p++) {
+    let petNightRate = null;
+    let petDayRate = null;
+    for (let i = 0; i < serviceNames.length; i++) {
+      const tag = priceTags[i * numPets + p];
+      if (!tag) continue;
+      const rateMatch = tag.match(/data-rate="([^"]+)"/);
+      if (!rateMatch) continue;
+      const rate = parseFloat(rateMatch[1]) / 100;
+      const isDayService = dayServicePatterns.some(dp => dp.test(serviceNames[i]));
+      if (isDayService && petDayRate === null) petDayRate = rate;
+      else if (!isDayService && petNightRate === null) petNightRate = rate;
+    }
+    perPetRates.push({ nightRate: petNightRate, dayRate: petDayRate });
+  }
+
+  return { total, lineItems, perPetRates };
 }
 
 export default {
