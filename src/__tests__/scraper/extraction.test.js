@@ -14,6 +14,7 @@ import {
   mockPricingMalformedItem,
   mockPricingDecimalTotal,
   mockPricingNoPriceDivs,
+  mockPricingMultiPet,
 } from './fixtures.js';
 
 describe('REQ-102: Appointment Detail Extraction', () => {
@@ -397,5 +398,42 @@ describe('REQ-200: extractPricing()', () => {
   it('parseAppointmentPage sets pricing to null when absent', () => {
     const data = parseAppointmentPage(mockAppointmentPage);
     expect(data.pricing).toBeNull();
+  });
+
+  describe('multi-pet appointment pricing', () => {
+    it('returns correct total for multi-pet appointment', () => {
+      const result = extractPricing(mockPricingMultiPet);
+      expect(result).not.toBeNull();
+      expect(result.total).toBe(885);
+    });
+
+    it('returns one line item per service (not per pet)', () => {
+      const result = extractPricing(mockPricingMultiPet);
+      expect(result.lineItems).toHaveLength(2);
+    });
+
+    it('uses first pet rate and qty for each line item', () => {
+      const result = extractPricing(mockPricingMultiPet);
+      // Nights: first pet (Mochi) rate=5500÷100=55, qty=800÷100=8
+      expect(result.lineItems[0].rate).toBe(55);
+      expect(result.lineItems[0].qty).toBe(8);
+      // Days: first pet rate=5000÷100=50, qty=100÷100=1
+      expect(result.lineItems[1].rate).toBe(50);
+      expect(result.lineItems[1].qty).toBe(1);
+    });
+
+    it('sums amounts across all pets for each service', () => {
+      const result = extractPricing(mockPricingMultiPet);
+      // Nights: 440.00 (Mochi) + 360.00 (Marlee) = 800
+      expect(result.lineItems[0].amount).toBe(800);
+      // Days: 50.00 + 35.00 = 85
+      expect(result.lineItems[1].amount).toBe(85);
+    });
+
+    it('preserves correct service names for multi-pet', () => {
+      const result = extractPricing(mockPricingMultiPet);
+      expect(result.lineItems[0].serviceName).toBe('Boarding discounted nights for DC full-time');
+      expect(result.lineItems[1].serviceName).toBe('Boarding (Days)');
+    });
   });
 });
