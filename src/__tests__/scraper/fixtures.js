@@ -327,6 +327,29 @@ export const mockPricingDecimalTotal = `
 </fieldset>
 `;
 
+// Multi-pet pricing fixture: 2 pets (Mochi + Marlee), 2 services.
+// The `pets-2` class on the wrapper signals 2 price divs per service.
+// Nights: Mochi @ $55 × 8 = $440, Marlee @ $45 × 8 = $360 → combined $800
+// Days:   Mochi @ $50 × 1 = $50,  Marlee @ $50 × 1 = $35  → combined $85
+// Total:  $885
+export const mockPricingMultiPet = `
+<fieldset id="confirm-price" class="no-legend">
+  <a class="btn toggle-field text quote">Total $885 <i class="fa fa-fw"></i></a>
+  <div class="pricing-appt-wrapper pets-2 services-2">
+    <div class="service-wrapper">
+      <span class="service-name">Boarding discounted nights for DC full-time</span>
+      <div class="price p-0 has-outstanding" data-rate="5500" data-qty="800" data-amount="440.00"></div>
+      <div class="price p-1 has-outstanding" data-rate="4500" data-qty="800" data-amount="360.00"></div>
+    </div>
+    <div class="service-wrapper">
+      <span class="service-name">Boarding (Days)</span>
+      <div class="price p-2 has-outstanding" data-rate="5000" data-qty="100" data-amount="50.00"></div>
+      <div class="price p-3 has-outstanding" data-rate="5000" data-qty="100" data-amount="35.00"></div>
+    </div>
+  </div>
+</fieldset>
+`;
+
 // Pricing section where service names exist but price divs use a non-matching class.
 // Simulates a site structure change — should trigger a throw (not silent null).
 export const mockPricingNoPriceDivs = `
