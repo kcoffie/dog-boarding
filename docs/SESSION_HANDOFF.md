@@ -58,7 +58,25 @@ Two code bugs fixed this session — deploy before running any more syncs:
 
 ---
 
-## This Session (Feb 24, 2026) — Night Rate Extraction Bug
+## Feb 25, 2026 Session — Post-Deploy Bug Fixes
+
+### Code fix 1: Multi-pet pricing extraction (`extraction.js`)
+
+**Root cause:** `extractPricing` paired `serviceNames[i]` with `priceTags[i]`. For a 2-pet, 2-service appointment (`pets-2 services-2`) there are 4 price divs, so index 1 was Marlee's night div instead of the Boarding Days service's div. Result: wrong rate ($45 instead of $50) and wrong amount on the day line item.
+
+**Fix:** Extract `numPets` from `pets-N` wrapper class (default 1 when absent). Use `priceTags[i * numPets]` for rate and qty. Sum amounts across `priceTags[i * numPets + 0..numPets-1]` for the service total. Single-pet appointments unchanged (numPets=1 → same index math as before).
+
+### Code fix 2: Amended appointment overwrite prevention (`mapping.js`)
+
+**Root cause:** `upsertBoarding` date-overlap fallback set `existing` to whatever boarding overlapped by date — even if that boarding already had a different `external_id`. When C63QgNHs (March 4–19, amended) was synced, it matched C63QgH5K's boarding (March 3–19) by overlap and overwrote it, changing arrival to March 4 and replacing the external_id.
+
+**Fix:** Overlap fallback now only claims the match when `!overlap.external_id` (manual boarding waiting to be linked). If the overlap has a different external_id, logs a message and falls through to create a new boarding.
+
+**Tests added:** 7 new tests (5 multi-pet extraction, 2 mapping overlap behavior). Total: 627 (626 pass).
+
+---
+
+## Feb 24, 2026 Session — Night Rate Extraction Bug
 
 ### Root cause
 
