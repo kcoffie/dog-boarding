@@ -459,24 +459,42 @@ export function extractPricing(html) {
     );
   }
 
-  // Pair service names with price tags in document order.
+  // Determine number of pets from the pricing wrapper class (e.g., "pets-2").
+  // Multi-pet appointments have numPets consecutive price divs per service.
+  const petsMatch = fieldset.match(/\bpets-(\d+)\b/);
+  const numPets = petsMatch ? parseInt(petsMatch[1], 10) : 1;
+  console.log('[extractPricing] numPets:', numPets);
+
+  // Pair service names with price tags.
+  // For service i: first pet's div is at priceTags[i * numPets].
+  // Rate and qty come from the first pet's div (per-dog; stored on the primary dog record).
+  // Amount is summed across all pets (total charge for that service line).
   const lineItems = [];
-  const count = Math.min(serviceNames.length, priceTags.length);
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < serviceNames.length; i++) {
+    const priceIdx = i * numPets;
+    if (priceIdx >= priceTags.length) break;
     try {
-      const tag = priceTags[i];
+      const tag = priceTags[priceIdx];
       const rateMatch = tag.match(/data-rate="([^"]+)"/);
       const qtyMatch  = tag.match(/data-qty="([^"]+)"/);
-      const amtMatch  = tag.match(/data-amount="([^"]+)"/);
-      if (!rateMatch || !qtyMatch || !amtMatch) {
+      if (!rateMatch || !qtyMatch) {
         console.warn('[extractPricing] Missing price attributes for service:', serviceNames[i], '| tag:', tag);
         continue;
+      }
+      // Sum amounts across all pets for this service
+      let serviceAmount = 0;
+      for (let p = 0; p < numPets; p++) {
+        const petTag = priceTags[priceIdx + p];
+        if (petTag) {
+          const amtMatch = petTag.match(/data-amount="([^"]+)"/);
+          if (amtMatch) serviceAmount += parseFloat(amtMatch[1]);
+        }
       }
       const item = {
         serviceName: serviceNames[i],
         rate:   parseFloat(rateMatch[1]) / 100,
         qty:    parseFloat(qtyMatch[1])  / 100,
-        amount: parseFloat(amtMatch[1]),
+        amount: serviceAmount,
       };
       console.log('[extractPricing] line item:', item);
       lineItems.push(item);
