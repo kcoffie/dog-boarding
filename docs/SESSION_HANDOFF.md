@@ -24,10 +24,10 @@
 
 ### 1. Deploy this session's fixes (REQUIRED before next sync)
 
-Two code bugs fixed this session — deploy before running any more syncs:
+Code changes committed — deploy before running any more syncs:
 1. **Deploy to Vercel** — no migrations needed
-2. **Run SQL data cleanup** (see SQL section below) — fix Millie's date + archive stale records
-3. **Trigger a manual sync** to verify multi-pet pricing works for Mochi (C63QfLnk)
+2. **Run SQL data cleanup** (see SQL section below) — fix Gulliver boarding delete
+3. **Trigger a manual sync** to verify Mochi + Marlee both appear with correct rates
 
 ### 2. Post-deploy data quality issues found after v2.2 sync
 
@@ -49,12 +49,14 @@ Two code bugs fixed this session — deploy before running any more syncs:
 - **Code fix:** `mapping.js:upsertBoarding` — overlap fallback now only uses the match when the found boarding has NO external_id (manual boarding waiting to be linked). If it already has a different external_id, creates a new boarding instead.
 - **SQL data fix also needed** — restore Millie's boarding to March 3 before re-sync (see SQL below)
 
-#### Issue 4 — Mochi Hill (C63QfLnk): wrong line item pairing for multi-pet appointments (CODE FIXED)
-- Root cause: C63QfLnk has 2 pets (Mochi + Marlee). HTML has `pets-2` class → 4 price divs for 2 services.
-  - Old code: `serviceNames[i]` paired with `priceTags[i]` — treated "Boarding (Days)" as paired with Marlee's night price div
-  - Result: day_rate=45 (Marlee's night rate), wrong amount
-- **Code fix:** `extraction.js:extractPricing` — extracts `numPets` from `pets-N` wrapper class. Uses `priceTags[i * numPets]` for rate/qty (first pet's div). Sums amounts across all pets for the service total.
-- Expected after fix: nights line item rate=$55 (Mochi), amount=$800 (440+360); days line item rate=$50, amount=$85 (50+35)
+#### Issue 4 — Mochi + Marlee Hill (C63QfLnk): only Mochi was being processed (CODE FIXED Feb 25 v2)
+- Root cause: pipeline assumed 1 appointment = 1 pet. Marlee was never created as a dog or boarding.
+- Pricing extraction was already correct (rate=$55/$800 nights, $50/$85 days) — the rates just only applied to Mochi.
+- **Code fix (Feb 25 v2):**
+  - `extraction.js` — added `extractAllPetNames()`, `all_pet_names[]` field, `perPetRates[]` in extractPricing return (per-pet night/day rates: Mochi $55/$50, Marlee $45/$35)
+  - `mapping.js` — secondary pet loop in `mapAndSaveAppointment`: each pet beyond the first gets their own dog (with their rate) and boarding (external_id suffixed `_p1`, `_p2`…)
+  - Fixture bug fixed: Marlee's day rate was `data-rate="5000"` in test fixture but real HTML has `data-rate="3500"` ($35, not $50)
+- Expected after deploy + sync: Mochi dog night_rate=$55, Marlee dog night_rate=$45; both have boardings 3/6-14
 
 ---
 
@@ -250,11 +252,10 @@ WHERE b.external_id IN ('C63QgPJz', 'C63QgTPD', 'C63QgTPE');
 -- DELETE FROM boardings WHERE external_id IN ('C63QgPJz', 'C63QgTPD', 'C63QgTPE');
 
 -- Issue 2: Archive Gulliver's cancelled appointment (was not seen in sync, reconciler warned)
-UPDATE sync_appointments
-SET sync_status = 'archived',
-    last_change_type = 'archived',
-    last_changed_at = NOW()
-WHERE external_id = 'C63QgSiD';
+-- sync_appointment already archived via SQL in prior session.
+-- The linked boarding must also be removed (FK prevents direct delete):
+UPDATE sync_appointments SET mapped_boarding_id = NULL WHERE external_id = 'C63QgSiD';
+DELETE FROM boardings WHERE external_id = 'C63QgSiD';
 
 -- Issue 3: Restore Millie's boarding to March 3 (original C63QgH5K, before overlap overwrite)
 -- Run BEFORE next sync (after sync the code fix handles it correctly going forward)
