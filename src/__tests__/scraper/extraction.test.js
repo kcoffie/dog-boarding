@@ -9,6 +9,7 @@ import {
   mockAppointmentPage,
   mockAppointmentPageMinimal,
   mockAppointmentPageWithPricing,
+  mockAppointmentPageMultiPet,
   mockPricingSingleLine,
   mockPricingBadTotal,
   mockPricingMalformedItem,
@@ -434,6 +435,45 @@ describe('REQ-200: extractPricing()', () => {
       const result = extractPricing(mockPricingMultiPet);
       expect(result.lineItems[0].serviceName).toBe('Boarding discounted nights for DC full-time');
       expect(result.lineItems[1].serviceName).toBe('Boarding (Days)');
+    });
+
+    it('returns perPetRates with one entry per pet', () => {
+      const result = extractPricing(mockPricingMultiPet);
+      expect(result.perPetRates).toHaveLength(2);
+    });
+
+    it('perPetRates[0] holds first pet (Mochi) rates', () => {
+      const result = extractPricing(mockPricingMultiPet);
+      expect(result.perPetRates[0].nightRate).toBe(55);
+      expect(result.perPetRates[0].dayRate).toBe(50);
+    });
+
+    it('perPetRates[1] holds second pet (Marlee) rates', () => {
+      const result = extractPricing(mockPricingMultiPet);
+      expect(result.perPetRates[1].nightRate).toBe(45);
+      expect(result.perPetRates[1].dayRate).toBe(35);
+    });
+  });
+
+  describe('all_pet_names field', () => {
+    it('returns single-element array for single-pet appointment', () => {
+      const data = parseAppointmentPage(mockAppointmentPage);
+      expect(data.all_pet_names).toEqual(['Luna']);
+    });
+
+    it('returns all pet names in DOM order for multi-pet appointment', () => {
+      const data = parseAppointmentPage(mockAppointmentPageMultiPet);
+      expect(data.all_pet_names).toEqual(['Mochi Hill', 'Marlee Hill']);
+    });
+
+    it('returns empty array when no pets on page', () => {
+      const data = parseAppointmentPage(mockAppointmentPageMinimal);
+      expect(data.all_pet_names).toEqual([]);
+    });
+
+    it('all_pet_names[0] matches pet_name for single-pet page', () => {
+      const data = parseAppointmentPage(mockAppointmentPage);
+      expect(data.all_pet_names[0]).toBe(data.pet_name);
     });
   });
 });
