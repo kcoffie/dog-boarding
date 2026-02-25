@@ -365,6 +365,66 @@ describe('REQ-103: Data Mapping to App Schema', () => {
       expect(result.updated).toBe(true);
       expect(result.boarding.dog_id).toBe('new-dog');
     });
+
+    it('links overlap match when existing boarding has no external_id (manual boarding)', async () => {
+      const supabase = createMockSupabase();
+      // Manual boarding: same dog, overlapping dates, no external_id yet
+      supabase._addBoarding({
+        dog_id: 'dog-luna',
+        arrival_datetime: '2025-12-21T00:00:00Z',
+        departure_datetime: '2025-12-24T00:00:00Z',
+        // no external_id
+      });
+      const boardingData = {
+        external_id: 'ABC123',
+        dog_id: 'dog-luna',
+        arrival_datetime: '2025-12-21T17:00:00.000Z',
+        departure_datetime: '2025-12-23T10:00:00.000Z',
+        billed_amount: null,
+        night_rate: null,
+        day_rate: null,
+        source: 'external',
+      };
+
+      const result = await upsertBoarding(supabase, boardingData);
+
+      // Should update (link) the manual boarding, not create a new one
+      expect(result.created).toBe(false);
+      expect(result.updated).toBe(true);
+    });
+
+    it('does not overwrite boarding already linked to a different external_id', async () => {
+      const supabase = createMockSupabase();
+      // Existing boarding linked to original appointment C63QgH5K (March 3–19)
+      supabase._addBoarding({
+        external_id: 'C63QgH5K',
+        dog_id: 'dog-millie',
+        arrival_datetime: '2026-03-03T00:00:00Z',
+        departure_datetime: '2026-03-19T00:00:00Z',
+      });
+      // Incoming: amended appointment C63QgNHs with overlapping dates (March 4–19)
+      const boardingData = {
+        external_id: 'C63QgNHs',
+        dog_id: 'dog-millie',
+        arrival_datetime: '2026-03-04T00:00:00Z',
+        departure_datetime: '2026-03-19T00:00:00Z',
+        billed_amount: null,
+        night_rate: null,
+        day_rate: null,
+        source: 'external',
+      };
+
+      const result = await upsertBoarding(supabase, boardingData);
+
+      // Should create a NEW boarding, not overwrite the H5K one
+      expect(result.created).toBe(true);
+      expect(result.updated).toBe(false);
+
+      // The original H5K boarding should be untouched
+      const original = supabase._mockData.boardings.find(b => b.external_id === 'C63QgH5K');
+      expect(original).toBeDefined();
+      expect(original.arrival_datetime).toBe('2026-03-03T00:00:00Z');
+    });
   });
 
   describe('mapAndSaveAppointment()', () => {

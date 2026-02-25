@@ -368,18 +368,26 @@ export async function upsertBoarding(supabase, boardingData) {
   // Check if boarding exists by external_id
   let existing = await findBoardingByExternalId(supabase, boardingData.external_id);
 
-  // If not found by external_id, try matching by dog + overlapping dates
+  // If not found by external_id, try matching by dog + overlapping dates.
+  // Only use the overlap match when the found boarding has no external_id yet
+  // (i.e., a manually created boarding waiting to be linked). If the overlapping
+  // boarding is already linked to a different appointment, skip it and let a new
+  // boarding be created — prevents amended appointments from overwriting each other.
   if (!existing && boardingData.dog_id && boardingData.arrival_datetime && boardingData.departure_datetime) {
-    existing = await findBoardingByDogAndDates(
+    const overlap = await findBoardingByDogAndDates(
       supabase,
       boardingData.dog_id,
       boardingData.arrival_datetime,
       boardingData.departure_datetime
     );
 
-    // If we found a match by date overlap, link the external_id
-    if (existing && !existing.external_id) {
-      mappingLogger.log(`[Mapping] Linking boarding ${existing.id} to external_id ${boardingData.external_id}`);
+    if (overlap && !overlap.external_id) {
+      // Manual boarding waiting to be linked — safe to claim it
+      existing = overlap;
+      mappingLogger.log(`[Mapping] Linking boarding ${overlap.id} to external_id ${boardingData.external_id}`);
+    } else if (overlap && overlap.external_id !== boardingData.external_id) {
+      // Already linked to a different appointment — create a new boarding instead
+      mappingLogger.log(`[Mapping] Overlap match boarding ${overlap.id} already linked to ${overlap.external_id}; creating new boarding for ${boardingData.external_id}`);
     }
   }
 
