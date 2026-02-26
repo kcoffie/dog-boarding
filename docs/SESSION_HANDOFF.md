@@ -1,19 +1,18 @@
 # Dog Boarding App — Session Handoff (v2.2)
-**Last updated:** February 25, 2026 (v2 — multi-pet fix)
-**Status:** v2.2 deployed — 641 tests (640 pass, 1 pre-existing date-flaky in DateNavigator)
+**Last updated:** February 26, 2026
+**Status:** 643 tests (642 pass, 1 pre-existing date-flaky in DateNavigator) — NOT YET DEPLOYED
 
 ---
 
 ## Current State
 
-- **641 tests, 640 pass.** The 1 failure (`DateNavigator.test.jsx`) is the pre-existing DST-flaky test — unrelated.
-- v2.2 deployed. Multi-pet fix committed locally — **NOT YET DEPLOYED** (deploy + SQL cleanup required).
+- **643 tests, 642 pass.** The 1 failure (`DateNavigator.test.jsx`) is the pre-existing DST-flaky test — unrelated.
+- Two sessions of commits are pending deploy: the Feb 25 v2 multi-pet fix + today's 3 null rate bug fixes.
 - Migrations 012 and 013 already applied in production Supabase. No new migrations needed.
 - 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
 - Manual sync working end-to-end in production.
 - Vercel env vars confirmed set: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY, VITE_EXTERNAL_SITE_USERNAME, VITE_EXTERNAL_SITE_PASSWORD
-- Issues 1 (Bronwyn), 3 (Millie) fixed via SQL this session. Issues 2 (Gulliver) and 4 (Mochi/Marlee) need next-session SQL + deploy.
 
 > **Check first thing each session:** Did overnight crons run?
 > Vercel dashboard → Logs (left nav) → filter by `/api/cron-auth`, `/api/cron-schedule`, `/api/cron-detail`
@@ -21,190 +20,112 @@
 
 ---
 
-## What's Pending
+## What's Pending (do these in order)
 
-### 1. Deploy this session's fixes (REQUIRED before next sync)
+### 1. Run SQL data cleanup (before deploy)
 
-Code changes committed — deploy before running any more syncs:
-1. **Deploy to Vercel** — no migrations needed
-2. **Run SQL data cleanup** (see SQL section below) — fix Gulliver boarding delete
-3. **Trigger a manual sync** to verify Mochi + Marlee both appear with correct rates
+Run all SQL in the "Useful SQL → POST-DEPLOY DATA CLEANUP" section below.
+Issues 1–3 are carry-overs from last session. Do them first so re-sync doesn't
+re-create bad data.
 
-### 2. Post-deploy data quality issues found after v2.2 sync
+### 2. Deploy to Vercel
 
-#### Issue 1 — Bronwyn: "Initial Evaluation" showing as boarding (STALE DATA)
+All commits are on `main`. Push/deploy from Vercel dashboard — no migrations needed.
+
+Commits since last deploy:
+- `4061fa4` — feat: process all pets in multi-pet appointments with per-pet rates
+- `8598a59` — fix: resolve null rates on boardings and sync_appointments after re-sync
+
+### 3. Trigger a manual sync and verify
+
+After deploy, run a full sync from the app. Verify:
+- **C63QfLnk (Mochi + Marlee Hill):** `appointment_total: 885` now backfilled; both dogs appear with correct rates (Mochi $55, Marlee $45)
+- **Single-line appointments (C63QgH5K, C63QgToR, etc.):** `night_rate` now populated (was null)
+- **Mochi Hill dog record:** `night_rate: 55` (was 0 — name-match path didn't write rates before)
+- Use the verification SQL below to confirm
+
+---
+
+## Feb 26, 2026 Session — Null Rate Bug Fixes
+
+Three separate bugs caused boardings/dogs to show `null` or `0` rates despite
+`extractPricing` working correctly in production. All fixed in `src/lib/scraper/mapping.js`,
+commit `8598a59`.
+
+### Bug 1: `sync_appointments.appointment_total` / `pricing_line_items` stayed null on re-sync
+
+**Root cause:** `HASH_FIELDS` excludes pricing fields. For appointments that hadn't changed
+their identity fields (dates, pet name, etc.), the sync_appointment was marked `unchanged`
+and only `last_synced_at` was written — pricing fields were never updated.
+
+**Fix:** The unchanged path now also writes `appointment_total` and `pricing_line_items`
+when the incoming syncData has them:
+```js
+if (syncData.appointment_total != null)  unchangedPayload.appointment_total  = syncData.appointment_total;
+if (syncData.pricing_line_items != null) unchangedPayload.pricing_line_items = syncData.pricing_line_items;
+```
+
+### Bug 2: `dogs.night_rate = 0` for dogs found by name (not external_id)
+
+**Root cause:** `upsertDog` name-match path (used when `findDogByExternalId` returns null)
+only updated `source` and `external_id` — never wrote rates, even when `updateRates: true`.
+
+**Fix:** Rate propagation added to name-match update, same guard as the external_id path:
+```js
+if (updateRates && dogData.night_rate > 0) nameMatchUpdate.night_rate = dogData.night_rate;
+if (updateRates && dogData.day_rate   > 0) nameMatchUpdate.day_rate   = dogData.day_rate;
+```
+
+### Bug 3: Single-service appointments got `night_rate: null`
+
+**Root cause:** `classifyPricingItems` had guard `lineItems.length < 2 → return null`.
+A single non-day service (e.g., "Boarding") is unambiguously a night service, but the
+guard prevented classification.
+
+**Fix:** Changed guard to `length === 0`. Single "Boarding" → `nightItem` found → `night_rate: 55`.
+Single day service → `dayItem` found → `day_rate`.
+
+**Behavior change:** Previously, single-line pricing returned `night_rate: null` for boardings
+and `night_rate: 0` for dogs. Now it returns the extracted rate. The "Decisions Locked In"
+section below is updated accordingly.
+
+**Tests:** 5 tests changed (3 updated expectations, 2 new). Total: 641 → 643.
+
+---
+
+## Feb 25, 2026 (v2) Session — Multi-Pet Fix
+
+### Issue 4 — Mochi + Marlee Hill (C63QfLnk): only Mochi was being processed
+
+- `extraction.js`: added `extractAllPetNames()`, returns `all_pet_names[]` and `perPetRates[]`
+- `mapping.js`: secondary pet loop in `mapAndSaveAppointment` — each pet gets their own dog + boarding
+- Secondary boarding `external_id = {appt_external_id}_p{index}` (e.g., `C63QfLnk_p1`)
+- Expected after deploy + sync: Mochi night_rate=$55, Marlee night_rate=$45; both have boardings 3/6-14
+
+---
+
+## Post-Deploy Data Quality Issues (carry-over)
+
+### Issue 1 — Bronwyn: stale "Initial Evaluation" boardings in DB
 - External IDs: C63QgPJz, C63QgTPD, C63QgTPE
-- Sync now correctly skips these (logs show `⏭️ Skipping non-boarding`), but old DB records remain
-- **Fix: SQL cleanup** (see below) — no code change needed
+- Sync now correctly skips these but old records remain → SQL cleanup
 
-#### Issue 2 — Gulliver (C63QgSiD): showing as boarding on 2/28 but not on external site (CANCELLED APPT)
-- Reconciler logged: `valid appointment page but was NOT seen during sync — NOT archiving`
-- Root cause: cancelled appointment's direct URL still returns a valid page with `data-start_scheduled`
-- Reconciler correctly warned but conservatively did not archive
-- **Fix: SQL cleanup** (see below) — no code change needed; reconciler limitation is acceptable behavior
+### Issue 2 — Gulliver (C63QgSiD): cancelled appointment showing as boarding
+- Reconciler conservatively did not archive (cancelled URL still returns valid page)
+- SQL cleanup needed
 
-#### Issue 3 — Millie McSpadden: app shows March 4–19, external site shows March 3–19 (CODE FIXED)
-- Root cause: `upsertBoarding` overlap fallback was overwriting existing boarding with a different `external_id`
-  - C63QgH5K (March 3–19) was in DB. C63QgNHs (March 4–19, amended) was processed.
-  - Both have overlapping dates → overlap match found C63QgH5K → overwrote it with NHs data (March 4 date, NHs external_id)
-- **Code fix:** `mapping.js:upsertBoarding` — overlap fallback now only uses the match when the found boarding has NO external_id (manual boarding waiting to be linked). If it already has a different external_id, creates a new boarding instead.
-- **SQL data fix also needed** — restore Millie's boarding to March 3 before re-sync (see SQL below)
-
-#### Issue 4 — Mochi + Marlee Hill (C63QfLnk): only Mochi was being processed (CODE FIXED Feb 25 v2)
-- Root cause: pipeline assumed 1 appointment = 1 pet. Marlee was never created as a dog or boarding.
-- Pricing extraction was already correct (rate=$55/$800 nights, $50/$85 days) — the rates just only applied to Mochi.
-- **Code fix (Feb 25 v2):**
-  - `extraction.js` — added `extractAllPetNames()`, `all_pet_names[]` field, `perPetRates[]` in extractPricing return (per-pet night/day rates: Mochi $55/$50, Marlee $45/$35)
-  - `mapping.js` — secondary pet loop in `mapAndSaveAppointment`: each pet beyond the first gets their own dog (with their rate) and boarding (external_id suffixed `_p1`, `_p2`…)
-  - Fixture bug fixed: Marlee's day rate was `data-rate="5000"` in test fixture but real HTML has `data-rate="3500"` ($35, not $50)
-- Expected after deploy + sync: Mochi dog night_rate=$55, Marlee dog night_rate=$45; both have boardings 3/6-14
-
----
-
-## Feb 25, 2026 Session — Post-Deploy Bug Fixes
-
-### Code fix 1: Multi-pet pricing extraction (`extraction.js`)
-
-**Root cause:** `extractPricing` paired `serviceNames[i]` with `priceTags[i]`. For a 2-pet, 2-service appointment (`pets-2 services-2`) there are 4 price divs, so index 1 was Marlee's night div instead of the Boarding Days service's div. Result: wrong rate ($45 instead of $50) and wrong amount on the day line item.
-
-**Fix:** Extract `numPets` from `pets-N` wrapper class (default 1 when absent). Use `priceTags[i * numPets]` for rate and qty. Sum amounts across `priceTags[i * numPets + 0..numPets-1]` for the service total. Single-pet appointments unchanged (numPets=1 → same index math as before).
-
-### Code fix 2: Amended appointment overwrite prevention (`mapping.js`)
-
-**Root cause:** `upsertBoarding` date-overlap fallback set `existing` to whatever boarding overlapped by date — even if that boarding already had a different `external_id`. When C63QgNHs (March 4–19, amended) was synced, it matched C63QgH5K's boarding (March 3–19) by overlap and overwrote it, changing arrival to March 4 and replacing the external_id.
-
-**Fix:** Overlap fallback now only claims the match when `!overlap.external_id` (manual boarding waiting to be linked). If the overlap has a different external_id, logs a message and falls through to create a new boarding.
-
-**Tests added:** 7 new tests (5 multi-pet extraction, 2 mapping overlap behavior). Total: 627 (626 pass).
-
----
-
-## Feb 24, 2026 Session — Night Rate Extraction Bug
-
-### Root cause
-
-`extractPricing` in `extraction.js` used this regex to find `.price` divs:
-```js
-/<div[^>]*class="price"[^>]*>/gi   // WRONG — exact class match only
-```
-
-Real production HTML has **multiple CSS classes** on price divs:
-```html
-<div class="price p-7 has-outstanding" id="price-0" data-rate="5500" data-qty="500" ...>
-```
-
-The regex matched bare `class="price"` in test fixtures but **never** matched production HTML. Result: `priceTags = []` → `lineItems = []` → `classifyPricingItems` bailed at `length < 2` → `night_rate = null` silently for every boarding. All tests passed because fixtures used the simplified (wrong) class format.
-
-### Fix
-
-`extraction.js:434` — changed to word-boundary match:
-```js
-/<div[^>]*class="[^"]*\bprice\b[^"]*"[^>]*>/gi   // matches "price" among multiple classes
-```
-
-### Additional changes
-
-**`extraction.js` — `extractPricing` now has step-by-step logging:**
-- Logs fieldset snippet, total parsed, service names found, each price tag matched, each line item
-- If Vercel logs show `[extractPricing] priceTags found: 2` and line items → working correctly
-- If logs show `[extractPricing] priceTags found: 0` → regex still not matching, investigate fieldset snippet
-
-**`extraction.js` — throws instead of silent null on structural failure:**
-- Previously: service names found + zero price divs → silently returned `{ total, lineItems: [] }` → null rates stored
-- Now: throws `EXTRACTION FAILURE` error when service names > 0 but price divs = 0
-- Caller (`mapAndSaveAppointment`) catches this, logs to `summary.errors`, skips upsert — no bad data written
-
-**`fixtures.js` — all price divs updated to real HTML structure:**
-- All 7 occurrences of bare `class="price"` → `class="price p-0 has-outstanding"` / `class="price p-1 has-outstanding"`
-- Added `mockPricingNoPriceDivs`: valid service names but wrong div class — used to test the throw
-
-**`extraction.test.js` — new test:**
-- `'throws when service names exist but no .price divs match (extraction failure)'` — expects `toThrow(/EXTRACTION FAILURE/)`
-
----
-
-## v2.2 REQ Status
-
-| REQ     | Title                                       | Status   |
-| ------- | ------------------------------------------- | -------- |
-| REQ-200 | Extract pricing from appointment pages      | Complete |
-| REQ-201 | Sync rates and billed amount to app records | Complete |
-| REQ-202 | Revenue reporting view                      | Complete |
-| REQ-203 | Payroll uses extracted rates                | Complete |
-
----
-
-## Feb 23 Session — What Was Done
-
-**REQ-203: Payroll rate fallback chain**
-- `calculateGross` / `calculateBoardingGross` in `src/utils/calculations.js` now use `boarding.nightRate ?? dog.nightRate ?? 0`
-- `PayrollPage.jsx:calculateDayNet` now calls shared `calculateGross` (no inline duplicate)
-- `SummaryCards.jsx:periodRevenue` now calls `calculateGross`
-- `src/hooks/useBoardings.js` maps `night_rate → nightRate`, `billed_amount → billedAmount`, `source → source`
-
-**REQ-202: Revenue reporting view**
-- `src/components/RevenueView.jsx` (NEW) — table of boardings whose check-in falls in the selected period
-- Shows `billedAmount` exact, or `rate × nights` with "est." label when no billedAmount
-- Period Total row at bottom; added to `MatrixPage.jsx` below Employee Totals
-
-**Bug fix: upsertDog zero-overwrite**
-- `upsertDog` was writing `night_rate: 0` when single-line pricing couldn't classify rates
-- Fixed: only write `night_rate`/`day_rate` to DB when value > 0
-
-**Bug fix: /DC /i false positive**
-- "Boarding discounted nights for DC full-time" was classified as a day service
-- Fixed: `/DC /i` → `/^DC/i` in `SCRAPER_CONFIG.dayServicePatterns`
-
----
-
-## Rate Fallback Chain
-
-```
-Per-night revenue for a boarding =
-  boarding.night_rate           ← from sync (preferred, set by REQ-201)
-  ?? dog.night_rate             ← fallback for manual boardings or pre-v2.2 records
-  ?? 0                          ← last resort (show in UI as "no rate set")
-```
-
----
-
-## Pricing HTML Structure (CORRECTED Feb 24)
-
-Real HTML — price divs have multiple classes:
-
-```html
-<fieldset id="confirm-price" class="no-legend">
-  <a class="btn toggle-field text quote">Total $375 <i class="fa fa-fw"></i></a>
-  <div class="toggle-field-content hidden">
-    <div class="service-wrapper" data-service="22215-0">
-      <span class="service-name">Boarding discounted nights for DC full-time</span>
-      <div class="price p-7 has-outstanding" id="price-0"
-        data-amount="275.00"
-        data-rate="5500"       <!-- cents ÷ 100 = $55.00 -->
-        data-qty="500">        <!-- qty × 100 ÷ 100 = 5 nights -->
-      </div>
-    </div>
-    <div class="service-wrapper" data-service="11778-0">
-      <span class="service-name"> Boarding (Days)</span>
-      <div class="price p-3 has-outstanding" id="price-1"
-        data-amount="100.00"
-        data-rate="5000.00"
-        data-qty="200.00">
-      </div>
-    </div>
-  </div>
-</fieldset>
-```
-
-Key: `class="price p-N has-outstanding"` — the `p-N` suffix increments per line item. The original `class="price"` regex never matched this.
+### Issue 3 — Millie McSpadden: boarding shows March 4–19, should be March 3–19
+- Root cause (now fixed in code): overlap fallback overwrote C63QgH5K with C63QgNHs data
+- SQL fix needed to restore March 3 date before re-sync
 
 ---
 
 ## Decisions Locked In
 
-- Single-line pricing → `appointment_total` only, `night_rate = null` (can't classify safely)
-- Dog rate updates → only when pricing was extracted (`updateRates` option in `upsertDog`)
-- Day service patterns in `SCRAPER_CONFIG.dayServicePatterns` (not inline in sync.js/cron)
+- **Single-line pricing:** `appointment_total` + classified `night_rate` (updated — was null before Feb 26)
+- **Two-line pricing:** `night_rate` from non-day line, `day_rate` from day line
+- Dog rate updates only when pricing was extracted AND rate > 0 (`updateRates` option)
+- Day service patterns in `SCRAPER_CONFIG.dayServicePatterns` (not inline)
 - REQ-110 parse degradation does NOT include `appointment_total` (legitimately absent on some appts)
 - No invoice generation (out of scope)
 
@@ -215,9 +136,8 @@ Key: `class="price p-N has-outstanding"` — the `p-N` suffix increments per lin
 - Null service_types in DB (self-correct on next sync): C63QgKsL, C63QfyoF, C63QgNGU, C63QgP2y, C63QgOHe
 - Amended appts not yet archived: C63QgNGU→C63QfyoF (4/1-13), C63QgH5K→C63QgNHs (3/3-19)
 - Bronwyn (Initial Evaluation): SQL cleanup needed — archive C63QgPJz, C63QgTPD, C63QgTPE
-- Gulliver (C63QgSiD): SQL cleanup needed — archive cancelled appointment
+- Gulliver (C63QgSiD): SQL cleanup needed — archive cancelled appointment + delete boarding
 - Millie (C63QgNHs): SQL data fix needed — restore March 3 before next sync
-- Mochi (C63QfLnk): multi-pet pricing will be correct after deploy + re-sync
 
 ---
 
@@ -233,10 +153,10 @@ Key: `class="price p-N has-outstanding"` — the `p-N` suffix increments per lin
 
 ```sql
 -- ============================================================
--- POST-DEPLOY DATA CLEANUP (run before next manual sync)
+-- POST-DEPLOY DATA CLEANUP (run BEFORE deploy/sync)
 -- ============================================================
 
--- Issue 1: Archive stale sync_appointments for Initial Evaluation appointments (Bronwyn)
+-- Issue 1: Archive stale sync_appointments for Initial Evaluation (Bronwyn)
 -- NOTE: column is sync_status, NOT is_archived (is_archived does not exist)
 UPDATE sync_appointments
 SET sync_status = 'archived',
@@ -252,14 +172,11 @@ WHERE b.external_id IN ('C63QgPJz', 'C63QgTPD', 'C63QgTPE');
 -- If rows returned, delete them:
 -- DELETE FROM boardings WHERE external_id IN ('C63QgPJz', 'C63QgTPD', 'C63QgTPE');
 
--- Issue 2: Archive Gulliver's cancelled appointment (was not seen in sync, reconciler warned)
--- sync_appointment already archived via SQL in prior session.
--- The linked boarding must also be removed (FK prevents direct delete):
+-- Issue 2: Remove Gulliver's cancelled boarding (FK must be nulled first)
 UPDATE sync_appointments SET mapped_boarding_id = NULL WHERE external_id = 'C63QgSiD';
 DELETE FROM boardings WHERE external_id = 'C63QgSiD';
 
--- Issue 3: Restore Millie's boarding to March 3 (original C63QgH5K, before overlap overwrite)
--- Run BEFORE next sync (after sync the code fix handles it correctly going forward)
+-- Issue 3: Restore Millie's boarding to March 3 (run BEFORE next sync)
 UPDATE boardings
 SET arrival_datetime = '2026-03-03T00:00:00.000Z',
     external_id = 'C63QgH5K'
@@ -267,26 +184,42 @@ WHERE external_id = 'C63QgNHs'
   AND dog_id = (SELECT id FROM dogs WHERE name ILIKE 'Millie%' LIMIT 1);
 
 -- ============================================================
+-- VERIFICATION SQL (run after deploy + sync)
+-- ============================================================
 
--- If sync gets stuck
-UPDATE sync_logs SET status = 'failed', completed_at = NOW()
-WHERE status = 'running' AND started_at < NOW() - INTERVAL '5 minutes';
+-- Check null rates on boardings with known amounts (should be much fewer after fix)
+SELECT b.external_id, d.name, b.night_rate, b.billed_amount
+FROM boardings b JOIN dogs d ON b.dog_id = d.id
+WHERE b.night_rate IS NULL AND b.billed_amount > 0
+ORDER BY b.created_at DESC LIMIT 10;
 
--- Verify night_rate populated after sync
+-- Check Mochi + Marlee specifically
+SELECT d.name, d.night_rate, d.day_rate, b.external_id, b.night_rate as b_night_rate, b.billed_amount
+FROM dogs d JOIN boardings b ON b.dog_id = d.id
+WHERE d.name ILIKE '%Hill%'
+ORDER BY d.name;
+
+-- Check pricing in sync_appointments (should now be populated for C63QfLnk etc.)
+SELECT external_id, pet_name, appointment_total, pricing_line_items
+FROM sync_appointments WHERE appointment_total IS NOT NULL
+ORDER BY last_synced_at DESC LIMIT 10;
+
+-- Verify full rate picture
 SELECT b.billed_amount, b.night_rate, b.day_rate, d.name, d.night_rate as dog_night_rate,
        b.arrival_datetime, b.departure_datetime
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
 WHERE b.billed_amount IS NOT NULL
 ORDER BY b.departure_datetime DESC;
 
--- Check pricing in sync_appointments
-SELECT external_id, pet_name, appointment_total, pricing_line_items
-FROM sync_appointments WHERE appointment_total IS NOT NULL
-ORDER BY last_synced_at DESC LIMIT 10;
+-- ============================================================
+-- UTILITY
+-- ============================================================
 
--- Recover dog night_rates if still 0 after sync.
--- Reads rates from sync_appointments.pricing_line_items.
--- Only updates dogs whose current night_rate is 0.
+-- If sync gets stuck
+UPDATE sync_logs SET status = 'failed', completed_at = NOW()
+WHERE status = 'running' AND started_at < NOW() - INTERVAL '5 minutes';
+
+-- Recover dog night_rates still 0 after sync (reads from pricing_line_items)
 WITH latest_pricing AS (
   SELECT DISTINCT ON (mapped_dog_id)
     mapped_dog_id,
@@ -314,7 +247,52 @@ WHERE d.id = lp.mapped_dog_id
 
 ---
 
+## Pricing HTML Structure Reference
+
+Real HTML — price divs always have multiple classes:
+
+```html
+<fieldset id="confirm-price" class="no-legend">
+  <a class="btn toggle-field text quote">Total $375 <i class="fa fa-fw"></i></a>
+  <div class="toggle-field-content hidden">
+    <div class="service-wrapper" data-service="22215-0">
+      <span class="service-name">Boarding discounted nights for DC full-time</span>
+      <div class="price p-7 has-outstanding" id="price-0"
+        data-amount="275.00"
+        data-rate="5500"       <!-- cents ÷ 100 = $55.00 -->
+        data-qty="500">        <!-- qty × 100 ÷ 100 = 5 nights -->
+      </div>
+    </div>
+    <div class="service-wrapper" data-service="11778-0">
+      <span class="service-name"> Boarding (Days)</span>
+      <div class="price p-3 has-outstanding" id="price-1"
+        data-amount="100.00"
+        data-rate="5000.00"
+        data-qty="200.00">
+      </div>
+    </div>
+  </div>
+</fieldset>
+```
+
+Multi-pet: `<div class="pricing-appt-wrapper pets-2 services-2">` wraps all service-wrappers.
+`numPets` is extracted from `pets-N` class; `priceTags[i * numPets]` = rate/qty for service i.
+
+---
+
+## Rate Fallback Chain
+
+```
+Per-night revenue for a boarding =
+  boarding.night_rate           ← from sync (preferred, set by REQ-201)
+  ?? dog.night_rate             ← fallback for manual boardings or pre-v2.2 records
+  ?? 0                          ← last resort (show in UI as "no rate set")
+```
+
+---
+
 ## Archive
 
+Full Feb 25 v2 session history: `docs/archive/SESSION_HANDOFF_v2.2_feb25.md` (if archived)
 Full v2.1 session history: `docs/archive/SESSION_HANDOFF_v2.1_final.md`
 Full v2.0 session history: `docs/archive/SESSION_HANDOFF_v2.0_final.md`
