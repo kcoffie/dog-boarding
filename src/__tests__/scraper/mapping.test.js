@@ -498,11 +498,11 @@ describe('REQ-103: Data Mapping to App Schema', () => {
         expect(boarding.day_rate).toBeNull();
       });
 
-      it('sets night_rate null when only one line item (cannot classify)', () => {
+      it('classifies single non-day line item as night_rate', () => {
         const boarding = mapToBoarding(mockExternalAppointmentSingleLinePricing, 'dog-id');
-        expect(boarding.night_rate).toBeNull();
+        // Single "Boarding" line → not a day service → nightItem classified → rate extracted
+        expect(boarding.night_rate).toBe(55);
         expect(boarding.day_rate).toBeNull();
-        // But billed_amount should still be populated
         expect(boarding.billed_amount).toBe(550);
       });
     });
@@ -530,9 +530,10 @@ describe('REQ-103: Data Mapping to App Schema', () => {
         expect(dog.day_rate).toBe(0);
       });
 
-      it('sets rates to 0 when single line item (cannot classify)', () => {
+      it('classifies single non-day line item as night_rate=55, day_rate=0', () => {
         const dog = mapToDog(mockExternalAppointmentSingleLinePricing);
-        expect(dog.night_rate).toBe(0);
+        // Single "Boarding" line → nightItem classified → night_rate=55; no day item → 0
+        expect(dog.night_rate).toBe(55);
         expect(dog.day_rate).toBe(0);
       });
     });
@@ -554,6 +555,33 @@ describe('REQ-103: Data Mapping to App Schema', () => {
         const sync = mapToSyncAppointment(mockExternalAppointmentNoPricing, 'dog-id', 'boarding-id');
         expect(sync.appointment_total).toBeNull();
         expect(sync.pricing_line_items).toBeNull();
+      });
+    });
+
+    describe('upsertSyncAppointment() pricing on unchanged records', () => {
+      it('writes pricing fields on unchanged sync_appointment when pricing was absent before', async () => {
+        const supabase = createMockSupabase();
+
+        // First sync: no pricing (before pricing extraction was deployed)
+        await mapAndSaveAppointment(mockExternalAppointmentNoPricing, { supabase });
+        expect(supabase._mockData.sync_appointments).toHaveLength(1);
+        expect(supabase._mockData.sync_appointments[0].appointment_total).toBeNull();
+
+        // Second sync: same identity fields, but now pricing is extracted.
+        // HASH_FIELDS excludes pricing → hash still matches → unchanged path runs.
+        const withPricing = {
+          ...mockExternalAppointmentNoPricing,
+          pricing: {
+            total: 550,
+            lineItems: [{ serviceName: 'Boarding', rate: 55, qty: 10, amount: 550 }],
+          },
+        };
+        await mapAndSaveAppointment(withPricing, { supabase });
+
+        // Bug 1 fix: pricing fields written even on unchanged record
+        const updated = supabase._mockData.sync_appointments[0];
+        expect(updated.appointment_total).toBe(550);
+        expect(updated.pricing_line_items).toHaveLength(1);
       });
     });
 
@@ -598,18 +626,30 @@ describe('REQ-103: Data Mapping to App Schema', () => {
         expect(result.dog.day_rate).toBe(45);
       });
 
-      it('preserves existing rates when single-line pricing yields 0 (cannot classify)', async () => {
+      it('updates rates on external dog found by name when updateRates is true', async () => {
         const supabase = createMockSupabase();
-        // Dog already has a rate set; single-line pricing can't classify night vs day
-        supabase._addDog({ external_id: 'SNG123', name: 'Cooper', night_rate: 65, day_rate: 0, source: 'external' });
-        const dogData = mapToDog(mockExternalAppointmentSingleLinePricing);
-        // mapToDog returns night_rate: 0 (single line → no classified nightItem)
-        expect(dogData.night_rate).toBe(0);
-
-        // updateRates: true because pricing was extracted — but rate is 0, so should NOT overwrite
+        // Dog exists with a different external_id but same name — simulates Mochi Hill scenario
+        supabase._addDog({ external_id: 'OTHER123', name: 'Maverick', night_rate: 0, day_rate: 0, source: 'external' });
+        const dogData = mapToDog(mockExternalAppointmentWithPricing);
+        // dogData.external_id = 'PRC123' ≠ 'OTHER123' → findDogByExternalId returns null
+        // findDogByName finds 'Maverick' → name-match path → rates should be written
         const result = await upsertDog(supabase, dogData, { updateRates: true });
 
-        expect(result.dog.night_rate).toBe(65);
+        expect(result.dog.night_rate).toBe(55);
+        expect(result.dog.day_rate).toBe(50);
+      });
+
+      it('updates rates from single-line pricing when non-day service classified', async () => {
+        const supabase = createMockSupabase();
+        supabase._addDog({ external_id: 'SNG123', name: 'Cooper', night_rate: 65, day_rate: 0, source: 'external' });
+        const dogData = mapToDog(mockExternalAppointmentSingleLinePricing);
+        // Single "Boarding" → now classified as night → night_rate: 55
+        expect(dogData.night_rate).toBe(55);
+
+        // updateRates: true + rate > 0 → overwrites existing 65 with extracted 55
+        const result = await upsertDog(supabase, dogData, { updateRates: true });
+
+        expect(result.dog.night_rate).toBe(55);
       });
     });
   });

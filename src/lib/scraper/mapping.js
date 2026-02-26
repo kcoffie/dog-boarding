@@ -12,13 +12,14 @@ import { mappingLogger } from './logger.js';
  * Identify night and day line items from a pricing result.
  * Night = first line item whose name does NOT match SCRAPER_CONFIG.dayServicePatterns.
  * Day   = first line item whose name DOES match any dayServicePattern.
- * Returns null for both when fewer than 2 line items (cannot classify safely — REQ-201).
+ * Works for 1 or more line items — a single non-day service is unambiguously a night
+ * service and is classified accordingly (REQ-201).
  *
  * @param {{ total: number, lineItems: Array } | null} pricing
  * @returns {{ nightItem: Object|null, dayItem: Object|null }}
  */
 function classifyPricingItems(pricing) {
-  if (!pricing || !pricing.lineItems || pricing.lineItems.length < 2) {
+  if (!pricing || !pricing.lineItems || pricing.lineItems.length === 0) {
     return { nightItem: null, dayItem: null };
   }
   const { dayServicePatterns } = SCRAPER_CONFIG;
@@ -336,6 +337,9 @@ export async function upsertDog(supabase, dogData, options = {}) {
     // Update the existing dog — only include external_id when provided
     const nameMatchUpdate = { source: 'external' };
     if (dogData.external_id) nameMatchUpdate.external_id = dogData.external_id;
+    // Propagate rates when pricing was extracted (same guard as external_id path above).
+    if (updateRates && dogData.night_rate > 0) nameMatchUpdate.night_rate = dogData.night_rate;
+    if (updateRates && dogData.day_rate   > 0) nameMatchUpdate.day_rate   = dogData.day_rate;
     const { data, error } = await supabase
       .from('dogs')
       .update(nameMatchUpdate)
@@ -451,13 +455,19 @@ export async function upsertSyncAppointment(supabase, syncData, options = {}) {
   if (existing) {
     // Check if unchanged (and not forcing update)
     if (changeResult.type === 'unchanged' && !forceUpdate) {
-      // Just update the last_synced_at timestamp, skip full update
+      // Just update the last_synced_at timestamp, skip full update.
+      // Exception: always write pricing fields when extracted — they are excluded from
+      // HASH_FIELDS intentionally, so an unchanged record may still have null pricing
+      // from before pricing extraction was deployed (REQ-201).
+      const unchangedPayload = {
+        last_synced_at: now,
+        last_change_type: 'unchanged',
+      };
+      if (syncData.appointment_total != null)  unchangedPayload.appointment_total  = syncData.appointment_total;
+      if (syncData.pricing_line_items != null) unchangedPayload.pricing_line_items = syncData.pricing_line_items;
       const { data, error } = await supabase
         .from('sync_appointments')
-        .update({
-          last_synced_at: now,
-          last_change_type: 'unchanged',
-        })
+        .update(unchangedPayload)
         .eq('id', existing.id)
         .select()
         .single();
