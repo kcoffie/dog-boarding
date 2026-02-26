@@ -29,6 +29,11 @@ function classifyPricingItems(pricing) {
   const dayItem = pricing.lineItems.find(
     item => dayServicePatterns.some(p => p.test(item.serviceName))
   ) ?? null;
+  mappingLogger.log(
+    `[Mapping] classifyPricingItems: ${pricing.lineItems.length} item(s) →`,
+    `night=${nightItem ? `$${nightItem.rate} (${nightItem.serviceName})` : 'none'}`,
+    `day=${dayItem ? `$${dayItem.rate} (${dayItem.serviceName})` : 'none'}`
+  );
   return { nightItem, dayItem };
 }
 
@@ -278,6 +283,9 @@ export async function upsertDog(supabase, dogData, options = {}) {
   let existingByExternalId = null;
   if (dogData.external_id) {
     existingByExternalId = await findDogByExternalId(supabase, dogData.external_id);
+    if (!existingByExternalId) {
+      mappingLogger.log(`[Mapping] Dog not found by external_id ${dogData.external_id} — falling back to name match`);
+    }
   }
 
   if (existingByExternalId) {
@@ -291,11 +299,17 @@ export async function upsertDog(supabase, dogData, options = {}) {
     };
     if (updateRates) {
       // Only write rates when a non-zero value was actually classified from pricing.
-      // mapToDog returns 0 when no night/day item was found (e.g. single service line);
-      // don't overwrite existing rates with 0 in that case (see comment above).
+      // mapToDog returns 0 when no night/day item was found;
+      // don't overwrite existing rates with 0 in that case.
       if (dogData.night_rate > 0) updateFields.night_rate = dogData.night_rate;
       if (dogData.day_rate   > 0) updateFields.day_rate   = dogData.day_rate;
     }
+    mappingLogger.log(
+      `[Mapping] Dog "${dogData.name}" found by external_id — updating.`,
+      updateRates
+        ? `rates: night=${updateFields.night_rate ?? 'skip'}, day=${updateFields.day_rate ?? 'skip'}`
+        : 'no pricing this sync, rates unchanged'
+    );
     const { data, error } = await supabase
       .from('dogs')
       .update(updateFields)
@@ -316,7 +330,7 @@ export async function upsertDog(supabase, dogData, options = {}) {
       // Link external_id to manual entry but preserve manual data.
       // Only link when we have an external_id to set (secondary pets don't have one).
       if (!existingByName.external_id && dogData.external_id) {
-        mappingLogger.log(`[Mapping] Linking dog "${existingByName.name}" (id: ${existingByName.id}) to external_id ${dogData.external_id}`);
+        mappingLogger.log(`[Mapping] Linking manual dog "${existingByName.name}" (id: ${existingByName.id}) to external_id ${dogData.external_id}`);
         const { data, error } = await supabase
           .from('dogs')
           .update({
@@ -330,7 +344,29 @@ export async function upsertDog(supabase, dogData, options = {}) {
         if (error) throw error;
         return { dog: data, created: false, updated: true };
       }
-      // Already linked (or no external_id to set), just return it
+
+      // Already linked (or no external_id to set).
+      // Still update rates when pricing was extracted — manual dogs need rate syncs too (REQ-201).
+      if (updateRates) {
+        const rateUpdate = {};
+        if (dogData.night_rate > 0) rateUpdate.night_rate = dogData.night_rate;
+        if (dogData.day_rate   > 0) rateUpdate.day_rate   = dogData.day_rate;
+        if (Object.keys(rateUpdate).length > 0) {
+          mappingLogger.log(
+            `[Mapping] Manual dog "${existingByName.name}" already linked — updating rates:`,
+            `night=${rateUpdate.night_rate ?? 'skip'}, day=${rateUpdate.day_rate ?? 'skip'}`
+          );
+          const { data: updated, error: rateErr } = await supabase
+            .from('dogs')
+            .update(rateUpdate)
+            .eq('id', existingByName.id)
+            .select()
+            .single();
+          if (rateErr) throw rateErr;
+          return { dog: updated, created: false, updated: true };
+        }
+      }
+      mappingLogger.log(`[Mapping] Manual dog "${existingByName.name}" already linked — no rate update (updateRates=${updateRates}, night=${dogData.night_rate}, day=${dogData.day_rate})`);
       return { dog: existingByName, created: false, updated: false };
     }
 
@@ -340,6 +376,12 @@ export async function upsertDog(supabase, dogData, options = {}) {
     // Propagate rates when pricing was extracted (same guard as external_id path above).
     if (updateRates && dogData.night_rate > 0) nameMatchUpdate.night_rate = dogData.night_rate;
     if (updateRates && dogData.day_rate   > 0) nameMatchUpdate.day_rate   = dogData.day_rate;
+    mappingLogger.log(
+      `[Mapping] Dog "${dogData.name}" found by name (source=${existingByName.source}) — updating.`,
+      updateRates
+        ? `rates: night=${nameMatchUpdate.night_rate ?? 'skip'}, day=${nameMatchUpdate.day_rate ?? 'skip'}`
+        : 'no pricing this sync, rates unchanged'
+    );
     const { data, error } = await supabase
       .from('dogs')
       .update(nameMatchUpdate)
@@ -376,10 +418,12 @@ export async function upsertBoarding(supabase, boardingData) {
   let existing = await findBoardingByExternalId(supabase, boardingData.external_id);
 
   // If not found by external_id, try matching by dog + overlapping dates.
-  // Only use the overlap match when the found boarding has no external_id yet
-  // (i.e., a manually created boarding waiting to be linked). If the overlapping
-  // boarding is already linked to a different appointment, skip it and let a new
-  // boarding be created — prevents amended appointments from overwriting each other.
+  // Three overlap cases:
+  //   1. No external_id on overlap → manual boarding waiting to be linked — claim it.
+  //   2. Same external_id on overlap → .single() returned 406 because multiple boardings
+  //      share this external_id (data integrity issue). Reuse the overlap instead of
+  //      creating yet another duplicate. Warn so the issue is visible in logs.
+  //   3. Different external_id → amended appointment, create a new boarding.
   if (!existing && boardingData.dog_id && boardingData.arrival_datetime && boardingData.departure_datetime) {
     const overlap = await findBoardingByDogAndDates(
       supabase,
@@ -392,6 +436,14 @@ export async function upsertBoarding(supabase, boardingData) {
       // Manual boarding waiting to be linked — safe to claim it
       existing = overlap;
       mappingLogger.log(`[Mapping] Linking boarding ${overlap.id} to external_id ${boardingData.external_id}`);
+    } else if (overlap && overlap.external_id === boardingData.external_id) {
+      // Same external_id: findBoardingByExternalId returned 406 (multiple rows for this
+      // external_id in the DB). Reuse the overlap rather than creating another duplicate.
+      existing = overlap;
+      mappingLogger.warn(
+        `[Mapping] ⚠️  Multiple boardings with external_id ${boardingData.external_id} — reusing overlap ${overlap.id}.`,
+        'DB has duplicate boardings that need cleanup (delete extras, keep one).'
+      );
     } else if (overlap && overlap.external_id !== boardingData.external_id) {
       // Already linked to a different appointment — create a new boarding instead
       mappingLogger.log(`[Mapping] Overlap match boarding ${overlap.id} already linked to ${overlap.external_id}; creating new boarding for ${boardingData.external_id}`);
@@ -411,6 +463,12 @@ export async function upsertBoarding(supabase, boardingData) {
     if ('billed_amount' in boardingData) updateFields.billed_amount = boardingData.billed_amount;
     if ('night_rate'    in boardingData) updateFields.night_rate    = boardingData.night_rate;
     if ('day_rate'      in boardingData) updateFields.day_rate      = boardingData.day_rate;
+    mappingLogger.log(
+      `[Mapping] Updating boarding ${existing.id} (${boardingData.external_id}) —`,
+      `billed=$${updateFields.billed_amount ?? 'null'},`,
+      `night=$${updateFields.night_rate ?? 'null'},`,
+      `day=$${updateFields.day_rate ?? 'null'}`
+    );
 
     const { data, error } = await supabase
       .from('boardings')
@@ -425,6 +483,12 @@ export async function upsertBoarding(supabase, boardingData) {
   }
 
   // Create new boarding
+  mappingLogger.log(
+    `[Mapping] Creating new boarding for ${boardingData.external_id} —`,
+    `billed=$${boardingData.billed_amount ?? 'null'},`,
+    `night=$${boardingData.night_rate ?? 'null'},`,
+    `day=$${boardingData.day_rate ?? 'null'}`
+  );
   const { data, error } = await supabase
     .from('boardings')
     .insert(boardingData)
