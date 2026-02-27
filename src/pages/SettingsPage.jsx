@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
 import { useInvites } from '../hooks/useInvites';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getEmployeeName, isEmployeeActive } from '../utils/employeeHelpers';
@@ -7,6 +8,7 @@ import SyncSettings from '../components/SyncSettings';
 
 export default function SettingsPage() {
   const { settings, settingsLoading, sortEmployees, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
+  const { updatePassword } = useAuth();
   const { invites, loading: invitesLoading, createInvite, deleteInvite } = useInvites();
 
   const [netPercentage, setNetPercentage] = useState('');
@@ -27,6 +29,11 @@ export default function SettingsPage() {
   const [employeeError, setEmployeeError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, employeeName: '', hasAssignments: false });
   const [draggedIndex, setDraggedIndex] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
 
   const handlePercentageChange = (e) => {
     const value = e.target.value;
@@ -135,6 +142,31 @@ export default function SettingsPage() {
 
   const handleDragEnd = () => {
     setDraggedIndex(null);
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess(false);
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+    setPasswordLoading(true);
+    try {
+      await updatePassword(newPassword);
+      setPasswordSuccess(true);
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch {
+      setPasswordError('Failed to update password. Please try again.');
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   return (
@@ -466,6 +498,53 @@ export default function SettingsPage() {
 
       {/* External Sync Section */}
       <SyncSettings />
+
+      {/* Change Password Section */}
+      <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6">
+        <div className="flex items-start gap-4 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-slate-900">Change Password</h2>
+            <p className="text-slate-500 text-sm mt-1">
+              Update your account password.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleChangePassword} className="space-y-3">
+          <div>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => { setNewPassword(e.target.value); setPasswordError(''); setPasswordSuccess(false); }}
+              placeholder="New password"
+              className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(''); setPasswordSuccess(false); }}
+              placeholder="Confirm new password"
+              className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
+          </div>
+          {passwordError && <p className="text-red-600 text-sm">{passwordError}</p>}
+          {passwordSuccess && <p className="text-emerald-600 text-sm">Password updated successfully.</p>}
+          <button
+            type="submit"
+            disabled={passwordLoading}
+            className="px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400 active:scale-[0.98] transition-all shadow-sm"
+          >
+            {passwordLoading ? 'Updating...' : 'Update Password'}
+          </button>
+        </form>
+      </div>
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
