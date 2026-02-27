@@ -1,6 +1,6 @@
 # Dog Boarding App — Session Handoff (v2.3)
 **Last updated:** February 27, 2026
-**Status:** v2.3 IN PROGRESS — 643 tests (642 pass, 1 pre-existing date-flaky). Commit `ebcb00f` staged for deploy.
+**Status:** v2.3 IN PROGRESS — 643 tests (642 pass, 1 pre-existing date-flaky). Commit `ebcb00f` deployed to Vercel.
 
 ---
 
@@ -56,23 +56,51 @@ Zero rows for `night_rate IS NULL AND billed_amount > 0`. Pricing captures corre
 
 ## v2.3 — Progress
 
-### Completed this session (commit `ebcb00f`):
+### Completed this session (commit `ebcb00f`, deployed):
 - **REQ-302 ✅** — `cleanText()` in extraction.js now decodes `&#x27;` and `&apos;` (fixes Lilly O'Brien)
-  - **SQL backfill still needed:** `UPDATE dogs SET name = REPLACE(name, '&#x27;', '''') WHERE name LIKE '%&#x27;%';`
 - **REQ-303 ✅** — Revenue table columns are now sortable (Dog, Check-in, Check-out, Revenue). Default: Check-out desc.
 - **REQ-304 ✅** — Dogs page cleaned up: removed Import CSV/Add Boarding header buttons, Edit/Delete dog row buttons, inline boarding form, and all related dead state/handlers.
 - **REQ-301 ✅** — Change Password card added at bottom of Settings page (uses `updatePassword` from AuthContext).
-- **REQ-300** — Supabase config only (Kate does this in dashboard — no code change needed)
 
-### Still pending:
-- **REQ-300** — Kate: Supabase Dashboard → Auth → Email → disable "Confirm email" + set Site URL to Vercel prod URL
-- **REQ-305** — Manual sync: run targeted sync Jan 23–26 from Settings page to recover Mochi Hill C63QgLj7
-- **REQ-306** — Monitor Millie McSpadden C63QgH5K archival; SQL fix if not auto-resolved by cron
+---
 
-### Backlog (v2.4+):
+## Remaining v2.3 Tasks
+
+### REQ-300 — Kate does this (Supabase dashboard, ~2 min, no code)
+1. Supabase Dashboard → Authentication → Providers → Email → toggle **"Confirm email"** OFF
+2. Supabase Dashboard → Authentication → URL Configuration → set **Site URL** to the production Vercel URL
+
+### REQ-302 — SQL backfill (run in Supabase dashboard SQL editor)
+Verify first:
+```sql
+SELECT id, name FROM dogs WHERE name LIKE '%&#x27;%';
+```
+Then fix:
+```sql
+UPDATE dogs SET name = REPLACE(name, '&#x27;', '''') WHERE name LIKE '%&#x27;%';
+```
+
+### REQ-305 — Mochi Hill Jan 23 recovery (manual, no code)
+Run a targeted sync from the Settings page with **start = Jan 23, 2026** and **end = Jan 26, 2026** to recreate the lost boarding for Mochi Hill (external_id C63QgLj7, expected `billed_amount=470`, `night_rate=55`).
+
+### REQ-306 — Millie McSpadden amended appointment archival (monitor → SQL if needed)
+Two overlapping boardings exist:
+- **C63QgH5K**: March 3–19, `billed_amount=880` — original, should be archived
+- **C63QgNHs**: March 4–19, `billed_amount=1025` — amended version, keep
+
+After the next cron run, check if C63QgH5K auto-archived. If not, run:
+```sql
+UPDATE sync_appointments SET sync_status = 'archived', last_change_type = 'archived', last_changed_at = NOW() WHERE external_id = 'C63QgH5K';
+UPDATE sync_appointments SET mapped_boarding_id = NULL WHERE mapped_boarding_id = (SELECT id FROM boardings WHERE external_id = 'C63QgH5K');
+DELETE FROM boardings WHERE external_id = 'C63QgH5K';
+```
+
+---
+
+## Backlog (v2.4+)
 - REQ-107: Sync history UI + enable/disable toggle
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
-- est. label explanation: intentional — shown when `billed_amount IS NULL`, uses `night_rate × nights`
+- `est.` label in Revenue table is intentional — shown when `billed_amount IS NULL`, uses `night_rate × nights`
 
 ---
 
