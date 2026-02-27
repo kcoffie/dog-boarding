@@ -1,20 +1,21 @@
+import { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { getDateRange, calculateNights } from '../utils/dateUtils';
 
 export default function RevenueView({ startDate, days }) {
   const { dogs, boardings } = useData();
+  const [sortField, setSortField] = useState('checkout');
+  const [sortDir, setSortDir] = useState('desc');
 
   const dates = getDateRange(startDate, days);
   const startStr = dates[0];
   const endStr = dates[dates.length - 1];
 
   // Show boardings whose check-in falls within the selected period
-  const inRange = boardings
-    .filter(b => {
-      const arrivalDate = b.arrivalDateTime.split('T')[0];
-      return arrivalDate >= startStr && arrivalDate <= endStr;
-    })
-    .sort((a, b) => a.arrivalDateTime.localeCompare(b.arrivalDateTime));
+  const inRange = boardings.filter(b => {
+    const arrivalDate = b.arrivalDateTime.split('T')[0];
+    return arrivalDate >= startStr && arrivalDate <= endStr;
+  });
 
   const getDog = (dogId) => dogs.find(d => d.id === dogId);
 
@@ -42,13 +43,54 @@ export default function RevenueView({ startDate, days }) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const rows = inRange.map(boarding => {
+  const rawRows = inRange.map(boarding => {
     const dog = getDog(boarding.dogId);
     const { amount, estimated } = getBoardingRevenue(boarding);
     return { boarding, dog, amount, estimated };
   });
 
+  function toggleSort(field) {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  }
+
+  const rows = [...rawRows].sort((a, b) => {
+    let aVal, bVal;
+    switch (sortField) {
+      case 'dog':
+        aVal = (a.dog?.name ?? '').toLowerCase();
+        bVal = (b.dog?.name ?? '').toLowerCase();
+        return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      case 'checkin':
+        aVal = a.boarding.arrivalDateTime;
+        bVal = b.boarding.arrivalDateTime;
+        break;
+      case 'checkout':
+        aVal = a.boarding.departureDateTime;
+        bVal = b.boarding.departureDateTime;
+        break;
+      case 'revenue':
+        aVal = a.amount;
+        bVal = b.amount;
+        break;
+      default:
+        return 0;
+    }
+    return sortDir === 'asc'
+      ? aVal < bVal ? -1 : aVal > bVal ? 1 : 0
+      : aVal > bVal ? -1 : aVal < bVal ? 1 : 0;
+  });
+
   const periodTotal = rows.reduce((sum, r) => sum + r.amount, 0);
+
+  const renderSortIcon = (field) => {
+    if (sortField !== field) return <span className="text-slate-300 ml-1">↕</span>;
+    return <span className="ml-1 text-emerald-600">{sortDir === 'asc' ? '↑' : '↓'}</span>;
+  };
 
   return (
     <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6">
@@ -70,10 +112,30 @@ export default function RevenueView({ startDate, days }) {
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Dog</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Check-in</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Check-out</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Revenue</th>
+                <th
+                  className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                  onClick={() => toggleSort('dog')}
+                >
+                  Dog{renderSortIcon('dog')}
+                </th>
+                <th
+                  className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                  onClick={() => toggleSort('checkin')}
+                >
+                  Check-in{renderSortIcon('checkin')}
+                </th>
+                <th
+                  className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                  onClick={() => toggleSort('checkout')}
+                >
+                  Check-out{renderSortIcon('checkout')}
+                </th>
+                <th
+                  className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors"
+                  onClick={() => toggleSort('revenue')}
+                >
+                  Revenue{renderSortIcon('revenue')}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
