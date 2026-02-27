@@ -334,6 +334,12 @@ export async function runSync(options = {}) {
     const processingStart = Date.now();
     const seenExternalIds = new Set();
 
+    const { data: archivedRows } = await supabase
+      .from('sync_appointments')
+      .select('external_id')
+      .eq('sync_status', 'archived');
+    const archivedExternalIds = new Set((archivedRows || []).map(a => a.external_id));
+
     for (let i = 0; i < appointments.length; i++) {
       const appt = appointments[i];
       const apptStart = Date.now();
@@ -376,6 +382,14 @@ export async function runSync(options = {}) {
           } else {
             syncLog(`[Sync] 🏠 Processing boarding candidate ${appt.id} (title: "${appt.title}")`);
           }
+        }
+
+        // Skip appointments explicitly archived in the DB — prevents re-creation
+        // of amended appointments that are still visible on the external site's schedule.
+        if (archivedExternalIds.has(appt.id)) {
+          syncLog(`[Sync] ⏭️ Skipping archived appointment ${appt.id}`);
+          result.appointmentsSkipped++;
+          continue;
         }
 
         // Rate limiting delay
