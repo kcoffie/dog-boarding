@@ -3,21 +3,15 @@ import { useData } from '../context/DataContext';
 import DogForm from '../components/DogForm';
 import DogCsvImport from '../components/DogCsvImport';
 import BoardingForm from '../components/BoardingForm';
-import CsvImport from '../components/CsvImport';
-import ConfirmDialog from '../components/ConfirmDialog';
 import InlineDeleteButton from '../components/InlineDeleteButton';
 import { formatDateTime, calculateNights, formatName } from '../utils/dateUtils';
 
 export default function DogsPage() {
-  const { dogs, boardings, addDog, updateDog, deleteDog, toggleDogActive, addBoarding, updateBoarding, deleteBoarding } = useData();
+  const { dogs, boardings, addDog, toggleDogActive, updateBoarding, deleteBoarding } = useData();
 
-  const [editingDog, setEditingDog] = useState(null);
   const [showAddDogForm, setShowAddDogForm] = useState(false);
   const [showDogCsvImport, setShowDogCsvImport] = useState(false);
-  const [showAddBoardingForm, setShowAddBoardingForm] = useState(false);
-  const [showCsvImport, setShowCsvImport] = useState(false);
   const [editingBoarding, setEditingBoarding] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: null, item: null });
   const [sortColumn, setSortColumn] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
   const [boardingSortColumn, setBoardingSortColumn] = useState('arrivalDateTime');
@@ -25,7 +19,6 @@ export default function DogsPage() {
   const [pastBoardingSortColumn, setPastBoardingSortColumn] = useState('departureDateTime');
   const [pastBoardingSortDirection, setPastBoardingSortDirection] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
-  const [inlineAddBoardingDogId, setInlineAddBoardingDogId] = useState(null);
 
   const handleAddDog = async (dogData) => {
     try {
@@ -36,60 +29,12 @@ export default function DogsPage() {
     }
   };
 
-  const handleEditDog = async (dogData) => {
-    try {
-      await updateDog(editingDog.id, dogData);
-      setEditingDog(null);
-    } catch (err) {
-      console.error('Failed to update dog:', err);
-    }
-  };
-
-  const handleDeleteDogClick = (dog) => {
-    const hasBoardings = boardings.some(b => b.dogId === dog.id);
-    setDeleteConfirm({ isOpen: true, type: 'dog', item: dog, hasBoardings });
-  };
-
-  const handleAddBoarding = async (boardingData) => {
-    try {
-      await addBoarding(boardingData);
-      setShowAddBoardingForm(false);
-    } catch (err) {
-      console.error('Failed to add boarding:', err);
-    }
-  };
-
-  const handleInlineAddBoarding = async (boardingData) => {
-    try {
-      await addBoarding(boardingData);
-      setInlineAddBoardingDogId(null);
-    } catch (err) {
-      console.error('Failed to add boarding:', err);
-    }
-  };
-
-  const handleDogNameClick = (dog) => {
-    if (dog.active === false) return; // Don't allow for inactive dogs
-    setInlineAddBoardingDogId(dog.id);
-  };
-
   const handleEditBoarding = async (boardingData) => {
     try {
       await updateBoarding(editingBoarding.id, boardingData);
       setEditingBoarding(null);
     } catch (err) {
       console.error('Failed to update boarding:', err);
-    }
-  };
-
-  const handleConfirmDelete = async () => {
-    try {
-      if (deleteConfirm.type === 'dog') {
-        await deleteDog(deleteConfirm.item.id);
-      }
-      setDeleteConfirm({ isOpen: false, type: null, item: null });
-    } catch (err) {
-      console.error('Failed to delete:', err);
     }
   };
 
@@ -131,14 +76,7 @@ export default function DogsPage() {
     past: { label: 'Past', bg: 'bg-slate-100', text: 'text-slate-500' },
   };
 
-  const getDeleteMessage = () => {
-    if (!deleteConfirm.item) return '';
-    return deleteConfirm.hasBoardings
-      ? `"${deleteConfirm.item.name}" has boarding records. Deleting will also remove all their boardings. Are you sure?`
-      : `Are you sure you want to delete "${deleteConfirm.item.name}"?`;
-  };
-
-  const isFormOpen = showAddDogForm || showDogCsvImport || editingDog || showAddBoardingForm || showCsvImport || editingBoarding || inlineAddBoardingDogId;
+  const isFormOpen = showAddDogForm || showDogCsvImport || editingBoarding;
 
   const handleSort = (column) => {
     if (sortColumn === column) {
@@ -261,47 +199,7 @@ export default function DogsPage() {
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Boardings</h1>
             <p className="text-slate-500 mt-1">Manage boarding reservations</p>
           </div>
-          {!isFormOpen && dogs.length > 0 && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowCsvImport(true)}
-                className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                Import CSV
-              </button>
-              <button
-                onClick={() => setShowAddBoardingForm(true)}
-                className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-sm"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Boarding
-              </button>
-            </div>
-          )}
         </div>
-
-        {/* Add Boarding Form */}
-        {showAddBoardingForm && (
-          <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6 mb-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Add New Boarding</h2>
-            <BoardingForm
-              onSave={handleAddBoarding}
-              onCancel={() => setShowAddBoardingForm(false)}
-            />
-          </div>
-        )}
-
-        {/* CSV Import */}
-        {showCsvImport && (
-          <div className="mb-6">
-            <CsvImport onClose={() => setShowCsvImport(false)} />
-          </div>
-        )}
 
         {/* Boarding List */}
         <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden">
@@ -551,18 +449,6 @@ export default function DogsPage() {
           </div>
         )}
 
-        {/* Edit Dog Form */}
-        {editingDog && (
-          <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6 mb-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Edit Dog</h2>
-            <DogForm
-              dog={editingDog}
-              onSave={handleEditDog}
-              onCancel={() => setEditingDog(null)}
-            />
-          </div>
-        )}
-
         {/* Search */}
         {dogs.length > 0 && (
           <div className="mb-4">
@@ -598,7 +484,7 @@ export default function DogsPage() {
             {/* Mobile Card Layout */}
             <div className="md:hidden divide-y divide-slate-100">
               {filteredAndSortedDogs.map((dog) => (
-                <div key={dog.id} className={`p-4 ${dog.active === false ? 'opacity-50' : ''} ${inlineAddBoardingDogId === dog.id ? 'bg-indigo-50/50' : ''}`}>
+                <div key={dog.id} className={`p-4 ${dog.active === false ? 'opacity-50' : ''}`}>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
@@ -607,13 +493,9 @@ export default function DogsPage() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           {dog.active !== false ? (
-                            <button
-                              onClick={() => handleDogNameClick(dog)}
-                              disabled={isFormOpen && inlineAddBoardingDogId !== dog.id}
-                              className="font-medium text-indigo-600 hover:text-indigo-800 disabled:text-slate-900 disabled:cursor-default transition-colors truncate"
-                            >
+                            <span className="font-medium text-slate-900 truncate">
                               {formatName(dog.name)}
-                            </button>
+                            </span>
                           ) : (
                             <span className="font-medium text-slate-400 truncate">{formatName(dog.name)}</span>
                           )}
@@ -636,39 +518,13 @@ export default function DogsPage() {
                   </div>
                   <div className="mt-3 flex gap-2">
                     <button
-                      onClick={() => setEditingDog(dog)}
-                      disabled={isFormOpen}
-                      className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
-                    >
-                      Edit
-                    </button>
-                    <button
                       onClick={() => toggleDogActive(dog.id)}
                       disabled={isFormOpen}
                       className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
                     >
                       {dog.active === false ? 'Activate' : 'Deactivate'}
                     </button>
-                    <button
-                      onClick={() => handleDeleteDogClick(dog)}
-                      disabled={isFormOpen}
-                      className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 active:bg-red-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
-                    >
-                      Delete
-                    </button>
                   </div>
-                  {inlineAddBoardingDogId === dog.id && (
-                    <div className="mt-4 pt-4 border-t border-indigo-200">
-                      <h3 className="text-sm font-semibold text-slate-900 mb-4">
-                        Add Boarding for {formatName(dog.name)}
-                      </h3>
-                      <BoardingForm
-                        preselectedDogId={dog.id}
-                        onSave={handleInlineAddBoarding}
-                        onCancel={() => setInlineAddBoardingDogId(null)}
-                      />
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -705,13 +561,9 @@ export default function DogsPage() {
                       <td className={`px-5 py-4 ${dog.active === false ? 'text-slate-400' : 'text-slate-900'}`}>
                         <div className="flex items-center gap-2">
                           {dog.active !== false ? (
-                            <button
-                              onClick={() => handleDogNameClick(dog)}
-                              disabled={isFormOpen && inlineAddBoardingDogId !== dog.id}
-                              className="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline disabled:text-slate-900 disabled:no-underline disabled:cursor-default transition-colors"
-                            >
+                            <span className="text-sm font-medium text-slate-900">
                               {formatName(dog.name)}
-                            </button>
+                            </span>
                           ) : (
                             <span className="text-sm font-medium">{formatName(dog.name)}</span>
                           )}
@@ -726,44 +578,14 @@ export default function DogsPage() {
                       <td className={`px-5 py-4 text-sm text-right tabular-nums ${dog.active === false ? 'text-slate-400' : 'text-slate-600'}`}>{formatCurrency(dog.nightRate)}</td>
                       <td className="px-5 py-4 text-right">
                         <button
-                          onClick={() => setEditingDog(dog)}
-                          disabled={isFormOpen}
-                          className="text-sm font-medium text-indigo-600 hover:text-indigo-800 mr-4 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
                           onClick={() => toggleDogActive(dog.id)}
                           disabled={isFormOpen}
-                          className="text-sm font-medium text-amber-600 hover:text-amber-800 mr-4 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          className="text-sm font-medium text-amber-600 hover:text-amber-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                           {dog.active === false ? 'Activate' : 'Deactivate'}
                         </button>
-                        <button
-                          onClick={() => handleDeleteDogClick(dog)}
-                          disabled={isFormOpen}
-                          className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Delete
-                        </button>
                       </td>
                     </tr>
-                    {inlineAddBoardingDogId === dog.id && (
-                      <tr>
-                        <td colSpan={4} className="px-5 py-5 bg-indigo-50/50 border-l-4 border-indigo-500">
-                          <div className="max-w-2xl">
-                            <h3 className="text-sm font-semibold text-slate-900 mb-4">
-                              Add Boarding for {formatName(dog.name)}
-                            </h3>
-                            <BoardingForm
-                              preselectedDogId={dog.id}
-                              onSave={handleInlineAddBoarding}
-                              onCancel={() => setInlineAddBoardingDogId(null)}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </Fragment>
                 ))}
               </tbody>
@@ -934,14 +756,6 @@ export default function DogsPage() {
         );
       })()}
 
-      {/* Delete Dog Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={deleteConfirm.isOpen}
-        title="Delete Dog"
-        message={getDeleteMessage()}
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setDeleteConfirm({ isOpen: false, type: null, item: null })}
-      />
     </div>
   );
 }
