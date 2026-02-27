@@ -1,6 +1,6 @@
 # Dog Boarding App — Session Handoff (v2.3)
-**Last updated:** February 26, 2026
-**Status:** v2.2 COMPLETE — 643 tests (642 pass, 1 pre-existing date-flaky). All commits deployed. Starting v2.3 (bug fixes).
+**Last updated:** February 27, 2026
+**Status:** v2.3 IN PROGRESS — 643 tests (642 pass, 1 pre-existing date-flaky). Commit `ebcb00f` staged for deploy.
 
 ---
 
@@ -54,13 +54,25 @@ Zero rows for `night_rate IS NULL AND billed_amount > 0`. Pricing captures corre
 
 ---
 
-## v2.3 — Bug Fixes (TBD)
+## v2.3 — Progress
 
-Scope to be defined at start of next session. Known candidates:
+### Completed this session (commit `ebcb00f`):
+- **REQ-302 ✅** — `cleanText()` in extraction.js now decodes `&#x27;` and `&apos;` (fixes Lilly O'Brien)
+  - **SQL backfill still needed:** `UPDATE dogs SET name = REPLACE(name, '&#x27;', '''') WHERE name LIKE '%&#x27;%';`
+- **REQ-303 ✅** — Revenue table columns are now sortable (Dog, Check-in, Check-out, Revenue). Default: Check-out desc.
+- **REQ-304 ✅** — Dogs page cleaned up: removed Import CSV/Add Boarding header buttons, Edit/Delete dog row buttons, inline boarding form, and all related dead state/handlers.
+- **REQ-301 ✅** — Change Password card added at bottom of Settings page (uses `updatePassword` from AuthContext).
+- **REQ-300** — Supabase config only (Kate does this in dashboard — no code change needed)
+
+### Still pending:
+- **REQ-300** — Kate: Supabase Dashboard → Auth → Email → disable "Confirm email" + set Site URL to Vercel prod URL
+- **REQ-305** — Manual sync: run targeted sync Jan 23–26 from Settings page to recover Mochi Hill C63QgLj7
+- **REQ-306** — Monitor Millie McSpadden C63QgH5K archival; SQL fix if not auto-resolved by cron
+
+### Backlog (v2.4+):
 - REQ-107: Sync history UI + enable/disable toggle
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
-- Millie/amended appointment archival (if not self-resolved)
-- Mochi Jan 23 boarding recovery (targeted sync)
+- est. label explanation: intentional — shown when `billed_amount IS NULL`, uses `night_rate × nights`
 
 ---
 
