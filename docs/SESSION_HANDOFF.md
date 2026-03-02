@@ -1,13 +1,14 @@
 # Dog Boarding App — Session Handoff (v2.4)
 **Last updated:** March 1, 2026
-**Status:** v2.4 — REQ-400 and REQ-401 code complete and committed (`0dd862f`). **Migration 014 must be applied in Supabase before pushing to Vercel.**
+**Status:** v2.4 — REQ-400 and REQ-401 complete. Two print bugs fixed (`bb4e244`, `dbd4d7f`). **Migration 014 must be applied in Supabase before pushing to Vercel.**
 
 ---
 
 ## Current State
 
 - **651 tests, 650 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
-- **Last committed (not yet deployed):** `0dd862f` — feat: cron health monitoring + calendar print/export (#400 #401)
+- **Last committed (not yet deployed):** `dbd4d7f` — fix: increase print font sizes for legibility (#400)
+- **Commits not yet deployed:** `0dd862f`, `bb4e244`, `dbd4d7f`
 - **Currently deployed:** `4061fa4`, `8598a59`, `713a722`, `bf01842`, `ebcb00f`, `927b30e`
 - Migrations 012 and 013 applied in production. **Migration 014 is pending** — apply before next deploy.
 - 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
@@ -21,13 +22,14 @@
 
 ---
 
-## Deploy Checklist for 0dd862f
+## Deploy Checklist (next deploy)
 
 1. **Apply migration 014 in Supabase** — `supabase/migrations/014_add_cron_health.sql`
    - Creates `cron_health` table with RLS (authenticated read, service role write)
    - Run in Supabase dashboard → SQL Editor, or via `supabase db push`
-2. **Push to Vercel** — `git push origin main`
+2. **Push to Vercel** — `git push origin main` (will deploy `0dd862f`, `bb4e244`, `dbd4d7f`)
 3. **Verify** — after next midnight cron run, check Settings page → Cron Health card
+4. **Verify print** — Calendar → Print → Generate & Print should show content (not blank)
 
 ---
 
@@ -43,11 +45,13 @@
 
 ### REQ-400: Calendar Print / Export ✅
 - Print button top-right of Calendar page header → `PrintModal` with date range pickers (default: current month)
-- "Generate & Print" → `handlePrint(from, to)` → sets `printRange` state → `setTimeout(window.print, 50)` after React renders `PrintView`
-- `PrintView` renders `#calendar-print-view` div — hidden normally via injected `@media print` CSS, visible only on print
+- "Generate & Print" → `handlePrint(from, to)` → sets `printRange` state → `useEffect` fires after render → `window.print()`
+- `PrintView` portaled to `document.body` (via `createPortal`) — this is critical so `@media print` CSS can hide `#root` and show `#calendar-print-view` correctly
 - Each day section: date header, Arriving (green) / Staying (blue) / Departing (amber) groups, overnight count + Gross + Net summary
 - Empty days skipped; all app chrome hidden during print
+- Print font sizes: date header 22px, section labels 15px, booking rows 17px, summary 15px
 - Tests: `src/__tests__/pages/CalendarPrint.test.js` (4 tests — eachDayInRange logic)
+- **Bug fixes (`bb4e244`, `dbd4d7f`):** original used `setTimeout(print, 50)` (race) and rendered PrintView inside #root (CSS cascade — blank page). Fixed with portal + useEffect.
 
 ### REQ-402: Code Review & Hardening ⏭️
 - Deferred — single-tenant confirmed, scope defined in separate session
