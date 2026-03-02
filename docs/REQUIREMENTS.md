@@ -24,7 +24,7 @@
 | v2.1    | Bug fixes & parse degradation  | Complete (REQ-110)        |
 | v2.2    | Revenue intelligence           | Complete (REQ-200–203)    |
 | v2.3    | Data quality & UX polish       | Complete (REQ-300–306)    |
-| v2.4    | Reporting & observability      | In Progress (REQ-400–402) |
+| v2.4    | Reporting & observability      | Complete (REQ-400–402)    |
 
 ---
 
@@ -627,7 +627,7 @@ System handles conflicts between external and local data.
 ---
 
 ### REQ-106: Sync Error Handling
-**Added:** v2.0 | **Status:** In Progress
+**Added:** v2.0 | **Status:** Complete
 
 Sync failures are handled gracefully and reported.
 
@@ -722,7 +722,7 @@ CREATE TABLE sync_queue (
 ---
 
 ### REQ-107: Sync Admin UI
-**Added:** v2.0 | **Status:** In Progress
+**Added:** v2.0 | **Status:** Deferred
 
 Administrators can manage sync settings and view status.
 
@@ -848,7 +848,7 @@ dog-level default that starts at $0 for all synced dogs.
 ## v2.4 — Reporting & Observability
 
 ### REQ-400: Calendar Print / Export
-**Added:** v2.4 | **Status:** In Progress
+**Added:** v2.4 | **Status:** Complete
 
 Users can print or export to PDF a day-by-day schedule for any date range, formatted to
 match the calendar day detail panel.
@@ -868,7 +868,7 @@ match the calendar day detail panel.
 ---
 
 ### REQ-401: Cron Health Monitoring
-**Added:** v2.4 | **Status:** In Progress
+**Added:** v2.4 | **Status:** Complete
 
 Each cron job records its last run time and outcome in the database, visible on the Settings
 page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hobby plan).
@@ -890,12 +890,12 @@ page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hob
 ---
 
 ### REQ-402: Code Review & Hardening
-**Added:** v2.4 | **Status:** In Progress
+**Added:** v2.4 | **Status:** Complete
 
 Audit and harden the application before wider use.
 
 **Acceptance Criteria:**
-**Security audit complete (March 2, 2026). See `docs/REQ-402-security-audit.md` for full findings.**
+**Security audit complete (March 2, 2026). See `docs/archive/REQ-402-security-audit.md` for full findings.**
 
 MUST-FIX:
 - [x] MUST-1: Remove VITE_ prefix from `EXTERNAL_SITE_USERNAME` / `EXTERNAL_SITE_PASSWORD`; move credential reading to server-side proxy only (affects sync-proxy.js, auth.js, sync.js, cron-auth.js) — commit 80ff992. ⚠️ **Rename env vars in Vercel dashboard before next deploy.**

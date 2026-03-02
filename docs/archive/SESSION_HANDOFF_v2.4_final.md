@@ -1,16 +1,29 @@
 # Dog Boarding App — Session Handoff (v2.4)
-**Last updated:** March 2, 2026 (REQ-402 security hardening — deployed)
-**Status:** v2.4 COMPLETE — all commits pushed and deployed to Vercel
+**Last updated:** March 2, 2026 (REQ-402 security hardening — complete)
+**Status:** REQ-402 DONE — 5 commits on main, **not yet pushed/deployed**
 
 ---
 
 ## Current State
 
 - **651 tests, 650 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
-- **Last deployed:** `398387b` — docs: close REQ-402
+- **Last committed:** `398387b` — docs: close REQ-402
+- **5 commits ahead of origin/main — NOT YET PUSHED**
 - Migrations 012–015 applied in production.
 - 3 crons live and confirmed working.
-- Sync completed successfully post-deploy (creds reading correctly from renamed env vars).
+
+### ⚠️ Deploy Checklist — MUST do ALL THREE before `git push`
+
+In **Vercel dashboard → Settings → Environment Variables:**
+
+1. **Rename** `VITE_EXTERNAL_SITE_USERNAME` → `EXTERNAL_SITE_USERNAME`
+2. **Rename** `VITE_EXTERNAL_SITE_PASSWORD` → `EXTERNAL_SITE_PASSWORD`
+3. **Add new** `VITE_SYNC_PROXY_TOKEN` = any random string (e.g. `openssl rand -hex 32`)
+
+Without #1/#2: `cron-auth.js` can't read credentials → overnight auth cron fails silently.
+Without #3: sync-proxy is open to unauthenticated callers (low urgency but should be done).
+
+**After deploy:** run `npm run build` locally, grep `dist/` for a fragment of the real password — must return zero results.
 
 > **Check first thing each session:** Did overnight crons run?
 > `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
@@ -23,11 +36,11 @@
 
 ### REQ-402: Code Review & Hardening ✅ (March 2, 2026)
 
-Full audit doc: `docs/archive/REQ-402-security-audit.md`. Final report: `docs/archive/REQ-402-security-report-FINAL.md`.
+Full audit doc: `docs/REQ-402-security-audit.md`. Final report: `docs/REQ-402-security-report-FINAL.md`.
 
 | Finding | What was done | Commit |
 |---------|--------------|--------|
-| **MUST-1 CRITICAL:** `VITE_EXTERNAL_SITE_*` credentials bundled in JS bundle | `sync-proxy.js` reads creds from `process.env` server-side. `auth.js` browser path no longer sends creds. `sync.js` no longer reads `import.meta.env.VITE_*`. `cron-auth.js` key names updated. Env vars renamed in Vercel. | `80ff992` |
+| **MUST-1 CRITICAL:** `VITE_EXTERNAL_SITE_*` credentials bundled in JS bundle | `sync-proxy.js` reads creds from `process.env` server-side. `auth.js` browser path no longer sends creds. `sync.js` no longer reads `import.meta.env.VITE_*`. `cron-auth.js` key names updated. | `80ff992` |
 | **MUST-2 HIGH:** SSRF in sync-proxy fetch action | Hostname validated `=== 'agirlandyourdog.com'` before fetch | `80ff992` |
 | **REC-1 MEDIUM:** sync-proxy unauthenticated | `VITE_SYNC_PROXY_TOKEN` Bearer auth on proxy; `proxyHeaders()` helper in `auth.js` sends token on every proxy call | `cc3a9e5` |
 | **REC-2 LOW:** cron-detail `session_cleared` skipped `writeCronHealth` | 1-line fix in `cron-detail.js` | `80ff992` |
@@ -79,7 +92,8 @@ Full audit doc: `docs/archive/REQ-402-security-audit.md`. Final report: `docs/ar
 
 ## Remaining Backlog
 
-- **REQ-107:** Sync history UI + enable/disable toggle (deferred, SyncHistoryPage skeleton exists)
+- **Deploy REQ-402** — complete the Vercel env var checklist above, then `git push`
+- **REQ-107:** Sync history UI + enable/disable toggle (backlog, SyncHistoryPage skeleton exists)
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
 - Fix or remove DST-flaky test in `DateNavigator.test.jsx` (pre-existing, 1 test fails on DST boundary days)
 - **Low priority:** Store datetimes in PST (America/Los_Angeles) instead of UTC — affects `arrival_datetime`, `departure_datetime` display; currently shows UTC in DB
@@ -154,7 +168,6 @@ DELETE FROM boardings WHERE external_id = 'REPLACE_ME';
 
 ## Archive
 
-- Full v2.4 session history: `docs/archive/SESSION_HANDOFF_v2.4_final.md`
 - Full v2.3 session history: `docs/archive/SESSION_HANDOFF_v2.3_final.md`
 - Full v2.2 session history: `docs/archive/SESSION_HANDOFF_v2.2_final.md`
 - Full v2.1 session history: `docs/archive/SESSION_HANDOFF_v2.1_final.md`
