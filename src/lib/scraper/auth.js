@@ -21,21 +21,17 @@ function isBrowser() {
 }
 
 /**
- * Authenticate with the external booking system
- * @param {string} username - Login username/email
- * @param {string} password - Login password
+ * Authenticate with the external booking system.
+ * In the browser, credentials are read server-side by the proxy — do not pass them here.
+ * In Node.js (cron path), username and password must be supplied.
+ * @param {string} [username] - Login username/email (Node.js path only)
+ * @param {string} [password] - Login password (Node.js path only)
  * @returns {Promise<{success: boolean, cookies?: string, error?: string}>}
  */
 export async function authenticate(username, password) {
-  if (!username || !password) {
-    return {
-      success: false,
-      error: 'Username and password are required',
-    };
-  }
-
   try {
-    // Use server-side proxy in browser to bypass CORS
+    // Use server-side proxy in browser to bypass CORS.
+    // Credentials are read from server env by the proxy — not sent in request body.
     if (isBrowser()) {
       const proxyStart = Date.now();
       console.log('[Auth] 🔐 Using server-side proxy for authentication...');
@@ -43,7 +39,7 @@ export async function authenticate(username, password) {
       const response = await fetch('/api/sync-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'authenticate', username, password }),
+        body: JSON.stringify({ action: 'authenticate' }),
       });
 
       const result = await response.json();
@@ -60,7 +56,14 @@ export async function authenticate(username, password) {
       return result;
     }
 
-    // Direct fetch for server-side (Node.js) execution
+    // Direct fetch for server-side (Node.js) execution - credentials required
+    if (!username || !password) {
+      return {
+        success: false,
+        error: 'Username and password are required',
+      };
+    }
+
     const loginUrl = `${SCRAPER_CONFIG.baseUrl}/login`;
 
     // Get login page to discover form fields (field names + hidden values like nonce)
