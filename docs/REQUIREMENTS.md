@@ -890,11 +890,28 @@ page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hob
 ---
 
 ### REQ-402: Code Review & Hardening
-**Added:** v2.4 | **Status:** Deferred
+**Added:** v2.4 | **Status:** In Progress
 
-Audit and harden the application before wider use. Scope to be defined in a dedicated session.
+Audit and harden the application before wider use.
 
-**Acceptance Criteria:** TBD
+**Acceptance Criteria:**
+**Security audit complete (March 2, 2026). See `docs/REQ-402-security-audit.md` for full findings.**
+
+MUST-FIX:
+- [x] MUST-1: Remove VITE_ prefix from `EXTERNAL_SITE_USERNAME` / `EXTERNAL_SITE_PASSWORD`; move credential reading to server-side proxy only (affects sync-proxy.js, auth.js, sync.js, cron-auth.js) — commit 80ff992. ⚠️ **Rename env vars in Vercel dashboard before next deploy.**
+- [x] MUST-2: Add hostname validation to sync-proxy `fetch` action to prevent SSRF — commit 80ff992
+
+RECOMMENDED:
+- [ ] REC-1: Add authentication to `/api/sync-proxy` endpoint — pending design decision (VITE_SYNC_PROXY_TOKEN vs cron-trigger approach)
+- [x] REC-2: cron-detail `session_cleared` path — add `writeCronHealth` call before return — commit 80ff992
+- [ ] REC-3: CRON_SECRET guard — add warning log if absent in production
+- [ ] REC-4: Remove dead code (6 remaining: batchSync.js, historicalSync.js, SyncHistoryPage.jsx, SyncHistoryTable.jsx, SyncDetailModal.jsx, useSyncHistory.js) — requires removing Historical Import + Batch Sync sections from SyncSettings.jsx and /sync-history route from App.jsx. Pending Kate's approval.
+- [x] REC-5: Remove dead `SCRAPER_CONFIG.retryDelays` (not used by cron path) — commit 80ff992
+
+DELIVERABLE:
+- [x] Save `docs/REQ-402-security-report-FINAL.md` at completion — written March 2, 2026
+
+**Tests:** All existing 651 tests must pass after changes. No new tests required (server-side env vars are not testable in unit tests without real secrets).
 
 ---
 
