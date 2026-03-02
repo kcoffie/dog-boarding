@@ -145,7 +145,7 @@ function PrintView({ days, getBookingsForDayFn, getDogNightRate, getNetPercentag
 
         return (
           <div key={dateStr} className="print-day" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px' }}>
-            <h2 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', marginBottom: '10px' }}>{dateLabel}</h2>
+            <h2 style={{ fontSize: '22px', fontWeight: '700', color: '#0f172a', marginBottom: '10px' }}>{dateLabel}</h2>
 
             {arriving.length > 0 && (
               <PrintSection label="Arriving" color="#059669" bgColor="#ecfdf5" items={arriving} mode="arriving" />
@@ -157,7 +157,7 @@ function PrintView({ days, getBookingsForDayFn, getDogNightRate, getNetPercentag
               <PrintSection label="Departing" color="#d97706" bgColor="#fffbeb" items={departing} mode="departing" />
             )}
 
-            <div style={{ marginTop: '8px', fontSize: '12px', color: '#475569', display: 'flex', gap: '16px' }}>
+            <div style={{ marginTop: '8px', fontSize: '15px', color: '#475569', display: 'flex', gap: '16px' }}>
               <span>Dogs tonight: <strong>{overnightCount}</strong></span>
               <span>Gross: <strong>${grossTotal}</strong></span>
               <span>Net ({netPct}%): <strong style={{ color: '#059669' }}>${netTotal}</strong></span>
@@ -172,12 +172,12 @@ function PrintView({ days, getBookingsForDayFn, getDogNightRate, getNetPercentag
 function PrintSection({ label, color, bgColor, items, mode }) {
   return (
     <div style={{ marginBottom: '8px' }}>
-      <div style={{ fontSize: '10px', fontWeight: '600', color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+      <div style={{ fontSize: '15px', fontWeight: '600', color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
         {label} ({items.length})
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
         {items.map(b => (
-          <div key={b.id} style={{ backgroundColor: bgColor, border: `1px solid ${color}22`, borderRadius: '4px', padding: '4px 8px', fontSize: '12px' }}>
+          <div key={b.id} style={{ backgroundColor: bgColor, border: `1px solid ${color}22`, borderRadius: '4px', padding: '4px 8px', fontSize: '17px' }}>
             <span style={{ fontWeight: '500', color: '#0f172a' }}>{b.dog_name}</span>
             <span style={{ color: '#64748b', marginLeft: '6px' }}>
               {mode === 'arriving' && `${formatTime(b.arrival_datetime)} → ${formatDate(b.departure_datetime)}`}
