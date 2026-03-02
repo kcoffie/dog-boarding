@@ -110,6 +110,12 @@ function PrintView({ days, getBookingsForDayFn, getDogNightRate, getNetPercentag
 
   if (!days.length) return null;
 
+  const now = new Date();
+  const timeStr  = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+  const weekday  = now.toLocaleDateString('en-US', { weekday: 'short' });
+  const monthStr = now.toLocaleDateString('en-US', { month: 'short' });
+  const printedAt = `Printed at ${timeStr} ${weekday} ${now.getDate()} ${monthStr} ${now.getFullYear()}`;
+
   return (
     <div id="calendar-print-view" style={{ fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
       <style>{`
@@ -117,9 +123,13 @@ function PrintView({ days, getBookingsForDayFn, getDogNightRate, getNetPercentag
           body > * { display: none !important; }
           #calendar-print-view { display: block !important; }
           .print-day { page-break-inside: avoid; margin-bottom: 24px; }
+          @page { margin-bottom: 36px; }
         }
         #calendar-print-view { display: none; }
       `}</style>
+      <div style={{ position: 'fixed', bottom: '8px', left: 0, right: 0, textAlign: 'center', fontSize: '11px', color: '#94a3b8' }}>
+        {printedAt}
+      </div>
 
       {days.map((date) => {
         const d = date.getDate();
@@ -180,9 +190,9 @@ function PrintSection({ label, color, bgColor, items, mode }) {
           <div key={b.id} style={{ backgroundColor: bgColor, border: `1px solid ${color}22`, borderRadius: '4px', padding: '4px 8px', fontSize: '17px' }}>
             <span style={{ fontWeight: '500', color: '#0f172a' }}>{b.dog_name}</span>
             <span style={{ color: '#64748b', marginLeft: '6px' }}>
-              {mode === 'arriving' && `${formatTime(b.arrival_datetime)} → ${formatDate(b.departure_datetime)}`}
-              {mode === 'departing' && `${formatDate(b.arrival_datetime)} → ${formatTime(b.departure_datetime)}`}
-              {mode === 'staying' && `Since ${formatDate(b.arrival_datetime)} → ${formatDate(b.departure_datetime)}`}
+              {mode === 'arriving'  && `→ ${formatDate(b.departure_datetime)}`}
+              {mode === 'departing' && `${formatDate(b.arrival_datetime)} →`}
+              {mode === 'staying'   && `Since ${formatDate(b.arrival_datetime)} → ${formatDate(b.departure_datetime)}`}
             </span>
           </div>
         ))}
@@ -379,9 +389,11 @@ export default function CalendarPage() {
     setShowPrintModal(false);
   };
 
-  // Default print range = current displayed month
-  const printDefaultFrom = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-  const printDefaultTo   = `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`;
+  // Default print range = today → today+7
+  const printToday    = new Date();
+  const printWeekOut  = new Date(printToday.getFullYear(), printToday.getMonth(), printToday.getDate() + 7);
+  const printDefaultFrom = `${printToday.getFullYear()}-${String(printToday.getMonth() + 1).padStart(2, '0')}-${String(printToday.getDate()).padStart(2, '0')}`;
+  const printDefaultTo   = `${printWeekOut.getFullYear()}-${String(printWeekOut.getMonth() + 1).padStart(2, '0')}-${String(printWeekOut.getDate()).padStart(2, '0')}`;
 
   // Navigation
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
