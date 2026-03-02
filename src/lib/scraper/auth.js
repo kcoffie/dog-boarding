@@ -12,6 +12,17 @@ let sessionCookies = null;
 let sessionExpiry = null;
 
 /**
+ * Build headers for sync-proxy calls, including the proxy auth token if configured.
+ */
+function proxyHeaders() {
+  const token = import.meta.env?.VITE_SYNC_PROXY_TOKEN;
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
+}
+
+/**
  * Check if running in browser environment (not test environment)
  */
 function isBrowser() {
@@ -38,7 +49,7 @@ export async function authenticate(username, password) {
 
       const response = await fetch('/api/sync-proxy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: proxyHeaders(),
         body: JSON.stringify({ action: 'authenticate' }),
       });
 
@@ -207,7 +218,7 @@ export async function authenticatedFetch(url, options = {}) {
 
     const response = await fetch('/api/sync-proxy', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: proxyHeaders(),
       body: JSON.stringify({
         action: 'fetch',
         url,
