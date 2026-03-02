@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { formatName } from '../utils/dateUtils';
 
@@ -75,6 +75,178 @@ function isSameDay(date1, date2) {
          date1.getDate() === date2.getDate();
 }
 
+// ─── Print helpers ───────────────────────────────────────────────────────────
+
+/** Build a sorted array of {year, month, day} objects for [startDate, endDate]. */
+function eachDayInRange(startDate, endDate) {
+  const days = [];
+  const cur = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  while (cur <= end) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+/** CSS injected into <head> for @media print */
+const PRINT_CSS = `
+@media print {
+  body > * { display: none !important; }
+  #calendar-print-view { display: block !important; }
+}
+#calendar-print-view { display: none; }
+`;
+
+/**
+ * Invisible-until-print view rendered into the DOM beside the app.
+ * Each day section mirrors the CalendarPage detail panel layout.
+ */
+function PrintView({ days, getBookingsForDayFn, getDogNightRate, getNetPercentage }) {
+  if (!days.length) return null;
+
+  return (
+    <div id="calendar-print-view" style={{ fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
+      <style>{`
+        @media print {
+          body > * { display: none !important; }
+          #calendar-print-view { display: block !important; }
+          .print-day { page-break-inside: avoid; margin-bottom: 24px; }
+        }
+        #calendar-print-view { display: none; }
+      `}</style>
+
+      {days.map((date) => {
+        const d = date.getDate();
+        const m = date.getMonth();
+        const y = date.getFullYear();
+        const bookings = getBookingsForDayFn(d, m, y);
+        if (bookings.length === 0) return null;
+
+        const dateLabel = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+        const arriving  = bookings.filter(b => isSameDay(new Date(b.arrival_datetime), date));
+        const departing = bookings.filter(b => isSameDay(new Date(b.departure_datetime), date));
+        const staying   = bookings.filter(b => !isSameDay(new Date(b.arrival_datetime), date) && !isSameDay(new Date(b.departure_datetime), date));
+
+        const nextDay = new Date(date);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const overnightBookings = bookings.filter(b => new Date(b.departure_datetime) >= nextDay);
+        const overnightCount = overnightBookings.length;
+        const grossTotal = overnightBookings.reduce((sum, b) => sum + getDogNightRate(b.dogId), 0);
+        const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const netPct = getNetPercentage(dateStr);
+        const netTotal = (grossTotal * (netPct / 100)).toFixed(2);
+
+        return (
+          <div key={dateStr} className="print-day" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a', marginBottom: '10px' }}>{dateLabel}</h2>
+
+            {arriving.length > 0 && (
+              <PrintSection label="Arriving" color="#059669" bgColor="#ecfdf5" items={arriving} mode="arriving" />
+            )}
+            {staying.length > 0 && (
+              <PrintSection label="Staying" color="#2563eb" bgColor="#eff6ff" items={staying} mode="staying" />
+            )}
+            {departing.length > 0 && (
+              <PrintSection label="Departing" color="#d97706" bgColor="#fffbeb" items={departing} mode="departing" />
+            )}
+
+            <div style={{ marginTop: '8px', fontSize: '12px', color: '#475569', display: 'flex', gap: '16px' }}>
+              <span>Dogs tonight: <strong>{overnightCount}</strong></span>
+              <span>Gross: <strong>${grossTotal}</strong></span>
+              <span>Net ({netPct}%): <strong style={{ color: '#059669' }}>${netTotal}</strong></span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PrintSection({ label, color, bgColor, items, mode }) {
+  return (
+    <div style={{ marginBottom: '8px' }}>
+      <div style={{ fontSize: '10px', fontWeight: '600', color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
+        {label} ({items.length})
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+        {items.map(b => (
+          <div key={b.id} style={{ backgroundColor: bgColor, border: `1px solid ${color}22`, borderRadius: '4px', padding: '4px 8px', fontSize: '12px' }}>
+            <span style={{ fontWeight: '500', color: '#0f172a' }}>{b.dog_name}</span>
+            <span style={{ color: '#64748b', marginLeft: '6px' }}>
+              {mode === 'arriving' && `${formatTime(b.arrival_datetime)} → ${formatDate(b.departure_datetime)}`}
+              {mode === 'departing' && `${formatDate(b.arrival_datetime)} → ${formatTime(b.departure_datetime)}`}
+              {mode === 'staying' && `Since ${formatDate(b.arrival_datetime)} → ${formatDate(b.departure_datetime)}`}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Modal: date range picker + generate button */
+function PrintModal({ defaultStart, defaultEnd, onClose, onPrint }) {
+  const [from, setFrom] = useState(defaultStart);
+  const [to, setTo]     = useState(defaultEnd);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl shadow-xl p-6 w-80 space-y-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-slate-900">Print / Export</h3>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+            <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <p className="text-sm text-slate-500">
+          Choose a date range. Each day with boardings will print as a separate section.
+          Empty days are skipped.
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">From</label>
+            <input
+              type="date"
+              value={from}
+              onChange={e => setFrom(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">To</label>
+            <input
+              type="date"
+              value={to}
+              min={from}
+              onChange={e => setTo(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            />
+          </div>
+        </div>
+
+        <button
+          disabled={!from || !to || to < from}
+          onClick={() => onPrint(from, to)}
+          className="w-full py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-300 active:scale-[0.98] transition-all"
+        >
+          Generate &amp; Print
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main page ───────────────────────────────────────────────────────────────
+
 export default function CalendarPage() {
   const { dogs, boardings, getNetPercentageForDate } = useData();
   const [currentDate, setCurrentDate] = useState(() => {
@@ -82,6 +254,8 @@ export default function CalendarPage() {
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const [selectedDate, setSelectedDate] = useState(null);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printRange, setPrintRange] = useState(null); // { from, to } as 'YYYY-MM-DD' strings
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -95,6 +269,7 @@ export default function CalendarPage() {
   const getDogNightRate = (dogId) => getDog(dogId)?.nightRate || 0;
 
   // Transform boardings to calendar format
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const calendarBookings = useMemo(() => {
     return boardings.map(b => ({
       id: b.id,
@@ -103,7 +278,7 @@ export default function CalendarPage() {
       arrival_datetime: b.arrivalDateTime,
       departure_datetime: b.departureDateTime,
     }));
-  }, [boardings, dogs]);
+  }, [boardings, dogs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter bookings that overlap with current month
   const monthBookings = useMemo(() => {
@@ -157,6 +332,42 @@ export default function CalendarPage() {
     const bookings = getBookingsForDay(day);
     return Math.max(0, bookings.length - 4);
   };
+
+  // Get bookings for any arbitrary date (used by print view)
+  const getBookingsForAnyDay = (day, m, y) => {
+    return calendarBookings.filter(b => {
+      const arrival = new Date(b.arrival_datetime);
+      const departure = new Date(b.departure_datetime);
+      const arrDate = new Date(arrival.getFullYear(), arrival.getMonth(), arrival.getDate());
+      const depDate = new Date(departure.getFullYear(), departure.getMonth(), departure.getDate());
+      const checkDate = new Date(y, m, day);
+      return checkDate >= arrDate && checkDate <= depDate;
+    });
+  };
+
+  // Inject print CSS once
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.id = 'calendar-print-css';
+    style.textContent = PRINT_CSS;
+    if (!document.getElementById('calendar-print-css')) {
+      document.head.appendChild(style);
+    }
+    return () => document.getElementById('calendar-print-css')?.remove();
+  }, []);
+
+  const handlePrint = (from, to) => {
+    const [fy, fm, fd] = from.split('-').map(Number);
+    const [ty, tm, td] = to.split('-').map(Number);
+    setPrintRange({ startDate: new Date(fy, fm - 1, fd), endDate: new Date(ty, tm - 1, td) });
+    setShowPrintModal(false);
+    // Give React a frame to render the PrintView before printing
+    setTimeout(() => window.print(), 50);
+  };
+
+  // Default print range = current displayed month
+  const printDefaultFrom = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const printDefaultTo   = `${year}-${String(month + 1).padStart(2, '0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`;
 
   // Navigation
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
@@ -239,9 +450,20 @@ export default function CalendarPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Boarding Calendar</h1>
-        <p className="text-slate-500 mt-1">Click a day to see details</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Boarding Calendar</h1>
+          <p className="text-slate-500 mt-1">Click a day to see details</p>
+        </div>
+        <button
+          onClick={() => setShowPrintModal(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+          </svg>
+          Print
+        </button>
       </div>
 
       {/* Navigation */}
@@ -498,6 +720,28 @@ export default function CalendarPage() {
           <span className="inline-flex items-center justify-center w-4 h-4 bg-indigo-600 text-white rounded-full text-[10px]">{today.getDate()}</span> Today
         </div>
       </div>
+
+      {/* Print modal */}
+      {showPrintModal && (
+        <PrintModal
+          defaultStart={printDefaultFrom}
+          defaultEnd={printDefaultTo}
+          onClose={() => setShowPrintModal(false)}
+          onPrint={handlePrint}
+        />
+      )}
+
+      {/* Print view — hidden on screen, shown only when printing */}
+      {printRange && (
+        <PrintView
+          days={eachDayInRange(printRange.startDate, printRange.endDate)}
+          getBookingsForDayFn={getBookingsForAnyDay}
+          getDogNightRate={getDogNightRate}
+          getNetPercentage={getNetPercentageForDate}
+          year={year}
+          month={month}
+        />
+      )}
     </div>
   );
 }
