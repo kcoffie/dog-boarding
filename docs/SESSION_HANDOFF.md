@@ -1,6 +1,6 @@
 # Dog Boarding App — Session Handoff (v2.4)
-**Last updated:** February 27, 2026
-**Status:** v2.3 COMPLETE — 643 tests (642 pass, 1 pre-existing date-flaky). All REQs done. Ready for v2.4.
+**Last updated:** March 1, 2026
+**Status:** v2.4 IN PROGRESS — REQ-401 and REQ-400 code complete; migration 014 must be applied in production before deploying.
 
 ---
 
@@ -14,8 +14,9 @@
   SUPABASE_SERVICE_ROLE_KEY, VITE_EXTERNAL_SITE_USERNAME, VITE_EXTERNAL_SITE_PASSWORD
 
 > **Check first thing each session:** Did overnight crons run?
-> Vercel dashboard → Logs → filter by `/api/cron-auth`, `/api/cron-schedule`, `/api/cron-detail`
-> Hobby plan logs persist ~1 hour — check within that window after midnight UTC.
+> After migration 014 is applied: `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
+> Or check the Cron Health card on the Settings page.
+> (Pre-014 fallback: Vercel dashboard → Logs → filter by `/api/cron-*` — logs expire in ~1h)
 
 ---
 
@@ -48,7 +49,27 @@ All six REQs complete:
 
 ---
 
-## Backlog (v2.4+)
+## v2.4 In Progress
+
+### REQ-401: Cron Health Monitoring ✅ (code complete — needs migration)
+- `supabase/migrations/014_add_cron_health.sql` — `cron_health` table with RLS
+- `api/_cronHealth.js` — shared `writeCronHealth(supabase, name, status, result, errorMsg)` helper
+- All 3 cron handlers updated to upsert on every exit path (success, skip, session_cleared, failure)
+- `src/hooks/useCronHealth.js` — reads `cron_health` table
+- `SettingsPage.jsx` — new "Cron Health" card above Sync Settings; shows last ran (relative), OK/Failed badge, result summary
+- **⚠️ Apply migration 014 in Supabase before pushing this deploy**
+
+### REQ-400: Calendar Print / Export ✅ (code complete)
+- Print button (top-right of Calendar page) → date range modal (default: current month)
+- `handlePrint(from, to)` sets `printRange` state → `setTimeout(window.print, 50)` after React renders
+- `PrintView` component renders `#calendar-print-view` div; hidden normally, shown via `@media print`
+- Skips empty days; each day mirrors detail panel (Arriving / Staying / Departing + overnight + gross/net)
+- All app chrome hidden on print via CSS injected into `<head>` via `useEffect`
+
+### REQ-402: Code Review & Hardening
+- Deferred — scope defined in separate session; single-tenant confirmed
+
+## Remaining Backlog
 
 - REQ-107: Sync history UI + enable/disable toggle
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
@@ -74,6 +95,13 @@ All six REQs complete:
 ---
 
 ## Useful SQL
+
+```sql
+-- Check cron health (after migration 014)
+SELECT cron_name, last_ran_at, status, result, error_msg FROM cron_health ORDER BY cron_name;
+```
+
+
 
 ```sql
 -- Check data quality
