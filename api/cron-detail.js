@@ -30,6 +30,7 @@ import {
   resetStuck,
   getQueueDepth,
 } from '../src/lib/scraper/syncQueue.js';
+import { writeCronHealth } from './_cronHealth.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -65,6 +66,7 @@ export default async function handler(req, res) {
     const item = await dequeueOne(supabase);
     if (!item) {
       console.log('[CronDetail] 📭 Queue empty — nothing to process');
+      await writeCronHealth(supabase, 'detail', 'success', { action: 'idle' }, null);
       return res.status(200).json({ ok: true, action: 'idle' });
     }
 
@@ -77,6 +79,7 @@ export default async function handler(req, res) {
         .from('sync_queue')
         .update({ status: 'pending', processing_started_at: null })
         .eq('id', item.id);
+      await writeCronHealth(supabase, 'detail', 'success', { action: 'skipped', reason: 'no_session' }, null);
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_session' });
     }
 
@@ -111,6 +114,7 @@ export default async function handler(req, res) {
       console.error(`[CronDetail] ❌ Failed (retry ${(item.retry_count || 0) + 1}/3): ${msg}`);
       await markFailed(supabase, item.id, msg);
       const remaining = await getQueueDepth(supabase);
+      await writeCronHealth(supabase, 'detail', 'success', { action: 'failed', externalId: item.external_id, queueDepth: remaining }, null);
       return res.status(200).json({ ok: true, action: 'failed', error: msg, queueDepth: remaining });
     }
 
@@ -132,16 +136,22 @@ export default async function handler(req, res) {
       const remaining = await getQueueDepth(supabase);
       console.log(`[CronDetail] 📊 Queue depth remaining: ${remaining}`);
 
+      await writeCronHealth(supabase, 'detail', 'success', { action, externalId: item.external_id, queueDepth: remaining }, null);
       return res.status(200).json({ ok: true, action, externalId: item.external_id, queueDepth: remaining });
     } catch (saveErr) {
       const msg = saveErr.message.slice(0, 200);
       console.error(`[CronDetail] ❌ Save failed (retry ${(item.retry_count || 0) + 1}/3): ${msg}`);
       await markFailed(supabase, item.id, msg);
       const remaining = await getQueueDepth(supabase);
+      await writeCronHealth(supabase, 'detail', 'success', { action: 'save_failed', externalId: item.external_id, queueDepth: remaining }, null);
       return res.status(200).json({ ok: true, action: 'save_failed', error: msg, queueDepth: remaining });
     }
   } catch (err) {
     console.error('[CronDetail] ❌ Unhandled error:', err.message, err.stack);
+    try {
+      const supabase = getSupabase();
+      await writeCronHealth(supabase, 'detail', 'failure', null, err.message.slice(0, 500));
+    } catch { /* ignore */ }
     return res.status(500).json({ error: err.message });
   }
 }

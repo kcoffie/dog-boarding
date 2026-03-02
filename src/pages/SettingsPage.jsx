@@ -5,11 +5,131 @@ import { useInvites } from '../hooks/useInvites';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getEmployeeName, isEmployeeActive } from '../utils/employeeHelpers';
 import SyncSettings from '../components/SyncSettings';
+import { useCronHealth } from '../hooks/useCronHealth';
+
+const CRON_LABELS = {
+  auth:     { label: 'Auth',     description: 'Refreshes external site login session' },
+  schedule: { label: 'Schedule', description: 'Scans schedule pages, queues new appointments' },
+  detail:   { label: 'Detail',   description: 'Fetches appointment details, saves to database' },
+};
+
+function relativeTime(isoString) {
+  if (!isoString) return null;
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1)   return 'just now';
+  if (diffMin < 60)  return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24)   return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
+function formatAbsolute(isoString) {
+  if (!isoString) return '';
+  return new Date(isoString).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
+
+function resultSummary(result) {
+  if (!result) return null;
+  const { action, queued, pagesScanned, externalId, queueDepth } = result;
+  if (action === 'refreshed')    return 'Session refreshed';
+  if (action === 'skipped' && result.reason === 'session_valid') return 'Session still valid';
+  if (action === 'skipped' && result.reason === 'no_session')    return 'Waiting for auth';
+  if (action === 'session_cleared') return 'Session expired — cleared';
+  if (action === 'idle')         return 'Queue empty';
+  if (action === 'failed')       return `Item failed — ${queueDepth ?? 0} remaining`;
+  if (action === 'save_failed')  return `Save failed — ${queueDepth ?? 0} remaining`;
+  if (action === 'created')      return `Created ${externalId ?? ''} — ${queueDepth ?? 0} remaining`;
+  if (action === 'updated')      return `Updated ${externalId ?? ''} — ${queueDepth ?? 0} remaining`;
+  if (action === 'unchanged')    return `Unchanged — ${queueDepth ?? 0} remaining`;
+  if (queued != null)            return `${queued} queued, ${pagesScanned ?? 0} pages scanned`;
+  return null;
+}
+
+function CronHealthCard({ cronHealth, loading }) {
+  const cronOrder = ['auth', 'schedule', 'detail'];
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6">
+      <div className="flex items-start gap-4 mb-5">
+        <div className="w-10 h-10 rounded-lg bg-sky-100 flex items-center justify-center flex-shrink-0">
+          <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Cron Health</h2>
+          <p className="text-slate-500 text-sm mt-1">Last recorded run for each nightly scrape job.</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-slate-400 text-sm">Loading...</p>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {cronOrder.map((name) => {
+            const row = cronHealth.find(r => r.cron_name === name);
+            const meta = CRON_LABELS[name];
+            const rel = relativeTime(row?.last_ran_at);
+            const abs = formatAbsolute(row?.last_ran_at);
+            const summary = resultSummary(row?.result);
+
+            return (
+              <div key={name} className="py-3 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-900">{meta.label}</span>
+                    {row ? (
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                        row.status === 'success'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}>
+                        {row.status === 'success' ? 'OK' : 'Failed'}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-400">
+                        Never
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">{meta.description}</p>
+                  {summary && (
+                    <p className="text-xs text-slate-500 mt-0.5">{summary}</p>
+                  )}
+                  {row?.error_msg && (
+                    <p className="text-xs text-red-500 mt-0.5 truncate max-w-xs" title={row.error_msg}>
+                      {row.error_msg}
+                    </p>
+                  )}
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  {rel ? (
+                    <span className="text-sm text-slate-600" title={abs}>
+                      {rel}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-slate-400">—</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { settings, settingsLoading, sortEmployees, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
   const { updatePassword } = useAuth();
   const { invites, loading: invitesLoading, createInvite, deleteInvite } = useInvites();
+  const { cronHealth, loading: cronHealthLoading } = useCronHealth();
 
   const [netPercentage, setNetPercentage] = useState('');
   const [percentageError, setPercentageError] = useState('');
@@ -495,6 +615,9 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* Cron Health Section */}
+      <CronHealthCard cronHealth={cronHealth} loading={cronHealthLoading} />
 
       {/* External Sync Section */}
       <SyncSettings />

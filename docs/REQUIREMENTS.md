@@ -22,7 +22,9 @@
 | v1.3    | Authentication & invite system | Complete    |
 | v2.0    | External data sync             | Complete (REQ-100–109)    |
 | v2.1    | Bug fixes & parse degradation  | Complete (REQ-110)        |
-| v2.2    | Revenue intelligence           | Planned (REQ-200–203)     |
+| v2.2    | Revenue intelligence           | Complete (REQ-200–203)    |
+| v2.3    | Data quality & UX polish       | Complete (REQ-300–306)    |
+| v2.4    | Reporting & observability      | In Progress (REQ-400–402) |
 
 ---
 
@@ -841,6 +843,61 @@ dog-level default that starts at $0 for all synced dogs.
 
 ---
 
+---
+
+## v2.4 — Reporting & Observability
+
+### REQ-400: Calendar Print / Export
+**Added:** v2.4 | **Status:** In Progress
+
+Users can print or export to PDF a day-by-day schedule for any date range, formatted to
+match the calendar day detail panel.
+
+**Acceptance Criteria:**
+- "Print" button on the Calendar page header opens a date range modal
+- Default range = first day to last day of the currently displayed month
+- "Generate & Print" triggers `window.print()` — compatible with browser print-to-PDF
+- Print view renders one section per calendar day in the selected range
+- Days with no bookings are skipped entirely (not shown in output)
+- Each day section shows: date header, Arriving / Staying / Departing groups, overnight count + Gross + Net summary
+- Layout and labels match the existing day detail panel
+- All navigation, sidebar, and app chrome is hidden via `@media print`
+
+**Tests:** N/A (print UI — manual verification)
+
+---
+
+### REQ-401: Cron Health Monitoring
+**Added:** v2.4 | **Status:** In Progress
+
+Each cron job records its last run time and outcome in the database, visible on the Settings
+page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hobby plan).
+
+**Acceptance Criteria:**
+- New `cron_health` table: `cron_name` (unique text), `last_ran_at`, `status` (`success`/`failure`), `result` (JSONB), `error_msg`, `updated_at`
+- **Migration 014** creates the table with RLS enabled; authenticated users can SELECT
+- All 3 cron handlers (`cron-auth`, `cron-schedule`, `cron-detail`) upsert to `cron_health` on completion
+  - Success path: writes run stats as `result` JSON (e.g. queued count, pages scanned)
+  - Catch block: writes `status = 'failure'` and `error_msg`
+- Settings page shows a "Cron Health" card with 3 rows (Auth / Schedule / Detail):
+  - Last ran timestamp displayed as relative time ("3 hours ago") and absolute datetime on hover
+  - Green badge for `success`, red badge for `failure`
+  - Result summary (e.g. "12 queued, 2 pages scanned")
+  - "Never" shown if cron has not run yet
+
+**Tests:** N/A (infrastructure — manual verification after deploy)
+
+---
+
+### REQ-402: Code Review & Hardening
+**Added:** v2.4 | **Status:** Deferred
+
+Audit and harden the application before wider use. Scope to be defined in a dedicated session.
+
+**Acceptance Criteria:** TBD
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section
@@ -863,3 +920,5 @@ dog-level default that starts at $0 for all synced dogs.
 - **REQ-070 to REQ-079**: PWA & Mobile (future)
 - **REQ-080 to REQ-089**: Calendar (future)
 - **REQ-200 to REQ-209**: Revenue Intelligence (v2.2)
+- **REQ-300 to REQ-309**: Data Quality & UX Polish (v2.3)
+- **REQ-400 to REQ-409**: Reporting & Observability (v2.4)
