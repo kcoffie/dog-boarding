@@ -1,28 +1,29 @@
 # Dog Boarding App — Session Handoff (v2.4)
 **Last updated:** March 2, 2026 (REQ-402 security hardening — complete)
-**Status:** REQ-402 DONE — 4 commits on main, not yet pushed/deployed. See deploy checklist below.
+**Status:** REQ-402 DONE — 5 commits on main, **not yet pushed/deployed**
 
 ---
 
 ## Current State
 
 - **651 tests, 650 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
-- **Last committed:** `cc3a9e5` — add VITE_SYNC_PROXY_TOKEN auth to sync-proxy
-- **4 commits on main, NOT YET PUSHED** — do not deploy until Vercel env vars are set
+- **Last committed:** `398387b` — docs: close REQ-402
+- **5 commits ahead of origin/main — NOT YET PUSHED**
 - Migrations 012–015 applied in production.
 - 3 crons live and confirmed working.
 
-### ⚠️ Deploy Checklist (MUST do before pushing)
+### ⚠️ Deploy Checklist — MUST do ALL THREE before `git push`
 
 In **Vercel dashboard → Settings → Environment Variables:**
-1. Rename `VITE_EXTERNAL_SITE_USERNAME` → `EXTERNAL_SITE_USERNAME`
-2. Rename `VITE_EXTERNAL_SITE_PASSWORD` → `EXTERNAL_SITE_PASSWORD`
-3. Add `VITE_SYNC_PROXY_TOKEN` → any random string (e.g. `openssl rand -hex 32`)
 
-Without #1/#2: `cron-auth.js` can't read credentials → auth cron fails.
-Without #3: proxy accepts any caller (not enforced until env var is set).
+1. **Rename** `VITE_EXTERNAL_SITE_USERNAME` → `EXTERNAL_SITE_USERNAME`
+2. **Rename** `VITE_EXTERNAL_SITE_PASSWORD` → `EXTERNAL_SITE_PASSWORD`
+3. **Add new** `VITE_SYNC_PROXY_TOKEN` = any random string (e.g. `openssl rand -hex 32`)
 
-**After deploy:** run `npm run build` locally, search `dist/` for a fragment of the real password → must return zero results.
+Without #1/#2: `cron-auth.js` can't read credentials → overnight auth cron fails silently.
+Without #3: sync-proxy is open to unauthenticated callers (low urgency but should be done).
+
+**After deploy:** run `npm run build` locally, grep `dist/` for a fragment of the real password — must return zero results.
 
 > **Check first thing each session:** Did overnight crons run?
 > `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
@@ -32,6 +33,23 @@ Without #3: proxy accepts any caller (not enforced until env var is set).
 ---
 
 ## v2.4 What Was Built
+
+### REQ-402: Code Review & Hardening ✅ (March 2, 2026)
+
+Full audit doc: `docs/REQ-402-security-audit.md`. Final report: `docs/REQ-402-security-report-FINAL.md`.
+
+| Finding | What was done | Commit |
+|---------|--------------|--------|
+| **MUST-1 CRITICAL:** `VITE_EXTERNAL_SITE_*` credentials bundled in JS bundle | `sync-proxy.js` reads creds from `process.env` server-side. `auth.js` browser path no longer sends creds. `sync.js` no longer reads `import.meta.env.VITE_*`. `cron-auth.js` key names updated. | `80ff992` |
+| **MUST-2 HIGH:** SSRF in sync-proxy fetch action | Hostname validated `=== 'agirlandyourdog.com'` before fetch | `80ff992` |
+| **REC-1 MEDIUM:** sync-proxy unauthenticated | `VITE_SYNC_PROXY_TOKEN` Bearer auth on proxy; `proxyHeaders()` helper in `auth.js` sends token on every proxy call | `cc3a9e5` |
+| **REC-2 LOW:** cron-detail `session_cleared` skipped `writeCronHealth` | 1-line fix in `cron-detail.js` | `80ff992` |
+| **REC-4 LOW:** Dead code | Deleted `deletionDetection.js`, `stagedVerification.js`, `batchSync.js`; removed Batch Sync UI from `SyncSettings.jsx` (~170 lines) | `80ff992` + `154c408` |
+| **REC-5 LOW:** Dead `retryDelays` config | Removed from `SCRAPER_CONFIG` | `80ff992` |
+
+**Intentionally kept (not dead):**
+- `historicalSync.js` + Historical Import UI in SyncSettings — useful for rebuilding all data from scratch (runs `runSync()` in 30-day batches)
+- `SyncHistoryPage.jsx` + `SyncHistoryTable.jsx` + `SyncDetailModal.jsx` + `useSyncHistory.js` — REQ-107 backlog, no security impact
 
 ### REQ-401: Cron Health Monitoring ✅
 - `supabase/migrations/014_add_cron_health.sql` — `cron_health` table (cron_name UNIQUE, last_ran_at, status, result JSONB, error_msg)
@@ -51,48 +69,12 @@ Without #3: proxy accepts any caller (not enforced until env var is set).
 - Empty days skipped; all app chrome hidden during print
 - Print font sizes: date header 22px, section labels 15px, booking rows 17px, summary 15px
 - Tests: `src/__tests__/pages/CalendarPrint.test.js` (4 tests — eachDayInRange logic)
-- **Bug fixes (`bb4e244`, `dbd4d7f`):** original used `setTimeout(print, 50)` (race) and rendered PrintView inside #root (CSS cascade — blank page). Fixed with portal + useEffect.
 
 ### Migration 015: updated_at on boardings + dogs ✅
 - `supabase/migrations/015_add_updated_at.sql`
 - `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` added to both tables
 - Postgres trigger `set_updated_at()` auto-stamps on every UPDATE — no app-code changes needed
-- Existing rows backfilled with `created_at`
-- **Applied in production March 2, 2026**
-
-### REQ-402: Code Review & Hardening — Security Implementation (March 2, 2026 session)
-
-Commit `80ff992` implements MUST-1, MUST-2, REC-2, REC-4 (partial), REC-5.
-
-**MUST-1 (CRITICAL — DONE):** External site credentials no longer bundled in client JS.
-- `sync-proxy.js`: reads creds from `process.env.EXTERNAL_SITE_USERNAME/PASSWORD` server-side
-- `auth.js`: browser path no longer sends credentials to proxy
-- `sync.js`: `runSync()` no longer reads from `import.meta.env.VITE_*`
-- `cron-auth.js`: updated env var key names
-- **⚠️ Rename in Vercel BEFORE deploy** (see Current State above)
-
-**MUST-2 (HIGH — DONE):** SSRF fix in `sync-proxy.js` — hostname validated before fetch.
-
-**REC-2 (LOW — DONE):** `cron-detail.js` session_cleared path now writes cron health.
-
-**REC-4 (PARTIAL):** Deleted `deletionDetection.js` and `stagedVerification.js`.
-Remaining 6 files (`batchSync.js`, `historicalSync.js`, `SyncHistoryPage.jsx`, `SyncHistoryTable.jsx`,
-`SyncDetailModal.jsx`, `useSyncHistory.js`) require removing Historical Import + Batch Sync sections
-from `SyncSettings.jsx` and `/sync-history` route from `App.jsx`. **Pending Kate's call.**
-
-**REC-5 (LOW — DONE):** Removed dead `SCRAPER_CONFIG.retryDelays`.
-
-**DONE — all issues resolved:**
-- REC-1: `VITE_SYNC_PROXY_TOKEN` Bearer token auth added to sync-proxy (commit cc3a9e5)
-- REC-4: batchSync.js deleted + Batch Sync UI removed from SyncSettings.jsx (commit 154c408)
-- historicalSync.js kept — still useful for "rebuild from scratch" (runs in 30-day chunks)
-- SyncHistoryPage cluster kept — REQ-107 backlog, no security impact
-
-**OPEN (low priority):**
-- REC-3: CRON_SECRET warning log when not set in production
-- REQ-107: Sync history UI + enable/disable toggle (backlog)
-
-**Final report:** `docs/REQ-402-security-report-FINAL.md`
+- Applied in production March 2, 2026
 
 ---
 
@@ -110,11 +92,12 @@ from `SyncSettings.jsx` and `/sync-history` route from `App.jsx`. **Pending Kate
 
 ## Remaining Backlog
 
-- **REQ-402: Code review / hardening** — audit done, implementation ready to start (see `docs/REQ-402-security-audit.md`)
-- REQ-107: Sync history UI + enable/disable toggle
+- **Deploy REQ-402** — complete the Vercel env var checklist above, then `git push`
+- **REQ-107:** Sync history UI + enable/disable toggle (backlog, SyncHistoryPage skeleton exists)
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
 - Fix or remove DST-flaky test in `DateNavigator.test.jsx` (pre-existing, 1 test fails on DST boundary days)
 - **Low priority:** Store datetimes in PST (America/Los_Angeles) instead of UTC — affects `arrival_datetime`, `departure_datetime` display; currently shows UTC in DB
+- **Low priority:** REC-3 — add warning log to cron handlers when `CRON_SECRET` is absent in production
 - v3: new data capture + new page + email image report (planning session pending)
 
 ---
@@ -134,6 +117,8 @@ from `SyncSettings.jsx` and `/sync-history` route from `App.jsx`. **Pending Kate
 - **sync_status column:** use `sync_status = 'archived'` — `is_archived` does not exist
 - **Archived appointments:** preloaded into `archivedExternalIds` Set at sync start; skipped before detail fetch
 - **cron-detail:** processes 1 queue item per invocation (Hobby plan 10s timeout). Use "Sync Now" in Settings for bulk draining.
+- **historicalSync.js:** kept — `runSync()` in 30-day batches, useful for full data rebuild. Not dead code.
+- **VITE_SYNC_PROXY_TOKEN:** intentionally VITE_-prefixed so browser can read it; different from `CRON_SECRET`
 
 ---
 
