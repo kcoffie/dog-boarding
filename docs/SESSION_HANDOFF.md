@@ -1,24 +1,26 @@
 # Dog Boarding App — Session Handoff (v2.4)
-**Last updated:** March 1, 2026
-**Status:** v2.4 — REQ-400 and REQ-401 complete. Print defaults + footer improved (`fa75918`). **Migration 015 must be applied in Supabase** (adds `updated_at` to `boardings` + `dogs` with auto-trigger).
+**Last updated:** March 2, 2026
+**Status:** v2.4 — All commits deployed. Crons confirmed working. **Migration 015 must be applied in Supabase before next deploy.**
 
 ---
 
 ## Current State
 
 - **651 tests, 650 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
-- **Last committed (not yet deployed):** `dbd4d7f` — fix: increase print font sizes for legibility (#400)
-- **Commits not yet deployed:** `0dd862f`, `bb4e244`, `dbd4d7f`
-- **Currently deployed:** `4061fa4`, `8598a59`, `713a722`, `bf01842`, `ebcb00f`, `927b30e`
+- **Last committed:** `660598a` — feat: add updated_at + auto-trigger to boardings and dogs tables
+- **All commits deployed to Vercel:** `0dd862f`, `bb4e244`, `dbd4d7f`, `fa75918` are live as of March 2.
 - Migrations 012, 013, 014 applied in production. **Migration 015 is pending** — apply in Supabase SQL Editor before next deploy.
-- 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
+- 3 crons live and confirmed working (manually triggered March 2, all returned success):
+  - cron-auth 0:00 UTC — session refresh
+  - cron-schedule 0:05 UTC — scans booking site, queues new appointments
+  - cron-detail 0:10 UTC — processes 1 queue item per run (Hobby plan: 1/day)
 - Vercel env vars confirmed set: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY, VITE_EXTERNAL_SITE_USERNAME, VITE_EXTERNAL_SITE_PASSWORD
 
 > **Check first thing each session:** Did overnight crons run?
-> After migration 014 is applied: `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
+> `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
 > Or check the Cron Health card on the Settings page.
-> (Pre-014 fallback: Vercel dashboard → Logs → filter by `/api/cron-*` — logs expire in ~1h)
+> To drain the sync queue quickly: use "Sync Now" in Settings, or repeatedly trigger the detail cron in Vercel UI.
 
 ---
 
@@ -28,7 +30,7 @@
    - Adds `updated_at` (timestamptz, auto-trigger) to `boardings` and `dogs`
    - Run in Supabase dashboard → SQL Editor
 2. **Push to Vercel** — `git push origin main`
-3. **Verify** — after next sync run, query `SELECT external_id, updated_at FROM boardings ORDER BY updated_at DESC LIMIT 10` to confirm updates are tracked
+3. **Verify** — `SELECT external_id, updated_at FROM boardings ORDER BY updated_at DESC LIMIT 10;`
 
 ---
 
@@ -43,14 +45,22 @@
 - Tests: `src/__tests__/scraper/cronHealth.test.js` (4 tests — writeCronHealth behavior)
 
 ### REQ-400: Calendar Print / Export ✅
-- Print button top-right of Calendar page header → `PrintModal` with date range pickers (default: current month)
+- Print button top-right of Calendar page header → `PrintModal` with date range pickers (default: **today → today+7**)
 - "Generate & Print" → `handlePrint(from, to)` → sets `printRange` state → `useEffect` fires after render → `window.print()`
-- `PrintView` portaled to `document.body` (via `createPortal`) — this is critical so `@media print` CSS can hide `#root` and show `#calendar-print-view` correctly
+- `PrintView` portaled to `document.body` (via `createPortal`) — critical so `@media print` CSS can hide `#root` and show `#calendar-print-view`
 - Each day section: date header, Arriving (green) / Staying (blue) / Departing (amber) groups, overnight count + Gross + Net summary
+- Arriving/Departing rows show **dates only** (no times) — e.g. `→ Mar 7` / `Feb 28 →`
+- **Printed-at footer** on every page: `Printed at 1:13pm Mon 2 Mar 2026` (position: fixed, bottom: 8px)
 - Empty days skipped; all app chrome hidden during print
 - Print font sizes: date header 22px, section labels 15px, booking rows 17px, summary 15px
 - Tests: `src/__tests__/pages/CalendarPrint.test.js` (4 tests — eachDayInRange logic)
 - **Bug fixes (`bb4e244`, `dbd4d7f`):** original used `setTimeout(print, 50)` (race) and rendered PrintView inside #root (CSS cascade — blank page). Fixed with portal + useEffect.
+
+### Migration 015: updated_at on boardings + dogs ✅ (pending apply)
+- `supabase/migrations/015_add_updated_at.sql`
+- `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` added to both tables
+- Postgres trigger `set_updated_at()` auto-stamps on every UPDATE — no app-code changes needed
+- Existing rows backfilled with `created_at`
 
 ### REQ-402: Code Review & Hardening ⏭️
 - Deferred — single-tenant confirmed, scope defined in separate session
@@ -109,14 +119,23 @@
 - **REQ-110 parse degradation:** does NOT flag missing `appointment_total` (legitimately absent)
 - **sync_status column:** use `sync_status = 'archived'` — `is_archived` does not exist
 - **Archived appointments:** preloaded into `archivedExternalIds` Set at sync start; skipped before detail fetch
+- **cron-detail:** processes 1 queue item per invocation (Hobby plan 10s timeout). Use "Sync Now" in Settings for bulk draining.
 
 ---
 
 ## Useful SQL
 
 ```sql
--- Check cron health (after migration 014)
+-- Check cron health
 SELECT cron_name, last_ran_at, status, result, error_msg FROM cron_health ORDER BY cron_name;
+
+-- Queue status
+SELECT status, COUNT(*) FROM sync_queue GROUP BY status ORDER BY status;
+
+-- What was touched recently (requires migration 015)
+SELECT b.external_id, d.name, b.billed_amount, b.night_rate, b.updated_at
+FROM boardings b JOIN dogs d ON b.dog_id = d.id
+ORDER BY b.updated_at DESC LIMIT 20;
 
 -- Check data quality
 SELECT b.external_id, d.name, b.night_rate, b.billed_amount
