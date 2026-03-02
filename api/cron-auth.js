@@ -15,6 +15,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { authenticate } from '../src/lib/scraper/auth.js';
 import { getSession, storeSession } from '../src/lib/scraper/sessionCache.js';
+import { writeCronHealth } from './_cronHealth.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -45,6 +46,7 @@ export default async function handler(req, res) {
     const existing = await getSession(supabase);
     if (existing) {
       console.log('[CronAuth] ⏭️ Session still valid, skipping re-auth');
+      await writeCronHealth(supabase, 'auth', 'success', { action: 'skipped', reason: 'session_valid' }, null);
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'session_valid' });
     }
 
@@ -67,9 +69,14 @@ export default async function handler(req, res) {
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
     console.log(`[CronAuth] ✅ Session cached (expires: ${expiresAt})`);
 
+    await writeCronHealth(supabase, 'auth', 'success', { action: 'refreshed', expiresAt }, null);
     return res.status(200).json({ ok: true, action: 'refreshed', expiresAt });
   } catch (err) {
     console.error('[CronAuth] ❌ Unhandled error:', err.message, err.stack);
+    try {
+      const supabase = getSupabase();
+      await writeCronHealth(supabase, 'auth', 'failure', null, err.message.slice(0, 500));
+    } catch { /* ignore — don't mask original error */ }
     return res.status(500).json({ error: err.message });
   }
 }
