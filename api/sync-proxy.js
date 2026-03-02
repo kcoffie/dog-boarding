@@ -67,17 +67,20 @@ export default async function handler(request) {
 
   try {
     const body = await request.json();
-    const { action, username, password, url, cookies, method = 'GET' } = body;
+    const { action, url, cookies, method = 'GET' } = body;
 
     // Handle different actions
     switch (action) {
       case 'authenticate': {
+        // Credentials are read server-side — never sent from the browser
+        const username = process.env.EXTERNAL_SITE_USERNAME;
+        const password = process.env.EXTERNAL_SITE_PASSWORD;
         if (!username || !password) {
           return new Response(JSON.stringify({
             success: false,
-            error: 'Username and password are required',
+            error: 'Server credentials not configured',
           }), {
-            status: 400,
+            status: 500,
             headers: { 'Content-Type': 'application/json' },
           });
         }
@@ -179,6 +182,15 @@ export default async function handler(request) {
 
         // Construct full URL if relative
         const fullUrl = url.startsWith('http') ? url : `${EXTERNAL_BASE_URL}${url}`;
+
+        // Validate hostname to prevent SSRF
+        const parsedUrl = new URL(fullUrl);
+        if (parsedUrl.hostname !== 'agirlandyourdog.com') {
+          return new Response(JSON.stringify({ success: false, error: 'URL not allowed' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
 
         const response = await fetch(fullUrl, {
           method,
