@@ -1,16 +1,16 @@
 # REQ-402 Security Report — FINAL
 **Completed:** March 2, 2026
-**Scope:** Full security audit + implementation of all MUST-FIX and most RECOMMENDED findings.
+**Scope:** Full security audit + implementation of all MUST-FIX and RECOMMENDED findings (except REC-3).
 
 ---
 
 ## Summary
 
-Security audit performed March 2, 2026. All MUST-FIX issues resolved in commit `80ff992`.
-REC-1 (proxy auth) is deferred pending design decision (see below).
-REC-3 (CRON_SECRET warning) is low priority / informational.
-REC-4 (dead code removal) is partially complete — 2 of 8 files deleted; remaining 6 require
-UX decision from Kate before removing batch sync / historical import UI from Settings page.
+All MUST-FIX issues resolved. All RECOMMENDED issues resolved except REC-3 (low-priority warning log).
+REC-3 and the SyncHistoryPage cluster deferred — no security impact.
+
+Commits: `80ff992` (MUST-1, MUST-2, REC-2, REC-4 partial, REC-5), `154c408` (REC-4 batch sync),
+`cc3a9e5` (REC-1).
 
 ---
 
@@ -75,22 +75,19 @@ Only requests to `agirlandyourdog.com` are forwarded. All other hostnames are re
 
 ## RECOMMENDED Findings
 
-### REC-1 — MEDIUM: `/api/sync-proxy` has no authentication ⏳ Deferred
+### REC-1 — MEDIUM: `/api/sync-proxy` has no authentication ✅ Fixed
 
 **What it was:** Any caller on the internet can POST to `/api/sync-proxy`. After MUST-1 is
-deployed (credentials move server-side), the `authenticate` action will call the external site
+deployed (credentials move server-side), the `authenticate` action would call the external site
 with real credentials on behalf of any anonymous caller, returning a valid session cookie.
 
-**Design options considered:**
-- **Option A:** `VITE_SYNC_PROXY_TOKEN` — a public client token (different from `CRON_SECRET`)
-  stored as a VITE_ env var. Browser sends it as Bearer. Proxy validates it. Limits exposure to
-  callers who know the token (anyone who reads the bundle).
-- **Option B:** Move "Sync Now" to trigger the cron endpoints via API instead of calling
-  `runSync()` in-browser. Then the proxy is only called from internal cron flows which already
-  use `CRON_SECRET`.
+**What was done:** Added `VITE_SYNC_PROXY_TOKEN` Bearer token check at the top of `sync-proxy.js`.
+- Token is intentionally VITE_-prefixed so the browser can read it from `import.meta.env`
+- `auth.js` sends it as `Authorization: Bearer {token}` on every proxy call via `proxyHeaders()`
+- Skipped in local dev when env var is not set (same pattern as CRON_SECRET)
+- Token is NOT the same as `CRON_SECRET` — separate purpose, separate secret
 
-**Status:** Deferred — requires Kate's decision on approach. MUST-2 (hostname check) reduces
-practical SSRF risk significantly in the meantime.
+**⚠️ MANUAL STEP REQUIRED:** Set `VITE_SYNC_PROXY_TOKEN` in Vercel dashboard (any random string).
 
 ---
 
@@ -115,23 +112,16 @@ checks. Can add a production warning log in a future cleanup pass.
 
 ---
 
-### REC-4 — LOW: Dead code (8 files) ⚠️ Partially complete
+### REC-4 — LOW: Dead code ✅ Complete (with intentional exceptions)
 
-**Deleted (no live imports):**
-- `src/lib/scraper/deletionDetection.js` — deleted in commit `80ff992`
-- `src/lib/scraper/stagedVerification.js` — deleted in commit `80ff992` (also referenced `VITE_` credentials directly)
+**Deleted:**
+- `src/lib/scraper/deletionDetection.js` — commit `80ff992` (no live imports)
+- `src/lib/scraper/stagedVerification.js` — commit `80ff992` (no live imports; also referenced `VITE_` credentials)
+- `src/lib/scraper/batchSync.js` — commit `154c408` (replaced by micro-mode crons; Batch Sync UI section removed from SyncSettings.jsx)
 
-**Remaining — requires UX decision:**
-The following 6 files are still imported from live code:
-- `src/lib/scraper/batchSync.js` — imported by `SyncSettings.jsx` (Batch Sync collapsible section)
-- `src/lib/scraper/historicalSync.js` — imported by `SyncSettings.jsx` (Historical Import section)
-- `src/pages/SyncHistoryPage.jsx` — live route in `App.jsx` at `/sync-history`
-- `src/components/SyncHistoryTable.jsx` — used by SyncHistoryPage
-- `src/components/SyncDetailModal.jsx` — used by SyncHistoryPage
-- `src/hooks/useSyncHistory.js` — used by SyncHistoryPage
-
-Removing these requires removing the Batch Sync + Historical Import UI sections from Settings
-(~200 lines) and the `/sync-history` route from App.jsx. Pending Kate's approval.
+**Intentionally kept:**
+- `src/lib/scraper/historicalSync.js` — used by SyncSettings.jsx Historical Import section. Useful for rebuilding all data from scratch (runs `runSync()` in 30-day chunks for large date ranges). Not dead code.
+- `src/pages/SyncHistoryPage.jsx` + `SyncHistoryTable.jsx` + `SyncDetailModal.jsx` + `useSyncHistory.js` — REQ-107 backlog (sync history UI). No security impact from keeping.
 
 ---
 
@@ -163,15 +153,17 @@ read by the cron path (which uses `syncQueue.markFailed()` backoff). Misleading 
 
 | File | Change |
 |------|--------|
-| `api/sync-proxy.js` | MUST-1: read creds from `process.env`; MUST-2: hostname validation |
-| `src/lib/scraper/auth.js` | MUST-1: remove creds from browser proxy POST; restructure to check isBrowser first |
+| `api/sync-proxy.js` | MUST-1: read creds from `process.env`; MUST-2: hostname validation; REC-1: proxy token auth |
+| `src/lib/scraper/auth.js` | MUST-1: remove creds from browser proxy POST; REC-1: `proxyHeaders()` sends token |
 | `src/lib/scraper/sync.js` | MUST-1: remove username/password from runSync options |
 | `api/cron-auth.js` | MUST-1: update env var key names |
 | `api/cron-detail.js` | REC-2: add writeCronHealth to session_cleared path |
 | `src/lib/scraper/config.js` | REC-5: remove dead retryDelays |
 | `src/lib/scraper/deletionDetection.js` | REC-4: deleted |
 | `src/lib/scraper/stagedVerification.js` | REC-4: deleted |
+| `src/lib/scraper/batchSync.js` | REC-4: deleted |
+| `src/components/SyncSettings.jsx` | REC-4: removed Batch Sync UI section (~170 lines) |
 
-**Commit:** `80ff992` — feat: REQ-402 security hardening
+**Commits:** `80ff992`, `154c408`, `cc3a9e5`
 
 **Tests:** 651 tests, 650 pass (1 pre-existing DST-flaky in DateNavigator, unrelated).

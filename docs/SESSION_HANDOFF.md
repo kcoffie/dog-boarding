@@ -1,21 +1,28 @@
 # Dog Boarding App — Session Handoff (v2.4)
-**Last updated:** March 2, 2026 (REQ-402 security hardening session)
-**Status:** v2.4 security hardening in progress — commit 80ff992 on main, not yet pushed/deployed.
+**Last updated:** March 2, 2026 (REQ-402 security hardening — complete)
+**Status:** REQ-402 DONE — 4 commits on main, not yet pushed/deployed. See deploy checklist below.
 
 ---
 
 ## Current State
 
 - **651 tests, 650 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
-- **Last committed:** `80ff992` — REQ-402 security hardening (MUST-1, MUST-2, REC-2, REC-4 partial, REC-5)
-- **NOT YET PUSHED** — do not deploy until Vercel env vars are renamed (see below)
+- **Last committed:** `cc3a9e5` — add VITE_SYNC_PROXY_TOKEN auth to sync-proxy
+- **4 commits on main, NOT YET PUSHED** — do not deploy until Vercel env vars are set
 - Migrations 012–015 applied in production.
 - 3 crons live and confirmed working.
-- **⚠️ BEFORE PUSHING/DEPLOYING:** Rename Vercel env vars:
-  - `VITE_EXTERNAL_SITE_USERNAME` → `EXTERNAL_SITE_USERNAME`
-  - `VITE_EXTERNAL_SITE_PASSWORD` → `EXTERNAL_SITE_PASSWORD`
-  - Without this rename, `cron-auth.js` and `sync-proxy.js` will fail to read credentials after deploy.
-- After rename + deploy: build the app and search `dist/` for any fragment of the real password to verify it's not bundled.
+
+### ⚠️ Deploy Checklist (MUST do before pushing)
+
+In **Vercel dashboard → Settings → Environment Variables:**
+1. Rename `VITE_EXTERNAL_SITE_USERNAME` → `EXTERNAL_SITE_USERNAME`
+2. Rename `VITE_EXTERNAL_SITE_PASSWORD` → `EXTERNAL_SITE_PASSWORD`
+3. Add `VITE_SYNC_PROXY_TOKEN` → any random string (e.g. `openssl rand -hex 32`)
+
+Without #1/#2: `cron-auth.js` can't read credentials → auth cron fails.
+Without #3: proxy accepts any caller (not enforced until env var is set).
+
+**After deploy:** run `npm run build` locally, search `dist/` for a fragment of the real password → must return zero results.
 
 > **Check first thing each session:** Did overnight crons run?
 > `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
@@ -75,13 +82,17 @@ from `SyncSettings.jsx` and `/sync-history` route from `App.jsx`. **Pending Kate
 
 **REC-5 (LOW — DONE):** Removed dead `SCRAPER_CONFIG.retryDelays`.
 
-**OPEN:**
-- **REC-1:** `/api/sync-proxy` has no auth — anyone can call `authenticate` action and get a valid
-  session cookie from the external site using our credentials. Two design options:
-  - Option A: `VITE_SYNC_PROXY_TOKEN` (new public token, browser sends it, proxy validates)
-  - Option B: Move "Sync Now" to trigger cron endpoints via API (more architectural change)
-- **REC-3:** CRON_SECRET warning when not set in production (low priority)
-- **Final report:** `docs/REQ-402-security-report-FINAL.md` written (all findings, what was fixed).
+**DONE — all issues resolved:**
+- REC-1: `VITE_SYNC_PROXY_TOKEN` Bearer token auth added to sync-proxy (commit cc3a9e5)
+- REC-4: batchSync.js deleted + Batch Sync UI removed from SyncSettings.jsx (commit 154c408)
+- historicalSync.js kept — still useful for "rebuild from scratch" (runs in 30-day chunks)
+- SyncHistoryPage cluster kept — REQ-107 backlog, no security impact
+
+**OPEN (low priority):**
+- REC-3: CRON_SECRET warning log when not set in production
+- REQ-107: Sync history UI + enable/disable toggle (backlog)
+
+**Final report:** `docs/REQ-402-security-report-FINAL.md`
 
 ---
 
