@@ -10,7 +10,9 @@ A web application for managing dog boarding businesses. Track bookings, sync app
 - **Employee Tracking** — Assign employees to overnight shifts, calculate earnings
 - **Payroll** — Track and manage employee payments with payment history
 - **CSV Import** — Bulk import bookings from spreadsheets
-- **External Sync** — Automatically sync appointments from agirlandyourdog.com
+- **External Sync** — Automatically sync appointments from agirlandyourdog.com via scheduled cron jobs
+- **Calendar Print / Export** — Print or PDF a day-by-day schedule for any date range
+- **Cron Health Monitoring** — Settings page shows last run time and status of each cron job
 - **Secure Access** — Invite-only signup, all users share one organization
 
 ## Tech Stack
@@ -65,11 +67,15 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 | Variable | Description |
 |---|---|
-| `VITE_EXTERNAL_SITE_USERNAME` | Login email for agirlandyourdog.com |
-| `VITE_EXTERNAL_SITE_PASSWORD` | Login password for agirlandyourdog.com |
+| `EXTERNAL_SITE_USERNAME` | Login email for agirlandyourdog.com (server-side only — no `VITE_` prefix) |
+| `EXTERNAL_SITE_PASSWORD` | Login password for agirlandyourdog.com (server-side only — no `VITE_` prefix) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only — bypasses RLS) |
+| `VITE_SYNC_PROXY_TOKEN` | Bearer token for sync-proxy authentication (set to any random string) |
+| `CRON_SECRET` | Secret header value Vercel sends with cron requests (optional but recommended in production) |
 
 Set all variables in `.env.local` for local development and in your Vercel project dashboard for production.
+
+> **Important:** `EXTERNAL_SITE_USERNAME` and `EXTERNAL_SITE_PASSWORD` must NOT use the `VITE_` prefix — Vite bakes `VITE_*` variables into the browser bundle, which would expose credentials publicly.
 
 ---
 
