@@ -89,6 +89,7 @@
 
 - REQ-107: Sync history UI + enable/disable toggle
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
+- Fix or remove DST-flaky test in `DateNavigator.test.jsx` (pre-existing, 1 test fails on DST boundary days)
 - `est.` label in Revenue table is intentional — shown when `billed_amount IS NULL`, uses `night_rate × nights`
 - REQ-402: Code review / hardening (deferred, single-tenant)
 - v3: new data capture + new page + email image report (planning session pending)
