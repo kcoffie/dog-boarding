@@ -107,6 +107,7 @@ export default async function handler(req, res) {
           .from('sync_queue')
           .update({ status: 'pending', processing_started_at: null })
           .eq('id', item.id);
+        await writeCronHealth(supabase, 'detail', 'success', { action: 'session_cleared' }, null);
         return res.status(200).json({ ok: true, action: 'session_cleared', reason: 'session_expired' });
       }
       // Other fetch errors — apply retry backoff

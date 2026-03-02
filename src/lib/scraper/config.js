@@ -30,7 +30,6 @@ export const SCRAPER_CONFIG = {
 
   // Retry settings
   maxRetries: 3,
-  retryDelays: [5000, 30000, 300000], // 5s, 30s, 5min
 
   // Selectors for parsing (can be overridden if site structure changes)
   selectors: {

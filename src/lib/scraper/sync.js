@@ -230,8 +230,6 @@ async function withRetry(fn, options = {}) {
 /**
  * Run a full sync
  * @param {Object} options
- * @param {string} [options.username] - External site username
- * @param {string} [options.password] - External site password
  * @param {Date} [options.startDate] - Start of date range
  * @param {Date} [options.endDate] - End of date range
  * @param {boolean} [options.boardingOnly=true] - Only sync boarding appointments
@@ -241,8 +239,6 @@ async function withRetry(fn, options = {}) {
  */
 export async function runSync(options = {}) {
   const {
-    username = import.meta.env?.VITE_EXTERNAL_SITE_USERNAME ?? (typeof process !== 'undefined' ? process.env.VITE_EXTERNAL_SITE_USERNAME : undefined),
-    password = import.meta.env?.VITE_EXTERNAL_SITE_PASSWORD ?? (typeof process !== 'undefined' ? process.env.VITE_EXTERNAL_SITE_PASSWORD : undefined),
     startDate,
     endDate,
     boardingOnly = true,
@@ -297,14 +293,10 @@ export async function runSync(options = {}) {
 
     // Authenticate if needed
     if (!isAuthenticated()) {
-      if (!username || !password) {
-        throw new Error('External site credentials required');
-      }
-
       onProgress?.({ stage: 'authenticating' });
       stepStart = Date.now();
       syncLog('[Sync] 🔐 Starting authentication...');
-      const authResult = await withRetry(() => authenticate(username, password));
+      const authResult = await withRetry(() => authenticate());
       logTiming('authentication', stepStart);
 
       if (!authResult.success) {
