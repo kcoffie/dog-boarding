@@ -1,36 +1,26 @@
 # Dog Boarding App — Session Handoff (v2.4)
-**Last updated:** March 2, 2026
-**Status:** v2.4 — All commits deployed. Crons confirmed working. **Migration 015 must be applied in Supabase before next deploy.**
+**Last updated:** March 2, 2026 (REQ-402 security hardening session)
+**Status:** v2.4 security hardening in progress — commit 80ff992 on main, not yet pushed/deployed.
 
 ---
 
 ## Current State
 
 - **651 tests, 650 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
-- **Last committed:** `660598a` — feat: add updated_at + auto-trigger to boardings and dogs tables
-- **All commits deployed to Vercel:** `0dd862f`, `bb4e244`, `dbd4d7f`, `fa75918` are live as of March 2.
-- Migrations 012, 013, 014 applied in production. **Migration 015 is pending** — apply in Supabase SQL Editor before next deploy.
-- 3 crons live and confirmed working (manually triggered March 2, all returned success):
-  - cron-auth 0:00 UTC — session refresh
-  - cron-schedule 0:05 UTC — scans booking site, queues new appointments
-  - cron-detail 0:10 UTC — processes 1 queue item per run (Hobby plan: 1/day)
-- Vercel env vars confirmed set: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
-  SUPABASE_SERVICE_ROLE_KEY, VITE_EXTERNAL_SITE_USERNAME, VITE_EXTERNAL_SITE_PASSWORD
+- **Last committed:** `80ff992` — REQ-402 security hardening (MUST-1, MUST-2, REC-2, REC-4 partial, REC-5)
+- **NOT YET PUSHED** — do not deploy until Vercel env vars are renamed (see below)
+- Migrations 012–015 applied in production.
+- 3 crons live and confirmed working.
+- **⚠️ BEFORE PUSHING/DEPLOYING:** Rename Vercel env vars:
+  - `VITE_EXTERNAL_SITE_USERNAME` → `EXTERNAL_SITE_USERNAME`
+  - `VITE_EXTERNAL_SITE_PASSWORD` → `EXTERNAL_SITE_PASSWORD`
+  - Without this rename, `cron-auth.js` and `sync-proxy.js` will fail to read credentials after deploy.
+- After rename + deploy: build the app and search `dist/` for any fragment of the real password to verify it's not bundled.
 
 > **Check first thing each session:** Did overnight crons run?
 > `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
 > Or check the Cron Health card on the Settings page.
 > To drain the sync queue quickly: use "Sync Now" in Settings, or repeatedly trigger the detail cron in Vercel UI.
-
----
-
-## Deploy Checklist (next deploy)
-
-1. **Apply migration 015 in Supabase** — `supabase/migrations/015_add_updated_at.sql`
-   - Adds `updated_at` (timestamptz, auto-trigger) to `boardings` and `dogs`
-   - Run in Supabase dashboard → SQL Editor
-2. **Push to Vercel** — `git push origin main`
-3. **Verify** — `SELECT external_id, updated_at FROM boardings ORDER BY updated_at DESC LIMIT 10;`
 
 ---
 
@@ -56,14 +46,42 @@
 - Tests: `src/__tests__/pages/CalendarPrint.test.js` (4 tests — eachDayInRange logic)
 - **Bug fixes (`bb4e244`, `dbd4d7f`):** original used `setTimeout(print, 50)` (race) and rendered PrintView inside #root (CSS cascade — blank page). Fixed with portal + useEffect.
 
-### Migration 015: updated_at on boardings + dogs ✅ (pending apply)
+### Migration 015: updated_at on boardings + dogs ✅
 - `supabase/migrations/015_add_updated_at.sql`
 - `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` added to both tables
 - Postgres trigger `set_updated_at()` auto-stamps on every UPDATE — no app-code changes needed
 - Existing rows backfilled with `created_at`
+- **Applied in production March 2, 2026**
 
-### REQ-402: Code Review & Hardening ⏭️
-- Deferred — single-tenant confirmed, scope defined in separate session
+### REQ-402: Code Review & Hardening — Security Implementation (March 2, 2026 session)
+
+Commit `80ff992` implements MUST-1, MUST-2, REC-2, REC-4 (partial), REC-5.
+
+**MUST-1 (CRITICAL — DONE):** External site credentials no longer bundled in client JS.
+- `sync-proxy.js`: reads creds from `process.env.EXTERNAL_SITE_USERNAME/PASSWORD` server-side
+- `auth.js`: browser path no longer sends credentials to proxy
+- `sync.js`: `runSync()` no longer reads from `import.meta.env.VITE_*`
+- `cron-auth.js`: updated env var key names
+- **⚠️ Rename in Vercel BEFORE deploy** (see Current State above)
+
+**MUST-2 (HIGH — DONE):** SSRF fix in `sync-proxy.js` — hostname validated before fetch.
+
+**REC-2 (LOW — DONE):** `cron-detail.js` session_cleared path now writes cron health.
+
+**REC-4 (PARTIAL):** Deleted `deletionDetection.js` and `stagedVerification.js`.
+Remaining 6 files (`batchSync.js`, `historicalSync.js`, `SyncHistoryPage.jsx`, `SyncHistoryTable.jsx`,
+`SyncDetailModal.jsx`, `useSyncHistory.js`) require removing Historical Import + Batch Sync sections
+from `SyncSettings.jsx` and `/sync-history` route from `App.jsx`. **Pending Kate's call.**
+
+**REC-5 (LOW — DONE):** Removed dead `SCRAPER_CONFIG.retryDelays`.
+
+**OPEN:**
+- **REC-1:** `/api/sync-proxy` has no auth — anyone can call `authenticate` action and get a valid
+  session cookie from the external site using our credentials. Two design options:
+  - Option A: `VITE_SYNC_PROXY_TOKEN` (new public token, browser sends it, proxy validates)
+  - Option B: Move "Sync Now" to trigger cron endpoints via API (more architectural change)
+- **REC-3:** CRON_SECRET warning when not set in production (low priority)
+- **Final report:** `docs/REQ-402-security-report-FINAL.md` written (all findings, what was fixed).
 
 ---
 
@@ -79,28 +97,13 @@
 
 ---
 
-## Known Data Issues
-
-1. **Millie McSpadden — C63QgH5K boarding deleted, sync_appointment archived:**
-   - C63QgNHs (Mar 4–19, `billed_amount=1025`, `day_rate=50`) is the active record.
-   - C63QgH5K sync_appointment is `archived`; sync will now skip it permanently.
-   - Monitor: if a third boarding appears for Millie in March, investigate.
-
-2. **Null service_types** (self-correct on next sync of their date range):
-   C63QgKsL, C63QfyoF, C63QgNGU, C63QgP2y, C63QgOHe
-
-3. **Amended appointments not yet archived:**
-   - C63QgNGU→C63QfyoF (4/1–13): old URL likely inaccessible — reconciliation should catch it on next sync
-
----
-
 ## Remaining Backlog
 
+- **REQ-402: Code review / hardening** — audit done, implementation ready to start (see `docs/REQ-402-security-audit.md`)
 - REQ-107: Sync history UI + enable/disable toggle
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
 - Fix or remove DST-flaky test in `DateNavigator.test.jsx` (pre-existing, 1 test fails on DST boundary days)
-- `est.` label in Revenue table is intentional — shown when `billed_amount IS NULL`, uses `night_rate × nights`
-- REQ-402: Code review / hardening (deferred, single-tenant)
+- **Low priority:** Store datetimes in PST (America/Los_Angeles) instead of UTC — affects `arrival_datetime`, `departure_datetime` display; currently shows UTC in DB
 - v3: new data capture + new page + email image report (planning session pending)
 
 ---
