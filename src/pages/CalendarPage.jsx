@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { formatName } from '../utils/dateUtils';
 
@@ -103,6 +104,10 @@ const PRINT_CSS = `
  * Each day section mirrors the CalendarPage detail panel layout.
  */
 function PrintView({ days, getBookingsForDayFn, getDogNightRate, getNetPercentage }) {
+  useEffect(() => {
+    console.log(`[print] PrintView mounted — ${days.length} days in range`);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!days.length) return null;
 
   return (
@@ -356,13 +361,22 @@ export default function CalendarPage() {
     return () => document.getElementById('calendar-print-css')?.remove();
   }, []);
 
+  // Trigger window.print() only after React has committed PrintView to the DOM.
+  // (Using useEffect guarantees the render cycle is complete before printing.)
+  useEffect(() => {
+    if (!printRange) return;
+    const days = eachDayInRange(printRange.startDate, printRange.endDate);
+    console.log(`[print] PrintView in DOM — ${days.length} day range, calling window.print()`);
+    window.print();
+  }, [printRange]);
+
   const handlePrint = (from, to) => {
     const [fy, fm, fd] = from.split('-').map(Number);
     const [ty, tm, td] = to.split('-').map(Number);
-    setPrintRange({ startDate: new Date(fy, fm - 1, fd), endDate: new Date(ty, tm - 1, td) });
+    const range = { startDate: new Date(fy, fm - 1, fd), endDate: new Date(ty, tm - 1, td) };
+    console.log(`[print] handlePrint → ${from} to ${to}`);
+    setPrintRange(range);
     setShowPrintModal(false);
-    // Give React a frame to render the PrintView before printing
-    setTimeout(() => window.print(), 50);
   };
 
   // Default print range = current displayed month
@@ -731,16 +745,15 @@ export default function CalendarPage() {
         />
       )}
 
-      {/* Print view — hidden on screen, shown only when printing */}
-      {printRange && (
+      {/* Print view — portaled to body so @media print CSS can show it while hiding #root */}
+      {printRange && createPortal(
         <PrintView
           days={eachDayInRange(printRange.startDate, printRange.endDate)}
           getBookingsForDayFn={getBookingsForAnyDay}
           getDogNightRate={getDogNightRate}
           getNetPercentage={getNetPercentageForDate}
-          year={year}
-          month={month}
-        />
+        />,
+        document.body
       )}
     </div>
   );
