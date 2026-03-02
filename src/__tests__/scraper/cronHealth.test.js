@@ -1,6 +1,6 @@
 /**
  * Tests for the cron health write helper.
- * @requirements REQ-401
+ * @requirements REQ-401, REQ-402
  */
 
 import { describe, it, expect, vi } from 'vitest';

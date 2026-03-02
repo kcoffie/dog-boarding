@@ -52,10 +52,10 @@ export default async function handler(req, res) {
 
     // Re-authenticate
     console.log('[CronAuth] 🔑 Session expired or missing, re-authenticating...');
-    const username = process.env.VITE_EXTERNAL_SITE_USERNAME;
-    const password = process.env.VITE_EXTERNAL_SITE_PASSWORD;
+    const username = process.env.EXTERNAL_SITE_USERNAME;
+    const password = process.env.EXTERNAL_SITE_PASSWORD;
     if (!username || !password) {
-      throw new Error('External site credentials not configured (VITE_EXTERNAL_SITE_USERNAME / VITE_EXTERNAL_SITE_PASSWORD)');
+      throw new Error('External site credentials not configured (EXTERNAL_SITE_USERNAME / EXTERNAL_SITE_PASSWORD)');
     }
 
     const result = await authenticate(username, password);
