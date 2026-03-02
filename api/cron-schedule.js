@@ -24,6 +24,7 @@ import { setSession } from '../src/lib/scraper/auth.js';
 import { authenticatedFetch } from '../src/lib/scraper/auth.js';
 import { getSession, clearSession } from '../src/lib/scraper/sessionCache.js';
 import { enqueue, getQueueDepth } from '../src/lib/scraper/syncQueue.js';
+import { writeCronHealth } from './_cronHealth.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -205,6 +206,7 @@ export default async function handler(req, res) {
     const cookies = await getSession(supabase);
     if (!cookies) {
       console.log('[CronSchedule] ⏭️ No valid session — waiting for cron-auth');
+      await writeCronHealth(supabase, 'schedule', 'success', { action: 'skipped', reason: 'no_session' }, null);
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_session' });
     }
 
@@ -236,6 +238,7 @@ export default async function handler(req, res) {
         if (err.message === 'SESSION_EXPIRED') {
           console.log('[CronSchedule] 🔒 Session rejected by server — clearing cached session');
           await clearSession(supabase);
+          await writeCronHealth(supabase, 'schedule', 'success', { action: 'session_cleared', reason: 'session_expired' }, null);
           return res.status(200).json({ ok: true, action: 'session_cleared', reason: 'session_expired' });
         }
         throw err;
@@ -292,17 +295,23 @@ export default async function handler(req, res) {
     const depth = await getQueueDepth(supabase);
     console.log(`[CronSchedule] 📊 Queue depth after scan: ${depth} pending`);
 
-    return res.status(200).json({
-      ok: true,
+    const healthResult = {
       pagesScanned: stats.pagesScanned,
       found: stats.found,
       skipped: stats.skipped,
       queued: stats.queued,
       cursorAdvancedTo: nextCursor.toISOString().slice(0, 10),
       queueDepth: depth,
-    });
+    };
+    await writeCronHealth(supabase, 'schedule', 'success', healthResult, null);
+
+    return res.status(200).json({ ok: true, ...healthResult });
   } catch (err) {
     console.error('[CronSchedule] ❌ Unhandled error:', err.message, err.stack);
+    try {
+      const supabase = getSupabase();
+      await writeCronHealth(supabase, 'schedule', 'failure', null, err.message.slice(0, 500));
+    } catch { /* ignore */ }
     return res.status(500).json({ error: err.message });
   }
 }
