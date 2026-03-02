@@ -1,6 +1,6 @@
 # Dog Boarding App — Session Handoff (v2.4)
 **Last updated:** March 1, 2026
-**Status:** v2.4 — REQ-400 and REQ-401 complete. Two print bugs fixed (`bb4e244`, `dbd4d7f`). **Migration 014 must be applied in Supabase before pushing to Vercel.**
+**Status:** v2.4 — REQ-400 and REQ-401 complete. Print defaults + footer improved (`fa75918`). **Migration 015 must be applied in Supabase** (adds `updated_at` to `boardings` + `dogs` with auto-trigger).
 
 ---
 
@@ -10,7 +10,7 @@
 - **Last committed (not yet deployed):** `dbd4d7f` — fix: increase print font sizes for legibility (#400)
 - **Commits not yet deployed:** `0dd862f`, `bb4e244`, `dbd4d7f`
 - **Currently deployed:** `4061fa4`, `8598a59`, `713a722`, `bf01842`, `ebcb00f`, `927b30e`
-- Migrations 012 and 013 applied in production. **Migration 014 is pending** — apply before next deploy.
+- Migrations 012, 013, 014 applied in production. **Migration 015 is pending** — apply in Supabase SQL Editor before next deploy.
 - 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
 - Vercel env vars confirmed set: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY, VITE_EXTERNAL_SITE_USERNAME, VITE_EXTERNAL_SITE_PASSWORD
@@ -24,12 +24,11 @@
 
 ## Deploy Checklist (next deploy)
 
-1. **Apply migration 014 in Supabase** — `supabase/migrations/014_add_cron_health.sql`
-   - Creates `cron_health` table with RLS (authenticated read, service role write)
-   - Run in Supabase dashboard → SQL Editor, or via `supabase db push`
-2. **Push to Vercel** — `git push origin main` (will deploy `0dd862f`, `bb4e244`, `dbd4d7f`)
-3. **Verify** — after next midnight cron run, check Settings page → Cron Health card
-4. **Verify print** — Calendar → Print → Generate & Print should show content (not blank)
+1. **Apply migration 015 in Supabase** — `supabase/migrations/015_add_updated_at.sql`
+   - Adds `updated_at` (timestamptz, auto-trigger) to `boardings` and `dogs`
+   - Run in Supabase dashboard → SQL Editor
+2. **Push to Vercel** — `git push origin main`
+3. **Verify** — after next sync run, query `SELECT external_id, updated_at FROM boardings ORDER BY updated_at DESC LIMIT 10` to confirm updates are tracked
 
 ---
 
