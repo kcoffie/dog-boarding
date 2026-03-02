@@ -1,14 +1,15 @@
 # Dog Boarding App — Session Handoff (v2.4)
 **Last updated:** March 1, 2026
-**Status:** v2.4 IN PROGRESS — REQ-401 and REQ-400 code complete; migration 014 must be applied in production before deploying.
+**Status:** v2.4 — REQ-400 and REQ-401 code complete and committed (`0dd862f`). **Migration 014 must be applied in Supabase before pushing to Vercel.**
 
 ---
 
 ## Current State
 
-- **643 tests, 642 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
-- **Deployed commits:** `4061fa4`, `8598a59`, `713a722`, `bf01842`, `ebcb00f`, `927b30e`
-- Migrations 012 and 013 applied in production. No new migrations needed.
+- **651 tests, 650 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
+- **Last committed (not yet deployed):** `0dd862f` — feat: cron health monitoring + calendar print/export (#400 #401)
+- **Currently deployed:** `4061fa4`, `8598a59`, `713a722`, `bf01842`, `ebcb00f`, `927b30e`
+- Migrations 012 and 013 applied in production. **Migration 014 is pending** — apply before next deploy.
 - 3 crons live: cron-auth 0:00 UTC → cron-schedule 0:05 UTC → cron-detail 0:10 UTC
 - Vercel env vars confirmed set: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
   SUPABASE_SERVICE_ROLE_KEY, VITE_EXTERNAL_SITE_USERNAME, VITE_EXTERNAL_SITE_PASSWORD
@@ -20,9 +21,40 @@
 
 ---
 
-## v2.3 Outcome
+## Deploy Checklist for 0dd862f
 
-All six REQs complete:
+1. **Apply migration 014 in Supabase** — `supabase/migrations/014_add_cron_health.sql`
+   - Creates `cron_health` table with RLS (authenticated read, service role write)
+   - Run in Supabase dashboard → SQL Editor, or via `supabase db push`
+2. **Push to Vercel** — `git push origin main`
+3. **Verify** — after next midnight cron run, check Settings page → Cron Health card
+
+---
+
+## v2.4 What Was Built
+
+### REQ-401: Cron Health Monitoring ✅
+- `supabase/migrations/014_add_cron_health.sql` — `cron_health` table (cron_name UNIQUE, last_ran_at, status, result JSONB, error_msg)
+- `api/_cronHealth.js` — shared `writeCronHealth(supabase, name, status, result, errorMsg)` helper (underscore prefix = not a Vercel route)
+- All 3 cron handlers upsert on every exit path: success, skip (no_session), session_cleared, failure
+- `src/hooks/useCronHealth.js` — reads `cron_health` table for the Settings page
+- `SettingsPage.jsx` — new "Cron Health" card above Sync Settings; shows Auth / Schedule / Detail rows with last ran time (relative, absolute on hover), OK/Failed badge, result summary
+- Tests: `src/__tests__/scraper/cronHealth.test.js` (4 tests — writeCronHealth behavior)
+
+### REQ-400: Calendar Print / Export ✅
+- Print button top-right of Calendar page header → `PrintModal` with date range pickers (default: current month)
+- "Generate & Print" → `handlePrint(from, to)` → sets `printRange` state → `setTimeout(window.print, 50)` after React renders `PrintView`
+- `PrintView` renders `#calendar-print-view` div — hidden normally via injected `@media print` CSS, visible only on print
+- Each day section: date header, Arriving (green) / Staying (blue) / Departing (amber) groups, overnight count + Gross + Net summary
+- Empty days skipped; all app chrome hidden during print
+- Tests: `src/__tests__/pages/CalendarPrint.test.js` (4 tests — eachDayInRange logic)
+
+### REQ-402: Code Review & Hardening ⏭️
+- Deferred — single-tenant confirmed, scope defined in separate session
+
+---
+
+## v2.3 Outcome (for reference)
 
 - **REQ-300 ✅** — Supabase dashboard config complete (manual)
 - **REQ-301 ✅** — Change Password card added to Settings page
@@ -49,31 +81,13 @@ All six REQs complete:
 
 ---
 
-## v2.4 In Progress
-
-### REQ-401: Cron Health Monitoring ✅ (code complete — needs migration)
-- `supabase/migrations/014_add_cron_health.sql` — `cron_health` table with RLS
-- `api/_cronHealth.js` — shared `writeCronHealth(supabase, name, status, result, errorMsg)` helper
-- All 3 cron handlers updated to upsert on every exit path (success, skip, session_cleared, failure)
-- `src/hooks/useCronHealth.js` — reads `cron_health` table
-- `SettingsPage.jsx` — new "Cron Health" card above Sync Settings; shows last ran (relative), OK/Failed badge, result summary
-- **⚠️ Apply migration 014 in Supabase before pushing this deploy**
-
-### REQ-400: Calendar Print / Export ✅ (code complete)
-- Print button (top-right of Calendar page) → date range modal (default: current month)
-- `handlePrint(from, to)` sets `printRange` state → `setTimeout(window.print, 50)` after React renders
-- `PrintView` component renders `#calendar-print-view` div; hidden normally, shown via `@media print`
-- Skips empty days; each day mirrors detail panel (Arriving / Staying / Departing + overnight + gross/net)
-- All app chrome hidden on print via CSS injected into `<head>` via `useEffect`
-
-### REQ-402: Code Review & Hardening
-- Deferred — scope defined in separate session; single-tenant confirmed
-
 ## Remaining Backlog
 
 - REQ-107: Sync history UI + enable/disable toggle
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
 - `est.` label in Revenue table is intentional — shown when `billed_amount IS NULL`, uses `night_rate × nights`
+- REQ-402: Code review / hardening (deferred, single-tenant)
+- v3: new data capture + new page + email image report (planning session pending)
 
 ---
 
@@ -99,11 +113,7 @@ All six REQs complete:
 ```sql
 -- Check cron health (after migration 014)
 SELECT cron_name, last_ran_at, status, result, error_msg FROM cron_health ORDER BY cron_name;
-```
 
-
-
-```sql
 -- Check data quality
 SELECT b.external_id, d.name, b.night_rate, b.billed_amount
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
