@@ -65,6 +65,19 @@ export default async function handler(request) {
     });
   }
 
+  // Validate proxy token (VITE_SYNC_PROXY_TOKEN — intentionally public, browser-readable).
+  // Skipped in local dev when env var is not set.
+  const proxyToken = process.env.VITE_SYNC_PROXY_TOKEN;
+  if (proxyToken) {
+    const authHeader = request.headers.get('authorization');
+    if (authHeader !== `Bearer ${proxyToken}`) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
   try {
     const body = await request.json();
     const { action, url, cookies, method = 'GET' } = body;
