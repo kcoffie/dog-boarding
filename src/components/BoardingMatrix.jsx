@@ -6,6 +6,20 @@ import EmployeeDropdown from './EmployeeDropdown';
 import BoardingFormModal from './BoardingFormModal';
 import { useBoardingForms, isBoardingUpcoming } from '../hooks/useBoardingForms';
 
+function getFormLinkColor(relevantBoarding, formData) {
+  if (!relevantBoarding) return 'text-slate-900';
+  if (!formData) return 'text-red-600';
+  if (!formData.form_data?.priorityFields?.length) return 'text-amber-600';
+  return 'text-indigo-700';
+}
+
+function getFormLinkTitle(relevantBoarding, formData) {
+  if (!relevantBoarding) return undefined;
+  if (!formData) return 'No boarding form found';
+  if (!formData.form_data?.priorityFields?.length) return 'Form found — no key fields';
+  return 'View boarding form';
+}
+
 export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }) {
   const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
   const { formsByBoardingId } = useBoardingForms();
@@ -364,7 +378,6 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                   {mobileDogsData.overnight.map((dog) => {
                     const rb = getRelevantBoarding(dog);
                     const fd = rb ? formsByBoardingId[rb.id] : null;
-                    const nf = rb && !fd;
                     return (
                     <div key={dog.id} className="px-4 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -375,8 +388,8 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                         </div>
                         <button
                           onClick={() => openFormModal(dog, rb, fd)}
-                          className={`font-medium text-left hover:underline ${nf ? 'text-amber-600' : rb ? 'text-indigo-700' : 'text-slate-900'}`}
-                          title={nf ? 'No Boarding Form Found!' : rb ? 'View boarding form' : undefined}
+                          className={`font-medium text-left hover:underline ${getFormLinkColor(rb, fd)}`}
+                          title={getFormLinkTitle(rb, fd)}
                         >
                           {formatName(dog.name)}
                         </button>
@@ -398,7 +411,6 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                   {mobileDogsData.dayOnly.map((dog) => {
                     const rb = getRelevantBoarding(dog);
                     const fd = rb ? formsByBoardingId[rb.id] : null;
-                    const nf = rb && !fd;
                     return (
                     <div key={dog.id} className="px-4 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -409,8 +421,8 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                         </div>
                         <button
                           onClick={() => openFormModal(dog, rb, fd)}
-                          className={`font-medium text-left hover:underline ${nf ? 'text-amber-600' : rb ? 'text-indigo-700' : 'text-slate-900'}`}
-                          title={nf ? 'No Boarding Form Found!' : rb ? 'View boarding form' : undefined}
+                          className={`font-medium text-left hover:underline ${getFormLinkColor(rb, fd)}`}
+                          title={getFormLinkTitle(rb, fd)}
                         >
                           {formatName(dog.name)}
                         </button>
@@ -499,7 +511,6 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
             {dogsWithBoardings.map((dog) => {
               const relevantBoarding = getRelevantBoarding(dog);
               const formData = relevantBoarding ? formsByBoardingId[relevantBoarding.id] : null;
-              const noForm = relevantBoarding && !formData;
               return (
               <tr key={dog.id} className="group hover:bg-indigo-50/50 transition-colors">
                 <td className="px-5 py-4 text-sm font-medium text-slate-900 sticky left-0 bg-white group-hover:bg-indigo-50/50 transition-colors">
@@ -511,8 +522,8 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                     </div>
                     <button
                       onClick={() => openFormModal(dog, relevantBoarding, formData)}
-                      className={`text-left hover:underline ${noForm ? 'text-amber-600' : relevantBoarding ? 'text-indigo-700 hover:text-indigo-900' : 'text-slate-900'}`}
-                      title={noForm ? 'No Boarding Form Found!' : relevantBoarding ? 'View boarding form' : undefined}
+                      className={`text-left hover:underline ${getFormLinkColor(relevantBoarding, formData)}`}
+                      title={getFormLinkTitle(relevantBoarding, formData)}
                     >
                       {formatName(dog.name)}
                     </button>
