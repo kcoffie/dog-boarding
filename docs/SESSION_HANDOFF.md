@@ -1,6 +1,6 @@
 # Dog Boarding App — Session Handoff (v3.0)
-**Last updated:** March 3, 2026 (night — REQ-506/507/508 UI polish complete)
-**Status:** v3.0 DEPLOYED + form parsing bug fixed + UI polish complete (portal modal, 3-state link colors, source URL link).
+**Last updated:** March 3, 2026 (late night — print fix + form re-enqueue fix)
+**Status:** v3.0 DEPLOYED. All commits pushed. Two post-deploy bug fixes landed.
 
 ---
 
@@ -9,6 +9,58 @@
 - **695 tests, 686 pass.** 9 pre-existing failures: 1 DST-flaky in `DateNavigator.test.jsx` + 8 in `BoardingMatrix.test.jsx` (sorting UI) — all unrelated to sync work.
 - **v3.0 fully deployed.** Migration 016 applied, code pushed to Vercel and live.
 - **REQ-506–508 complete.** Modal centering via portal, 3-state link colors, source URL link + conditional print all implemented.
+- **Two post-deploy bugs fixed** (see this session below). Push to deploy.
+
+## What Was Done This Session (March 3, 2026 — late night)
+
+### Fix 1: Boarding form print button produced blank output
+
+**Bug:** Print button called `window.print()`, which prints the entire page. The modal is rendered via `createPortal` into `document.body`, so the app's calendar/sidebar also printed and the overlay's CSS didn't isolate the modal content.
+
+**Fix:** Replaced `window.print()` with a `handlePrint()` function that opens a blank `_blank` window, writes just the form data as clean semantic HTML with embedded print styles (header, table of fields, date discrepancy alert), then calls `print()` on that isolated window and closes it. No Tailwind dependency, safe HTML escaping.
+
+File: `src/components/BoardingFormModal.jsx`
+
+### Fix 2: Form jobs not re-queued after client submits a late form
+
+**Bug:** `enqueue()` in `syncQueue.js` skipped anything with status `done`, `pending`, or `processing` — only re-queued `failed`. So if a form job ran when no form was submitted yet → marked `done` → never checked again even after the client submitted it.
+
+**Fix:** Changed the skip condition to use `boarding_forms` as the source of truth instead of queue status:
+- In `mapping.js`: before calling `enqueue`, check `boarding_forms` for a stored row for this boarding. If found → skip (form is already here). If not found → call `enqueue` with `resetIfDone: true`.
+- In `syncQueue.js`: `enqueue` now accepts `resetIfDone` option. When set and existing row is `done`, resets it to `pending` so it gets re-processed on next cron/sync.
+
+Files: `src/lib/scraper/syncQueue.js`, `src/lib/scraper/mapping.js`
+
+---
+
+## Next Steps
+
+### 1. Push to deploy ← START HERE
+
+Two commits are unpushed:
+```
+fix: open isolated print window for boarding form to prevent blank output
+fix: re-enqueue form jobs when form not yet stored, skip only when already found
+```
+Run `git push`. Vercel auto-deploys from main.
+
+### 2. Test form re-fetch
+
+After pushing, run "Sync Now" in Settings. For any boarding where a form was previously looked up but not found (queue status `done`, no `boarding_forms` row), it should now be reset to `pending` and re-fetched. Check:
+
+```sql
+-- Should see done→pending resets for boardings without forms
+SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY type, status;
+
+-- Verify new forms came in
+SELECT bf.boarding_id, d.name, jsonb_array_length(bf.form_data->'priorityFields') AS priority_count, bf.fetched_at
+FROM boarding_forms bf
+JOIN boardings b ON bf.boarding_id = b.id
+JOIN dogs d ON b.dog_id = d.id
+ORDER BY bf.fetched_at DESC LIMIT 10;
+```
+
+---
 
 ## What Was Done This Session (March 3, 2026 — night)
 
@@ -155,38 +207,7 @@ Files changed:
 
 ---
 
-## Next Steps
-
-### 1. Push to Vercel ← START HERE
-
-Two commits are unpushed to `origin/main`:
-```
-fix: correct form detail field regex, add date-matching logs (#500)
-feat: fix modal centering, add source URL link, update form link colors (#506 #507 #508)
-```
-Run `git push` to deploy both. Vercel will auto-deploy from main.
-
-### 2. Verify forms populate after deploy
-
-After pushing, the `boarding_forms` table is still empty (was cleared last session to flush bad
-regex data). Run **"Sync Now"** in Settings to drain the form queue immediately. Then verify:
-
-```sql
--- Should see rows with non-empty form_data (priorityFields should not be [])
-SELECT bf.boarding_id, d.name, bf.date_mismatch,
-       jsonb_array_length(bf.form_data->'priorityFields') AS priority_count,
-       bf.fetched_at
-FROM boarding_forms bf
-JOIN boardings b ON bf.boarding_id = b.id
-JOIN dogs d ON b.dog_id = d.id
-ORDER BY bf.fetched_at DESC LIMIT 10;
-```
-
-If `priority_count` is still 0 for all rows after syncing, check Vercel function logs for
-`[Forms]` entries — the regex and diagnostic logging from the evening session should make
-the cause visible.
-
-### 3. Useful SQL for v3.0 verification
+## Useful SQL for v3.0 verification
 
 ```sql
 -- Check external_pet_id population
@@ -253,6 +274,7 @@ ORDER BY bf.fetched_at DESC LIMIT 10;
 - **Form field parsing:** regex with forward window (600 chars from `id="field_\d+"` marker) — avoids nested div closing tag complexity; works in Node.js and browser
 - **Form matching:** most recent submission with submittedDate ≤ boarding arrival date; fallback to most recent overall
 - **Form job enqueueing:** only for boardings where `departure_datetime >= today midnight` AND dog has `external_pet_id`
+- **Form re-enqueue logic:** `boarding_forms` is the source of truth — skip enqueue only if a row exists for the boarding. If no row exists (form not yet fetched/submitted), enqueue with `resetIfDone: true` so previously-`done` queue items get retried. This ensures late form submissions are picked up on the next sync.
 
 ---
 
