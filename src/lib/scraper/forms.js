@@ -91,7 +91,7 @@ export function parseFormDetailPage(html) {
 
   // Find each field row by its id="field_\d+" marker and look ahead for label + value.
   // Using a forward window avoids needing to match nested closing tags.
-  const fieldMarkerRe = /id="(field_\d+)"/gi;
+  const fieldMarkerRe = /id="(field_\d+)-wrapper"/gi;
   let markerMatch;
 
   while ((markerMatch = fieldMarkerRe.exec(html)) !== null) {
@@ -178,13 +178,23 @@ export function findFormForBoarding(submissions, boarding) {
   const boardingArrival = new Date(boarding.arrival_datetime);
   boardingArrival.setHours(23, 59, 59, 999); // include submissions on the same day
 
+  log(`[Forms] 🗓️  Matching against boarding arrival: ${boardingArrival.toISOString()} (${submissions.length} submissions)`);
+
   // Filter to submissions at or before boarding arrival
   const candidates = submissions.filter(s => {
-    if (!s.submittedDate) return true; // include if date unknown
+    if (!s.submittedDate) {
+      log(`[Forms]   sub ${s.submissionId}: no date → ✅ included`);
+      return true;
+    }
     const isoDate = parseMMDDYYYYtoISO(s.submittedDate);
-    if (!isoDate) return true;
+    if (!isoDate) {
+      log(`[Forms]   sub ${s.submissionId}: unparseable date "${s.submittedDate}" → ✅ included`);
+      return true;
+    }
     const subDate = new Date(isoDate + 'T00:00:00');
-    return subDate <= boardingArrival;
+    const passes = subDate <= boardingArrival;
+    log(`[Forms]   sub ${s.submissionId}: submitted ${s.submittedDate} (${isoDate}) → ${passes ? '✅ candidate' : '❌ after arrival'}`);
+    return passes;
   });
 
   if (candidates.length > 0) {
@@ -256,6 +266,8 @@ export async function fetchAndStoreBoardingForm(supabase, boardingId, externalPe
     throw new Error(`Boarding ${boardingId} not found: ${boardingErr?.message}`);
   }
 
+  log(`[Forms] 📅 Boarding dates: arrival=${boarding.arrival_datetime}, departure=${boarding.departure_datetime}`);
+
   // 4. Find the best matching submission
   const submissionId = findFormForBoarding(submissions, boarding);
   if (submissionId === null) {
@@ -283,6 +295,12 @@ export async function fetchAndStoreBoardingForm(supabase, boardingId, externalPe
 
   // 6. Parse the detail page
   const { formSubmittedAt, allFields, form_arrival_date, form_departure_date } = parseFormDetailPage(detailHtml);
+
+  log(`[Forms] 🔍 Parsed ${allFields.length} field(s) from detail page (formSubmittedAt=${formSubmittedAt ?? 'null'})`);
+  log(`[Forms] 📅 Form dates extracted: arrival=${form_arrival_date ?? 'null'}, departure=${form_departure_date ?? 'null'}`);
+  if (allFields.length === 0) {
+    logWarn(`[Forms] ⚠️ Zero fields parsed — detail HTML may not contain expected id="field_\\d+" elements`);
+  }
 
   // 7. Compute date mismatch
   const boardingArrivalISO = boarding.arrival_datetime
