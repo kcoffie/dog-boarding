@@ -28,7 +28,7 @@ const RETRY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes per retry_count
  * @param {{ external_id: string, source_url: string, title?: string, type?: string, meta?: Object }} item
  * @returns {Promise<void>}
  */
-export async function enqueue(supabase, { external_id, source_url, title, type = 'appointment', meta = {} }) {
+export async function enqueue(supabase, { external_id, source_url, title, type = 'appointment', meta = {}, resetIfDone = false }) {
   const { data: existing, error: fetchError } = await supabase
     .from('sync_queue')
     .select('id, status')
@@ -39,11 +39,15 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
   if (fetchError) throw fetchError;
 
   if (existing) {
-    if (existing.status !== 'failed') {
+    const shouldReset =
+      (existing.status === 'failed') ||
+      (existing.status === 'done' && resetIfDone);
+
+    if (!shouldReset) {
       log(`[SyncQueue] ⏭️ Already queued: ${external_id} (status: ${existing.status})`);
       return;
     }
-    // Re-queue a permanently-failed item
+    // Re-queue a failed item, or a done item when the caller confirmed the result isn't stored yet
     const { error } = await supabase
       .from('sync_queue')
       .update({
@@ -57,7 +61,7 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
       })
       .eq('id', existing.id);
     if (error) throw error;
-    log(`[SyncQueue] 🔄 Re-queued failed item: ${external_id}`);
+    log(`[SyncQueue] 🔄 Re-queued ${existing.status} item: ${external_id}`);
     return;
   }
 
