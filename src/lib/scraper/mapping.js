@@ -667,10 +667,16 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
 
   // 2b. Enqueue form fetch job if boarding is current/upcoming and pet ID is known.
   // Form fetch jobs are processed by cron-detail (type='form').
+  if (boarding && !externalPetId) {
+    mappingLogger.log(`[Mapping] ⏭️ Form fetch skipped for boarding ${boarding.id} — no external_pet_id on dog`);
+  }
   if (boarding && externalPetId) {
     const departureDate = new Date(boarding.departure_datetime);
     const todayMidnight = new Date();
     todayMidnight.setHours(0, 0, 0, 0);
+    if (departureDate < todayMidnight) {
+      mappingLogger.log(`[Mapping] ⏭️ Form fetch skipped for boarding ${boarding.id} — departure ${boarding.departure_datetime} is in the past`);
+    }
     if (departureDate >= todayMidnight) {
       try {
         await enqueue(supabase, {
