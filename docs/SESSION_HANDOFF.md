@@ -1,16 +1,15 @@
-# Dog Boarding App — Session Handoff (v2.4)
-**Last updated:** March 2, 2026 (REQ-402 security hardening — deployed)
-**Status:** v2.4 COMPLETE — all commits pushed and deployed to Vercel
+# Dog Boarding App — Session Handoff (v3.0)
+**Last updated:** March 2, 2026 (REQ-500–505 boarding form scraping — committed, not yet deployed)
+**Status:** v3.0 CODE COMMITTED — last commit `7074442`, migration 016 pending production apply
 
 ---
 
 ## Current State
 
-- **651 tests, 650 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
-- **Last deployed:** `398387b` — docs: close REQ-402
-- Migrations 012–015 applied in production.
-- 3 crons live and confirmed working.
-- Sync completed successfully post-deploy (creds reading correctly from renamed env vars).
+- **658 tests, 657 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
+- **Last deployed:** `398387b` — docs: close REQ-402 (v2.4 still in production)
+- v3.0 code committed as `7074442` on `main`; **not yet pushed or deployed**.
+- Migration 016 has NOT been applied to production yet — must be done before pushing.
 
 > **Check first thing each session:** Did overnight crons run?
 > `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
@@ -19,61 +18,106 @@
 
 ---
 
-## v2.4 What Was Built
+## v3.0 What Was Built
 
-### REQ-402: Code Review & Hardening ✅ (March 2, 2026)
+### REQ-500: Pet ID extraction + external_pet_id on dogs ✅
 
-Full audit doc: `docs/archive/REQ-402-security-audit.md`. Final report: `docs/archive/REQ-402-security-report-FINAL.md`.
+- `src/lib/scraper/schedule.js` — `parseSchedulePage` now extracts `petIds: string[]` from `event-pet-wrapper[data-pet]` attributes in schedule HTML
+- `api/cron-schedule.js` — regex-based petIds extraction (Node.js-safe); passes `meta: { external_pet_id }` when enqueueing appointments
+- `src/lib/scraper/syncQueue.js` — `enqueue()` accepts `type` and `meta` parameters; stores them in DB
+- `src/lib/scraper/mapping.js` — `mapAndSaveAppointment` accepts `externalPetId` option; writes `external_pet_id` to dogs on all update paths
+- `supabase/migrations/016_add_boarding_forms.sql` — adds `external_pet_id TEXT` + index to `dogs`; adds `type`/`meta` to `sync_queue`; creates `boarding_forms` table
 
-| Finding | What was done | Commit |
-|---------|--------------|--------|
-| **MUST-1 CRITICAL:** `VITE_EXTERNAL_SITE_*` credentials bundled in JS bundle | `sync-proxy.js` reads creds from `process.env` server-side. `auth.js` browser path no longer sends creds. `sync.js` no longer reads `import.meta.env.VITE_*`. `cron-auth.js` key names updated. Env vars renamed in Vercel. | `80ff992` |
-| **MUST-2 HIGH:** SSRF in sync-proxy fetch action | Hostname validated `=== 'agirlandyourdog.com'` before fetch | `80ff992` |
-| **REC-1 MEDIUM:** sync-proxy unauthenticated | `VITE_SYNC_PROXY_TOKEN` Bearer auth on proxy; `proxyHeaders()` helper in `auth.js` sends token on every proxy call | `cc3a9e5` |
-| **REC-2 LOW:** cron-detail `session_cleared` skipped `writeCronHealth` | 1-line fix in `cron-detail.js` | `80ff992` |
-| **REC-4 LOW:** Dead code | Deleted `deletionDetection.js`, `stagedVerification.js`, `batchSync.js`; removed Batch Sync UI from `SyncSettings.jsx` (~170 lines) | `80ff992` + `154c408` |
-| **REC-5 LOW:** Dead `retryDelays` config | Removed from `SCRAPER_CONFIG` | `80ff992` |
+### REQ-501: Forms scraping pipeline ✅
 
-**Intentionally kept (not dead):**
-- `historicalSync.js` + Historical Import UI in SyncSettings — useful for rebuilding all data from scratch (runs `runSync()` in 30-day batches)
-- `SyncHistoryPage.jsx` + `SyncHistoryTable.jsx` + `SyncDetailModal.jsx` + `useSyncHistory.js` — REQ-107 backlog, no security impact
+- `src/lib/scraper/forms.js` (NEW) — full pipeline:
+  - `parseFormsListPage(html)` — regex-based, extracts form 7913 submissions with IDs + dates; deduplicates
+  - `parseFormDetailPage(html)` — extracts all field label/value pairs via `id="field_\d+"` marker + 600-char forward window; parses arrival/departure date fields
+  - `parseMMDDYYYYtoISO(str)` — M/D/YYYY → YYYY-MM-DD
+  - `findFormForBoarding(submissions, boarding)` — most recent submission on/before arrival; fallback to most recent overall; null if empty
+  - `fetchAndStoreBoardingForm(supabase, boardingId, externalPetId, dogName)` — full fetch + parse + upsert pipeline
+- `src/lib/scraper/mapping.js` — after boarding upsert, enqueues `type='form'` job for upcoming boardings with a known `externalPetId`
+- `api/cron-detail.js` — routes `type='form'` items to `fetchAndStoreBoardingForm`; passes `externalPetId` from `item.meta` to appointment path
 
-### REQ-401: Cron Health Monitoring ✅
-- `supabase/migrations/014_add_cron_health.sql` — `cron_health` table (cron_name UNIQUE, last_ran_at, status, result JSONB, error_msg)
-- `api/_cronHealth.js` — shared `writeCronHealth(supabase, name, status, result, errorMsg)` helper (underscore prefix = not a Vercel route)
-- All 3 cron handlers upsert on every exit path: success, skip (no_session), session_cleared, failure
-- `src/hooks/useCronHealth.js` — reads `cron_health` table for the Settings page
-- `SettingsPage.jsx` — new "Cron Health" card above Sync Settings; shows Auth / Schedule / Detail rows with last ran time (relative, absolute on hover), OK/Failed badge, result summary
-- Tests: `src/__tests__/scraper/cronHealth.test.js` (4 tests — writeCronHealth behavior)
+### REQ-502: Date discrepancy detection ✅
 
-### REQ-400: Calendar Print / Export ✅
-- Print button top-right of Calendar page header → `PrintModal` with date range pickers (default: **today → today+7**)
-- "Generate & Print" → `handlePrint(from, to)` → sets `printRange` state → `useEffect` fires after render → `window.print()`
-- `PrintView` portaled to `document.body` (via `createPortal`) — critical so `@media print` CSS can hide `#root` and show `#calendar-print-view`
-- Each day section: date header, Arriving (green) / Staying (blue) / Departing (amber) groups, overnight count + Gross + Net summary
-- Arriving/Departing rows show **dates only** (no times) — e.g. `→ Mar 7` / `Feb 28 →`
-- **Printed-at footer** on every page: `Printed at 1:13pm Mon 2 Mar 2026` (position: fixed, bottom: 8px)
-- Empty days skipped; all app chrome hidden during print
-- Print font sizes: date header 22px, section labels 15px, booking rows 17px, summary 15px
-- Tests: `src/__tests__/pages/CalendarPrint.test.js` (4 tests — eachDayInRange logic)
+- `date_mismatch BOOLEAN` stored in `boarding_forms` table
+- Computed in `fetchAndStoreBoardingForm`: `form_arrival_date ≠ boarding arrival ISO` OR `form_departure_date ≠ boarding departure ISO`
+- Null form dates → no mismatch (form didn't have date fields)
 
-### Migration 015: updated_at on boardings + dogs ✅
-- `supabase/migrations/015_add_updated_at.sql`
-- `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` added to both tables
-- Postgres trigger `set_updated_at()` auto-stamps on every UPDATE — no app-code changes needed
-- Applied in production March 2, 2026
+### REQ-503: Boarding Form Modal ✅
+
+- `src/components/BoardingFormModal.jsx` (NEW) — follows SyncDetailModal pattern; priority fields first; amber alert for date_mismatch; print button
+- `src/index.css` — `@media print` block added: hides app chrome, shows `.boarding-form-print-content`
+
+### REQ-504: Missing form indicator ✅
+
+- `src/hooks/useBoardingForms.js` (NEW) — queries `boarding_forms` joined to `boardings`; filters departures >= today midnight; returns `formsByBoardingId` map + `isBoardingUpcoming(boarding)` helper
+- `src/components/BoardingMatrix.jsx` — dog names → `<button>` with amber (no form) or indigo (form found) styling; `BoardingFormModal` at bottom
+- `src/pages/DogsPage.jsx` — same pattern for boardings table dog column
+
+### REQ-505: Forms scraper logging ✅
+
+- All log calls in `forms.js` use `createSyncLogger('Forms')` pattern with emoji prefixes
+- `cron-detail.js` logs `[CronDetail] 📋 Processing form job` for form-type items
+
+---
+
+## Next Steps (To Deploy v3.0)
+
+### 1. Apply Migration 016
+
+```sql
+-- Run supabase/migrations/016_add_boarding_forms.sql in production
+-- Or: supabase db push (if using Supabase CLI)
+```
+
+### 2. Push to Vercel
+
+All v3.0 changes are committed (`7074442`) and ready to push once migration 016 is applied.
+
+### 3. End-to-end verification
+
+1. Run "Sync Now" in Settings — confirm `external_pet_id` appears on dogs (`SELECT name, external_pet_id FROM dogs LIMIT 20`)
+2. Confirm form fetch jobs enqueued: `SELECT * FROM sync_queue WHERE type = 'form' LIMIT 10`
+3. Trigger cron-detail for each form job (or drain via "Sync Now")
+4. Confirm `boarding_forms` row created: `SELECT * FROM boarding_forms LIMIT 5`
+5. Open Dashboard — dog name should show as indigo link; click → modal opens
+6. If `date_mismatch = true`, amber alert visible with both sets of dates
+7. Print button → browser print dialog → only form content visible
+
+### 4. Useful SQL for v3.0 verification
+
+```sql
+-- Check external_pet_id population
+SELECT name, external_pet_id FROM dogs ORDER BY updated_at DESC LIMIT 10;
+
+-- Check form fetch queue
+SELECT external_id, type, meta, status, created_at FROM sync_queue
+WHERE type = 'form' ORDER BY created_at DESC LIMIT 10;
+
+-- Check stored forms
+SELECT bf.boarding_id, d.name, bf.submission_id, bf.date_mismatch,
+       bf.form_arrival_date, bf.form_departure_date, bf.fetched_at
+FROM boarding_forms bf
+JOIN boardings b ON bf.boarding_id = b.id
+JOIN dogs d ON b.dog_id = d.id
+ORDER BY bf.fetched_at DESC LIMIT 10;
+```
+
+---
+
+## v2.4 Outcome (for reference)
+
+- **REQ-400 ✅** — Calendar print with date range + boarding groups
+- **REQ-401 ✅** — Cron health monitoring card in Settings
+- **REQ-402 ✅** — Security hardening: creds server-side, SSRF fix, proxy token auth, dead code deleted
 
 ---
 
 ## v2.3 Outcome (for reference)
 
-- **REQ-300 ✅** — Supabase dashboard config complete (manual)
-- **REQ-301 ✅** — Change Password card added to Settings page
-- **REQ-302 ✅** — `cleanText()` decodes `&#x27;`/`&apos;`; SQL backfill run (fixes Lilly O'Brien)
-- **REQ-303 ✅** — Revenue table columns sortable (Dog, Check-in, Check-out, Revenue); default: Check-out desc
-- **REQ-304 ✅** — Dogs page cleaned up: removed CSV import, Add Boarding buttons, Edit/Delete row buttons
-- **REQ-305 ✅** — Mochi Hill Jan 23–26 data verified present
-- **REQ-306 ✅** — Sync now skips archived appointments; Millie McSpadden C63QgH5K boarding deleted + won't recur
+- **REQ-300–306 ✅** — Dashboard config, change password, cleanText(), sortable revenue table, Dogs page cleanup
 
 ---
 
@@ -82,9 +126,8 @@ Full audit doc: `docs/archive/REQ-402-security-audit.md`. Final report: `docs/ar
 - **REQ-107:** Sync history UI + enable/disable toggle (deferred, SyncHistoryPage skeleton exists)
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
 - Fix or remove DST-flaky test in `DateNavigator.test.jsx` (pre-existing, 1 test fails on DST boundary days)
-- **Low priority:** Store datetimes in PST (America/Los_Angeles) instead of UTC — affects `arrival_datetime`, `departure_datetime` display; currently shows UTC in DB
+- **Low priority:** Store datetimes in PST (America/Los_Angeles) instead of UTC
 - **Low priority:** REC-3 — add warning log to cron handlers when `CRON_SECRET` is absent in production
-- v3: new data capture + new page + email image report (planning session pending)
 
 ---
 
@@ -105,6 +148,9 @@ Full audit doc: `docs/archive/REQ-402-security-audit.md`. Final report: `docs/ar
 - **cron-detail:** processes 1 queue item per invocation (Hobby plan 10s timeout). Use "Sync Now" in Settings for bulk draining.
 - **historicalSync.js:** kept — `runSync()` in 30-day batches, useful for full data rebuild. Not dead code.
 - **VITE_SYNC_PROXY_TOKEN:** intentionally VITE_-prefixed so browser can read it; different from `CRON_SECRET`
+- **Form field parsing:** regex with forward window (600 chars from `id="field_\d+"` marker) — avoids nested div closing tag complexity; works in Node.js and browser
+- **Form matching:** most recent submission with submittedDate ≤ boarding arrival date; fallback to most recent overall
+- **Form job enqueueing:** only for boardings where `departure_datetime >= today midnight` AND dog has `external_pet_id`
 
 ---
 
@@ -115,9 +161,9 @@ Full audit doc: `docs/archive/REQ-402-security-audit.md`. Final report: `docs/ar
 SELECT cron_name, last_ran_at, status, result, error_msg FROM cron_health ORDER BY cron_name;
 
 -- Queue status
-SELECT status, COUNT(*) FROM sync_queue GROUP BY status ORDER BY status;
+SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY type, status;
 
--- What was touched recently (requires migration 015)
+-- What was touched recently
 SELECT b.external_id, d.name, b.billed_amount, b.night_rate, b.updated_at
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
 ORDER BY b.updated_at DESC LIMIT 20;
@@ -127,13 +173,6 @@ SELECT b.external_id, d.name, b.night_rate, b.billed_amount
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
 WHERE b.night_rate IS NULL AND b.billed_amount > 0
 ORDER BY b.created_at DESC LIMIT 10;
-
--- Full rate picture
-SELECT b.billed_amount, b.night_rate, b.day_rate, d.name,
-       b.arrival_datetime, b.departure_datetime
-FROM boardings b JOIN dogs d ON b.dog_id = d.id
-WHERE b.billed_amount IS NOT NULL
-ORDER BY b.departure_datetime DESC;
 
 -- If sync gets stuck
 UPDATE sync_logs SET status = 'failed', completed_at = NOW()

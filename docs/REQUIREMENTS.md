@@ -25,6 +25,7 @@
 | v2.2    | Revenue intelligence           | Complete (REQ-200–203)    |
 | v2.3    | Data quality & UX polish       | Complete (REQ-300–306)    |
 | v2.4    | Reporting & observability      | Complete (REQ-400–402)    |
+| v3.0    | Boarding form scraping + modal | In Progress (REQ-500–505) |
 
 ---
 
@@ -915,6 +916,130 @@ DELIVERABLE:
 
 ---
 
+---
+
+## Boarding Form Scraping & Modal (v3.0)
+
+### REQ-500: Extract External Pet ID from Schedule HTML
+**Added:** v3.0 | **Status:** Complete
+
+The schedule page HTML contains `data-pet` attributes identifying each pet in an appointment.
+`parseSchedulePage` must extract these IDs and include them in the returned appointment objects.
+The IDs are then stored on the `dogs` table (`external_pet_id`) and passed to form-fetch jobs.
+
+**Acceptance Criteria:**
+- `parseSchedulePage` returns `petIds: string[]` for each appointment
+- Single-pet appointment returns `petIds: ['90043']` (example)
+- Multi-pet appointment returns all pet IDs in document order
+- Appointment with no `event-pet-wrapper[data-pet]` elements returns `petIds: []`
+- `dogs.external_pet_id` is populated/updated on the next sync for that dog
+- Migration 016 adds `external_pet_id TEXT` column + index to `dogs` table
+
+**Tests:** `src/__tests__/scraper/schedule.petids.test.js`
+
+---
+
+### REQ-501: Scrape and Store Boarding Information Forms
+**Added:** v3.0 | **Status:** Complete
+
+After a boarding is upserted, if the boarding is current or upcoming and the dog has an
+`external_pet_id`, a form-fetch job is enqueued in `sync_queue` (type='form'). The
+`cron-detail` job processes it: fetches `/pets/{external_pet_id}/forms`, filters to
+form 7913, fetches the best-matching submission detail, and upserts to `boarding_forms`.
+
+**Acceptance Criteria:**
+- Migration 016 creates `boarding_forms` table with `boarding_id` FK (UNIQUE), `submission_id`, `submission_url`, `form_submitted_at`, `form_arrival_date`, `form_departure_date`, `date_mismatch`, `form_data JSONB`, `fetched_at`
+- Migration 016 adds `type VARCHAR DEFAULT 'appointment'` and `meta JSONB DEFAULT '{}'` to `sync_queue`
+- `parseFormsListPage` extracts submissions from form 7913 only; deduplicates by submission ID
+- `parseFormDetailPage` extracts all field label/value pairs; identifies arrival/departure date fields
+- `findFormForBoarding` returns most recent submission on or before boarding arrival; falls back to most recent overall; null if empty
+- `fetchAndStoreBoardingForm` upserts the form data for the given boarding
+- Dogs already in DB pick up `external_pet_id` on their next sync cycle
+
+**Tests:** `src/__tests__/scraper/forms.test.js`
+
+---
+
+### REQ-502: Date Discrepancy Detection
+**Added:** v3.0 | **Status:** Complete
+
+When storing a boarding form, the app compares the form's confirmed arrival/departure dates
+against the booking dates. A mismatch is recorded in the `date_mismatch` boolean column
+and surfaced prominently in the UI.
+
+**Acceptance Criteria:**
+- `date_mismatch = true` when `form_arrival_date ≠ boarding.arrival_datetime` (date part) OR `form_departure_date ≠ boarding.departure_datetime` (date part)
+- `date_mismatch = false` when dates match exactly
+- `date_mismatch = false` when form dates are null (no date fields in form)
+- Form dates are stored as-is (form wins, not booking dates)
+- UI surfaces the mismatch prominently (amber alert in modal)
+
+**Tests:** `src/__tests__/scraper/forms.test.js` (date_mismatch detection logic suite)
+
+---
+
+### REQ-503: Boarding Form Modal UI
+**Added:** v3.0 | **Status:** Complete
+
+A modal displays the full boarding information form for a dog. Priority fields are shown
+first, followed by remaining fields. If dates are mismatched, an amber alert is shown.
+A print button prints the form cleanly.
+
+**Acceptance Criteria:**
+- Modal opens from dog name button in BoardingMatrix (dashboard) and DogsPage boardings table
+- Header shows dog avatar initials + "{Dog Name} — Boarding Form"
+- Submitted date shown in header subtitle
+- If `date_mismatch`: amber alert box showing booking dates vs form dates
+- Priority fields section (CONFIRM ARRIVAL DATE, CONFIRM DEPARTURE DATE, ARRIVAL TIME, DEPARTURE TIME, FEEDING INSTRUCTIONS, MEDICATIONS/MEDICAL CONDITION, TRAVEL DETAILS AND BEST CONTACT)
+- "Additional Information" divider + remaining fields
+- Print button calls `window.print()`; print CSS hides app chrome, shows form content
+- Escape key and click-outside close the modal
+- Body overflow locked while modal is open
+
+**Tests:** Manual/visual (no automated UI tests for this component)
+
+---
+
+### REQ-504: Missing Form Indicator
+**Added:** v3.0 | **Status:** Complete
+
+Dog names in the BoardingMatrix and DogsPage boardings table are shown as clickable buttons.
+If no form has been found for the relevant boarding, the button is styled amber with a tooltip.
+If a form is found, the button is styled indigo.
+
+**Acceptance Criteria:**
+- Dog names in BoardingMatrix (desktop + mobile) are `<button>` elements for upcoming boardings
+- Dog names in DogsPage boardings table are `<button>` elements
+- No form found → amber color + "No Boarding Form Found!" tooltip
+- Form found → indigo color + "View boarding form" tooltip
+- "Relevant boarding" = most imminent current/upcoming boarding for the dog
+- `isBoardingUpcoming(boarding)` = `departure_datetime >= today midnight`
+- `useBoardingForms()` hook queries `boarding_forms` joined to `boardings`; filters to departures >= today midnight; returns `formsByBoardingId` map
+
+**Tests:** Manual/visual
+
+---
+
+### REQ-505: Forms Scraper Logging
+**Added:** v3.0 | **Status:** Complete
+
+`forms.js` uses the `syncLogger` pattern with structured log prefixes so debugging a failed
+form fetch is straightforward from Vercel logs.
+
+**Acceptance Criteria:**
+- `[Forms] 🔍 Fetching forms list for pet {id} ({name})`
+- `[Forms] 📋 Found N submissions for form 7913 (pet {id})`
+- `[Forms] 🎯 Boarding match: submission {id} (submitted {date})`
+- `[Forms] ⚠️ Date mismatch: booking=..., form=...` (warn level)
+- `[Forms] ✅ Stored boarding form for boarding {id} (sub {id}, mismatch={bool})`
+- `[Forms] ❌ No form 7913 submissions found for pet {id}`
+- `[Forms] ⚠️ All submissions after boarding arrival — using most recent (sub {id})` (warn level)
+- `[CronDetail] 📋 Processing form job: boarding_id={...}, pet_id={...}`
+
+**Tests:** Verified by inspection of log output during `forms.test.js` test run
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section
@@ -939,3 +1064,4 @@ DELIVERABLE:
 - **REQ-200 to REQ-209**: Revenue Intelligence (v2.2)
 - **REQ-300 to REQ-309**: Data Quality & UX Polish (v2.3)
 - **REQ-400 to REQ-409**: Reporting & Observability (v2.4)
+- **REQ-500 to REQ-509**: Boarding Form Scraping & Modal (v3.0)
