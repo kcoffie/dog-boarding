@@ -103,192 +103,10 @@ Files changed:
 - **`src/lib/scraper/sync.js`**: new imports (`fetchAndStoreBoardingForm`, `dequeueOne`, `markDone`, `markFailed`), `formsProcessed`/`formsFailed` added to result, drain loop after reconciliation block
 - **`src/lib/scraper/syncQueue.js`**: `dequeueOne` now accepts optional `{ type }` filter so the drain loop can request only `type='form'` items
 
-## v3.0 Post-Deploy: UI Polish Backlog (REQ-506–508)
-
-**STATUS: FULLY PLANNED — ready to implement in next session.**
-**Start fresh context, read this section, then implement top-to-bottom.**
-
----
-
-### REQ-506: Modal centering fix via portal
-
-**Root cause (confirmed):** The matrix has `overflow-x: auto` on an ancestor, which creates
-a stacking context. This makes `position: fixed` behave as `position: absolute`, so the
-modal centers relative to the full document height rather than the viewport. When the user
-is scrolled to the top viewing the matrix (a third of the page), the "center" of the document
-is scrolled off-screen below. Portal escapes this entirely.
-
-**Also:** Body scroll lock (`overflow: hidden`) already works correctly — no change needed.
-
-**Fix:** `src/components/BoardingFormModal.jsx`
-
-1. Add import: `import { createPortal } from 'react-dom';`
-2. Keep `if (!isOpen) return null;` exactly where it is (line 87, before the return)
-3. Wrap the entire returned JSX in `createPortal(…, document.body)`:
-
-```jsx
-// Before:
-return (
-  <div className="fixed inset-0 z-50 ...">
-    …
-  </div>
-);
-
-// After:
-return createPortal(
-  <div className="fixed inset-0 z-50 ...">
-    …
-  </div>,
-  document.body
-);
-```
-
-No other changes — `useEffect` listeners are on `document`, refs work identically in a portal.
-
----
-
-### REQ-507: Dog link color coding — three states
-
-**5 exact spots** to update (confirmed by reading all files):
-
-| File | Location | Current logic |
-|------|-----------|--------------|
-| `BoardingMatrix.jsx` | Desktop table row ~line 512–514 | `noForm ? amber : relevantBoarding ? indigo : slate` |
-| `BoardingMatrix.jsx` | Mobile overnight dogs ~line 376–379 | `nf ? amber : rb ? indigo : slate` |
-| `BoardingMatrix.jsx` | Mobile day-only dogs ~line 409–412 | `nf ? amber : rb ? indigo : slate` |
-| `DogsPage.jsx` | Desktop table ~line 370–374 | `noForm ? amber : indigo` |
-| `DogsPage.jsx` | Mobile card ~line 246–249 | `noForm ? amber : indigo` |
-
-**New three-state logic for BoardingMatrix** (add as module-level helpers above the component):
-
-```js
-function getFormLinkColor(relevantBoarding, formData) {
-  if (!relevantBoarding) return 'text-slate-900';
-  if (!formData) return 'text-red-600';
-  if (!formData.form_data?.priorityFields?.length) return 'text-amber-600';
-  return 'text-indigo-700';
-}
-
-function getFormLinkTitle(relevantBoarding, formData) {
-  if (!relevantBoarding) return undefined;
-  if (!formData) return 'No boarding form found';
-  if (!formData.form_data?.priorityFields?.length) return 'Form found — no key fields';
-  return 'View boarding form';
-}
-```
-
-Then replace all 3 matrix button spots:
-```jsx
-// Desktop (rb → relevantBoarding, fd → formData):
-className={`text-left hover:underline ${getFormLinkColor(relevantBoarding, formData)}`}
-title={getFormLinkTitle(relevantBoarding, formData)}
-
-// Mobile overnight/day-only (uses rb, fd variable names):
-className={`font-medium text-left hover:underline ${getFormLinkColor(rb, fd)}`}
-title={getFormLinkTitle(rb, fd)}
-```
-
-Also delete the now-unused `noForm`/`nf` const declarations in each spot.
-
-**New logic for DogsPage** (inline — no "no upcoming boarding" state applies here;
-every row IS a boarding so the first branch never fires — just inline the ternary):
-
-```jsx
-// Desktop and mobile — replace noForm logic with:
-const formData = formsByBoardingId[boarding.id];
-
-// className:
-`... ${!formData ? 'text-red-600' : !formData.form_data?.priorityFields?.length ? 'text-amber-600' : 'text-indigo-700 hover:text-indigo-900'}`
-
-// title:
-{!formData ? 'No boarding form found' : !formData.form_data?.priorityFields?.length ? 'Form found — no key fields' : 'View boarding form'}
-```
-
-(Mobile card uses `text-indigo-700` without `hover:text-indigo-900` — match existing pattern.)
-
----
-
-### REQ-508: Show source URL in modal + hide Print when no content
-
-**File:** `src/components/BoardingFormModal.jsx`
-
-**Change 1 — "View on site →" link:**
-In the footer `<div>` (already has `print:hidden`), add a link to the LEFT of the Print button:
-
-```jsx
-{formData?.submission_url && (
-  <a
-    href={formData.submission_url}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="inline-flex items-center gap-1 px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors print:hidden"
-  >
-    View on site →
-  </a>
-)}
-```
-
-**Change 2 — Conditional Print button (Kate's addition):**
-Only show Print button when there is actually content to print:
-
-```jsx
-// Add near top of render, after existing const declarations:
-const hasContent = priorityFields.length > 0 || otherFields.length > 0;
-
-// Then wrap print button:
-{hasContent && (
-  <button onClick={() => window.print()} className="...">
-    <svg .../>
-    Print
-  </button>
-)}
-```
-
----
-
-### Tests to create (REQUIRED by REQUIREMENTS.md)
-
-**`src/__tests__/components/BoardingFormModal.test.jsx`** (REQ-508):
-```
-- renders "View on site →" link when submission_url is present
-- does NOT render link when submission_url is null/undefined
-- link has target="_blank" and rel="noopener noreferrer"
-- link has print:hidden class
-- renders Print button when priorityFields has content
-- does NOT render Print button when formData is null
-- does NOT render Print button when priorityFields and otherFields are both empty
-```
-
-**`src/__tests__/components/BoardingMatrix.test.jsx`** (REQ-507):
-```
-- dog with upcoming boarding and no form record → red link
-- dog with upcoming boarding, form found but zero priorityFields → amber link
-- dog with upcoming boarding, form found with priorityFields → indigo link
-- dog with no upcoming boarding → slate (default text-slate-900)
-```
-
-Mock pattern (same as SyncSettings.test.jsx):
-- `vi.mock('../../context/DataContext', () => ({ useData: vi.fn() }))`
-- `vi.mock('../../hooks/useBoardingForms', () => ({ useBoardingForms: vi.fn(), isBoardingUpcoming: vi.fn() }))`
-
----
-
-### Commit plan
-
-Single commit covering all three REQs:
-```
-feat: fix modal centering, add source URL link, update form link colors (#506 #507 #508)
-```
-
-Update REQUIREMENTS.md: change REQ-506, REQ-507, REQ-508 status from `Planned` → `Complete`.
-Update SESSION_HANDOFF.md: move these from backlog to completed.
-
----
-
 > **Check first thing each session:** Did overnight crons run?
 > `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
 > Or check the Cron Health card on the Settings page.
-> To drain the sync queue quickly: use "Sync Now" in Settings (now drains all form jobs automatically).
+> To drain the sync queue quickly: use "Sync Now" in Settings (drains all form jobs automatically).
 
 ---
 
@@ -339,12 +157,36 @@ Update SESSION_HANDOFF.md: move these from backlog to completed.
 
 ## Next Steps
 
-### 1. REQ-506–508 (v3.0 UI Polish) ← COMPLETE ✅
+### 1. Push to Vercel ← START HERE
 
-Implemented: portal modal centering, 3-state link colors, source URL link + conditional print.
-686/695 tests pass. Deploy to Vercel (push to main).
+Two commits are unpushed to `origin/main`:
+```
+fix: correct form detail field regex, add date-matching logs (#500)
+feat: fix modal centering, add source URL link, update form link colors (#506 #507 #508)
+```
+Run `git push` to deploy both. Vercel will auto-deploy from main.
 
-### 2. Useful SQL for v3.0 verification
+### 2. Verify forms populate after deploy
+
+After pushing, the `boarding_forms` table is still empty (was cleared last session to flush bad
+regex data). Run **"Sync Now"** in Settings to drain the form queue immediately. Then verify:
+
+```sql
+-- Should see rows with non-empty form_data (priorityFields should not be [])
+SELECT bf.boarding_id, d.name, bf.date_mismatch,
+       jsonb_array_length(bf.form_data->'priorityFields') AS priority_count,
+       bf.fetched_at
+FROM boarding_forms bf
+JOIN boardings b ON bf.boarding_id = b.id
+JOIN dogs d ON b.dog_id = d.id
+ORDER BY bf.fetched_at DESC LIMIT 10;
+```
+
+If `priority_count` is still 0 for all rows after syncing, check Vercel function logs for
+`[Forms]` entries — the regex and diagnostic logging from the evening session should make
+the cause visible.
+
+### 3. Useful SQL for v3.0 verification
 
 ```sql
 -- Check external_pet_id population
@@ -380,11 +222,6 @@ ORDER BY bf.fetched_at DESC LIMIT 10;
 ---
 
 ## Remaining Backlog
-
-### v3.0 UI Polish
-- **REQ-506 ✅** — Modal portal fix + conditional print button
-- **REQ-507 ✅** — Three-state link color coding (red/amber/indigo)
-- **REQ-508 ✅** — "View on site →" source URL link in modal footer
 
 ### Longer-term
 - **REQ-107:** Sync history UI + enable/disable toggle (deferred, SyncHistoryPage skeleton exists)
