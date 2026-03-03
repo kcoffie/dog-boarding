@@ -115,6 +115,14 @@ function parseScheduleHtml(html) {
       return r ? r[1].trim() : '';
     };
 
+    // Extract pet IDs from data-pet attributes on event-pet-wrapper elements
+    const petIds = [];
+    const petIdRe = /data-pet="([^"]+)"/g;
+    let petMatch;
+    while ((petMatch = petIdRe.exec(inner)) !== null) {
+      petIds.push(petMatch[1]);
+    }
+
     const fullUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
     results.push({
       id,
@@ -124,6 +132,7 @@ function parseScheduleHtml(html) {
       clientName: pick('event-client'),
       time: pick('day-event-time'),
       title: pick('day-event-title'),
+      petIds,
     });
   }
 
@@ -272,6 +281,7 @@ export default async function handler(req, res) {
           external_id: appt.id,
           source_url: appt.url,
           title: appt.title || appt.petName || '',
+          meta: appt.petIds?.[0] ? { external_pet_id: appt.petIds[0] } : {},
         });
         stats.queued++;
       } catch (err) {
