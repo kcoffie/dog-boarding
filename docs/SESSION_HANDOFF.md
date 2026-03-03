@@ -1,14 +1,46 @@
 # Dog Boarding App — Session Handoff (v3.0)
-**Last updated:** March 3, 2026 (evening — forms field regex bug fixed, boarding_forms table cleared for re-fetch)
-**Status:** v3.0 DEPLOYED + form parsing bug fixed. boarding_forms table was cleared; run "Sync Now" to re-populate with correct data.
+**Last updated:** March 3, 2026 (night — REQ-506/507/508 UI polish complete)
+**Status:** v3.0 DEPLOYED + form parsing bug fixed + UI polish complete (portal modal, 3-state link colors, source URL link).
 
 ---
 
 ## Current State
 
-- **681 tests, 672 pass.** 9 pre-existing failures: 1 DST-flaky in `DateNavigator.test.jsx` + 8 in `BoardingMatrix.test.jsx` (sorting UI) — all unrelated to sync work.
+- **695 tests, 686 pass.** 9 pre-existing failures: 1 DST-flaky in `DateNavigator.test.jsx` + 8 in `BoardingMatrix.test.jsx` (sorting UI) — all unrelated to sync work.
 - **v3.0 fully deployed.** Migration 016 applied, code pushed to Vercel and live.
-- **boarding_forms table cleared** — was full of rows with empty `form_data` due to regex bug (see below). After deploy, run "Sync Now" to re-populate correctly.
+- **REQ-506–508 complete.** Modal centering via portal, 3-state link colors, source URL link + conditional print all implemented.
+
+## What Was Done This Session (March 3, 2026 — night)
+
+### REQ-506: Modal centering fix via portal ✅
+
+`BoardingFormModal.jsx`: added `createPortal` import, wrapped entire returned JSX in
+`createPortal(…, document.body)`. Escapes the `overflow-x: auto` stacking context on the
+matrix so the modal centers correctly in the viewport regardless of scroll position.
+
+### REQ-507: Dog link three-state color coding ✅
+
+Added `getFormLinkColor(relevantBoarding, formData)` and `getFormLinkTitle(...)` module-level
+helpers in `BoardingMatrix.jsx`. Updated all 5 spots:
+- `BoardingMatrix.jsx`: desktop row, mobile overnight, mobile day-only (removed `noForm`/`nf` consts)
+- `DogsPage.jsx`: desktop table, mobile card (removed `noForm` const)
+
+New states: **red** (upcoming boarding, no form), **amber** (form exists, zero priorityFields),
+**indigo** (form exists with priorityFields), **slate** (no upcoming boarding).
+
+### REQ-508: Source URL link + conditional Print in modal ✅
+
+`BoardingFormModal.jsx`: footer now has a left group containing:
+- `{formData?.submission_url && <a ...>View on site →</a>}` — `print:hidden`, `target="_blank"`, `rel="noopener noreferrer"`
+- `{hasContent && <button>Print</button>}` — only shown when `priorityFields` or `otherFields` is non-empty
+
+### Tests ✅
+
+- `src/__tests__/components/BoardingFormModal.test.jsx` — 10 tests (submission_url link + Print conditional)
+- `src/__tests__/components/BoardingMatrix.test.jsx` — 4 tests (3-state color coding)
+All 14 new tests pass. Total: 686/695.
+
+---
 
 ## What Was Done This Session (March 3, 2026 — evening)
 
@@ -73,49 +105,183 @@ Files changed:
 
 ## v3.0 Post-Deploy: UI Polish Backlog (REQ-506–508)
 
-These were identified after v3.0 went live. Implementation not started.
+**STATUS: FULLY PLANNED — ready to implement in next session.**
+**Start fresh context, read this section, then implement top-to-bottom.**
 
-### REQ-506: Modal opens at bottom / not centered (**bug**)
+---
 
-The `BoardingFormModal` uses `position: fixed` but appears at the bottom of the viewport.
-Root cause: likely an ancestor element with `transform` or `will-change` creates a new
-stacking context, making `fixed` behave as `absolute`.
+### REQ-506: Modal centering fix via portal
 
-**Fix:** Render via `ReactDOM.createPortal(…, document.body)` in `BoardingFormModal.jsx`.
-This escapes the component tree entirely — no ancestor can affect positioning.
+**Root cause (confirmed):** The matrix has `overflow-x: auto` on an ancestor, which creates
+a stacking context. This makes `position: fixed` behave as `position: absolute`, so the
+modal centers relative to the full document height rather than the viewport. When the user
+is scrolled to the top viewing the matrix (a third of the page), the "center" of the document
+is scrolled off-screen below. Portal escapes this entirely.
 
-Files: `src/components/BoardingFormModal.jsx`
+**Also:** Body scroll lock (`overflow: hidden`) already works correctly — no change needed.
+
+**Fix:** `src/components/BoardingFormModal.jsx`
+
+1. Add import: `import { createPortal } from 'react-dom';`
+2. Keep `if (!isOpen) return null;` exactly where it is (line 87, before the return)
+3. Wrap the entire returned JSX in `createPortal(…, document.body)`:
+
+```jsx
+// Before:
+return (
+  <div className="fixed inset-0 z-50 ...">
+    …
+  </div>
+);
+
+// After:
+return createPortal(
+  <div className="fixed inset-0 z-50 ...">
+    …
+  </div>,
+  document.body
+);
+```
+
+No other changes — `useEffect` listeners are on `document`, refs work identically in a portal.
 
 ---
 
 ### REQ-507: Dog link color coding — three states
 
-Currently "no form" shows amber. Per new spec:
-- No form at all → **red** (`text-red-600`)
-- Form found, zero priority fields → **amber** (`text-amber-600`)
-- Form found with fields → **indigo** (`text-indigo-700`)
+**5 exact spots** to update (confirmed by reading all files):
 
-Logic change in both `BoardingMatrix.jsx` and `DogsPage.jsx`:
+| File | Location | Current logic |
+|------|-----------|--------------|
+| `BoardingMatrix.jsx` | Desktop table row ~line 512–514 | `noForm ? amber : relevantBoarding ? indigo : slate` |
+| `BoardingMatrix.jsx` | Mobile overnight dogs ~line 376–379 | `nf ? amber : rb ? indigo : slate` |
+| `BoardingMatrix.jsx` | Mobile day-only dogs ~line 409–412 | `nf ? amber : rb ? indigo : slate` |
+| `DogsPage.jsx` | Desktop table ~line 370–374 | `noForm ? amber : indigo` |
+| `DogsPage.jsx` | Mobile card ~line 246–249 | `noForm ? amber : indigo` |
+
+**New three-state logic for BoardingMatrix** (add as module-level helpers above the component):
+
 ```js
-// helper
-function formLinkColor(relevantBoarding, formData) {
+function getFormLinkColor(relevantBoarding, formData) {
   if (!relevantBoarding) return 'text-slate-900';
   if (!formData) return 'text-red-600';
   if (!formData.form_data?.priorityFields?.length) return 'text-amber-600';
   return 'text-indigo-700';
 }
+
+function getFormLinkTitle(relevantBoarding, formData) {
+  if (!relevantBoarding) return undefined;
+  if (!formData) return 'No boarding form found';
+  if (!formData.form_data?.priorityFields?.length) return 'Form found — no key fields';
+  return 'View boarding form';
+}
 ```
 
-Files: `src/components/BoardingMatrix.jsx`, `src/pages/DogsPage.jsx`
+Then replace all 3 matrix button spots:
+```jsx
+// Desktop (rb → relevantBoarding, fd → formData):
+className={`text-left hover:underline ${getFormLinkColor(relevantBoarding, formData)}`}
+title={getFormLinkTitle(relevantBoarding, formData)}
+
+// Mobile overnight/day-only (uses rb, fd variable names):
+className={`font-medium text-left hover:underline ${getFormLinkColor(rb, fd)}`}
+title={getFormLinkTitle(rb, fd)}
+```
+
+Also delete the now-unused `noForm`/`nf` const declarations in each spot.
+
+**New logic for DogsPage** (inline — no "no upcoming boarding" state applies here;
+every row IS a boarding so the first branch never fires — just inline the ternary):
+
+```jsx
+// Desktop and mobile — replace noForm logic with:
+const formData = formsByBoardingId[boarding.id];
+
+// className:
+`... ${!formData ? 'text-red-600' : !formData.form_data?.priorityFields?.length ? 'text-amber-600' : 'text-indigo-700 hover:text-indigo-900'}`
+
+// title:
+{!formData ? 'No boarding form found' : !formData.form_data?.priorityFields?.length ? 'Form found — no key fields' : 'View boarding form'}
+```
+
+(Mobile card uses `text-indigo-700` without `hover:text-indigo-900` — match existing pattern.)
 
 ---
 
-### REQ-508: Show source URL in modal
+### REQ-508: Show source URL in modal + hide Print when no content
 
-`boarding_forms.submission_url` is already stored. Add a "View on site →" link in the modal
-footer (hidden on print).
+**File:** `src/components/BoardingFormModal.jsx`
 
-Files: `src/components/BoardingFormModal.jsx`
+**Change 1 — "View on site →" link:**
+In the footer `<div>` (already has `print:hidden`), add a link to the LEFT of the Print button:
+
+```jsx
+{formData?.submission_url && (
+  <a
+    href={formData.submission_url}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="inline-flex items-center gap-1 px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors print:hidden"
+  >
+    View on site →
+  </a>
+)}
+```
+
+**Change 2 — Conditional Print button (Kate's addition):**
+Only show Print button when there is actually content to print:
+
+```jsx
+// Add near top of render, after existing const declarations:
+const hasContent = priorityFields.length > 0 || otherFields.length > 0;
+
+// Then wrap print button:
+{hasContent && (
+  <button onClick={() => window.print()} className="...">
+    <svg .../>
+    Print
+  </button>
+)}
+```
+
+---
+
+### Tests to create (REQUIRED by REQUIREMENTS.md)
+
+**`src/__tests__/components/BoardingFormModal.test.jsx`** (REQ-508):
+```
+- renders "View on site →" link when submission_url is present
+- does NOT render link when submission_url is null/undefined
+- link has target="_blank" and rel="noopener noreferrer"
+- link has print:hidden class
+- renders Print button when priorityFields has content
+- does NOT render Print button when formData is null
+- does NOT render Print button when priorityFields and otherFields are both empty
+```
+
+**`src/__tests__/components/BoardingMatrix.test.jsx`** (REQ-507):
+```
+- dog with upcoming boarding and no form record → red link
+- dog with upcoming boarding, form found but zero priorityFields → amber link
+- dog with upcoming boarding, form found with priorityFields → indigo link
+- dog with no upcoming boarding → slate (default text-slate-900)
+```
+
+Mock pattern (same as SyncSettings.test.jsx):
+- `vi.mock('../../context/DataContext', () => ({ useData: vi.fn() }))`
+- `vi.mock('../../hooks/useBoardingForms', () => ({ useBoardingForms: vi.fn(), isBoardingUpcoming: vi.fn() }))`
+
+---
+
+### Commit plan
+
+Single commit covering all three REQs:
+```
+feat: fix modal centering, add source URL link, update form link colors (#506 #507 #508)
+```
+
+Update REQUIREMENTS.md: change REQ-506, REQ-507, REQ-508 status from `Planned` → `Complete`.
+Update SESSION_HANDOFF.md: move these from backlog to completed.
 
 ---
 
@@ -173,10 +339,10 @@ Files: `src/components/BoardingFormModal.jsx`
 
 ## Next Steps
 
-### 1. Implement REQ-506–508 (v3.0 UI Polish)
+### 1. REQ-506–508 (v3.0 UI Polish) ← COMPLETE ✅
 
-See "v3.0 Post-Deploy: UI Polish Backlog" section above for exact files and approach.
-Suggested order: REQ-506 (portal fix, unblocks UX) → REQ-507 (color coding) → REQ-508 (URL link).
+Implemented: portal modal centering, 3-state link colors, source URL link + conditional print.
+686/695 tests pass. Deploy to Vercel (push to main).
 
 ### 2. Useful SQL for v3.0 verification
 
@@ -215,10 +381,10 @@ ORDER BY bf.fetched_at DESC LIMIT 10;
 
 ## Remaining Backlog
 
-### v3.0 UI Polish (next up)
-- **REQ-506:** Modal not centered — fix via `ReactDOM.createPortal` (`BoardingFormModal.jsx`)
-- **REQ-507:** Link color coding — red (no form), amber (form/no fields), indigo (form+fields) (`BoardingMatrix.jsx`, `DogsPage.jsx`)
-- **REQ-508:** Show "View on site →" link in modal using `submission_url` (`BoardingFormModal.jsx`)
+### v3.0 UI Polish
+- **REQ-506 ✅** — Modal portal fix + conditional print button
+- **REQ-507 ✅** — Three-state link color coding (red/amber/indigo)
+- **REQ-508 ✅** — "View on site →" source URL link in modal footer
 
 ### Longer-term
 - **REQ-107:** Sync history UI + enable/disable toggle (deferred, SyncHistoryPage skeleton exists)
