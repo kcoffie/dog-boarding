@@ -173,11 +173,9 @@ export async function findDogByExternalId(supabase, externalId) {
     .from('dogs')
     .select('*')
     .eq('external_id', externalId)
-    .single();
+    .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') { // PGRST116 = not found
-    throw error;
-  }
+  if (error) throw error;
 
   return data || null;
 }
@@ -194,11 +192,9 @@ export async function findDogByName(supabase, name) {
     .select('*')
     .ilike('name', name)
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') {
-    throw error;
-  }
+  if (error) throw error;
 
   return data || null;
 }
@@ -214,11 +210,9 @@ export async function findBoardingByExternalId(supabase, externalId) {
     .from('boardings')
     .select('*')
     .eq('external_id', externalId)
-    .single();
+    .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') {
-    throw error;
-  }
+  if (error) throw error;
 
   return data || null;
 }
@@ -240,11 +234,9 @@ export async function findBoardingByDogAndDates(supabase, dogId, checkIn, checkO
     .lte('arrival_datetime', checkOut)
     .gte('departure_datetime', checkIn)
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') {
-    throw error;
-  }
+  if (error) throw error;
 
   return data || null;
 }
@@ -260,11 +252,9 @@ export async function findSyncAppointmentByExternalId(supabase, externalId) {
     .from('sync_appointments')
     .select('*')
     .eq('external_id', externalId)
-    .single();
+    .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') {
-    throw error;
-  }
+  if (error) throw error;
 
   return data || null;
 }
