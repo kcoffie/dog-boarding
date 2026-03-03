@@ -162,11 +162,10 @@ export function parseMMDDYYYYtoISO(str) {
 /**
  * Choose the best matching form submission for a boarding.
  *
- * Primary: return the most recent submission whose submittedDate is on or before
- *   the boarding's arrival date.
- * Fallback: if all submissions are after the arrival date, return the most recent
- *   overall (index 0, as the external site lists newest first).
- * Returns null if submissions array is empty.
+ * A submission qualifies if its submittedDate falls within the 7-day window
+ * ending on (and including) the boarding arrival date. Submissions with no
+ * parseable date are excluded. There is no fallback — if nothing qualifies,
+ * null is returned so the caller can wait for the client to submit.
  *
  * @param {Array<{submissionId: number, submittedDate: string|null}>} submissions
  * @param {{ arrival_datetime: string }} boarding
@@ -175,36 +174,38 @@ export function parseMMDDYYYYtoISO(str) {
 export function findFormForBoarding(submissions, boarding) {
   if (!submissions || submissions.length === 0) return null;
 
-  const boardingArrival = new Date(boarding.arrival_datetime);
-  boardingArrival.setHours(23, 59, 59, 999); // include submissions on the same day
+  const arrivalDay = new Date(boarding.arrival_datetime);
+  arrivalDay.setHours(23, 59, 59, 999); // include up to end of arrival day
 
-  log(`[Forms] 🗓️  Matching against boarding arrival: ${boardingArrival.toISOString()} (${submissions.length} submissions)`);
+  const windowStart = new Date(boarding.arrival_datetime);
+  windowStart.setDate(windowStart.getDate() - 7);
+  windowStart.setHours(0, 0, 0, 0);
 
-  // Filter to submissions at or before boarding arrival
+  log(`[Forms] 🗓️  7-day window: ${windowStart.toISOString().slice(0, 10)} → ${arrivalDay.toISOString().slice(0, 10)} (${submissions.length} submissions)`);
+
   const candidates = submissions.filter(s => {
     if (!s.submittedDate) {
-      log(`[Forms]   sub ${s.submissionId}: no date → ✅ included`);
-      return true;
+      log(`[Forms]   sub ${s.submissionId}: no date → ❌ excluded`);
+      return false;
     }
     const isoDate = parseMMDDYYYYtoISO(s.submittedDate);
     if (!isoDate) {
-      log(`[Forms]   sub ${s.submissionId}: unparseable date "${s.submittedDate}" → ✅ included`);
-      return true;
+      log(`[Forms]   sub ${s.submissionId}: unparseable date "${s.submittedDate}" → ❌ excluded`);
+      return false;
     }
     const subDate = new Date(isoDate + 'T00:00:00');
-    const passes = subDate <= boardingArrival;
-    log(`[Forms]   sub ${s.submissionId}: submitted ${s.submittedDate} (${isoDate}) → ${passes ? '✅ candidate' : '❌ after arrival'}`);
+    const passes = subDate >= windowStart && subDate <= arrivalDay;
+    log(`[Forms]   sub ${s.submissionId}: submitted ${s.submittedDate} → ${passes ? '✅ in window' : '❌ outside window'}`);
     return passes;
   });
 
-  if (candidates.length > 0) {
-    // Submissions are newest first; first candidate is the most recent match
-    return candidates[0].submissionId;
+  if (candidates.length === 0) {
+    log(`[Forms] ❌ No submissions in 7-day window — client has not submitted a form for this boarding`);
+    return null;
   }
 
-  // All submissions are after boarding arrival — return most recent overall
-  logWarn(`[Forms] ⚠️ All submissions after boarding arrival — using most recent (sub ${submissions[0].submissionId})`);
-  return submissions[0].submissionId;
+  // Submissions are newest first; first candidate is the most recent in-window match
+  return candidates[0].submissionId;
 }
 
 /**
@@ -268,10 +269,13 @@ export async function fetchAndStoreBoardingForm(supabase, boardingId, externalPe
 
   log(`[Forms] 📅 Boarding dates: arrival=${boarding.arrival_datetime}, departure=${boarding.departure_datetime}`);
 
-  // 4. Find the best matching submission
+  // 4. Find the best matching submission (within 7-day window ending on arrival day)
   const submissionId = findFormForBoarding(submissions, boarding);
   if (submissionId === null) {
-    logWarn(`[Forms] ❌ No suitable submission for boarding ${boardingId} (pet ${externalPetId})`);
+    // Submissions exist but none fall within the 7-day window — client hasn't submitted
+    // a form for this boarding yet. Don't store anything so the job is re-enqueued on
+    // the next sync and we pick it up once they submit.
+    logWarn(`[Forms] ⚠️  No in-window submission for boarding ${boardingId} (${dogName}) — waiting for client to submit`);
     return;
   }
 

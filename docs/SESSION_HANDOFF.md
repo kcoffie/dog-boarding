@@ -1,35 +1,39 @@
 # Dog Boarding App — Session Handoff (v3.0)
-**Last updated:** March 3, 2026 (late night — print fix + form re-enqueue fix)
-**Status:** v3.0 DEPLOYED. All commits pushed. Two post-deploy bug fixes landed.
+**Last updated:** March 3, 2026 (night — form matching: 7-day window filter)
+**Status:** v3.0 DEPLOYED. Commits from late-night session pushed. New fix needs push.
 
 ---
 
 ## Current State
 
-- **695 tests, 686 pass.** 9 pre-existing failures: 1 DST-flaky in `DateNavigator.test.jsx` + 8 in `BoardingMatrix.test.jsx` (sorting UI) — all unrelated to sync work.
+- **697 tests, 688 pass.** 9 pre-existing failures: 1 DST-flaky in `DateNavigator.test.jsx` + 8 in `BoardingMatrix.test.jsx` (sorting UI) — all unrelated to sync work.
 - **v3.0 fully deployed.** Migration 016 applied, code pushed to Vercel and live.
 - **REQ-506–508 complete.** Modal centering via portal, 3-state link colors, source URL link + conditional print all implemented.
-- **Two post-deploy bugs fixed** (see this session below). Push to deploy.
+- **1 new fix not yet pushed** — see Next Steps.
 
-## What Was Done This Session (March 3, 2026 — late night)
+## What Was Done This Session (March 3, 2026 — night)
 
-### Fix 1: Boarding form print button produced blank output
+### Fix: Form matching now uses 7-day submission window
 
-**Bug:** Print button called `window.print()`, which prints the entire page. The modal is rendered via `createPortal` into `document.body`, so the app's calendar/sidebar also printed and the overlay's CSS didn't isolate the modal content.
+**Bug:** `findFormForBoarding` used a "submitted on or before arrival date" filter with a fallback to the most recent form regardless of age. For a repeat client with an old form (e.g., Mochi Hill: Jan 23–27 form matched to a Mar 6–14 boarding), the old form was incorrectly associated.
 
-**Fix:** Replaced `window.print()` with a `handlePrint()` function that opens a blank `_blank` window, writes just the form data as clean semantic HTML with embedded print styles (header, table of fields, date discrepancy alert), then calls `print()` on that isolated window and closes it. No Tailwind dependency, safe HTML escaping.
+**Fix:** Replaced the filter + fallback with a strict 7-day window:
+- Qualifies if `submittedDate` falls within `(arrival − 7 days)` to `(arrival day inclusive)`
+- Submissions with no parseable date → excluded (can't evaluate window)
+- No fallback — if nothing is in the window → `findFormForBoarding` returns null
+- `fetchAndStoreBoardingForm` when null returned (but submissions exist) → returns without storing, so the job is re-enqueued on the next sync and we wait for the client to submit
+- Forms in the window with mismatched dates → stored with `date_mismatch = true` (client typo, but right boarding)
 
-File: `src/components/BoardingFormModal.jsx`
+File: `src/lib/scraper/forms.js`
 
-### Fix 2: Form jobs not re-queued after client submits a late form
+**Tests updated** (`src/__tests__/scraper/forms.test.js`): 4 tests updated to reflect new no-fallback behavior; 3 new tests added (exactly-7-days boundary, 8-days-outside, multiple-in-window). 28/28 forms tests pass.
 
-**Bug:** `enqueue()` in `syncQueue.js` skipped anything with status `done`, `pending`, or `processing` — only re-queued `failed`. So if a form job ran when no form was submitted yet → marked `done` → never checked again even after the client submitted it.
-
-**Fix:** Changed the skip condition to use `boarding_forms` as the source of truth instead of queue status:
-- In `mapping.js`: before calling `enqueue`, check `boarding_forms` for a stored row for this boarding. If found → skip (form is already here). If not found → call `enqueue` with `resetIfDone: true`.
-- In `syncQueue.js`: `enqueue` now accepts `resetIfDone` option. When set and existing row is `done`, resets it to `pending` so it gets re-processed on next cron/sync.
-
-Files: `src/lib/scraper/syncQueue.js`, `src/lib/scraper/mapping.js`
+**After deploying:** Delete stale `boarding_forms` rows that were matched under the old logic:
+```sql
+-- Find and remove wrongly-matched forms (date_mismatch = true AND dates far off)
+-- Then run Sync Now — jobs will re-enqueue, wait for client to submit
+DELETE FROM boarding_forms WHERE boarding_id = '398a55ad-2111-4751-b98e-c7a5462798bf';
+```
 
 ---
 
@@ -37,14 +41,28 @@ Files: `src/lib/scraper/syncQueue.js`, `src/lib/scraper/mapping.js`
 
 ### 1. Push to deploy ← START HERE
 
-Two commits are unpushed:
+All previous late-night commits are pushed. One new commit needs push:
 ```
-fix: open isolated print window for boarding form to prevent blank output
-fix: re-enqueue form jobs when form not yet stored, skip only when already found
+fix: form matching uses 7-day submission window, no fallback to old forms
 ```
 Run `git push`. Vercel auto-deploys from main.
 
-### 2. Test form re-fetch
+### 2. Clean up stale form rows + re-sync
+
+After pushing, delete any `boarding_forms` rows that were matched under the old logic (especially `date_mismatch = true` rows where form dates are months off):
+```sql
+-- Find candidates (form dates don't even come close to boarding dates)
+SELECT bf.boarding_id, d.name, bf.form_arrival_date, bf.form_departure_date,
+       b.arrival_datetime::date, b.departure_datetime::date
+FROM boarding_forms bf
+JOIN boardings b ON bf.boarding_id = b.id
+JOIN dogs d ON b.dog_id = d.id
+WHERE bf.date_mismatch = true
+ORDER BY bf.fetched_at DESC;
+```
+Delete the bad rows, then run "Sync Now" — jobs will re-enqueue and wait for clients to submit.
+
+### 3. Test form re-fetch
 
 After pushing, run "Sync Now" in Settings. For any boarding where a form was previously looked up but not found (queue status `done`, no `boarding_forms` row), it should now be reset to `pending` and re-fetched. Check:
 
@@ -272,7 +290,7 @@ ORDER BY bf.fetched_at DESC LIMIT 10;
 - **historicalSync.js:** kept — `runSync()` in 30-day batches, useful for full data rebuild. Not dead code.
 - **VITE_SYNC_PROXY_TOKEN:** intentionally VITE_-prefixed so browser can read it; different from `CRON_SECRET`
 - **Form field parsing:** regex with forward window (600 chars from `id="field_\d+"` marker) — avoids nested div closing tag complexity; works in Node.js and browser
-- **Form matching:** most recent submission with submittedDate ≤ boarding arrival date; fallback to most recent overall
+- **Form matching:** most recent submission whose `submittedDate` falls within `(arrival − 7 days)` to `(arrival day)` inclusive. Submissions with no parseable date excluded. No fallback to old forms — if nothing in window, don't store, re-enqueue.
 - **Form job enqueueing:** only for boardings where `departure_datetime >= today midnight` AND dog has `external_pet_id`
 - **Form re-enqueue logic:** `boarding_forms` is the source of truth — skip enqueue only if a row exists for the boarding. If no row exists (form not yet fetched/submitted), enqueue with `resetIfDone: true` so previously-`done` queue items get retried. This ensures late form submissions are picked up on the next sync.
 

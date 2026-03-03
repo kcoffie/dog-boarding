@@ -277,9 +277,8 @@ describe('findFormForBoarding()', () => {
     expect(findFormForBoarding(null, boarding)).toBeNull();
   });
 
-  it('returns most recent submission on or before boarding arrival (exact scenario)', () => {
-    // Boarding arrival = Feb 13, 2026
-    // Sub 215 submitted 2/12/2026 (before arrival) → should be returned
+  it('returns submission submitted 1 day before arrival (within 7-day window)', () => {
+    // Feb 12 submitted, Feb 13 arrival → 1 day before → in window
     const submissions = [
       { submissionId: 215, submittedDate: '2/12/2026' },
       { submissionId: 209, submittedDate: '1/15/2026' },
@@ -288,30 +287,37 @@ describe('findFormForBoarding()', () => {
     expect(findFormForBoarding(submissions, boarding)).toBe(215);
   });
 
-  it('returns most recent before arrival (fallback scenario)', () => {
-    // Boarding arrival = Feb 20, 2026 — no form has that exact date
-    // Most recent before Feb 20 is 2/12 (sub 215)
+  it('returns submission submitted exactly 7 days before arrival', () => {
+    // Feb 13 arrival − 7 days = Feb 6 → boundary, should be included
     const submissions = [
-      { submissionId: 215, submittedDate: '2/12/2026' },
-      { submissionId: 209, submittedDate: '1/15/2026' },
+      { submissionId: 215, submittedDate: '2/6/2026' },
     ];
-    const boarding = makeBoarding('2026-02-20');
+    const boarding = makeBoarding('2026-02-13');
     expect(findFormForBoarding(submissions, boarding)).toBe(215);
   });
 
-  it('returns most recent overall if all submissions are after boarding arrival', () => {
+  it('returns null when best submission is 8 days before arrival (outside window)', () => {
+    // Feb 12 arrival − 8 days = Feb 4 → outside window
+    const submissions = [
+      { submissionId: 215, submittedDate: '2/4/2026' },
+      { submissionId: 209, submittedDate: '1/15/2026' },
+    ];
+    const boarding = makeBoarding('2026-02-12');
+    expect(findFormForBoarding(submissions, boarding)).toBeNull();
+  });
+
+  it('returns null when all submissions are after boarding arrival (no fallback)', () => {
     const submissions = [
       { submissionId: 215, submittedDate: '3/1/2026' },
       { submissionId: 209, submittedDate: '2/15/2026' },
     ];
-    // Boarding arrival Jan 1 — both submissions are after
+    // Boarding arrival Jan 1 — both submissions are after → no fallback
     const boarding = makeBoarding('2026-01-01');
-    // Falls back to most recent overall (index 0)
-    expect(findFormForBoarding(submissions, boarding)).toBe(215);
+    expect(findFormForBoarding(submissions, boarding)).toBeNull();
   });
 
   it('includes submissions submitted on the same day as boarding arrival', () => {
-    // Submitted Feb 13 = same day as arrival → should qualify
+    // Submitted Feb 13 = arrival day → in window
     const submissions = [
       { submissionId: 215, submittedDate: '2/13/2026' },
     ];
@@ -319,13 +325,23 @@ describe('findFormForBoarding()', () => {
     expect(findFormForBoarding(submissions, boarding)).toBe(215);
   });
 
-  it('handles submissions with no submitted date by including them', () => {
+  it('excludes submissions with no submitted date', () => {
     const submissions = [
       { submissionId: 215, submittedDate: null },
       { submissionId: 209, submittedDate: '1/15/2026' },
     ];
+    // 215 has no date → excluded. 209 is Jan 15, boarding Feb 13 → 29 days before → outside window
     const boarding = makeBoarding('2026-02-13');
-    // 215 has no date → treated as candidate; it's first (most recent) → returned
+    expect(findFormForBoarding(submissions, boarding)).toBeNull();
+  });
+
+  it('returns most recent when multiple submissions are within the window', () => {
+    // Both within 7 days of Feb 13; submissions are newest-first → 215 returned
+    const submissions = [
+      { submissionId: 215, submittedDate: '2/12/2026' },
+      { submissionId: 209, submittedDate: '2/8/2026' },
+    ];
+    const boarding = makeBoarding('2026-02-13');
     expect(findFormForBoarding(submissions, boarding)).toBe(215);
   });
 });
