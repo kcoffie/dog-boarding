@@ -106,39 +106,39 @@ const FORM_DETAIL_HTML = `
   <span class="form-submitted">submitted: 2/12/2026</span>
 </div>
 <div class="divtable dt-view profile-info">
-  <div id="field_184366" class="dt-row field-row">
+  <div id="field_184366-wrapper" class="dt-row field-row">
     <div class="field-label">CONFIRM ARRIVAL DATE</div>
     <div class="field-value">2/13/2026</div>
   </div>
-  <div id="field_184367" class="dt-row field-row">
+  <div id="field_184367-wrapper" class="dt-row field-row">
     <div class="field-label">CONFIRM DEPARTURE DATE</div>
     <div class="field-value">2/17/2026</div>
   </div>
-  <div id="field_239541" class="dt-row field-row">
+  <div id="field_239541-wrapper" class="dt-row field-row">
     <div class="field-label">ARRIVAL TIME</div>
     <div class="field-value">Between 4-6pm</div>
   </div>
-  <div id="field_239567" class="dt-row field-row">
+  <div id="field_239567-wrapper" class="dt-row field-row">
     <div class="field-label">DEPARTURE TIME</div>
     <div class="field-value">Morning pickup preferred</div>
   </div>
-  <div id="field_184360" class="dt-row field-row">
+  <div id="field_184360-wrapper" class="dt-row field-row">
     <div class="field-label">FEEDING INSTRUCTIONS</div>
     <div class="field-value">1 can wet food small amount of dry food separately</div>
   </div>
-  <div id="field_184362" class="dt-row field-row">
+  <div id="field_184362-wrapper" class="dt-row field-row">
     <div class="field-label">MEDICATIONS/MEDICAL CONDITION</div>
     <div class="field-value">None</div>
   </div>
-  <div id="field_184363" class="dt-row field-row">
+  <div id="field_184363-wrapper" class="dt-row field-row">
     <div class="field-label">TRAVEL DETAILS AND BEST CONTACT</div>
     <div class="field-value">Flying to Mexico. Cell: 555-123-4567</div>
   </div>
-  <div id="field_184364" class="dt-row field-row">
+  <div id="field_184364-wrapper" class="dt-row field-row">
     <div class="field-label">EMERGENCY CONTACT</div>
     <div class="field-value">Jane Smith - 555-987-6543</div>
   </div>
-  <div id="field_184365" class="dt-row field-row">
+  <div id="field_184365-wrapper" class="dt-row field-row">
     <div class="field-label">VETERINARIAN</div>
     <div class="field-value">City Vet Clinic - 555-111-2222</div>
   </div>
