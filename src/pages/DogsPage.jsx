@@ -4,12 +4,16 @@ import DogForm from '../components/DogForm';
 import DogCsvImport from '../components/DogCsvImport';
 import BoardingForm from '../components/BoardingForm';
 import InlineDeleteButton from '../components/InlineDeleteButton';
+import BoardingFormModal from '../components/BoardingFormModal';
+import { useBoardingForms } from '../hooks/useBoardingForms';
 import { formatDateTime, calculateNights, formatName } from '../utils/dateUtils';
 
 export default function DogsPage() {
   const { dogs, boardings, addDog, toggleDogActive, updateBoarding, deleteBoarding } = useData();
+  const { formsByBoardingId } = useBoardingForms();
 
   const [showAddDogForm, setShowAddDogForm] = useState(false);
+  const [formModalState, setFormModalState] = useState({ isOpen: false, dogName: '', formData: null, boarding: null });
   const [showDogCsvImport, setShowDogCsvImport] = useState(false);
   const [editingBoarding, setEditingBoarding] = useState(null);
   const [sortColumn, setSortColumn] = useState('name');
@@ -234,7 +238,19 @@ export default function DogsPage() {
                           <span className="text-sm font-semibold text-indigo-600">{getInitials(dogName)}</span>
                         </div>
                         <div className="min-w-0">
-                          <div className="font-medium text-slate-900 truncate">{dogName}</div>
+                          {(() => {
+                            const formData = formsByBoardingId[boarding.id];
+                            const noForm = !formData;
+                            return (
+                              <button
+                                onClick={() => setFormModalState({ isOpen: true, dogName, formData: formData || null, boarding })}
+                                className={`font-medium truncate text-left hover:underline ${noForm ? 'text-amber-600' : 'text-indigo-700'}`}
+                                title={noForm ? 'No Boarding Form Found!' : 'View boarding form'}
+                              >
+                                {dogName}
+                              </button>
+                            );
+                          })()}
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>
                             {statusStyle.label}
                           </span>
@@ -347,7 +363,19 @@ export default function DogsPage() {
                             <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
                               <span className="text-xs font-semibold text-indigo-600">{getInitials(dogName)}</span>
                             </div>
-                            <span className="text-sm font-medium text-slate-900">{dogName}</span>
+                            {(() => {
+                              const formData = formsByBoardingId[boarding.id];
+                              const noForm = !formData;
+                              return (
+                                <button
+                                  onClick={() => setFormModalState({ isOpen: true, dogName, formData: formData || null, boarding })}
+                                  className={`text-sm font-medium text-left hover:underline ${noForm ? 'text-amber-600' : 'text-indigo-700 hover:text-indigo-900'}`}
+                                  title={noForm ? 'No Boarding Form Found!' : 'View boarding form'}
+                                >
+                                  {dogName}
+                                </button>
+                              );
+                            })()}
                           </div>
                         </td>
                         <td className="px-5 py-4">
@@ -756,6 +784,14 @@ export default function DogsPage() {
         );
       })()}
 
+      {/* Boarding form modal */}
+      <BoardingFormModal
+        isOpen={formModalState.isOpen}
+        onClose={() => setFormModalState(s => ({ ...s, isOpen: false }))}
+        dogName={formModalState.dogName}
+        formData={formModalState.formData}
+        boarding={formModalState.boarding}
+      />
     </div>
   );
 }
