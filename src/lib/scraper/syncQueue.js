@@ -34,9 +34,9 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
     .select('id, status')
     .eq('external_id', external_id)
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+  if (fetchError) throw fetchError;
 
   if (existing) {
     if (existing.status !== 'failed') {
@@ -73,21 +73,24 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
  * Respects next_retry_at — items with a future retry time are skipped.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ type?: string }} [options] - optional filter by item type
  * @returns {Promise<Object|null>} queue row or null if nothing ready
  */
-export async function dequeueOne(supabase) {
+export async function dequeueOne(supabase, { type } = {}) {
   const now = new Date().toISOString();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sync_queue')
     .select('*')
     .eq('status', 'pending')
     .or(`next_retry_at.is.null,next_retry_at.lte.${now}`)
     .order('queued_at', { ascending: true })
-    .limit(1)
-    .single();
+    .limit(1);
 
-  if (error && error.code === 'PGRST116') return null; // no rows ready
+  if (type) query = query.eq('type', type);
+
+  const { data, error } = await query.maybeSingle();
+
   if (error) throw error;
   if (!data) return null;
 
@@ -136,7 +139,7 @@ export async function markFailed(supabase, id, errorMessage) {
     .from('sync_queue')
     .select('retry_count')
     .eq('id', id)
-    .single();
+    .maybeSingle();
 
   if (fetchError) throw fetchError;
 

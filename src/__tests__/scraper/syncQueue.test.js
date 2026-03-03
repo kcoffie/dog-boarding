@@ -76,6 +76,10 @@ const createMockSupabase = (initialRows = []) => {
         if (!match) return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'No rows' } });
         return Promise.resolve({ data: { ...match }, error: null });
       },
+      maybeSingle: () => {
+        const match = computeRows()[0] || null;
+        return Promise.resolve({ data: match ? { ...match } : null, error: null });
+      },
       update: (data) => ({
         eq: (f, v) => ({
           eq: (f2, v2) => {

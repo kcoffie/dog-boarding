@@ -10,6 +10,8 @@ import { fetchAllSchedulePages } from './schedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
 import { mapAndSaveAppointment } from './mapping.js';
 import { reconcileArchivedAppointments } from './reconcile.js';
+import { fetchAndStoreBoardingForm } from './forms.js';
+import { dequeueOne, markDone, markFailed } from './syncQueue.js';
 import { syncLogger, logSyncStart, logSyncEnd } from './logger.js';
 
 // Use timestamped logging
@@ -272,6 +274,8 @@ export async function runSync(options = {}) {
     appointmentsArchived: 0,
     parseNullCount: 0,   // REQ-110: detail fetches with null pet_name or check_in_datetime
     parseTotalCount: 0,  // REQ-110: total detail fetches that reached the save stage
+    formsProcessed: 0,
+    formsFailed: 0,
     errors: [],
     changeDetails: [],
     durationMs: 0,
@@ -546,6 +550,41 @@ export async function runSync(options = {}) {
       syncLog(`[Sync] 🔍 Reconciliation complete: ${reconcileResult.archived} archived, ${reconcileResult.warnings} warnings, ${reconcileResult.errors} errors`);
     } catch (reconcileErr) {
       syncError('[Sync] ⚠️ Reconciliation threw unexpectedly (sync result unaffected):', reconcileErr.message);
+    }
+
+    // Drain the form queue — process all pending 'form' type items enqueued during this sync.
+    // Wrapped in its own try/catch so failures do not affect the main sync status.
+    try {
+      syncLog('[Sync] 📋 Draining form queue...');
+      let drainItem;
+      let drainProcessed = 0;
+      while ((drainItem = await dequeueOne(supabase, { type: 'form' })) !== null) {
+        const { boarding_id: boardingId, external_pet_id: externalPetId } = drainItem.meta || {};
+        if (!externalPetId) {
+          syncLog(`[Sync] ⏭️ Form job ${drainItem.external_id} has no external_pet_id — skipping`);
+          await markDone(supabase, drainItem.id);
+          continue;
+        }
+        try {
+          await fetchAndStoreBoardingForm(supabase, boardingId, externalPetId, drainItem.title || '');
+          await markDone(supabase, drainItem.id);
+          drainProcessed++;
+          result.formsProcessed++;
+          onProgress?.({ stage: 'draining_queue', processed: drainProcessed });
+        } catch (formErr) {
+          const msg = formErr.message.slice(0, 200);
+          syncError(`[Sync] ❌ Form fetch failed for ${drainItem.external_id}: ${msg}`);
+          await markFailed(supabase, drainItem.id, msg);
+          result.formsFailed++;
+        }
+      }
+      if (drainProcessed > 0 || result.formsFailed > 0) {
+        syncLog(`[Sync] 📋 Form queue drained: ${drainProcessed} stored, ${result.formsFailed} failed`);
+      } else {
+        syncLog('[Sync] 📋 Form queue empty — nothing to drain');
+      }
+    } catch (drainErr) {
+      syncWarn(`[Sync] ⚠️ Form queue drain error (sync result unaffected): ${drainErr.message}`);
     }
 
     // Determine final status
