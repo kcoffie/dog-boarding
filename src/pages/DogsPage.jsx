@@ -240,12 +240,11 @@ export default function DogsPage() {
                         <div className="min-w-0">
                           {(() => {
                             const formData = formsByBoardingId[boarding.id];
-                            const noForm = !formData;
                             return (
                               <button
                                 onClick={() => setFormModalState({ isOpen: true, dogName, formData: formData || null, boarding })}
-                                className={`font-medium truncate text-left hover:underline ${noForm ? 'text-amber-600' : 'text-indigo-700'}`}
-                                title={noForm ? 'No Boarding Form Found!' : 'View boarding form'}
+                                className={`font-medium truncate text-left hover:underline ${!formData ? 'text-red-600' : !formData.form_data?.priorityFields?.length ? 'text-amber-600' : 'text-indigo-700'}`}
+                                title={!formData ? 'No boarding form found' : !formData.form_data?.priorityFields?.length ? 'Form found — no key fields' : 'View boarding form'}
                               >
                                 {dogName}
                               </button>
@@ -365,12 +364,11 @@ export default function DogsPage() {
                             </div>
                             {(() => {
                               const formData = formsByBoardingId[boarding.id];
-                              const noForm = !formData;
                               return (
                                 <button
                                   onClick={() => setFormModalState({ isOpen: true, dogName, formData: formData || null, boarding })}
-                                  className={`text-sm font-medium text-left hover:underline ${noForm ? 'text-amber-600' : 'text-indigo-700 hover:text-indigo-900'}`}
-                                  title={noForm ? 'No Boarding Form Found!' : 'View boarding form'}
+                                  className={`text-sm font-medium text-left hover:underline ${!formData ? 'text-red-600' : !formData.form_data?.priorityFields?.length ? 'text-amber-600' : 'text-indigo-700 hover:text-indigo-900'}`}
+                                  title={!formData ? 'No boarding form found' : !formData.form_data?.priorityFields?.length ? 'Form found — no key fields' : 'View boarding form'}
                                 >
                                   {dogName}
                                 </button>

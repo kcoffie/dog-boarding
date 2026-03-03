@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Format a YYYY-MM-DD date as "Mon DD, YYYY" (e.g. "Feb 13, 2026").
@@ -91,8 +92,9 @@ export default function BoardingFormModal({ isOpen, onClose, dogName, formData, 
   const otherFields = formData?.form_data?.otherFields || [];
   const dateMismatch = formData?.date_mismatch;
   const submittedDate = formData?.form_submitted_at ? formatDate(formData.form_submitted_at) : null;
+  const hasContent = priorityFields.length > 0 || otherFields.length > 0;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm print:bg-transparent print:p-0 print:block">
       <div
         ref={modalRef}
@@ -183,15 +185,29 @@ export default function BoardingFormModal({ isOpen, onClose, dogName, formData, 
 
         {/* Footer */}
         <div className="flex justify-between items-center px-6 py-4 border-t border-slate-200 bg-slate-50 print:hidden">
-          <button
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            Print
-          </button>
+          <div className="flex items-center gap-2">
+            {formData?.submission_url && (
+              <a
+                href={formData.submission_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors print:hidden"
+              >
+                View on site →
+              </a>
+            )}
+            {hasContent && (
+              <button
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+                Print
+              </button>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
@@ -200,6 +216,7 @@ export default function BoardingFormModal({ isOpen, onClose, dogName, formData, 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
