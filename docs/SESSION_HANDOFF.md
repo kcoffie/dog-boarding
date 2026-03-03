@@ -1,20 +1,92 @@
 # Dog Boarding App — Session Handoff (v3.0)
-**Last updated:** March 2, 2026 (REQ-500–505 boarding form scraping — committed, not yet deployed)
-**Status:** v3.0 CODE COMMITTED — last commit `7074442`, migration 016 pending production apply
+**Last updated:** March 3, 2026 (fix 406 console errors + Sync Now drains form queue)
+**Status:** v3.0 ALL CODE COMMITTED — migration 016 pending production apply, then push to deploy
 
 ---
 
 ## Current State
 
-- **658 tests, 657 pass.** 1 failure is pre-existing DST-flaky test in `DateNavigator.test.jsx` — unrelated.
-- **Last deployed:** `398387b` — docs: close REQ-402 (v2.4 still in production)
-- v3.0 code committed as `7074442` on `main`; **not yet pushed or deployed**.
-- Migration 016 has NOT been applied to production yet — must be done before pushing.
+- **681 tests, 672 pass.** 9 pre-existing failures: 1 DST-flaky in `DateNavigator.test.jsx` + 8 in `BoardingMatrix.test.jsx` (sorting UI) — all unrelated to sync work.
+- **Last deployed:** `398387b` — v2.4 (still in production)
+- **All v3.0 code committed on `main`; not yet pushed to Vercel.**
+- **Migration 016 NOT yet applied to production** — must apply before deploying.
+
+## What Was Done This Session (March 3, 2026)
+
+### 1. Fixed 406 console errors — `.single()` → `.maybeSingle()`
+
+Supabase JS `.single()` logs HTTP 406 to the browser console whenever a query returns 0 rows, even if the code catches PGRST116. Switched all existence-check queries to `.maybeSingle()` (returns `{ data: null, error: null }` for 0 rows — no console error).
+
+Files changed:
+- **`src/lib/scraper/syncQueue.js`**: `enqueue` (existence check), `dequeueOne`, `markFailed`
+- **`src/lib/scraper/mapping.js`**: all five `find*` functions — `findDogByExternalId`, `findDogByName`, `findBoardingByExternalId`, `findBoardingByDogAndDates`, `findSyncAppointmentByExternalId`
+- **`src/__tests__/scraper/syncQueue.test.js`**: added `maybeSingle()` to mock builder
+- **`src/__tests__/scraper/mapping.test.js`**: added `maybeSingle()` to mock query builder
+
+### 2. Sync Now drains the entire form queue
+
+Previously, form fetch jobs (`type='form'` in `sync_queue`) were only processed by `cron-detail` — one per day on the Hobby plan. After hitting "Sync Now", users had to wait days to get all forms fetched.
+
+Now, `runSync()` in `sync.js` drains all pending form queue items immediately after reconciliation. Each item calls `fetchAndStoreBoardingForm`, reports progress via `onProgress({ stage: 'draining_queue', processed })`, and marks done/failed. The drain is wrapped in its own try/catch — form failures don't affect the main sync status.
+
+Files changed:
+- **`src/lib/scraper/sync.js`**: new imports (`fetchAndStoreBoardingForm`, `dequeueOne`, `markDone`, `markFailed`), `formsProcessed`/`formsFailed` added to result, drain loop after reconciliation block
+- **`src/lib/scraper/syncQueue.js`**: `dequeueOne` now accepts optional `{ type }` filter so the drain loop can request only `type='form'` items
+
+## Immediate Next Steps (To Deploy v3.0)
+
+> **This is the critical path. Migration 016 must go first — the app will break without it.**
+
+### Step 1 — Apply Migration 016 to production
+
+Run `supabase/migrations/016_add_boarding_forms.sql` in production (Supabase dashboard SQL editor or `supabase db push`).
+
+Adds:
+- `dogs.external_pet_id TEXT` + index
+- `sync_queue.type TEXT`, `sync_queue.meta JSONB`
+- `boarding_forms` table
+
+Verify after applying:
+```sql
+SELECT column_name FROM information_schema.columns WHERE table_name = 'dogs' AND column_name = 'external_pet_id';
+SELECT column_name FROM information_schema.columns WHERE table_name = 'sync_queue' AND column_name = 'type';
+SELECT table_name FROM information_schema.tables WHERE table_name = 'boarding_forms';
+```
+
+### Step 2 — Push to Vercel / deploy
+
+`git push origin main` — Vercel auto-deploys from main.
+
+No new env vars needed (all were set for REQ-402).
+
+### Step 3 — Verify end-to-end
+
+1. Hit "Sync Now" in Settings (use today → today+60d date range)
+2. Watch console — should see `[Sync] 📋 Draining form queue...` followed by per-form log lines, NO 406 errors
+3. Check DB:
+```sql
+-- dogs should have external_pet_id populated
+SELECT name, external_pet_id FROM dogs WHERE external_pet_id IS NOT NULL LIMIT 10;
+
+-- boarding_forms should have rows
+SELECT bf.boarding_id, d.name, bf.date_mismatch, bf.fetched_at
+FROM boarding_forms bf
+JOIN boardings b ON bf.boarding_id = b.id
+JOIN dogs d ON b.dog_id = d.id
+ORDER BY bf.fetched_at DESC LIMIT 10;
+
+-- sync_queue should be empty (all done)
+SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type;
+```
+4. Open Dashboard or Dogs page — upcoming boardings should show as indigo (form found) or amber (no form) buttons
+5. Click a dog name → boarding form modal opens
+
+---
 
 > **Check first thing each session:** Did overnight crons run?
 > `SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;`
 > Or check the Cron Health card on the Settings page.
-> To drain the sync queue quickly: use "Sync Now" in Settings, or repeatedly trigger the detail cron in Vercel UI.
+> To drain the sync queue quickly: use "Sync Now" in Settings (now drains all form jobs automatically).
 
 ---
 
@@ -145,7 +217,8 @@ ORDER BY bf.fetched_at DESC LIMIT 10;
 - **REQ-110 parse degradation:** does NOT flag missing `appointment_total` (legitimately absent)
 - **sync_status column:** use `sync_status = 'archived'` — `is_archived` does not exist
 - **Archived appointments:** preloaded into `archivedExternalIds` Set at sync start; skipped before detail fetch
-- **cron-detail:** processes 1 queue item per invocation (Hobby plan 10s timeout). Use "Sync Now" in Settings for bulk draining.
+- **cron-detail:** processes 1 queue item per invocation (Hobby plan 10s timeout). "Sync Now" in Settings now drains all pending form queue items automatically after the main sync.
+- **`.maybeSingle()` vs `.single()`:** All existence-check `find*` queries use `.maybeSingle()` (returns `{ data: null, error: null }` for 0 rows). Never use `.single()` for existence checks — it logs a 406 error to console even when caught.
 - **historicalSync.js:** kept — `runSync()` in 30-day batches, useful for full data rebuild. Not dead code.
 - **VITE_SYNC_PROXY_TOKEN:** intentionally VITE_-prefixed so browser can read it; different from `CRON_SECRET`
 - **Form field parsing:** regex with forward window (600 chars from `id="field_\d+"` marker) — avoids nested div closing tag complexity; works in Node.js and browser
