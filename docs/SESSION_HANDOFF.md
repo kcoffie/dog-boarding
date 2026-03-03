@@ -1,17 +1,55 @@
 # Dog Boarding App — Session Handoff (v3.0)
-**Last updated:** March 3, 2026 (fix 406 console errors + Sync Now drains form queue)
-**Status:** v3.0 ALL CODE COMMITTED — migration 016 pending production apply, then push to deploy
+**Last updated:** March 3, 2026 (evening — forms field regex bug fixed, boarding_forms table cleared for re-fetch)
+**Status:** v3.0 DEPLOYED + form parsing bug fixed. boarding_forms table was cleared; run "Sync Now" to re-populate with correct data.
 
 ---
 
 ## Current State
 
 - **681 tests, 672 pass.** 9 pre-existing failures: 1 DST-flaky in `DateNavigator.test.jsx` + 8 in `BoardingMatrix.test.jsx` (sorting UI) — all unrelated to sync work.
-- **Last deployed:** `398387b` — v2.4 (still in production)
-- **All v3.0 code committed on `main`; not yet pushed to Vercel.**
-- **Migration 016 NOT yet applied to production** — must apply before deploying.
+- **v3.0 fully deployed.** Migration 016 applied, code pushed to Vercel and live.
+- **boarding_forms table cleared** — was full of rows with empty `form_data` due to regex bug (see below). After deploy, run "Sync Now" to re-populate correctly.
 
-## What Was Done This Session (March 3, 2026)
+## What Was Done This Session (March 3, 2026 — evening)
+
+### 1. Fixed form field parsing regex (critical bug)
+
+**Bug:** `parseFormDetailPage` in `forms.js` used `id="(field_\d+)"` to find field elements, but the actual external site HTML uses `id="field_184366-wrapper"` (with `-wrapper` suffix). The regex stopped matching at the hyphen, so **zero fields were ever extracted** — all `boarding_forms` rows stored `form_data: { allFields: [], priorityFields: [], otherFields: [] }`.
+
+**Fix:** Changed one line in `parseFormDetailPage`:
+```js
+// Before
+const fieldMarkerRe = /id="(field_\d+)"/gi;
+// After
+const fieldMarkerRe = /id="(field_\d+)-wrapper"/gi;
+```
+
+**Test fixture updated** to match real HTML (`id="field_184366-wrapper"`) — all 26 forms tests pass.
+
+**boarding_forms table cleared** (`DELETE FROM boarding_forms`) so rows will be re-fetched correctly after deploy. Run "Sync Now" in Settings to drain the form queue immediately.
+
+### 2. Added date-matching and parse diagnostic logging
+
+Added verbose logs to `forms.js` to make future debugging visible in Vercel function logs:
+- `findFormForBoarding`: logs boarding arrival date + per-submission pass/fail verdict
+- `fetchAndStoreBoardingForm`: logs boarding arrival/departure dates after load, and after `parseFormDetailPage` logs field count + extracted form dates + warns if zero fields parsed
+
+Files changed: `src/lib/scraper/forms.js`, `src/__tests__/scraper/forms.test.js`
+
+---
+
+## What Was Done This Session (March 3, 2026 — afternoon)
+
+### 1. Deployed v3.0 to production
+
+- Migration 016 applied (external_pet_id on dogs, type/meta on sync_queue, boarding_forms table)
+- Pushed all v3.0 commits to Vercel; app is live
+- Confirmed: no 406 console errors, form queue drained, boarding form modal functional
+- Logged three UI polish requirements (REQ-506–508) — see Remaining Backlog
+
+---
+
+## What Was Done This Session (March 3, 2026 — morning)
 
 ### 1. Fixed 406 console errors — `.single()` → `.maybeSingle()`
 
@@ -33,53 +71,51 @@ Files changed:
 - **`src/lib/scraper/sync.js`**: new imports (`fetchAndStoreBoardingForm`, `dequeueOne`, `markDone`, `markFailed`), `formsProcessed`/`formsFailed` added to result, drain loop after reconciliation block
 - **`src/lib/scraper/syncQueue.js`**: `dequeueOne` now accepts optional `{ type }` filter so the drain loop can request only `type='form'` items
 
-## Immediate Next Steps (To Deploy v3.0)
+## v3.0 Post-Deploy: UI Polish Backlog (REQ-506–508)
 
-> **This is the critical path. Migration 016 must go first — the app will break without it.**
+These were identified after v3.0 went live. Implementation not started.
 
-### Step 1 — Apply Migration 016 to production
+### REQ-506: Modal opens at bottom / not centered (**bug**)
 
-Run `supabase/migrations/016_add_boarding_forms.sql` in production (Supabase dashboard SQL editor or `supabase db push`).
+The `BoardingFormModal` uses `position: fixed` but appears at the bottom of the viewport.
+Root cause: likely an ancestor element with `transform` or `will-change` creates a new
+stacking context, making `fixed` behave as `absolute`.
 
-Adds:
-- `dogs.external_pet_id TEXT` + index
-- `sync_queue.type TEXT`, `sync_queue.meta JSONB`
-- `boarding_forms` table
+**Fix:** Render via `ReactDOM.createPortal(…, document.body)` in `BoardingFormModal.jsx`.
+This escapes the component tree entirely — no ancestor can affect positioning.
 
-Verify after applying:
-```sql
-SELECT column_name FROM information_schema.columns WHERE table_name = 'dogs' AND column_name = 'external_pet_id';
-SELECT column_name FROM information_schema.columns WHERE table_name = 'sync_queue' AND column_name = 'type';
-SELECT table_name FROM information_schema.tables WHERE table_name = 'boarding_forms';
+Files: `src/components/BoardingFormModal.jsx`
+
+---
+
+### REQ-507: Dog link color coding — three states
+
+Currently "no form" shows amber. Per new spec:
+- No form at all → **red** (`text-red-600`)
+- Form found, zero priority fields → **amber** (`text-amber-600`)
+- Form found with fields → **indigo** (`text-indigo-700`)
+
+Logic change in both `BoardingMatrix.jsx` and `DogsPage.jsx`:
+```js
+// helper
+function formLinkColor(relevantBoarding, formData) {
+  if (!relevantBoarding) return 'text-slate-900';
+  if (!formData) return 'text-red-600';
+  if (!formData.form_data?.priorityFields?.length) return 'text-amber-600';
+  return 'text-indigo-700';
+}
 ```
 
-### Step 2 — Push to Vercel / deploy
+Files: `src/components/BoardingMatrix.jsx`, `src/pages/DogsPage.jsx`
 
-`git push origin main` — Vercel auto-deploys from main.
+---
 
-No new env vars needed (all were set for REQ-402).
+### REQ-508: Show source URL in modal
 
-### Step 3 — Verify end-to-end
+`boarding_forms.submission_url` is already stored. Add a "View on site →" link in the modal
+footer (hidden on print).
 
-1. Hit "Sync Now" in Settings (use today → today+60d date range)
-2. Watch console — should see `[Sync] 📋 Draining form queue...` followed by per-form log lines, NO 406 errors
-3. Check DB:
-```sql
--- dogs should have external_pet_id populated
-SELECT name, external_pet_id FROM dogs WHERE external_pet_id IS NOT NULL LIMIT 10;
-
--- boarding_forms should have rows
-SELECT bf.boarding_id, d.name, bf.date_mismatch, bf.fetched_at
-FROM boarding_forms bf
-JOIN boardings b ON bf.boarding_id = b.id
-JOIN dogs d ON b.dog_id = d.id
-ORDER BY bf.fetched_at DESC LIMIT 10;
-
--- sync_queue should be empty (all done)
-SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type;
-```
-4. Open Dashboard or Dogs page — upcoming boardings should show as indigo (form found) or amber (no form) buttons
-5. Click a dog name → boarding form modal opens
+Files: `src/components/BoardingFormModal.jsx`
 
 ---
 
@@ -135,30 +171,14 @@ SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type;
 
 ---
 
-## Next Steps (To Deploy v3.0)
+## Next Steps
 
-### 1. Apply Migration 016
+### 1. Implement REQ-506–508 (v3.0 UI Polish)
 
-```sql
--- Run supabase/migrations/016_add_boarding_forms.sql in production
--- Or: supabase db push (if using Supabase CLI)
-```
+See "v3.0 Post-Deploy: UI Polish Backlog" section above for exact files and approach.
+Suggested order: REQ-506 (portal fix, unblocks UX) → REQ-507 (color coding) → REQ-508 (URL link).
 
-### 2. Push to Vercel
-
-All v3.0 changes are committed (`7074442`) and ready to push once migration 016 is applied.
-
-### 3. End-to-end verification
-
-1. Run "Sync Now" in Settings — confirm `external_pet_id` appears on dogs (`SELECT name, external_pet_id FROM dogs LIMIT 20`)
-2. Confirm form fetch jobs enqueued: `SELECT * FROM sync_queue WHERE type = 'form' LIMIT 10`
-3. Trigger cron-detail for each form job (or drain via "Sync Now")
-4. Confirm `boarding_forms` row created: `SELECT * FROM boarding_forms LIMIT 5`
-5. Open Dashboard — dog name should show as indigo link; click → modal opens
-6. If `date_mismatch = true`, amber alert visible with both sets of dates
-7. Print button → browser print dialog → only form content visible
-
-### 4. Useful SQL for v3.0 verification
+### 2. Useful SQL for v3.0 verification
 
 ```sql
 -- Check external_pet_id population
@@ -195,6 +215,12 @@ ORDER BY bf.fetched_at DESC LIMIT 10;
 
 ## Remaining Backlog
 
+### v3.0 UI Polish (next up)
+- **REQ-506:** Modal not centered — fix via `ReactDOM.createPortal` (`BoardingFormModal.jsx`)
+- **REQ-507:** Link color coding — red (no form), amber (form/no fields), indigo (form+fields) (`BoardingMatrix.jsx`, `DogsPage.jsx`)
+- **REQ-508:** Show "View on site →" link in modal using `submission_url` (`BoardingFormModal.jsx`)
+
+### Longer-term
 - **REQ-107:** Sync history UI + enable/disable toggle (deferred, SyncHistoryPage skeleton exists)
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
 - Fix or remove DST-flaky test in `DateNavigator.test.jsx` (pre-existing, 1 test fails on DST boundary days)
