@@ -66,6 +66,16 @@ const createMockSupabase = () => {
         isSingle = true;
         return builder.execute();
       },
+      maybeSingle: () => {
+        isSingle = true;
+        const result = builder.execute();
+        isSingle = false;
+        // maybeSingle returns null data (no error) when no rows found
+        if (result.error && result.error.code === 'PGRST116') {
+          return { data: null, error: null };
+        }
+        return result;
+      },
       execute: () => {
         let results = [...mockData[table]];
 
