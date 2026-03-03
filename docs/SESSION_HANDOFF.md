@@ -1,15 +1,34 @@
 # Dog Boarding App — Session Handoff (v3.0)
-**Last updated:** March 3, 2026 (night — form matching: 7-day window filter)
-**Status:** v3.0 DEPLOYED. Commits from late-night session pushed. New fix needs push.
+**Last updated:** March 3, 2026 (end of day — v3.0 complete and stable)
+**Status:** v3.0 FULLY DEPLOYED AND TESTED. All commits pushed. No pending work.
 
 ---
 
 ## Current State
 
-- **697 tests, 688 pass.** 9 pre-existing failures: 1 DST-flaky in `DateNavigator.test.jsx` + 8 in `BoardingMatrix.test.jsx` (sorting UI) — all unrelated to sync work.
-- **v3.0 fully deployed.** Migration 016 applied, code pushed to Vercel and live.
-- **REQ-506–508 complete.** Modal centering via portal, 3-state link colors, source URL link + conditional print all implemented.
-- **1 new fix not yet pushed** — see Next Steps.
+- **697 tests, 688 pass.** 9 pre-existing failures: 1 DST-flaky in `DateNavigator.test.jsx` + 8 in `BoardingMatrix.test.jsx` (sorting UI) — unrelated to any current work.
+- **v3.0 fully deployed and stable.** All fixes deployed, tested in production, stale data cleaned up.
+- **Form matching verified working.** Mochi Hill stale form deleted; Sync Now ran; system correctly waiting for clients to submit forms in the week before their boarding.
+
+## Next session: check crons + forms first
+
+```sql
+-- Check cron health
+SELECT cron_name, last_ran_at, status, result FROM cron_health ORDER BY cron_name;
+
+-- Check form queue state
+SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY type, status;
+
+-- Check recent forms (should only see correctly-matched ones now)
+SELECT bf.boarding_id, d.name, bf.form_arrival_date, bf.form_departure_date,
+       b.arrival_datetime::date, b.departure_datetime::date, bf.date_mismatch, bf.fetched_at
+FROM boarding_forms bf
+JOIN boardings b ON bf.boarding_id = b.id
+JOIN dogs d ON b.dog_id = d.id
+ORDER BY bf.fetched_at DESC LIMIT 10;
+```
+
+---
 
 ## What Was Done This Session (March 3, 2026 — night)
 
@@ -21,62 +40,43 @@
 - Qualifies if `submittedDate` falls within `(arrival − 7 days)` to `(arrival day inclusive)`
 - Submissions with no parseable date → excluded (can't evaluate window)
 - No fallback — if nothing is in the window → `findFormForBoarding` returns null
-- `fetchAndStoreBoardingForm` when null returned (but submissions exist) → returns without storing, so the job is re-enqueued on the next sync and we wait for the client to submit
-- Forms in the window with mismatched dates → stored with `date_mismatch = true` (client typo, but right boarding)
+- `fetchAndStoreBoardingForm` when null returned (but submissions exist) → returns without storing, so the job is re-enqueued on the next sync and waits for the client to submit
+- Forms in the window with mismatched dates → stored with `date_mismatch = true` (client typo on dates, but right boarding)
 
 File: `src/lib/scraper/forms.js`
 
-**Tests updated** (`src/__tests__/scraper/forms.test.js`): 4 tests updated to reflect new no-fallback behavior; 3 new tests added (exactly-7-days boundary, 8-days-outside, multiple-in-window). 28/28 forms tests pass.
-
-**After deploying:** Delete stale `boarding_forms` rows that were matched under the old logic:
-```sql
--- Find and remove wrongly-matched forms (date_mismatch = true AND dates far off)
--- Then run Sync Now — jobs will re-enqueue, wait for client to submit
-DELETE FROM boarding_forms WHERE boarding_id = '398a55ad-2111-4751-b98e-c7a5462798bf';
-```
+**Tests:** 4 tests updated to reflect new no-fallback behavior; 3 new boundary tests added. 28/28 forms tests pass.
 
 ---
 
-## Next Steps
+## What Was Done This Session (March 3, 2026 — late night)
 
-### 1. Push to deploy ← START HERE
+### Fix 1: Boarding form print button produced blank output
 
-All previous late-night commits are pushed. One new commit needs push:
-```
-fix: form matching uses 7-day submission window, no fallback to old forms
-```
-Run `git push`. Vercel auto-deploys from main.
+**Fix:** Replaced `window.print()` with `handlePrint()` — opens a blank `_blank` window, writes just the form data as clean semantic HTML with embedded print styles, calls `print()`, closes it. Avoids printing the full app page.
 
-### 2. Clean up stale form rows + re-sync
+File: `src/components/BoardingFormModal.jsx`
 
-After pushing, delete any `boarding_forms` rows that were matched under the old logic (especially `date_mismatch = true` rows where form dates are months off):
-```sql
--- Find candidates (form dates don't even come close to boarding dates)
-SELECT bf.boarding_id, d.name, bf.form_arrival_date, bf.form_departure_date,
-       b.arrival_datetime::date, b.departure_datetime::date
-FROM boarding_forms bf
-JOIN boardings b ON bf.boarding_id = b.id
-JOIN dogs d ON b.dog_id = d.id
-WHERE bf.date_mismatch = true
-ORDER BY bf.fetched_at DESC;
-```
-Delete the bad rows, then run "Sync Now" — jobs will re-enqueue and wait for clients to submit.
+### Fix 2: Form jobs not re-queued after client submits a late form
 
-### 3. Test form re-fetch
+**Fix:** Changed enqueue skip condition to use `boarding_forms` as source of truth:
+- `mapping.js`: check `boarding_forms` before calling `enqueue`; if row exists → skip; if not → `enqueue` with `resetIfDone: true`
+- `syncQueue.js`: `enqueue` now accepts `resetIfDone`; resets `done` → `pending` so it gets re-processed
 
-After pushing, run "Sync Now" in Settings. For any boarding where a form was previously looked up but not found (queue status `done`, no `boarding_forms` row), it should now be reset to `pending` and re-fetched. Check:
+Files: `src/lib/scraper/syncQueue.js`, `src/lib/scraper/mapping.js`
 
-```sql
--- Should see done→pending resets for boardings without forms
-SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY type, status;
+---
 
--- Verify new forms came in
-SELECT bf.boarding_id, d.name, jsonb_array_length(bf.form_data->'priorityFields') AS priority_count, bf.fetched_at
-FROM boarding_forms bf
-JOIN boardings b ON bf.boarding_id = b.id
-JOIN dogs d ON b.dog_id = d.id
-ORDER BY bf.fetched_at DESC LIMIT 10;
-```
+## Next Steps / Backlog
+
+### Short-term (v3.1 candidates)
+- Nothing immediately pressing. Monitor crons and form fetching in production over the next few days.
+
+### Longer-term
+- **REQ-107:** Sync history UI + enable/disable toggle (deferred, skeleton exists)
+- Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
+- Fix or remove DST-flaky test in `DateNavigator.test.jsx`
+- **Low priority:** Store datetimes in PST (America/Los_Angeles) instead of UTC
 
 ---
 
