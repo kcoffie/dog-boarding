@@ -92,9 +92,9 @@ All v3.0 changes are committed (`7074442`) and ready to push once migration 016 
 -- Check external_pet_id population
 SELECT name, external_pet_id FROM dogs ORDER BY updated_at DESC LIMIT 10;
 
--- Check form fetch queue
-SELECT external_id, type, meta, status, created_at FROM sync_queue
-WHERE type = 'form' ORDER BY created_at DESC LIMIT 10;
+-- Check form fetch queue (sync_queue has no created_at — order by id)
+SELECT id, external_id, type, meta, status FROM sync_queue
+WHERE type = 'form' ORDER BY id DESC LIMIT 10;
 
 -- Check stored forms
 SELECT bf.boarding_id, d.name, bf.submission_id, bf.date_mismatch,

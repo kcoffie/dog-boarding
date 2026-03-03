@@ -479,7 +479,7 @@ export async function runSync(options = {}) {
 
         // Map and save
         const saveStart = Date.now();
-        const saveResult = await mapAndSaveAppointment(details, { supabase });
+        const saveResult = await mapAndSaveAppointment(details, { supabase, externalPetId: appt.petIds?.[0] || null });
         const saveDuration = Date.now() - saveStart;
 
         const totalDuration = Date.now() - apptStart;
