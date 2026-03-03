@@ -669,14 +669,28 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
     }
     if (departureDate >= todayMidnight) {
       try {
-        await enqueue(supabase, {
-          external_id: `form_${boarding.id}`,
-          source_url: `/pets/${externalPetId}/forms`,
-          title: dogData.name,
-          type: 'form',
-          meta: { boarding_id: boarding.id, external_pet_id: externalPetId },
-        });
-        mappingLogger.log(`[Mapping] 🔄 Form fetch queued: boarding ${boarding.id}, pet ${externalPetId}`);
+        // Skip enqueue only if the form is already stored — re-enqueue if the job
+        // ran previously but no form was found yet (client hadn't submitted it yet).
+        const { data: storedForm, error: formCheckErr } = await supabase
+          .from('boarding_forms')
+          .select('id')
+          .eq('boarding_id', boarding.id)
+          .maybeSingle();
+        if (formCheckErr) throw formCheckErr;
+
+        if (storedForm) {
+          mappingLogger.log(`[Mapping] ⏭️ Form already stored for boarding ${boarding.id} — skipping enqueue`);
+        } else {
+          await enqueue(supabase, {
+            external_id: `form_${boarding.id}`,
+            source_url: `/pets/${externalPetId}/forms`,
+            title: dogData.name,
+            type: 'form',
+            meta: { boarding_id: boarding.id, external_pet_id: externalPetId },
+            resetIfDone: true,
+          });
+          mappingLogger.log(`[Mapping] 🔄 Form fetch queued: boarding ${boarding.id}, pet ${externalPetId}`);
+        }
       } catch (enqErr) {
         // Log but don't fail the sync for a failed form enqueue
         mappingLogger.warn(`[Mapping] ⚠️ Failed to enqueue form job for boarding ${boarding.id}: ${enqErr.message}`);
