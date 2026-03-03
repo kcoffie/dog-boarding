@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import { SCRAPER_CONFIG } from './config.js';
 import { detectChangesSync } from './changeDetection.js';
 import { mappingLogger } from './logger.js';
+import { enqueue } from './syncQueue.js';
 
 /**
  * Identify night and day line items from a pricing result.
@@ -297,6 +298,7 @@ export async function upsertDog(supabase, dogData, options = {}) {
       name: dogData.name,
       active: dogData.active,
     };
+    if (dogData.external_pet_id) updateFields.external_pet_id = dogData.external_pet_id;
     if (updateRates) {
       // Only write rates when a non-zero value was actually classified from pricing.
       // mapToDog returns 0 when no night/day item was found;
@@ -331,12 +333,14 @@ export async function upsertDog(supabase, dogData, options = {}) {
       // Only link when we have an external_id to set (secondary pets don't have one).
       if (!existingByName.external_id && dogData.external_id) {
         mappingLogger.log(`[Mapping] Linking manual dog "${existingByName.name}" (id: ${existingByName.id}) to external_id ${dogData.external_id}`);
+        const linkUpdate = {
+          external_id: dogData.external_id,
+          // Keep source as 'manual' to preserve manual flag
+        };
+        if (dogData.external_pet_id) linkUpdate.external_pet_id = dogData.external_pet_id;
         const { data, error } = await supabase
           .from('dogs')
-          .update({
-            external_id: dogData.external_id,
-            // Keep source as 'manual' to preserve manual flag
-          })
+          .update(linkUpdate)
           .eq('id', existingByName.id)
           .select()
           .single();
@@ -347,32 +351,34 @@ export async function upsertDog(supabase, dogData, options = {}) {
 
       // Already linked (or no external_id to set).
       // Still update rates when pricing was extracted — manual dogs need rate syncs too (REQ-201).
+      const linkedUpdate = {};
+      if (dogData.external_pet_id) linkedUpdate.external_pet_id = dogData.external_pet_id;
       if (updateRates) {
-        const rateUpdate = {};
-        if (dogData.night_rate > 0) rateUpdate.night_rate = dogData.night_rate;
-        if (dogData.day_rate   > 0) rateUpdate.day_rate   = dogData.day_rate;
-        if (Object.keys(rateUpdate).length > 0) {
-          mappingLogger.log(
-            `[Mapping] Manual dog "${existingByName.name}" already linked — updating rates:`,
-            `night=${rateUpdate.night_rate ?? 'skip'}, day=${rateUpdate.day_rate ?? 'skip'}`
-          );
-          const { data: updated, error: rateErr } = await supabase
-            .from('dogs')
-            .update(rateUpdate)
-            .eq('id', existingByName.id)
-            .select()
-            .single();
-          if (rateErr) throw rateErr;
-          return { dog: updated, created: false, updated: true };
-        }
+        if (dogData.night_rate > 0) linkedUpdate.night_rate = dogData.night_rate;
+        if (dogData.day_rate   > 0) linkedUpdate.day_rate   = dogData.day_rate;
       }
-      mappingLogger.log(`[Mapping] Manual dog "${existingByName.name}" already linked — no rate update (updateRates=${updateRates}, night=${dogData.night_rate}, day=${dogData.day_rate})`);
+      if (Object.keys(linkedUpdate).length > 0) {
+        mappingLogger.log(
+          `[Mapping] Manual dog "${existingByName.name}" already linked — updating fields:`,
+          Object.keys(linkedUpdate).join(', ')
+        );
+        const { data: updated, error: linkedErr } = await supabase
+          .from('dogs')
+          .update(linkedUpdate)
+          .eq('id', existingByName.id)
+          .select()
+          .single();
+        if (linkedErr) throw linkedErr;
+        return { dog: updated, created: false, updated: true };
+      }
+      mappingLogger.log(`[Mapping] Manual dog "${existingByName.name}" already linked — no update needed`);
       return { dog: existingByName, created: false, updated: false };
     }
 
-    // Update the existing dog — only include external_id when provided
+    // Update the existing dog — only include external_id/external_pet_id when provided
     const nameMatchUpdate = { source: 'external' };
-    if (dogData.external_id) nameMatchUpdate.external_id = dogData.external_id;
+    if (dogData.external_id)     nameMatchUpdate.external_id     = dogData.external_id;
+    if (dogData.external_pet_id) nameMatchUpdate.external_pet_id = dogData.external_pet_id;
     // Propagate rates when pricing was extracted (same guard as external_id path above).
     if (updateRates && dogData.night_rate > 0) nameMatchUpdate.night_rate = dogData.night_rate;
     if (updateRates && dogData.day_rate   > 0) nameMatchUpdate.day_rate   = dogData.day_rate;
@@ -624,7 +630,7 @@ export async function upsertSyncAppointment(supabase, syncData, options = {}) {
  * @returns {Promise<{dog: Object, boarding: Object, syncAppointment: Object, stats: Object, changeDetails: Object|null}>}
  */
 export async function mapAndSaveAppointment(externalData, options = {}) {
-  const { overwriteManual = false, forceUpdate = false, supabase = getSupabaseClient() } = options;
+  const { overwriteManual = false, forceUpdate = false, supabase = getSupabaseClient(), externalPetId = null } = options;
 
   const stats = {
     dogCreated: false,
@@ -640,6 +646,7 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
   // Pass updateRates=true when pricing was extracted so existing dogs get
   // their rates refreshed from the external site (source of truth, REQ-201).
   const dogData = mapToDog(externalData);
+  if (externalPetId) dogData.external_pet_id = externalPetId;
   const { dog, created: dogCreated, updated: dogUpdated } = await upsertDog(
     supabase,
     dogData,
@@ -658,7 +665,30 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
     stats.boardingUpdated = result.updated;
   }
 
-  // 2b. Process secondary pets for multi-pet appointments.
+  // 2b. Enqueue form fetch job if boarding is current/upcoming and pet ID is known.
+  // Form fetch jobs are processed by cron-detail (type='form').
+  if (boarding && externalPetId) {
+    const departureDate = new Date(boarding.departure_datetime);
+    const todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    if (departureDate >= todayMidnight) {
+      try {
+        await enqueue(supabase, {
+          external_id: `form_${boarding.id}`,
+          source_url: `/pets/${externalPetId}/forms`,
+          title: dogData.name,
+          type: 'form',
+          meta: { boarding_id: boarding.id, external_pet_id: externalPetId },
+        });
+        mappingLogger.log(`[Mapping] 🔄 Form fetch queued: boarding ${boarding.id}, pet ${externalPetId}`);
+      } catch (enqErr) {
+        // Log but don't fail the sync for a failed form enqueue
+        mappingLogger.warn(`[Mapping] ⚠️ Failed to enqueue form job for boarding ${boarding.id}: ${enqErr.message}`);
+      }
+    }
+  }
+
+  // 2c. Process secondary pets for multi-pet appointments.
   // Each secondary pet gets their own dog record and boarding (same dates),
   // using their individual rates from pricing.perPetRates.
   const allPetNames = externalData.all_pet_names ?? [];

@@ -3,14 +3,29 @@ import { useData } from '../context/DataContext';
 import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent, formatName } from '../utils/dateUtils';
 import { DEFAULT_MATRIX_DAYS } from '../utils/constants';
 import EmployeeDropdown from './EmployeeDropdown';
+import BoardingFormModal from './BoardingFormModal';
+import { useBoardingForms, isBoardingUpcoming } from '../hooks/useBoardingForms';
 
 export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }) {
   const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
+  const { formsByBoardingId } = useBoardingForms();
   const [dogSortDirection, setDogSortDirection] = useState('asc');
   const [presenceSortDate, setPresenceSortDate] = useState(null);
   const [presenceSortDirection, setPresenceSortDirection] = useState('desc'); // desc = present first
   const [mobileSelectedDate, setMobileSelectedDate] = useState(null);
+  const [modalState, setModalState] = useState({ isOpen: false, dog: null, formData: null, boarding: null });
   const dateScrollRef = useRef(null);
+
+  const openFormModal = (dog, relevantBoarding, formData) => {
+    setModalState({ isOpen: true, dog, formData: formData || null, boarding: relevantBoarding || null });
+  };
+
+  // Find the most imminent current/upcoming boarding for a dog
+  const getRelevantBoarding = (dog) => {
+    return boardings
+      .filter(b => b.dogId === dog.id && isBoardingUpcoming(b))
+      .sort((a, b) => new Date(a.arrivalDateTime) - new Date(b.arrivalDateTime))[0] || null;
+  };
 
   const dates = getDateRange(startDate, days);
 
@@ -19,8 +34,10 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
     if (!mobileSelectedDate || !dates.includes(mobileSelectedDate)) {
       const today = new Date().toISOString().split('T')[0];
       if (dates.includes(today)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMobileSelectedDate(today);
       } else {
+         
         setMobileSelectedDate(dates[0]);
       }
     }
@@ -258,6 +275,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
   const mobileOvernightCount = countOvernightDogs(mobileSelectedDate || dates[0]);
 
   return (
+    <>
     <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden">
       {/* Mobile View */}
       <div className="md:hidden">
@@ -343,7 +361,11 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                     <div className="w-3 h-3 rounded bg-gradient-to-br from-indigo-500 to-indigo-600" />
                     Overnight ({mobileDogsData.overnight.length})
                   </div>
-                  {mobileDogsData.overnight.map((dog) => (
+                  {mobileDogsData.overnight.map((dog) => {
+                    const rb = getRelevantBoarding(dog);
+                    const fd = rb ? formsByBoardingId[rb.id] : null;
+                    const nf = rb && !fd;
+                    return (
                     <div key={dog.id} className="px-4 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
@@ -351,11 +373,18 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                             {formatName(dog.name).charAt(0).toUpperCase()}
                           </span>
                         </div>
-                        <span className="font-medium text-slate-900">{formatName(dog.name)}</span>
+                        <button
+                          onClick={() => openFormModal(dog, rb, fd)}
+                          className={`font-medium text-left hover:underline ${nf ? 'text-amber-600' : rb ? 'text-indigo-700' : 'text-slate-900'}`}
+                          title={nf ? 'No Boarding Form Found!' : rb ? 'View boarding form' : undefined}
+                        >
+                          {formatName(dog.name)}
+                        </button>
                       </div>
                       <span className="text-sm text-slate-600">${dog.nightRate}</span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -366,7 +395,11 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                     <div className="w-3 h-3 rounded bg-gradient-to-br from-amber-400 to-amber-500" />
                     Day Only ({mobileDogsData.dayOnly.length})
                   </div>
-                  {mobileDogsData.dayOnly.map((dog) => (
+                  {mobileDogsData.dayOnly.map((dog) => {
+                    const rb = getRelevantBoarding(dog);
+                    const fd = rb ? formsByBoardingId[rb.id] : null;
+                    const nf = rb && !fd;
+                    return (
                     <div key={dog.id} className="px-4 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
@@ -374,11 +407,18 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                             {formatName(dog.name).charAt(0).toUpperCase()}
                           </span>
                         </div>
-                        <span className="font-medium text-slate-900">{formatName(dog.name)}</span>
+                        <button
+                          onClick={() => openFormModal(dog, rb, fd)}
+                          className={`font-medium text-left hover:underline ${nf ? 'text-amber-600' : rb ? 'text-indigo-700' : 'text-slate-900'}`}
+                          title={nf ? 'No Boarding Form Found!' : rb ? 'View boarding form' : undefined}
+                        >
+                          {formatName(dog.name)}
+                        </button>
                       </div>
                       <span className="text-sm text-slate-600">${dog.dayRate}</span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -434,7 +474,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
               <th className="text-right px-3 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider min-w-[70px]">
                 Night
               </th>
-              {dates.map((dateStr, index) => {
+              {dates.map((dateStr) => {
                 const isActiveSortColumn = presenceSortDate === dateStr;
                 return (
                   <th
@@ -456,7 +496,11 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {dogsWithBoardings.map((dog) => (
+            {dogsWithBoardings.map((dog) => {
+              const relevantBoarding = getRelevantBoarding(dog);
+              const formData = relevantBoarding ? formsByBoardingId[relevantBoarding.id] : null;
+              const noForm = relevantBoarding && !formData;
+              return (
               <tr key={dog.id} className="group hover:bg-indigo-50/50 transition-colors">
                 <td className="px-5 py-4 text-sm font-medium text-slate-900 sticky left-0 bg-white group-hover:bg-indigo-50/50 transition-colors">
                   <div className="flex items-center gap-2">
@@ -465,7 +509,13 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                         {formatName(dog.name).charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <span>{formatName(dog.name)}</span>
+                    <button
+                      onClick={() => openFormModal(dog, relevantBoarding, formData)}
+                      className={`text-left hover:underline ${noForm ? 'text-amber-600' : relevantBoarding ? 'text-indigo-700 hover:text-indigo-900' : 'text-slate-900'}`}
+                      title={noForm ? 'No Boarding Form Found!' : relevantBoarding ? 'View boarding form' : undefined}
+                    >
+                      {formatName(dog.name)}
+                    </button>
                   </div>
                 </td>
                 <td className="px-3 py-4 text-sm text-slate-500 text-right tabular-nums">
@@ -480,7 +530,8 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                   </td>
                 ))}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
           <tfoot className="bg-slate-50/50">
             {/* Dogs Overnight Row */}
@@ -573,5 +624,15 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
         </div>
       </div>
     </div>
+
+    {/* Boarding form modal */}
+    <BoardingFormModal
+      isOpen={modalState.isOpen}
+      onClose={() => setModalState(s => ({ ...s, isOpen: false }))}
+      dogName={modalState.dog ? formatName(modalState.dog.name) : ''}
+      formData={modalState.formData}
+      boarding={modalState.boarding}
+    />
+    </>
   );
 }

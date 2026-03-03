@@ -208,6 +208,24 @@ input, select, textarea {
   border-radius: 0.375rem;
 }
 
+/* Boarding form print styles */
+@media print {
+  body > *:not(.boarding-form-print-content) {
+    display: none !important;
+  }
+
+  .boarding-form-print-content {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+
 /* Card press effect */
 .card-pressable {
   transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;

@@ -47,6 +47,10 @@ export function parseSchedulePage(html) {
     const timeEl = link.querySelector('.day-event-time');
     const titleEl = link.querySelector('.day-event-title');
 
+    // Extract pet IDs from data-pet attributes on .event-pet-wrapper elements
+    const petWrappers = link.querySelectorAll('.event-pet-wrapper[data-pet]');
+    const petIds = Array.from(petWrappers).map(w => w.getAttribute('data-pet')).filter(Boolean);
+
     appointments.push({
       id,
       url: href.startsWith('http') ? href : `${SCRAPER_CONFIG.baseUrl}${href}`,
@@ -57,6 +61,7 @@ export function parseSchedulePage(html) {
       clientName: clientEl?.textContent?.trim() || '',
       time: timeEl?.textContent?.trim() || '',
       title: titleEl?.textContent?.trim() || '',
+      petIds,
     });
   }
 
