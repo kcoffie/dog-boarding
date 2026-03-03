@@ -1041,7 +1041,7 @@ form fetch is straightforward from Vercel logs.
 ---
 
 ### REQ-506: Boarding Form Modal — Reliable Centering via Portal
-**Added:** v3.0 | **Status:** Planned
+**Added:** v3.0 | **Status:** Complete
 
 `BoardingFormModal` uses `position: fixed` for its backdrop and panel. If any ancestor
 element has `transform`, `will-change: transform`, `filter`, or `contain: layout` applied,
@@ -1058,12 +1058,12 @@ the component tree and positions relative to the viewport.
 - Modal panel is vertically and horizontally centred
 - Escape key and click-outside still close the modal
 
-**Tests:** Manual; add a Playwright/integration smoke test if available
+**Tests:** `src/__tests__/components/BoardingFormModal.test.jsx` (portal mock verifies rendering through createPortal)
 
 ---
 
 ### REQ-507: Boarding Form Link — Three-State Color Coding
-**Added:** v3.0 | **Status:** Planned
+**Added:** v3.0 | **Status:** Complete
 
 Dog name links in `BoardingMatrix` and `DogsPage` boardings table should use three colours
 to communicate form status at a glance:
@@ -1089,7 +1089,7 @@ Currently red and amber are swapped — "no form" uses amber instead of red.
 ---
 
 ### REQ-508: Boarding Form Modal — Show Source URL
-**Added:** v3.0 | **Status:** Planned
+**Added:** v3.0 | **Status:** Complete
 
 `boarding_forms.submission_url` already holds the full URL to the form detail page on the
 external booking site (e.g. `https://agirlandyourdog.com/pets/90043/forms/7913/view/12345`).
