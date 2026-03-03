@@ -19,16 +19,16 @@ const MAX_RETRIES = 3;
 const RETRY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes per retry_count
 
 /**
- * Add an appointment to the queue.
+ * Add an item to the queue.
  *
  * Skips silently if the item is already pending, processing, or done.
  * Re-queues items that have permanently failed (status = 'failed').
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ external_id: string, source_url: string, title?: string }} item
+ * @param {{ external_id: string, source_url: string, title?: string, type?: string, meta?: Object }} item
  * @returns {Promise<void>}
  */
-export async function enqueue(supabase, { external_id, source_url, title }) {
+export async function enqueue(supabase, { external_id, source_url, title, type = 'appointment', meta = {} }) {
   const { data: existing, error: fetchError } = await supabase
     .from('sync_queue')
     .select('id, status')
@@ -52,6 +52,8 @@ export async function enqueue(supabase, { external_id, source_url, title }) {
         last_error: null,
         next_retry_at: null,
         queued_at: new Date().toISOString(),
+        type,
+        meta,
       })
       .eq('id', existing.id);
     if (error) throw error;
@@ -61,9 +63,9 @@ export async function enqueue(supabase, { external_id, source_url, title }) {
 
   const { error } = await supabase
     .from('sync_queue')
-    .insert({ external_id, source_url, title, status: 'pending' });
+    .insert({ external_id, source_url, title, status: 'pending', type, meta });
   if (error) throw error;
-  log(`[SyncQueue] 📥 Queued: ${external_id}`);
+  log(`[SyncQueue] 📥 Queued: ${external_id} (type=${type})`);
 }
 
 /**
