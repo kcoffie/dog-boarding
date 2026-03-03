@@ -25,7 +25,7 @@
 | v2.2    | Revenue intelligence           | Complete (REQ-200–203)    |
 | v2.3    | Data quality & UX polish       | Complete (REQ-300–306)    |
 | v2.4    | Reporting & observability      | Complete (REQ-400–402)    |
-| v3.0    | Boarding form scraping + modal | In Progress (REQ-500–505) |
+| v3.0    | Boarding form scraping + modal | In Progress (REQ-500–508) |
 
 ---
 
@@ -1037,6 +1037,71 @@ form fetch is straightforward from Vercel logs.
 - `[CronDetail] 📋 Processing form job: boarding_id={...}, pet_id={...}`
 
 **Tests:** Verified by inspection of log output during `forms.test.js` test run
+
+---
+
+### REQ-506: Boarding Form Modal — Reliable Centering via Portal
+**Added:** v3.0 | **Status:** Planned
+
+`BoardingFormModal` uses `position: fixed` for its backdrop and panel. If any ancestor
+element has `transform`, `will-change: transform`, `filter`, or `contain: layout` applied,
+`fixed` is repositioned relative to that element instead of the viewport, causing the modal
+to appear at the bottom or be partially off-screen.
+
+Fix: render the modal via `ReactDOM.createPortal` into `document.body` so it always escapes
+the component tree and positions relative to the viewport.
+
+**Acceptance Criteria:**
+- Clicking a dog name on the Dashboard or Dogs page opens the boarding form modal fully
+  centred in the viewport, regardless of scroll position or ancestor CSS transforms
+- Backdrop covers the full viewport at 50% opacity
+- Modal panel is vertically and horizontally centred
+- Escape key and click-outside still close the modal
+
+**Tests:** Manual; add a Playwright/integration smoke test if available
+
+---
+
+### REQ-507: Boarding Form Link — Three-State Color Coding
+**Added:** v3.0 | **Status:** Planned
+
+Dog name links in `BoardingMatrix` and `DogsPage` boardings table should use three colours
+to communicate form status at a glance:
+
+| State | Color | Condition |
+|-------|-------|-----------|
+| No boarding form found | **Red** (`text-red-600`) | `relevantBoarding && !formData` |
+| Form found, no important fields | **Amber** (`text-amber-600`) | `formData` exists but `priorityFields.length === 0` |
+| Form found with fields | **Indigo** (`text-indigo-700`) | `formData` exists and `priorityFields.length > 0` |
+| No upcoming boarding | Slate (default) | `!relevantBoarding` |
+
+Currently red and amber are swapped — "no form" uses amber instead of red.
+
+**Acceptance Criteria:**
+- Dog with no form record in `boarding_forms` → red link with tooltip "No boarding form found"
+- Dog with form record but zero priority fields → amber link with tooltip "Form found — no key fields"
+- Dog with form record and at least one priority field → indigo link
+- Same colour logic applies in both `BoardingMatrix` and `DogsPage` boarding table
+- Colour logic extracted into a shared helper (optional, to avoid duplication)
+
+**Tests:** `src/__tests__/components/BoardingMatrix.test.jsx`
+
+---
+
+### REQ-508: Boarding Form Modal — Show Source URL
+**Added:** v3.0 | **Status:** Planned
+
+`boarding_forms.submission_url` already holds the full URL to the form detail page on the
+external booking site (e.g. `https://agirlandyourdog.com/pets/90043/forms/7913/view/12345`).
+The modal should display it so the user can open the original form in a new tab.
+
+**Acceptance Criteria:**
+- Modal footer (or header sub-line) includes a "View on site →" link
+- Link opens `submission_url` in a new tab (`target="_blank" rel="noopener noreferrer"`)
+- Link is not rendered when `submission_url` is absent or null
+- Link is hidden during print (`print:hidden`)
+
+**Tests:** `src/__tests__/components/BoardingFormModal.test.jsx`
 
 ---
 
