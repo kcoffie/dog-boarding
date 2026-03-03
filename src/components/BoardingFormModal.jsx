@@ -94,6 +94,59 @@ export default function BoardingFormModal({ isOpen, onClose, dogName, formData, 
   const submittedDate = formData?.form_submitted_at ? formatDate(formData.form_submitted_at) : null;
   const hasContent = priorityFields.length > 0 || otherFields.length > 0;
 
+  function handlePrint() {
+    const win = window.open('', '_blank');
+    if (!win) return;
+
+    function esc(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    const priorityRows = priorityFields
+      .map(f => `<tr><th>${esc(f.label)}</th><td>${esc(f.value) || '<em>Not provided</em>'}</td></tr>`)
+      .join('');
+
+    const otherRows = otherFields
+      .map(f => `<tr><th>${esc(f.label)}</th><td>${esc(f.value) || '<em>Not provided</em>'}</td></tr>`)
+      .join('');
+
+    const divider = otherFields.length > 0
+      ? `<tr><td colspan="2" class="divider">Additional Information</td></tr>`
+      : '';
+
+    const alertHtml = dateMismatch && boarding
+      ? `<div class="alert">⚠ Date Discrepancy — Booking: ${esc(formatBookingDate(boarding.arrivalDateTime))} → ${esc(formatBookingDate(boarding.departureDateTime))} | Form says: ${esc(formatDate(formData.form_arrival_date))} → ${esc(formatDate(formData.form_departure_date))}<br><small>The client confirmed different dates on this form.</small></div>`
+      : '';
+
+    win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>${esc(dogName)} — Boarding Form</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; color: #1e293b; margin: 24px 32px; }
+    h1 { font-size: 18px; font-weight: 600; margin: 0 0 2px; }
+    .meta { color: #64748b; font-size: 11px; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 7px 12px 7px 0; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; width: 32%; vertical-align: top; border-bottom: 1px solid #e2e8f0; }
+    td { padding: 7px 0; font-size: 13px; border-bottom: 1px solid #e2e8f0; white-space: pre-wrap; vertical-align: top; }
+    .divider { text-align: center; padding: 10px 0 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; border-bottom: 1px solid #e2e8f0; }
+    .alert { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #92400e; }
+    em { color: #94a3b8; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>${esc(dogName)} — Boarding Form</h1>
+  ${submittedDate ? `<div class="meta">Submitted: ${esc(submittedDate)}</div>` : ''}
+  ${alertHtml}
+  <table>${priorityRows}${divider}${otherRows}</table>
+</body>
+</html>`);
+    win.document.close();
+    win.focus();
+    win.print();
+    win.close();
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm print:bg-transparent print:p-0 print:block">
       <div
@@ -198,7 +251,7 @@ export default function BoardingFormModal({ isOpen, onClose, dogName, formData, 
             )}
             {hasContent && (
               <button
-                onClick={() => window.print()}
+                onClick={handlePrint}
                 className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
