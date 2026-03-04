@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 
 // Mock Supabase before importing components
@@ -27,7 +27,7 @@ vi.mock('../../lib/supabase', () => ({
 
 import SignupPage from '../../pages/auth/SignupPage';
 import { AuthProvider } from '../../context/AuthContext';
-import { supabase } from '../../lib/supabase';
+
 
 const renderSignupPage = () => {
   return render(

@@ -182,7 +182,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
 
       render(<PayrollPage />);
       // Kate's dates are paid, so Kate shouldn't appear in outstanding
-      const outstandingSection = screen.getByText('Outstanding Payments').closest('div').parentElement;
       // Nick should still appear
       expect(screen.getByText('Nick')).toBeInTheDocument();
     });

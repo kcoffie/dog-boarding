@@ -67,13 +67,6 @@ export function useSettings() {
     };
   }
 
-  // Transform from app format to DB format
-  function transformToDb(appSettings) {
-    return {
-      net_percentage: appSettings.netPercentage,
-      net_percentage_history: appSettings.netPercentageHistory || [],
-    };
-  }
 
   const updateNetPercentage = async (percentage, effectiveDate = null) => {
     if (!user || !settings) return;

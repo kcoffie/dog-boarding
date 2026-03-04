@@ -58,7 +58,7 @@ export function usePayments(employees = []) {
         employeeName: getEmployeeNameById(employees, p.employeeId),
       })));
     }
-  }, [employees]);
+  }, [employees]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addPayment = async (payment) => {
     if (!user) return null;
