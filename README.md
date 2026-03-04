@@ -1,17 +1,19 @@
-# Qboard - Dog Boarding Manager
+# Qboard — Dog Boarding Manager
 
-A web application for managing dog boarding businesses. Track bookings, sync appointments from your external booking system, calculate revenue, manage employee payroll, and more.
+**Live app:** [qboarding.vercel.app](https://qboarding.vercel.app)
+
+A web application for managing a dog boarding business. Track bookings, sync appointments from your external booking system, view boarding intake forms, calculate revenue, manage employee payroll, and more.
 
 ## Features
 
-- **Boarding Matrix** — Daily breakdown of dogs, rates, and overnight revenue
-- **Visual Calendar** — See all bookings at a glance
+- **Boarding Matrix** — Daily breakdown of dogs in house, rates, and overnight revenue
+- **Visual Calendar** — See all bookings at a glance; print or export to PDF
 - **Dog Management** — Track dogs with custom day/night rates
+- **Boarding Forms** — Automatically fetch and display client intake forms; flag missing or date-mismatched forms
 - **Employee Tracking** — Assign employees to overnight shifts, calculate earnings
 - **Payroll** — Track and manage employee payments with payment history
 - **CSV Import** — Bulk import bookings from spreadsheets
 - **External Sync** — Automatically sync appointments from agirlandyourdog.com via scheduled cron jobs
-- **Calendar Print / Export** — Print or PDF a day-by-day schedule for any date range
 - **Cron Health Monitoring** — Settings page shows last run time and status of each cron job
 - **Secure Access** — Invite-only signup, all users share one organization
 
@@ -49,7 +51,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 ### Supabase Setup
 
 1. Create a new project at [supabase.com](https://supabase.com)
-2. Run the SQL from `supabase/schema.sql` in the Supabase SQL editor
+2. Run migrations from `supabase/migrations/` in order using the Supabase SQL editor
 3. Copy your project URL and keys to `.env.local`
 
 ---
@@ -81,7 +83,7 @@ Set all variables in `.env.local` for local development and in your Vercel proje
 
 ## External Sync
 
-Qboard can automatically pull boarding appointments from [agirlandyourdog.com](https://agirlandyourdog.com) into the database. Appointments are deduplicated by external ID, and only overnight boarding appointments are imported (daycare, pack groups, and evaluations are filtered out).
+Qboard automatically pulls boarding appointments from [agirlandyourdog.com](https://agirlandyourdog.com) into the database. Appointments are deduplicated by external ID, and only overnight boarding appointments are imported (daycare, pack groups, and evaluations are filtered out).
 
 ### Manual Sync
 
@@ -95,7 +97,7 @@ Three cron jobs run daily on the Vercel Hobby plan:
 |---|---|---|
 | `cron-auth` | 0:00 AM | Re-authenticate and cache session in DB |
 | `cron-schedule` | 0:05 AM | Scan schedule pages, queue new boarding candidates |
-| `cron-detail` | 0:10 AM | Fetch detail page for one queued appointment |
+| `cron-detail` | 0:10 AM | Fetch detail page for one queued appointment or boarding form |
 
 On the Vercel **Pro plan**, crons can run more frequently (every 5–60 min). See the JSDoc header in each `api/cron-*.js` file for the upgrade path — no code changes required, only a `SYNC_MODE=standard` env var.
 
@@ -104,14 +106,18 @@ On the Vercel **Pro plan**, crons can run more frequently (every 5–60 min). Se
 ```
 cron-auth      → authenticates with external site, caches session cookies in DB
 cron-schedule  → reads session from DB, scans schedule pages, writes candidates to sync_queue
-cron-detail    → reads session from DB, fetches one queued appointment detail, upserts to DB
+cron-detail    → reads session from DB, fetches one queued appointment or boarding form
 ```
 
 Session caching is key: authentication costs ~4.5s per call. By caching cookies in `sync_settings`, `cron-schedule` and `cron-detail` skip auth entirely and stay well within Vercel's 10-second function timeout.
 
+### Boarding Forms
+
+After each sync, boarding intake forms are automatically fetched from the external site for upcoming boardings. Forms are matched to boardings using a 7-day submission window (submitted within 7 days before arrival). The Boarding Matrix highlights dogs with missing or empty forms.
+
 ### Amended Appointment Reconciliation
 
-When a booking is amended on the external site, the old appointment URL becomes inaccessible (the site serves the schedule page instead). Qboard detects this during manual syncs by checking for the absence of `data-start_scheduled` in the response HTML, and automatically archives the old record so it doesn't appear as an active boarding.
+When a booking is amended on the external site, the old appointment URL becomes inaccessible. Qboard detects this during manual syncs and automatically archives the old record so it doesn't appear as an active boarding.
 
 ---
 
@@ -157,6 +163,7 @@ src/
         ├── extraction.js    # Appointment detail extraction
         ├── sync.js          # Main sync orchestrator
         ├── mapping.js       # Maps scraped data to DB schema
+        ├── forms.js         # Boarding form fetch + parse pipeline
         ├── reconcile.js     # Detects and archives amended appointments
         ├── sessionCache.js  # Session cookie caching in DB
         └── syncQueue.js     # Queue management for cron detail processing
@@ -165,10 +172,10 @@ api/
 ├── sync-proxy.js    # Vercel Edge Function — CORS proxy for browser→external site
 ├── cron-auth.js     # Cron: refresh session
 ├── cron-schedule.js # Cron: scan schedule pages, enqueue candidates
-└── cron-detail.js   # Cron: process one queued appointment
+└── cron-detail.js   # Cron: process one queued appointment or boarding form
 
 supabase/
-└── schema.sql       # Full DB schema including sync tables
+└── migrations/      # Numbered SQL migrations (apply in order)
 ```
 
 ---
