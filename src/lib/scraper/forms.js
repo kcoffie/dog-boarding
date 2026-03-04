@@ -153,10 +153,11 @@ export function parseMMDDYYYYtoISO(str) {
   if (!str) return null;
   const m = str.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
-  const month = String(parseInt(m[1], 10)).padStart(2, '0');
-  const day = String(parseInt(m[2], 10)).padStart(2, '0');
-  const year = m[3];
-  return `${year}-${month}-${day}`;
+  const month = parseInt(m[1], 10);
+  const day = parseInt(m[2], 10);
+  const year = parseInt(m[3], 10);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 /**

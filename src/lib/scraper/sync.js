@@ -552,13 +552,18 @@ export async function runSync(options = {}) {
       syncError('[Sync] ⚠️ Reconciliation threw unexpectedly (sync result unaffected):', reconcileErr.message);
     }
 
-    // Drain the form queue — process all pending 'form' type items enqueued during this sync.
+    // Drain the form queue — process pending 'form' type items enqueued during this sync.
+    // Capped at 20 items per Sync Now to stay within browser/proxy timeouts (~3s per form fetch).
+    // Any remaining items are picked up on the next sync or cron-detail run.
     // Wrapped in its own try/catch so failures do not affect the main sync status.
+    const MAX_DRAIN = 20;
     try {
       syncLog('[Sync] 📋 Draining form queue...');
       let drainItem;
       let drainProcessed = 0;
-      while ((drainItem = await dequeueOne(supabase, { type: 'form' })) !== null) {
+      let drainCount = 0;
+      while (drainCount < MAX_DRAIN && (drainItem = await dequeueOne(supabase, { type: 'form' })) !== null) {
+        drainCount++;
         const { boarding_id: boardingId, external_pet_id: externalPetId } = drainItem.meta || {};
         if (!externalPetId) {
           syncLog(`[Sync] ⏭️ Form job ${drainItem.external_id} has no external_pet_id — skipping`);
@@ -577,6 +582,9 @@ export async function runSync(options = {}) {
           await markFailed(supabase, drainItem.id, msg);
           result.formsFailed++;
         }
+      }
+      if (drainCount >= MAX_DRAIN) {
+        syncWarn(`[Sync] ⚠️ Form drain hit ${MAX_DRAIN}-item cap — remaining items will process on next sync`);
       }
       if (drainProcessed > 0 || result.formsFailed > 0) {
         syncLog(`[Sync] 📋 Form queue drained: ${drainProcessed} stored, ${result.formsFailed} failed`);
