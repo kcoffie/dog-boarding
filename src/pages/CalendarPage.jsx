@@ -190,9 +190,9 @@ function PrintSection({ label, color, bgColor, items, mode }) {
           <div key={b.id} style={{ backgroundColor: bgColor, border: `1px solid ${color}22`, borderRadius: '4px', padding: '4px 8px', fontSize: '17px' }}>
             <span style={{ fontWeight: '500', color: '#0f172a' }}>{b.dog_name}</span>
             <span style={{ color: '#64748b', marginLeft: '6px' }}>
-              {mode === 'arriving'  && `→ ${formatDate(b.departure_datetime)}`}
-              {mode === 'departing' && `${formatDate(b.arrival_datetime)} →`}
-              {mode === 'staying'   && `Since ${formatDate(b.arrival_datetime)} → ${formatDate(b.departure_datetime)}`}
+              {mode === 'arriving'  && `${b.arrival_ampm ? b.arrival_ampm + ' ' : ''}→ ${b.departure_ampm ? b.departure_ampm + ' ' : ''}${formatDate(b.departure_datetime)}`}
+              {mode === 'departing' && `${formatDate(b.arrival_datetime)}${b.arrival_ampm ? ' ' + b.arrival_ampm : ''} → ${b.departure_ampm || ''}`}
+              {mode === 'staying'   && `Since ${formatDate(b.arrival_datetime)}${b.arrival_ampm ? ' ' + b.arrival_ampm : ''} → ${b.departure_ampm ? b.departure_ampm + ' ' : ''}${formatDate(b.departure_datetime)}`}
             </span>
           </div>
         ))}
@@ -292,6 +292,8 @@ export default function CalendarPage() {
       dogId: b.dogId,
       arrival_datetime: b.arrivalDateTime,
       departure_datetime: b.departureDateTime,
+      arrival_ampm: b.arrivalAmPm ?? null,
+      departure_ampm: b.departureAmPm ?? null,
     }));
   }, [boardings, dogs]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -649,7 +651,7 @@ export default function CalendarPage() {
                       <div key={b.id} className="p-2 rounded-lg bg-emerald-50 border border-emerald-100">
                         <div className="font-medium text-slate-900">{b.dog_name}</div>
                         <div className="text-xs text-slate-500">
-                          {formatTime(b.arrival_datetime)} → {formatDate(b.departure_datetime)}
+                          {b.arrival_ampm || formatTime(b.arrival_datetime)} → {formatDate(b.departure_datetime)}
                         </div>
                       </div>
                     ))}
@@ -687,7 +689,7 @@ export default function CalendarPage() {
                       <div key={b.id} className="p-2 rounded-lg bg-amber-50 border border-amber-100">
                         <div className="font-medium text-slate-900">{b.dog_name}</div>
                         <div className="text-xs text-slate-500">
-                          {formatDate(b.arrival_datetime)} → {formatTime(b.departure_datetime)}
+                          {formatDate(b.arrival_datetime)} → {b.departure_ampm || formatTime(b.departure_datetime)}
                         </div>
                       </div>
                     ))}

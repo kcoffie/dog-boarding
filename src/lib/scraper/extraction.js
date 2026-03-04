@@ -86,6 +86,8 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     checkOutDatetime = timestamps?.checkOut || null;
   }
 
+  const ampm = extractCheckInOutAmPm(html);
+
   return {
     source_url: sourceUrl,
 
@@ -96,6 +98,8 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     scheduled_check_out: null,
     check_in_datetime: checkInDatetime,
     check_out_datetime: checkOutDatetime,
+    check_in_ampm: ampm.checkInAmPm,
+    check_out_ampm: ampm.checkOutAmPm,
     duration: extractDuration(html),
     assigned_staff: null, // not shown for overnight boardings
 
@@ -180,6 +184,33 @@ function extractPageTitle(html) {
   if (!match) return null;
   // Strip site name suffix (e.g., " | A Girl and Your Dog")
   return match[1].replace(/\s*\|[^|]*$/, '').trim() || null;
+}
+
+/**
+ * Extract AM/PM labels for check-in and check-out from the .event-time-scheduled block.
+ * The external site renders:
+ *   <span class="time the start"><span class="time-label" title="">AM</span>, </span>
+ *   <span class="time the"><span class="time-label" title="">PM</span>, </span>
+ * First time-label = check-in, second = check-out.
+ * Returns { checkInAmPm: 'AM'|'PM'|null, checkOutAmPm: 'AM'|'PM'|null }.
+ */
+export function extractCheckInOutAmPm(html) {
+  // Grab ~600 chars starting from the event-time-scheduled marker
+  const blockIdx = html.indexOf('event-time-scheduled');
+  if (blockIdx === -1) return { checkInAmPm: null, checkOutAmPm: null };
+  const block = html.slice(blockIdx, blockIdx + 600);
+
+  const matches = [];
+  const labelRegex = /<span[^>]*class="time-label"[^>]*>([^<]+)<\/span>/gi;
+  let m;
+  while ((m = labelRegex.exec(block)) !== null) {
+    matches.push(m[1].trim().toUpperCase());
+  }
+
+  return {
+    checkInAmPm:  matches[0] || null,
+    checkOutAmPm: matches[1] || null,
+  };
 }
 
 /**
