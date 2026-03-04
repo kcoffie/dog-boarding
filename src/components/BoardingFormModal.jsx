@@ -96,7 +96,10 @@ export default function BoardingFormModal({ isOpen, onClose, dogName, formData, 
 
   function handlePrint() {
     const win = window.open('', '_blank');
-    if (!win) return;
+    if (!win) {
+      alert('Pop-up blocked. Please allow pop-ups for this site to print the form.');
+      return;
+    }
 
     function esc(str) {
       return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
