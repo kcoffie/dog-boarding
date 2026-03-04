@@ -42,6 +42,11 @@ export default function DogsPage() {
     }
   };
 
+  const formatDateWithAmPm = (dt, ampm) =>
+    ampm
+      ? new Date(dt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + ampm
+      : formatDateTime(dt);
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -263,11 +268,11 @@ export default function DogsPage() {
                     <div className="mt-3 text-sm text-slate-600">
                       <div className="flex justify-between">
                         <span className="text-slate-500">Arrival:</span>
-                        <span>{formatDateTime(boarding.arrivalDateTime)}</span>
+                        <span>{formatDateWithAmPm(boarding.arrivalDateTime, boarding.arrivalAmPm)}</span>
                       </div>
                       <div className="flex justify-between mt-1">
                         <span className="text-slate-500">Departure:</span>
-                        <span>{formatDateTime(boarding.departureDateTime)}</span>
+                        <span>{formatDateWithAmPm(boarding.departureDateTime, boarding.departureAmPm)}</span>
                       </div>
                     </div>
                     <div className="mt-3 flex gap-4">
@@ -381,8 +386,8 @@ export default function DogsPage() {
                             {statusStyle.label}
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.arrivalDateTime)}</td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.departureDateTime)}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{formatDateWithAmPm(boarding.arrivalDateTime, boarding.arrivalAmPm)}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{formatDateWithAmPm(boarding.departureDateTime, boarding.departureAmPm)}</td>
                         <td className="px-5 py-4 text-sm text-slate-600 text-right tabular-nums">{nights}</td>
                         <td className="px-5 py-4 text-sm font-medium text-slate-900 text-right tabular-nums">{formatCurrency(gross)}</td>
                         <td className="px-5 py-4 text-right">
