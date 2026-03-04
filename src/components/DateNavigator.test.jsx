@@ -118,7 +118,7 @@ describe('REQ-031: DateNavigator', () => {
 
     // Original range was 13 days (Jan 15 to Jan 28 inclusive)
     const diffMs = newEnd - newStart;
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
     expect(diffDays).toBe(13);
   });
 });
