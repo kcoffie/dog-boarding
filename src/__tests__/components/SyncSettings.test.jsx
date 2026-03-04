@@ -18,8 +18,6 @@ const mockUseSyncSettings = useSyncSettingsModule.useSyncSettings;
 describe('REQ-107: Sync Admin UI', () => {
   const defaultMockValues = {
     settings: {
-      enabled: false,
-      interval_minutes: 60,
       last_sync_at: null,
       last_sync_status: null,
       last_sync_message: null,
@@ -29,8 +27,6 @@ describe('REQ-107: Sync Admin UI', () => {
     syncing: false,
     syncProgress: null,
     error: null,
-    toggleEnabled: vi.fn(),
-    setInterval: vi.fn(),
     triggerSync: vi.fn(),
     refresh: vi.fn(),
     SyncStatus: {
@@ -80,65 +76,6 @@ describe('REQ-107: Sync Admin UI', () => {
       render(<SyncSettings />);
 
       expect(screen.getByText('Authentication failed')).toBeInTheDocument();
-    });
-  });
-
-  describe('sync enable/disable toggle', () => {
-    it('shows Automatic Sync toggle', () => {
-      render(<SyncSettings />);
-
-      expect(screen.getByText('Automatic Sync')).toBeInTheDocument();
-    });
-
-    it('calls toggleEnabled when toggle is clicked', () => {
-      const toggleEnabled = vi.fn();
-      mockUseSyncSettings.mockReturnValue({
-        ...defaultMockValues,
-        toggleEnabled,
-      });
-
-      render(<SyncSettings />);
-
-      // Two unnamed toggle buttons exist (enabled + setup_mode). The enabled toggle
-      // is first in the DOM, so take index 0 to avoid ambiguity.
-      const toggle = screen.getAllByRole('button', { name: '' })[0];
-      fireEvent.click(toggle);
-
-      expect(toggleEnabled).toHaveBeenCalled();
-    });
-  });
-
-  describe('sync interval configuration', () => {
-    it('shows interval dropdown', () => {
-      render(<SyncSettings />);
-
-      expect(screen.getByText('Sync Interval')).toBeInTheDocument();
-      expect(screen.getByRole('combobox')).toBeInTheDocument();
-    });
-
-    it('shows current interval value', () => {
-      mockUseSyncSettings.mockReturnValue({
-        ...defaultMockValues,
-        settings: { ...defaultMockValues.settings, interval_minutes: 120 },
-      });
-
-      render(<SyncSettings />);
-
-      expect(screen.getByRole('combobox')).toHaveValue('120');
-    });
-
-    it('calls setInterval when interval changes', () => {
-      const setInterval = vi.fn();
-      mockUseSyncSettings.mockReturnValue({
-        ...defaultMockValues,
-        setInterval,
-      });
-
-      render(<SyncSettings />);
-
-      fireEvent.change(screen.getByRole('combobox'), { target: { value: '30' } });
-
-      expect(setInterval).toHaveBeenCalledWith(30);
     });
   });
 

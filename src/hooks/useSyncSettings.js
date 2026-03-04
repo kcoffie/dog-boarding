@@ -8,7 +8,6 @@ import { supabase } from '../lib/supabase';
 import {
   SyncStatus,
   getSyncSettings,
-  updateSyncSettings,
   getRecentSyncLogs,
   isSyncRunning,
   abortStuckSync,
@@ -72,72 +71,6 @@ export function useSyncSettings() {
     loadData();
   }, [loadData]);
 
-  // Toggle sync enabled
-  const toggleEnabled = useCallback(async () => {
-    try {
-      const newEnabled = !settings?.enabled;
-      console.log('[SyncSettings] toggleEnabled:', newEnabled);
-      await updateSyncSettings(supabase, { enabled: newEnabled });
-      setSettings(prev => ({ ...prev, enabled: newEnabled }));
-    } catch (err) {
-      console.error('[SyncSettings] toggleEnabled error:', err);
-      console.error('[SyncSettings] Error details:', {
-        message: err.message,
-        code: err.code,
-        details: err.details,
-        hint: err.hint,
-      });
-      setError(err.message);
-    }
-  }, [settings?.enabled]);
-
-  // Update sync interval with validation
-  const setInterval = useCallback(async (minutes) => {
-    // Validate input
-    const parsedMinutes = parseInt(minutes, 10);
-    if (isNaN(parsedMinutes) || parsedMinutes < 15 || parsedMinutes > 1440) {
-      setError('Sync interval must be between 15 minutes and 24 hours');
-      return;
-    }
-
-    try {
-      console.log('[SyncSettings] setInterval:', parsedMinutes);
-      await updateSyncSettings(supabase, { interval_minutes: parsedMinutes });
-      setSettings(prev => ({ ...prev, interval_minutes: parsedMinutes }));
-      setError(null);
-    } catch (err) {
-      console.error('[SyncSettings] setInterval error:', err);
-      console.error('[SyncSettings] Error details:', {
-        message: err.message,
-        code: err.code,
-        details: err.details,
-        hint: err.hint,
-      });
-      setError(err.message);
-    }
-  }, []);
-
-  // Toggle setup mode
-  const toggleSetupMode = useCallback(async () => {
-    try {
-      const newSetupMode = !settings?.setup_mode;
-      console.log('[SyncSettings] toggleSetupMode:', newSetupMode);
-
-      const updates = { setup_mode: newSetupMode };
-      // Record when setup mode was completed
-      if (!newSetupMode) {
-        updates.setup_mode_completed_at = new Date().toISOString();
-      }
-
-      await updateSyncSettings(supabase, updates);
-      setSettings(prev => ({ ...prev, ...updates }));
-      setError(null);
-    } catch (err) {
-      console.error('[SyncSettings] toggleSetupMode error:', err);
-      setError(err.message);
-    }
-  }, [settings?.setup_mode]);
-
   // Trigger manual sync with optional date range.
   // startDate/endDate are local-time Date objects (use new Date(y, m-1, d) — NOT new Date('YYYY-MM-DD')).
   // Pass null for either to run a full sync with no date bounds.
@@ -195,9 +128,6 @@ export function useSyncSettings() {
     syncing,
     syncProgress,
     error,
-    toggleEnabled,
-    setInterval,
-    toggleSetupMode,
     triggerSync,
     refresh,
     SyncStatus,
