@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import BoardingMatrix from './BoardingMatrix';
 import { useData } from '../context/DataContext';
 import { BrowserRouter } from 'react-router-dom';
+
+vi.mock('../hooks/useBoardingForms', () => ({
+  useBoardingForms: vi.fn(() => ({ formsByBoardingId: {} })),
+  isBoardingUpcoming: vi.fn(() => false),
+}));
+vi.mock('./EmployeeDropdown', () => ({ default: () => null }));
+vi.mock('./BoardingFormModal', () => ({ default: () => null }));
 
 // Mock the useData hook
 vi.mock('../context/DataContext', () => ({
@@ -144,11 +151,9 @@ describe('REQ-034: BoardingMatrix sorting', () => {
     if (!tbody) return [];
     const rows = tbody.querySelectorAll('tr');
     return Array.from(rows).map(row => {
-      // The name is in the second span (first is the avatar initial)
       const firstTd = row.querySelector('td');
-      const spans = firstTd.querySelectorAll('span');
-      // spans[0] is the avatar initial, spans[1] is the name
-      return spans[1]?.textContent || '';
+      const btn = firstTd?.querySelector('button');
+      return btn?.textContent?.trim() || '';
     });
   };
 
