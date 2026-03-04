@@ -52,7 +52,7 @@ export default function SignupPage() {
 
       setInviteData(data);
       setStep('register');
-    } catch (err) {
+    } catch {
       setError('Failed to validate invite code');
     } finally {
       setLoading(false);

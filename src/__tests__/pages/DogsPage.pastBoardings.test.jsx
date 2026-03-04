@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 
 // Mock DataContext
@@ -59,6 +59,11 @@ const mockBoardings = [
   },
 ];
 
+vi.mock('../../hooks/useBoardingForms', () => ({
+  useBoardingForms: vi.fn(() => ({ formsByBoardingId: {} })),
+  isBoardingUpcoming: vi.fn(() => false),
+}));
+
 vi.mock('../../context/DataContext', () => ({
   useData: () => ({
     dogs: mockDogs,
@@ -106,8 +111,6 @@ describe('REQ-024: Past Boardings Table', () => {
     renderDogsPage();
 
     // Should show dog names for past boardings
-    const pastBoardingsSection = screen.getByText('Past Boardings').closest('div').parentElement;
-
     // Both dogs should appear in past boardings
     const buddyElements = screen.getAllByText('Buddy');
     const maxElements = screen.getAllByText('Max');
