@@ -1,22 +1,25 @@
-# Dog Boarding App — Session Handoff (v3.1)
-**Last updated:** March 4, 2026 (end of second v3.1 session)
-**Status:** v3.0 stable. v3.1 PR open, CI should be green — ready to merge.
+# Dog Boarding App — Session Handoff (v3.2)
+**Last updated:** March 4, 2026 (v3.2 session — end of session)
+**Status:** v3.2 committed at `afd8e53`. **One manual step required before deploying — see below.**
 
 ---
 
 ## Current State
 
-- **697 tests, 697 pass.** All green locally.
-- **`fix/v3.1-code-hardening` branch** is pushed and has a PR open. CI was failing; final fix committed (`5a9e3b5`). CI should now be fully green.
-- **Remote `main`** is at the rewritten history (force-pushed). Local `main` has one extra commit (`ea2ac2c` lint fixes) that is NOT on remote main yet — it's on the PR branch instead.
-- **Live URL:** [qboarding.vercel.app](https://qboarding.vercel.app)
+- **688 tests pass** (9 pre-existing failures unchanged: 1 DST-flaky DateNavigator + 8 BoardingMatrix sorting).
+- **`main`** local is at `afd8e53`, ahead of `origin/main` (`7a70a17`). Not yet pushed.
+- **Live URL:** [qboarding.vercel.app](https://qboarding.vercel.app) (still running v3.1)
 
 ## IMMEDIATE NEXT ACTIONS (do these first)
 
-1. **Check CI is green** on the `fix/v3.1-code-hardening` PR in GitHub. If green → merge it.
-2. **After merging PR → remote `main` will be up to date.** Local `main` can then be fast-forwarded: `git checkout main && git pull origin main`.
-3. **Re-enable "Restrict force pushes"** in GitHub → Settings → Rulesets → (your main ruleset) — Kate disabled this during the git history rewrite session. Re-enable it now that rewrite is done.
-4. **Enable RLS on sync_queue** (see SQL below — run once in Supabase SQL editor).
+1. **Apply migration 017 in Supabase SQL editor** (before pushing — sync will fail silently if columns don't exist):
+   ```sql
+   ALTER TABLE boardings
+     ADD COLUMN IF NOT EXISTS arrival_ampm TEXT,
+     ADD COLUMN IF NOT EXISTS departure_ampm TEXT;
+   ```
+2. **Push to deploy:** `git push origin main`
+3. **Verify deployment:** trigger a Sync Now for a boarding with a known check-in (e.g., C63QgUhM). Confirm `boardings` table has `arrival_ampm='AM'`, `departure_ampm='PM'`. DogsPage should show `Mar 4, 2026 AM` instead of `Mar 4, 2026 12:00 AM`.
 
 ## Cron health (as of March 4, 2026)
 
@@ -33,9 +36,16 @@ SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY typ
 
 ---
 
-## v3.1 What Was Done (March 4, 2026)
+## v3.1 What Was Done (March 4, 2026 — sessions 1–3)
 
-### Git history rewrite ✅
+### Housekeeping (session 3) ✅
+- PR #34 confirmed merged (CI fully green)
+- Local `main` fast-forwarded to match `origin/main`
+- "Restrict force pushes" re-enabled in GitHub Rulesets
+- RLS enabled on `sync_queue` in Supabase
+- `Co-Authored-By: Claude` stripped from all commit messages (all branches + tags) via `git filter-branch --tag-name-filter cat` + force-push
+
+### Git history rewrite (session 1) ✅
 All 218 commits rewritten to use `kcoffie@gmail.com` (was `kcoffie@directcommerce.com`, no longer valid). Force-pushed to all branches (main, fix/v3.1-code-hardening, uat, develop) and tags. Local git config updated: `git config user.email "kcoffie@gmail.com"`.
 
 ### Tests: 697/697 passing ✅
@@ -65,17 +75,49 @@ Safe — table only accessed by service role (crons + sync proxy), which bypasse
 
 ---
 
-## v3.1 Next Steps / Backlog
+## v3.2 What Was Done (March 4, 2026)
 
-### Immediate
-- Merge PR `fix/v3.1-code-hardening` once CI green (check GitHub)
-- Pull main after merge: `git checkout main && git pull origin main`
-- Re-enable "Restrict force pushes" in GitHub ruleset
-- Apply RLS to `sync_queue` (SQL above, run in Supabase)
-- Monitor forms pipeline over next few days
+### AM/PM capture & display ✅
+- `extraction.js`: added `extractCheckInOutAmPm(html)` — grabs `event-time-scheduled` block, collects `.time-label` spans → `{ checkInAmPm, checkOutAmPm }`. Added `check_in_ampm` / `check_out_ampm` to `parseAppointmentPage` return.
+- `supabase/migrations/017_add_ampm_columns.sql`: adds `arrival_ampm TEXT`, `departure_ampm TEXT` to `boardings` table. **Apply manually in Supabase SQL editor before syncing.**
+- `mapping.js`: `mapToBoarding` includes `arrival_ampm`/`departure_ampm`. `upsertBoarding` writes them on update.
+- `useBoardings.js`: transform includes `arrivalAmPm`/`departureAmPm`.
+- `DogsPage.jsx`: `formatDateWithAmPm(dt, ampm)` helper — shows `Mar 4, 2026 AM` when ampm present, falls back to `formatDateTime`. Applied to desktop table + mobile cards.
+- `CalendarPage.jsx`: `calendarBookings` useMemo includes `arrival_ampm`/`departure_ampm`. Detail panel: arriving shows `AM →`, departing shows `→ PM`. PrintSection shows ampm in arriving/departing/staying rows.
+
+### SyncSettings cleanup ✅
+- Removed dead UI: "Automatic Sync" toggle, "Sync Interval" select, "Setup Mode" toggle + info banner + confirmation dialog.
+- `useSyncSettings.js`: removed `toggleEnabled`, `setInterval`, `toggleSetupMode` functions and `updateSyncSettings` import.
+- `SyncSettings.test.jsx` + `useSyncSettings.test.js`: updated to not reference removed functions.
+
+---
+
+## v3.2 Next Steps / Backlog
+
+### v3.3 Payroll Report (planned design — ready to implement)
+New section at bottom of `PayrollPage.jsx`. New component `src/components/PayrollReport.jsx`.
+
+Layout:
+```
+Payroll Report: Mar 4 – Apr 3, 2026                    [Print]
+
+Employee       | Mar 4 | Mar 5 | ... | Apr 3 | Total
+---------------|-------|-------|-----|-------|-------
+Alex           |  2/$80|  3/$120| ...| 1/$40 | $840
+Jordan         |   —   |  1/$40 | ...| 2/$80 | $520
+```
+- Each cell: `{numDogs} dog(s) / ${net_amount}` (employee's take, not gross)
+- Cell bg: light green if date is in `getPaidDatesForEmployee()`
+- Total column: sum of all net amounts for that employee
+- Print: `window.print()` + `@media print` CSS
+
+Data per cell:
+- `getNightAssignment(dateStr)` → which employee worked that night
+- Dogs overnight that night: `boardings.filter(b => isOvernight(b, dateStr))`
+- Net per dog: `dog.nightRate * getNetPercentageForDate(dateStr) / 100`
+- Paid check: `getPaidDatesForEmployee(employeeId).has(dateStr)`
 
 ### Longer-term
-- **REQ-107:** Sync history UI + enable/disable toggle (deferred, skeleton exists)
 - Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
 - **Low priority:** Store datetimes in PST (America/Los_Angeles) instead of UTC
 

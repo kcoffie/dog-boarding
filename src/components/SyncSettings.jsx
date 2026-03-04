@@ -15,15 +15,11 @@ export default function SyncSettings() {
     syncing,
     syncProgress,
     error,
-    toggleEnabled,
-    setInterval,
-    toggleSetupMode,
     triggerSync,
     SyncStatus,
   } = useSyncSettings();
 
   const [showHistory, setShowHistory] = useState(false);
-  const [showSetupModeConfirm, setShowSetupModeConfirm] = useState(false);
   const [showHistoricalImport, setShowHistoricalImport] = useState(false);
   const [historicalStartDate, setHistoricalStartDate] = useState('2024-09-01');
 
@@ -206,103 +202,6 @@ export default function SyncSettings() {
 
       {/* Sync Status */}
       <div className="space-y-4">
-        {/* Enable/Disable Toggle */}
-        <div className="flex items-center justify-between py-3 border-b border-slate-100">
-          <div>
-            <p className="text-sm font-medium text-slate-700">Automatic Sync</p>
-            <p className="text-xs text-slate-500">Enable scheduled syncing</p>
-          </div>
-          <button
-            onClick={toggleEnabled}
-            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-              settings?.enabled ? 'bg-indigo-600' : 'bg-slate-200'
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                settings?.enabled ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
-
-        {/* Sync Interval */}
-        <div className="flex items-center justify-between py-3 border-b border-slate-100">
-          <div>
-            <p className="text-sm font-medium text-slate-700">Sync Interval</p>
-            <p className="text-xs text-slate-500">How often to sync (when enabled)</p>
-          </div>
-          <select
-            value={settings?.interval_minutes || 60}
-            onChange={(e) => setInterval(parseInt(e.target.value))}
-            className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-          >
-            <option value={30}>Every 30 minutes</option>
-            <option value={60}>Every hour</option>
-            <option value={120}>Every 2 hours</option>
-            <option value={360}>Every 6 hours</option>
-            <option value={720}>Every 12 hours</option>
-            <option value={1440}>Once daily</option>
-          </select>
-        </div>
-
-        {/* Setup Mode Toggle */}
-        <div className="flex items-center justify-between py-3 border-b border-slate-100">
-          <div>
-            <p className="text-sm font-medium text-slate-700">Setup Mode</p>
-            <p className="text-xs text-slate-500">
-              {settings?.setup_mode
-                ? 'Changes auto-accepted during initial import'
-                : 'Changes will be tracked and flagged'}
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              if (settings?.setup_mode) {
-                // Turning OFF - show confirmation
-                setShowSetupModeConfirm(true);
-              } else {
-                // Turning ON - no confirmation needed
-                toggleSetupMode();
-              }
-            }}
-            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-              settings?.setup_mode ? 'bg-amber-500' : 'bg-emerald-500'
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                settings?.setup_mode ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
-
-        {/* Setup Mode Info Banner */}
-        {settings?.setup_mode && (
-          <div className="py-3 px-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <p className="text-sm font-medium text-amber-800">Setup Mode Active</p>
-                <p className="text-xs text-amber-700 mt-1">
-                  All synced data is being auto-accepted. Turn off Setup Mode once your initial import is complete to start tracking changes.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {!settings?.setup_mode && settings?.setup_mode_completed_at && (
-          <div className="py-2">
-            <p className="text-xs text-slate-500">
-              Setup completed: {new Date(settings.setup_mode_completed_at).toLocaleString()}
-            </p>
-          </div>
-        )}
-
         {/* Last Sync Status */}
         <div className="flex items-center justify-between py-3 border-b border-slate-100">
           <div>
@@ -545,42 +444,6 @@ export default function SyncSettings() {
         )}
       </div>
 
-      {/* Setup Mode Confirmation Dialog */}
-      {showSetupModeConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-slate-900">Turn Off Setup Mode?</h3>
-            </div>
-            <p className="text-sm text-slate-600 mb-6">
-              After turning off Setup Mode, future syncs will track changes and flag any modifications to existing records.
-              This is recommended once your initial data import is complete.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowSetupModeConfirm(false)}
-                className="flex-1 px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  toggleSetupMode();
-                  setShowSetupModeConfirm(false);
-                }}
-                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
-              >
-                Turn Off Setup Mode
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

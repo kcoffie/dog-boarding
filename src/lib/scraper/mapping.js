@@ -89,6 +89,8 @@ export function mapToBoarding(externalData, dogId) {
     dog_id: dogId,
     arrival_datetime: externalData.check_in_datetime,
     departure_datetime: externalData.check_out_datetime,
+    arrival_ampm: externalData.check_in_ampm ?? null,
+    departure_ampm: externalData.check_out_ampm ?? null,
     source: 'external',
     external_id: externalData.external_id,
     billed_amount: pricing ? pricing.total : null,
@@ -459,6 +461,8 @@ export async function upsertBoarding(supabase, boardingData) {
     if ('billed_amount' in boardingData) updateFields.billed_amount = boardingData.billed_amount;
     if ('night_rate'    in boardingData) updateFields.night_rate    = boardingData.night_rate;
     if ('day_rate'      in boardingData) updateFields.day_rate      = boardingData.day_rate;
+    if (boardingData.arrival_ampm   != null) updateFields.arrival_ampm   = boardingData.arrival_ampm;
+    if (boardingData.departure_ampm != null) updateFields.departure_ampm = boardingData.departure_ampm;
     mappingLogger.log(
       `[Mapping] Updating boarding ${existing.id} (${boardingData.external_id}) —`,
       `billed=$${updateFields.billed_amount ?? 'null'},`,
