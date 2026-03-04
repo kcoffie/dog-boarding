@@ -1,14 +1,22 @@
 # Dog Boarding App — Session Handoff (v3.1)
-**Last updated:** March 4, 2026 (start of v3.1)
-**Status:** v3.0 stable and deployed. v3.1 in progress.
+**Last updated:** March 4, 2026 (end of second v3.1 session)
+**Status:** v3.0 stable. v3.1 PR open, CI should be green — ready to merge.
 
 ---
 
 ## Current State
 
-- **697 tests, 697 pass.** All green. Sorting tests fixed (mocks + button selector). DST test fixed (Math.round).
-- **v3.0 fully deployed and stable.** All crons running, boarding forms pipeline working.
+- **697 tests, 697 pass.** All green locally.
+- **`fix/v3.1-code-hardening` branch** is pushed and has a PR open. CI was failing; final fix committed (`5a9e3b5`). CI should now be fully green.
+- **Remote `main`** is at the rewritten history (force-pushed). Local `main` has one extra commit (`ea2ac2c` lint fixes) that is NOT on remote main yet — it's on the PR branch instead.
 - **Live URL:** [qboarding.vercel.app](https://qboarding.vercel.app)
+
+## IMMEDIATE NEXT ACTIONS (do these first)
+
+1. **Check CI is green** on the `fix/v3.1-code-hardening` PR in GitHub. If green → merge it.
+2. **After merging PR → remote `main` will be up to date.** Local `main` can then be fast-forwarded: `git checkout main && git pull origin main`.
+3. **Re-enable "Restrict force pushes"** in GitHub → Settings → Rulesets → (your main ruleset) — Kate disabled this during the git history rewrite session. Re-enable it now that rewrite is done.
+4. **Enable RLS on sync_queue** (see SQL below — run once in Supabase SQL editor).
 
 ## Cron health (as of March 4, 2026)
 
@@ -27,56 +35,43 @@ SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY typ
 
 ## v3.1 What Was Done (March 4, 2026)
 
+### Git history rewrite ✅
+All 218 commits rewritten to use `kcoffie@gmail.com` (was `kcoffie@directcommerce.com`, no longer valid). Force-pushed to all branches (main, fix/v3.1-code-hardening, uat, develop) and tags. Local git config updated: `git config user.email "kcoffie@gmail.com"`.
+
 ### Tests: 697/697 passing ✅
+Fixed 9 pre-existing test failures + 2 CI-only failures:
 
-Fixed 9 pre-existing test failures:
+1. **BoardingMatrix sorting tests** (`src/components/BoardingMatrix.test.jsx`): Added mocks for `useBoardingForms`, `EmployeeDropdown`, `BoardingFormModal`. Fixed `getDogNamesInOrder` helper: dog name is in `<button>`, not `spans[1]`.
+2. **DateNavigator DST test**: `Math.floor` → `Math.round` (fixes flakiness near DST boundary).
+3. **CsvImport.test.jsx** (CI-only fail): Replaced stale `useLocalStorage` mock with `DataContext` mock — test was written before Supabase migration and still used localStorage mock; `DataProvider` imported supabase at module load time without env vars.
+4. **DogsPage.pastBoardings.test.jsx** (CI-only fail): Added `vi.mock('../../hooks/useBoardingForms', ...)` — DataContext was mocked but `DogsPage` also imports `useBoardingForms` directly → supabase import chain.
 
-1. **BoardingMatrix sorting tests** (`src/components/BoardingMatrix.test.jsx`):
-   - Added `vi.mock('../hooks/useBoardingForms', ...)`, `vi.mock('./EmployeeDropdown', ...)`, `vi.mock('./BoardingFormModal', ...)` — component added these imports in v3.0 but old test file had no mocks
-   - Fixed `getDogNamesInOrder` helper: dog name is in `<button>`, not `spans[1]` — updated to `firstTd?.querySelector('button')?.textContent?.trim()`
+### Code fixes in PR `fix/v3.1-code-hardening` ✅
+- **sync.js**: drain loop cap (`MAX_DRAIN = 20`) — prevents runaway drain in browser sync
+- **forms.js**: date validation in `parseMMDDYYYYtoISO` — reject month > 12 or day > 31
+- **BoardingFormModal.jsx**: popup blocker alert — was silently failing; now `alert()`s if `window.open()` returns null
 
-2. **DateNavigator DST test** (`src/components/DateNavigator.test.jsx`):
-   - Changed `Math.floor` → `Math.round` in "preserves range length when clicking Today" — when today falls within 13 days of a DST boundary, the ms diff is 12.958 days; floor gave 12, round gives 13 correctly.
+### Lint: all 21 errors/warnings fixed ✅
+Fixed across 16 files (unused imports, unused vars, eslint-disable comments for known-acceptable patterns).
 
 ### README updated ✅
-- Added live URL (qboarding.vercel.app)
-- Added boarding forms feature description
-- Updated project structure (forms.js, migrations/)
-- Removed version references
+Added live URL, boarding forms feature description, updated project structure, removed version references.
 
 ### Supabase: enable RLS on sync_queue ⚠️ PENDING
-
-Supabase security lint flags `sync_queue` table as missing RLS. The table is only accessed by:
-- Server-side crons (use `SUPABASE_SERVICE_ROLE_KEY` — bypasses RLS)
-- Browser sync via `sync-proxy.js` (also uses service role key)
-
-Safe to enable RLS with no policies (completely blocks direct client access, service role still works):
 ```sql
 ALTER TABLE public.sync_queue ENABLE ROW LEVEL SECURITY;
 ```
-Run this in Supabase SQL editor. No migration file needed (doesn't affect schema).
-
-### GitHub branch protection ⚠️ ACTION REQUIRED
-
-Go to GitHub → Settings → Branches → Add branch protection rule for `main`:
-- ✅ Require status checks before merging (add: Lint, Unit Tests, Requirements Coverage, Build)
-- ✅ Require branches to be up to date before merging
-- ✅ Restrict force pushes
-- ✅ Do not allow deletions
-
-### GitHub contributors showing 1 commit ℹ️
-
-One early commit (`b31f3f9` — "Create ci.yml") used `kcoffie@gmail.com` instead of `kcoffie@directcommerce.com`. GitHub sees these as separate users.
-
-Fix: add `kcoffie@gmail.com` as a verified email in your GitHub account settings (Settings → Emails → Add email address). GitHub will then merge the contribution history under your account.
+Safe — table only accessed by service role (crons + sync proxy), which bypasses RLS. No policies needed.
 
 ---
 
 ## v3.1 Next Steps / Backlog
 
 ### Immediate
+- Merge PR `fix/v3.1-code-hardening` once CI green (check GitHub)
+- Pull main after merge: `git checkout main && git pull origin main`
+- Re-enable "Restrict force pushes" in GitHub ruleset
 - Apply RLS to `sync_queue` (SQL above, run in Supabase)
-- Set branch protection on GitHub (see above)
 - Monitor forms pipeline over next few days
 
 ### Longer-term
