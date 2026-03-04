@@ -59,6 +59,11 @@ const mockBoardings = [
   },
 ];
 
+vi.mock('../../hooks/useBoardingForms', () => ({
+  useBoardingForms: vi.fn(() => ({ formsByBoardingId: {} })),
+  isBoardingUpcoming: vi.fn(() => false),
+}));
+
 vi.mock('../../context/DataContext', () => ({
   useData: () => ({
     dogs: mockDogs,

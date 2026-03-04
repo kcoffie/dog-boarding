@@ -4,19 +4,15 @@ import userEvent from '@testing-library/user-event';
 import CsvImport from './CsvImport';
 import { DataProvider } from '../context/DataContext';
 
-// Mock useLocalStorage
-vi.mock('../hooks/useLocalStorage', () => ({
-  useLocalStorage: vi.fn((key, defaultValue) => {
-    const testData = {
-      dogs: [
-        { id: '1', name: 'Luna', dayRate: 35, nightRate: 45, active: true },
-        { id: '2', name: 'Cooper', dayRate: 35, nightRate: 45, active: true },
-      ],
-      boardings: [],
-      settings: { netPercentage: 65, employees: [] },
-      nightAssignments: [],
-    };
-    return [testData[key] ?? defaultValue, vi.fn()];
+// Mock DataContext to avoid Supabase dependency
+vi.mock('../context/DataContext', () => ({
+  DataProvider: ({ children }) => children,
+  useData: () => ({
+    dogs: [
+      { id: '1', name: 'Luna', dayRate: 35, nightRate: 45, active: true },
+      { id: '2', name: 'Cooper', dayRate: 35, nightRate: 45, active: true },
+    ],
+    addBoardings: vi.fn(),
   }),
 }));
 
