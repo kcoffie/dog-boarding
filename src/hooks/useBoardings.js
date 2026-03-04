@@ -31,6 +31,8 @@ export function useBoardings() {
         dogId: b.dog_id,
         arrivalDateTime: b.arrival_datetime,
         departureDateTime: b.departure_datetime,
+        arrivalAmPm: b.arrival_ampm ?? null,
+        departureAmPm: b.departure_ampm ?? null,
         nightRate: b.night_rate != null ? parseFloat(b.night_rate) : null,
         billedAmount: b.billed_amount != null ? parseFloat(b.billed_amount) : null,
         source: b.source ?? null,
