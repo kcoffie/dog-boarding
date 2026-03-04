@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
 // Mock AuthContext
@@ -107,8 +107,6 @@ describe('REQ-033: useNightAssignments Hook', () => {
 describe('REQ-033: useNightAssignments - Assignment Data Structure', () => {
   it('should include id field in transformed assignments', async () => {
     // Test that the hook transforms data to include id
-    const mockAssignment = { id: 'assign-1', date: '2024-01-15', employee_id: 'emp-1' };
-
     // The hook should transform employee_id to employeeId
     // and include the id field
     const expectedStructure = {

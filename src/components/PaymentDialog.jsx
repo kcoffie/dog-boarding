@@ -6,6 +6,7 @@ export default function PaymentDialog({ isOpen, employee, outstandingData, onCon
   // Reset selection when dialog opens with new employee
   useEffect(() => {
     if (isOpen && outstandingData?.dates) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedDates([...outstandingData.dates]);
     }
   }, [isOpen, outstandingData]);
