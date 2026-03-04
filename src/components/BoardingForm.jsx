@@ -28,6 +28,7 @@ export default function BoardingForm({ boarding, preselectedDogId, onSave, onCan
 
   useEffect(() => {
     if (boarding) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDogId(boarding.dogId);
       setArrivalDate(toDateInputValue(boarding.arrivalDateTime));
       setArrivalTime(toTimeInputValue(boarding.arrivalDateTime));

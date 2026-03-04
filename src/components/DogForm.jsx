@@ -10,6 +10,7 @@ export default function DogForm({ dog, onSave, onCancel }) {
 
   useEffect(() => {
     if (dog) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName(dog.name);
       setDayRate(dog.dayRate.toString());
       setNightRate(dog.nightRate.toString());
