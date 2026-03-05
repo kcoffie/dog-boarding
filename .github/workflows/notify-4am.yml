@@ -1,0 +1,28 @@
+# Sends the daily roster image at 4am PST (12:00 UTC, or 11:00 UTC during PDT).
+# This is the mandatory first send — always fires regardless of changes.
+# DST note: Pacific Standard Time = UTC-8 (4am PST = 12:00 UTC).
+#           Pacific Daylight Time  = UTC-7 (4am PDT = 11:00 UTC).
+#           Update the cron below each March and November DST transition.
+name: Notify 4am PST
+
+on:
+  schedule:
+    # 12:00 UTC = 4am PST (standard time, Nov–Mar)
+    - cron: '0 12 * * *'
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send roster image
+        run: |
+          RESPONSE=$(curl -s -o /tmp/notify_response.json -w "%{http_code}" \
+            "${{ secrets.APP_URL }}/api/notify?window=4am&token=${{ secrets.VITE_SYNC_PROXY_TOKEN }}")
+          echo "HTTP status: $RESPONSE"
+          cat /tmp/notify_response.json
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Notify endpoint returned non-200 status"
+            exit 1
+          fi

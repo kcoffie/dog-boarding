@@ -1,36 +1,132 @@
-# Dog Boarding App — Session Handoff (v4.0 deployed)
-**Last updated:** March 5, 2026 (v4.0 daytime ingestion live, migration 018 applied)
+# Dog Boarding App — Session Handoff (v4.1 in progress)
+**Last updated:** March 5, 2026 (v4.0.0 released; v4.1 roster image implementation started)
 
 ---
 
 ## Current State
 
 - **v4.0 is LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- PR #38 merged — daytime schedule ingestion deployed
-- Migration 018 applied in Supabase (`workers` + `daytime_appointments` tables exist, `workers` seeded)
-- `cron-schedule` now writes to `daytime_appointments` on every run — no extra fetches
-- **No uncommitted code.** Clean working tree on `main`.
-- **Next release tag:** `v4.0.0` (not yet created — create after live verification)
+- **v4.0.0 GitHub Release tagged** — demoted v3.2.0 from latest, v4.0.0 is now latest
+- **PR #40 merged** — HTML entity decode fix for pet/client names
+- **v4.1 branch open** — `feat/v4.1-roster-image`; PR not yet opened
+- **737 tests pass, 46 files, 0 failures**
 
 ---
 
 ## IMMEDIATE NEXT ACTIONS
 
-1. **Verify live ingestion** — check `daytime_appointments` has rows after next cron-schedule run (or trigger a manual sync), confirm `workers` seeded correctly
-2. **Create GitHub Release** `v4.0.0`
-3. **Start v4.1** — "picture of the day" API endpoint
+1. **Twilio setup** — sign up at twilio.com, activate WhatsApp sandbox, get a sandbox number
+2. **Add Vercel env vars** — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `NOTIFY_RECIPIENTS=+18312477375`
+3. **Add GitHub Actions secrets** — `APP_URL` (production URL e.g. `https://qboarding.vercel.app`), `VITE_SYNC_PROXY_TOKEN` (copy from Vercel dashboard)
+4. **Test the image endpoint** — `GET /api/roster-image?date=2026-03-05&token=...` in browser; verify PNG renders correctly
+5. **Test the notify endpoint** — `GET /api/notify?window=4am&token=...`; verify Twilio delivers image to test number
+6. **Open PR** for `feat/v4.1-roster-image` → merge → tag `v4.1.0`
+
+---
+
+## v4.1 Staff Engineer Pre-Implementation Review (archived)
+
+### Decision Log — Critical Branching Points
+
+| Branching Point | What to Log |
+|---|---|
+| `getPictureOfDay` entry | `date`, query date range (today + yesterday) |
+| Today's query result | Row count per worker; warn if 0 rows (cron may not have run yet) |
+| Yesterday's query result | Row count; if 0 rows → "no baseline, treating all as new" |
+| Diff computation per worker | Worker name, added count, removed count |
+| `shouldSend` check | `window`, `hasUpdates`, decision + reason |
+| Image generation | Dimensions (width x computed height), worker count, total dog count |
+| `satori` render | Success or error; error → abort (do not send broken image) |
+| Twilio send attempt | Masked number (last 4 only), response SID |
+| Twilio error | HTTP status, error code, message |
+
+### Pattern Alignment
+
+- Pure data layer: `getPictureOfDay` is side-effect-free, fully unit-testable
+- Dependency injection: supabase + Twilio clients passed in, never constructed inside business logic
+- Single-responsibility routes: `/api/roster-image` only generates images; `/api/notify` only orchestrates
+- Explicit state: last_notified_hash stored in `cron_health` table under `cron_name='notify'` — no new migration needed
+- No full phone numbers in logs — masked to last 4 digits everywhere
+
+### Security Surface Area
+
+- No new RLS policies needed — all routes use service role key (server-side only)
+- Env vars: `TWILIO_ACCOUNT_SID` (secret), `TWILIO_AUTH_TOKEN` (secret), `TWILIO_FROM_NUMBER`, `NOTIFY_RECIPIENTS` (secret — contains Kate's number), `VITE_SYNC_PROXY_TOKEN` (reused for auth)
+- `date` param: validated against `/^\d{4}-\d{2}-\d{2}$/`, parsed as local Date (no UTC trap)
+- `window` param: exact allowlist `['4am', '7am', '8:30am']`
+- `token` param: compared against env var; constant-time string comparison
+- Roster image URL contains token — standard Twilio media URL pattern
+
+---
+
+## v4.1 Implementation (completed this session)
+
+### New files
+
+| File | Purpose |
+|---|---|
+| `src/lib/pictureOfDay.js` | `getPictureOfDay`, `hashPicture`, `shouldSendNotification`, `parseDateParam` |
+| `api/roster-image.js` | Vercel serverless fn; validates token+date, generates PNG via satori+@resvg/resvg-js |
+| `src/lib/notifyWhatsApp.js` | Twilio wrapper: `createTwilioClient`, `sendRosterImage`, `getRecipients` |
+| `api/notify.js` | Orchestrator: validates params, fetches data, gates send, calls Twilio |
+| `src/__tests__/pictureOfDay.test.js` | 22 tests for data layer (all passing) |
+| `.github/workflows/notify-4am.yml` | GitHub Actions: 4am PST daily (always sends) |
+| `.github/workflows/notify-7am.yml` | GitHub Actions: 7am PST daily (sends if diff) |
+| `.github/workflows/notify-830am.yml` | GitHub Actions: 8:30am PST daily (sends if diff) |
+| `api/_fonts/inter-400.ttf` | Inter Regular (bundled font for satori, ~398KB) |
+| `api/_fonts/inter-700.ttf` | Inter Bold (bundled font for satori, ~405KB) |
+| `docs/archive/SESSION_HANDOFF_v4.0_final.md` | Archived v4.0 handoff |
+
+### New packages installed
+
+| Package | Version | Purpose |
+|---|---|---|
+| `satori` | 0.25.0 | HTML/CSS-like element tree → SVG |
+| `@resvg/resvg-js` | 2.6.2 | SVG → PNG (native bindings, Node.js runtime) |
+| `twilio` | 5.12.2 | WhatsApp message delivery |
+
+### No new DB migrations needed
+All data comes from existing `daytime_appointments` + `workers` tables.
+Change-detection state stored in `cron_health` under `cron_name='notify'`.
+
+### DST note — update GitHub Actions workflows twice/year
+- PST (Nov–Mar): 4am=12:00 UTC, 7am=15:00 UTC, 8:30am=16:30 UTC
+- PDT (Mar–Nov): 4am=11:00 UTC, 7am=14:00 UTC, 8:30am=15:30 UTC
+- **DST starts March 8, 2026** — update workflow cron strings soon
+
+---
+
+## v4.1 Image Format (confirmed)
+
+```
+┌────────────────────────────────────────────────┐
+│  Thursday, March 5      Daily Roster  UPDATED! │  ← dark header
+├──────────────────┬─────────────────────────────┤
+│ Charlie (3 dogs) │ Kathalyn (5 dogs)           │  ← worker cards (2-3 col)
+│ + Bronwyn (C)    │ + Frances (Wiebe)           │  ← green (+)
+│ + Rex (Smith)    │ − Tasha (See)               │  ← red (−), strikethrough
+│   Benny (Jones)  │   Milo (Park)               │  ← gray (unchanged)
+├──────────────────┴─────────────────────────────┤
+│ Boarders: Benny · Millie · Bowie               │
+└────────────────────────────────────────────────┘
+```
+
+- Layout: 800px wide, dynamic height
+- Columns: 2 columns for ≤2 workers; 3 columns for 3–6 workers
+- Dog line: `Pet (LastName)` format; added first → removed → unchanged
 
 ---
 
 ## v4 — Daytime Activity Intelligence
 
 ### Goal
-Ingest ALL daytime dog activities (Daycare + Playgroup) from the schedule page, not just boardings. First deliverable: a "picture of the day" message per worker showing who's in their group, who was added vs. yesterday, who was removed.
+Ingest ALL daytime dog activities (Daycare + Playgroup) from the schedule page. Deliver a "picture of the day" image per worker showing who's in their group, who was added vs. yesterday, who was removed — sent via WhatsApp.
 
 ### Delivery phases
-1. **v4.0** — Data ingestion: parse full schedule page, store all daytime appointments
-2. **v4.1** — "Picture of the day" API: per-worker summary with day-over-day diff
-3. **v4.2** — WhatsApp notifications: 4am PST daily, re-check 7am + 8:30am PST
+1. **v4.0** ✅ — Data ingestion: parse full schedule page, store all daytime appointments
+2. **v4.1** 🚧 — Roster image: generate PNG + send via Twilio WhatsApp
+3. **v4.2** — Multiple numbers + group chat; DST-aware cron times
+4. **v4.3** — On-demand daytime ingest via "Sync Now" button
 
 ---
 
@@ -76,201 +172,38 @@ Each `.day-event <a>` element on the weekly grid (`/schedule/days-7/YYYY/M/D`) e
 | Boarding | 5635 | Boarding discounted (DC FT) | 22215 |
 | Boarding | 5635 | Staff Boarding (nights) | 22387 |
 
-### Title patterns observed
-- `DC:FT` = Daycare full-time (every day)
-- `DC M/T/W/TH` = Daycare specific days
-- `PG FT` = Playgroup full-time
-- `PG M/W/TH` = Playgroup specific days
-- `ADD Leo T/TH` = Adding extra dog on Tue/Thu (title names the dog)
-- `D/C FT OFF OFF` = Daycare FT with days off
-- `Pick-Up 9AM-10AM` / `Pick-Up ( 9 am - 10 am )` = morning pickup slot (status=1, not yet checked in)
-
-### Day-over-day diff logic (how to compute adds/removes)
+### Day-over-day diff logic
 `data-series` is stable for recurring appointments of the same dog with the same worker.
 - For each worker: collect `Set<series_id>` for day N and day N-1
 - Added = in N but not N-1
 - Removed = in N-1 but not N
-- No heuristics needed — this is exact.
 
 ---
 
-### New DB tables needed
-
-**`workers`**
-```sql
-CREATE TABLE workers (
-  id SERIAL PRIMARY KEY,
-  external_id INTEGER UNIQUE NOT NULL,  -- e.g. 61023
-  name TEXT NOT NULL,
-  active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-**`daytime_appointments`**
-```sql
-CREATE TABLE daytime_appointments (
-  id SERIAL PRIMARY KEY,
-  external_id TEXT NOT NULL,            -- data-id, e.g. "C63QgUnJ"
-  series_id TEXT,                       -- data-series, e.g. "C63QgUl0"
-  appointment_date DATE NOT NULL,       -- derived from data-ts
-  worker_external_id INTEGER,           -- ew-{uid}; 0 = no worker
-  service_category TEXT,               -- "DC", "PG", "Boarding"
-  service_cat_id INTEGER,              -- e.g. 5634
-  service_id INTEGER,                  -- e.g. 10692
-  title TEXT,
-  status INTEGER,                       -- 1, 5, 6
-  start_ts BIGINT,                      -- data-start (Unix ts)
-  day_ts BIGINT,                        -- data-ts (Unix ts)
-  display_time TEXT,                   -- ".day-event-time" text
-  client_uid INTEGER,
-  client_name TEXT,
-  pet_ids INTEGER[],                    -- array of data-pet values
-  pet_names TEXT[],
-  is_pickup BOOLEAN DEFAULT FALSE,      -- display_time contains "Pick-Up"
-  is_multiday_start BOOLEAN DEFAULT FALSE,  -- has class appt-after
-  is_multiday_end BOOLEAN DEFAULT FALSE,    -- has class appt-before
-  synced_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(external_id, appointment_date) -- same appt can appear on multiple days
-);
-CREATE INDEX ON daytime_appointments(appointment_date, worker_external_id);
-CREATE INDEX ON daytime_appointments(series_id);
-```
+### WhatsApp integration
+- **Twilio** chosen — Node SDK, free trial, WhatsApp sandbox for testing
+- Three GitHub Actions workflows (not Vercel crons — already at 3-cron Hobby limit)
+- Send gate: 4am always sends; 7am/8:30am compare hash vs. `cron_health.result.lastHash`
 
 ---
 
-### v4.0 Pre-Implementation Review (Staff Engineer sign-off)
-
-**Decision Log — critical branching points and what to log at each:**
-
-| Branching Point | Decision Data Logged |
-|---|---|
-| Week parse begins | Total `<a data-id>` blocks found in HTML |
-| Per-event: date resolution | `external_id`, raw `data-ts`, resolved `appointment_date`; skip + warn if unparseable |
-| Per-event: worker extraction | `external_id`, matched `ew-{uid}`; warn if uid not in `KNOWN_WORKERS` |
-| Per-event: service classification | `external_id`, matched `cat-{id}`/`ser-{id}`, resolved `service_category`; warn if unknown cat |
-| Per-event: pet extraction | Warn if zero pet IDs found on a non-boarding event |
-| Upsert batch | Count in, count deduped, errors from Supabase |
-
-**Pattern alignment:**
-- Pure parse + separate persistence (same split as `forms.js`) — `parseDaytimeSchedulePage` is side-effect-free
-- Flat output array per event; no nested structures
-- Regex-only (no DOMParser) — Node.js cron safe; same rule as `forms.js`
-- Named constants (`SERVICE_CATS`, `KNOWN_WORKERS`) at top of file — unknown IDs warn but never silently misclassify
-- No deduplication inside the parser — `UNIQUE(external_id, appointment_date)` is the source of truth; deduplicate only in upsert helper before sending batch
-
-**Anti-patterns explicitly avoided:**
-- No DOMParser (this is cron-first, unlike `schedule.js`)
-- No stateful class — module with exported functions
-- No inline Supabase client construction
-- No cross-page deduplication inside the parser (multi-day spans are intentionally one row per day)
-
-**Implementation strategy:**
-1. Define `SERVICE_CATS`, `KNOWN_WORKERS`, `PICKUP_RE` constants at top — drives classification + warning system
-2. Three small private helpers: `attr(attrStr, name)`, `innerText(html, cls)`, `tsToDate(unixSeconds)`
-3. `parseDaytimeSchedulePage(html)` — pure; outer loop matches all `<a data-id="...">` blocks, inner extraction per event
-4. `upsertDaytimeAppointments(supabase, appointments)` — deduplicates batch by `(external_id, appointment_date)`, single bulk upsert
-5. Wire into `cron-schedule.js` — same HTML already in hand, no new fetches; accumulate across pages, upsert after loop
-
-**Implementation guidelines (Go signal):**
-- Chain-of-thought comments on every function: intended behavior + error-handling strategy
-- Structured logging: log input params at function entry; log "Decision Data" at every major gate (`data-ts missing → skip`, `unknown cat-id → warn but continue`)
-- DRY: shared `attr()` and `innerText()` helpers used everywhere; no repeated attribute-extraction inline
-- Testable: pure parse function can be unit-tested with a fixture HTML string, no mocking needed
-
----
-
-### New scraper code needed
-
-**`src/lib/scraper/daytimeSchedule.js`** (new file)
-- `parseDaytimeSchedulePage(html, weekStartDate)` → array of appointment objects
-  - Parse each `.cal-day` cell by `data-year/month/day`
-  - Within each cell, parse each `.day-event` `<a>`
-  - Extract all fields from the table above
-  - Return flat array: `[{ external_id, series_id, appointment_date, worker_external_id, ... }]`
-- `upsertDaytimeAppointments(appointments)` → upsert to Supabase `daytime_appointments`
-- This runs from Node.js (cron) so must use regex, not DOMParser
-
-**Update `api/cron-schedule.js`**
-- After fetching each schedule page, also call `parseDaytimeSchedulePage`
-- Upsert daytime appointments alongside boarding queue logic
-
----
-
-### WhatsApp integration options
-- **Twilio** (simplest, has Node SDK, free trial) — recommended starting point
-- **Meta Cloud API** (official, free up to 1000 conversations/month)
-- **Baileys** (unofficial, no account needed, but risky ToS)
-
-Cron schedule for notifications (Vercel Hobby allows multiple crons):
-- 4am PST = 12:00 UTC (or 11:00 UTC after DST change March 8)
-- 7am PST = 15:00 UTC
-- 8:30am PST = 16:30 UTC
-
-Logic per notification:
-1. Fetch today's daytime_appointments (grouped by worker)
-2. Fetch yesterday's daytime_appointments (grouped by worker)
-3. Compute diff
-4. If 4am: always send
-5. If 7am or 8:30am: only send if diff vs. last-sent snapshot is non-empty
-
----
-
-### "Picture of the day" message format (per worker)
-```
-Thursday Mar 5 - UPDATED!
-
-Charlie (1 dog)
-  Bronwyn Cottrell
-
-Kathalyn Dominguez (5 dogs)
-  John McClane (Stevenson) + Chester (Petry) + Billy (Cirelli) + Buddy Peters (Doan) + "Waldo" (McComb)
-
-[etc per worker...]
-
-Boarders today: Benny, Millie, Bowie, Peanut, Annie, Tracy
-```
-
-Added/removed lines:
-```
-  + Frances Wiebe [NEW from yesterday]
-  - Tasha See [NOT TODAY]
-```
+## Data quality notes
+- **Staff Boarding empty pets**: `ser-22387` events have no pet data. Expected, not a bug.
 
 ---
 
 ## Cron health (as of March 4, 2026)
-- `schedule` — 00:18 UTC → queued 14, skipped 124, 1 page scanned, cursor to 2026-03-10
-- `detail` — 00:27 UTC → idle (queue already empty)
+- `schedule` — 00:18 UTC → queued 14, skipped 124, 1 page scanned
+- `detail` — 00:27 UTC → idle
 - `auth` — 00:54 UTC → skipped (session still valid)
 
 Check each session:
 ```sql
 SELECT cron_name, last_ran_at, status, result, error_msg FROM cron_health ORDER BY cron_name;
 SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY type, status;
+-- Check notify state (last hash sent):
+SELECT result FROM cron_health WHERE cron_name = 'notify';
 ```
-
----
-
-## v3.2 What Was Done
-
-### Deployed and working
-- AM/PM capture from external site's `.event-time-scheduled` block
-- `arrival_ampm` / `departure_ampm` columns on `boardings` (migration 017 applied)
-- DogsPage shows "Mar 4, 2026 AM" when ampm present
-- CalendarPage detail panel + print section show AM/PM
-- SyncSettings dead UI removed (auto-sync toggle, interval, setup mode)
-- PR #37 stale title month fix deployed and confirmed working
-
-### Decisions locked in
-- Rate fallback: `boarding.night_rate ?? dog.night_rate ?? 0`
-- HASH_FIELDS: identity/structure only — pricing fields intentionally excluded
-- Unchanged path: explicitly writes `appointment_total` + `pricing_line_items` when present
-- Multi-pet: secondary external_id = `{appt_id}_p{index}`
-- `sync_status = 'archived'` — `is_archived` does not exist
-- `.maybeSingle()` for all existence checks. Never `.single()` for 0-row-valid queries
-- Form matching: 7-day window `(arrival − 7 days)` to `(arrival day)` inclusive. No fallback.
-- Form field regex: `id="(field_\d+)-wrapper"` — external site uses `-wrapper` suffix
 
 ---
 
@@ -309,10 +242,11 @@ DELETE FROM boardings WHERE external_id = 'REPLACE_ME';
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0 (Latest)
-- Next release after v4.0 merges: tag `v4.0.0`
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, **v4.0.0 (Latest)**
+- Next release: `v4.1.0` after `feat/v4.1-roster-image` PR merges
 
 ## Archive
+- v4.0 full session log: `docs/archive/SESSION_HANDOFF_v4.0_final.md`
 - v3.0 full session log: `docs/archive/SESSION_HANDOFF_v3.0_final.md`
 - v2.4 full session log: `docs/archive/SESSION_HANDOFF_v2.4_final.md`
 - Earlier versions: `docs/archive/SESSION_HANDOFF_v2.{0-3}_final.md`
