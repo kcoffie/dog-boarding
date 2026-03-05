@@ -1,0 +1,25 @@
+# Re-checks at 7am PST and sends only if the roster changed since the 4am send.
+# DST: 7am PST = 15:00 UTC (standard) / 7am PDT = 14:00 UTC (daylight).
+name: Notify 7am PST
+
+on:
+  schedule:
+    # 15:00 UTC = 7am PST (standard time, Nov–Mar)
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send roster image if updated
+        run: |
+          RESPONSE=$(curl -s -o /tmp/notify_response.json -w "%{http_code}" \
+            "${{ secrets.APP_URL }}/api/notify?window=7am&token=${{ secrets.VITE_SYNC_PROXY_TOKEN }}")
+          echo "HTTP status: $RESPONSE"
+          cat /tmp/notify_response.json
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Notify endpoint returned non-200 status"
+            exit 1
+          fi
