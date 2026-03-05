@@ -1,29 +1,243 @@
-# Dog Boarding App — Session Handoff (v3.2)
-**Last updated:** March 5, 2026 (v3.2 — stale title bug fix)
-**Status:** v3.2 committed at `4bfc212`. **One manual step required before deploying — see below.**
+# Dog Boarding App — Session Handoff (v3.2 deployed + v4 planning)
+**Last updated:** March 5, 2026 (v3.2 deployed, v4 planning started)
 
 ---
 
 ## Current State
 
-- **692 tests pass** (all 692 — 4 additional tests added this session).
-- **`main`** local is at `4bfc212`, ahead of `origin/main` (`a8abb6e`). Not yet pushed.
-- **Live URL:** [qboarding.vercel.app](https://qboarding.vercel.app) (still running v3.1)
+- **v3.2 is LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
+- PR #37 merged, deployed, tested — stale title month fix working correctly
+- Migration 017 applied in Supabase (`arrival_ampm`, `departure_ampm` columns exist)
+- RLS enabled on `sync_queue` table in Supabase
+- v3.3 Payroll Report deferred to a future version (not v3.3 — pick a new version number TBD)
+- **No uncommitted code.** Clean working tree.
 
-## IMMEDIATE NEXT ACTIONS (do these first)
+---
 
-1. **Apply migration 017 in Supabase SQL editor** (before pushing — sync will fail silently if columns don't exist):
-   ```sql
-   ALTER TABLE boardings
-     ADD COLUMN IF NOT EXISTS arrival_ampm TEXT,
-     ADD COLUMN IF NOT EXISTS departure_ampm TEXT;
-   ```
-2. **Push to deploy:** `git push origin main`
-3. **Verify deployment:** trigger a Sync Now for a boarding with a known check-in (e.g., C63QgUhM). Confirm `boardings` table has `arrival_ampm='AM'`, `departure_ampm='PM'`. DogsPage should show `Mar 4, 2026 AM` instead of `Mar 4, 2026 12:00 AM`.
+## IMMEDIATE NEXT ACTIONS
+
+None. v3.2 is done. Next work is v4 planning and implementation.
+
+---
+
+## v4 — Daytime Activity Intelligence
+
+### Goal
+Ingest ALL daytime dog activities (Daycare + Playgroup) from the schedule page, not just boardings. First deliverable: a "picture of the day" message per worker showing who's in their group, who was added vs. yesterday, who was removed.
+
+### Delivery phases
+1. **v4.0** — Data ingestion: parse full schedule page, store all daytime appointments
+2. **v4.1** — "Picture of the day" API: per-worker summary with day-over-day diff
+3. **v4.2** — WhatsApp notifications: 4am PST daily, re-check 7am + 8:30am PST
+
+---
+
+### What the schedule page gives us (no detail fetches needed)
+
+Each `.day-event <a>` element on the weekly grid (`/schedule/days-7/YYYY/M/D`) exposes:
+
+| Data | Source |
+|---|---|
+| Appointment external ID | `data-id` |
+| Day-column date | `data-ts` (Unix ts, midnight of that day) |
+| Actual check-in time | `data-start` (Unix ts) |
+| Status | `data-status` (1=upcoming, 5=in-progress, 6=completed) |
+| Recurring series ID | `data-series` (stable across same dog's recurring appts) |
+| Worker ID | class `ew-{uid}` (0 = no worker = boardings) |
+| Service category + type | classes `cat-{id}` `ser-{id}` |
+| Title (free-form) | `.day-event-title` inner text |
+| Display time | `.day-event-time` inner text |
+| Client UID | `data-uid` on `.event-clients-pets` |
+| Client name | `.event-client` inner text |
+| Pet external IDs | `data-pet` on each `.event-pet-wrapper` |
+| Pet names | `.event-pet` inner text |
+| Multi-day span | classes `appt-before`, `appt-after`, `appt-all-day` |
+
+### Workers (confirmed from HTML)
+| Name | External UID |
+|---|---|
+| Charlie | 61023 |
+| Kathalyn Dominguez | 208669 |
+| Kentaro Cavey | 141407 |
+| Max Posse | 174385 |
+| Sierra Tagle | 189436 |
+| Stephen Muro | 164375 |
+| No worker set (boardings) | 0 |
+
+### Service categories (confirmed)
+| Category | cat-ID | service | ser-ID |
+|---|---|---|---|
+| Daycare | 5634 | Daycare Monthly | 10692 |
+| Playgroup | 7431 | Playgroup Monthly | 15824 |
+| Boarding | 5635 | Boarding (Nights) | 17357 |
+| Boarding | 5635 | Boarding (Days) | 11778 |
+| Boarding | 5635 | Boarding discounted (DC FT) | 22215 |
+| Boarding | 5635 | Staff Boarding (nights) | 22387 |
+
+### Title patterns observed
+- `DC:FT` = Daycare full-time (every day)
+- `DC M/T/W/TH` = Daycare specific days
+- `PG FT` = Playgroup full-time
+- `PG M/W/TH` = Playgroup specific days
+- `ADD Leo T/TH` = Adding extra dog on Tue/Thu (title names the dog)
+- `D/C FT OFF OFF` = Daycare FT with days off
+- `Pick-Up 9AM-10AM` / `Pick-Up ( 9 am - 10 am )` = morning pickup slot (status=1, not yet checked in)
+
+### Day-over-day diff logic (how to compute adds/removes)
+`data-series` is stable for recurring appointments of the same dog with the same worker.
+- For each worker: collect `Set<series_id>` for day N and day N-1
+- Added = in N but not N-1
+- Removed = in N-1 but not N
+- No heuristics needed — this is exact.
+
+---
+
+### New DB tables needed
+
+**`workers`**
+```sql
+CREATE TABLE workers (
+  id SERIAL PRIMARY KEY,
+  external_id INTEGER UNIQUE NOT NULL,  -- e.g. 61023
+  name TEXT NOT NULL,
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**`daytime_appointments`**
+```sql
+CREATE TABLE daytime_appointments (
+  id SERIAL PRIMARY KEY,
+  external_id TEXT NOT NULL,            -- data-id, e.g. "C63QgUnJ"
+  series_id TEXT,                       -- data-series, e.g. "C63QgUl0"
+  appointment_date DATE NOT NULL,       -- derived from data-ts
+  worker_external_id INTEGER,           -- ew-{uid}; 0 = no worker
+  service_category TEXT,               -- "DC", "PG", "Boarding"
+  service_cat_id INTEGER,              -- e.g. 5634
+  service_id INTEGER,                  -- e.g. 10692
+  title TEXT,
+  status INTEGER,                       -- 1, 5, 6
+  start_ts BIGINT,                      -- data-start (Unix ts)
+  day_ts BIGINT,                        -- data-ts (Unix ts)
+  display_time TEXT,                   -- ".day-event-time" text
+  client_uid INTEGER,
+  client_name TEXT,
+  pet_ids INTEGER[],                    -- array of data-pet values
+  pet_names TEXT[],
+  is_pickup BOOLEAN DEFAULT FALSE,      -- display_time contains "Pick-Up"
+  is_multiday_start BOOLEAN DEFAULT FALSE,  -- has class appt-after
+  is_multiday_end BOOLEAN DEFAULT FALSE,    -- has class appt-before
+  synced_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(external_id, appointment_date) -- same appt can appear on multiple days
+);
+CREATE INDEX ON daytime_appointments(appointment_date, worker_external_id);
+CREATE INDEX ON daytime_appointments(series_id);
+```
+
+---
+
+### v4.0 Pre-Implementation Review (Staff Engineer sign-off)
+
+**Decision Log — critical branching points and what to log at each:**
+
+| Branching Point | Decision Data Logged |
+|---|---|
+| Week parse begins | Total `<a data-id>` blocks found in HTML |
+| Per-event: date resolution | `external_id`, raw `data-ts`, resolved `appointment_date`; skip + warn if unparseable |
+| Per-event: worker extraction | `external_id`, matched `ew-{uid}`; warn if uid not in `KNOWN_WORKERS` |
+| Per-event: service classification | `external_id`, matched `cat-{id}`/`ser-{id}`, resolved `service_category`; warn if unknown cat |
+| Per-event: pet extraction | Warn if zero pet IDs found on a non-boarding event |
+| Upsert batch | Count in, count deduped, errors from Supabase |
+
+**Pattern alignment:**
+- Pure parse + separate persistence (same split as `forms.js`) — `parseDaytimeSchedulePage` is side-effect-free
+- Flat output array per event; no nested structures
+- Regex-only (no DOMParser) — Node.js cron safe; same rule as `forms.js`
+- Named constants (`SERVICE_CATS`, `KNOWN_WORKERS`) at top of file — unknown IDs warn but never silently misclassify
+- No deduplication inside the parser — `UNIQUE(external_id, appointment_date)` is the source of truth; deduplicate only in upsert helper before sending batch
+
+**Anti-patterns explicitly avoided:**
+- No DOMParser (this is cron-first, unlike `schedule.js`)
+- No stateful class — module with exported functions
+- No inline Supabase client construction
+- No cross-page deduplication inside the parser (multi-day spans are intentionally one row per day)
+
+**Implementation strategy:**
+1. Define `SERVICE_CATS`, `KNOWN_WORKERS`, `PICKUP_RE` constants at top — drives classification + warning system
+2. Three small private helpers: `attr(attrStr, name)`, `innerText(html, cls)`, `tsToDate(unixSeconds)`
+3. `parseDaytimeSchedulePage(html)` — pure; outer loop matches all `<a data-id="...">` blocks, inner extraction per event
+4. `upsertDaytimeAppointments(supabase, appointments)` — deduplicates batch by `(external_id, appointment_date)`, single bulk upsert
+5. Wire into `cron-schedule.js` — same HTML already in hand, no new fetches; accumulate across pages, upsert after loop
+
+**Implementation guidelines (Go signal):**
+- Chain-of-thought comments on every function: intended behavior + error-handling strategy
+- Structured logging: log input params at function entry; log "Decision Data" at every major gate (`data-ts missing → skip`, `unknown cat-id → warn but continue`)
+- DRY: shared `attr()` and `innerText()` helpers used everywhere; no repeated attribute-extraction inline
+- Testable: pure parse function can be unit-tested with a fixture HTML string, no mocking needed
+
+---
+
+### New scraper code needed
+
+**`src/lib/scraper/daytimeSchedule.js`** (new file)
+- `parseDaytimeSchedulePage(html, weekStartDate)` → array of appointment objects
+  - Parse each `.cal-day` cell by `data-year/month/day`
+  - Within each cell, parse each `.day-event` `<a>`
+  - Extract all fields from the table above
+  - Return flat array: `[{ external_id, series_id, appointment_date, worker_external_id, ... }]`
+- `upsertDaytimeAppointments(appointments)` → upsert to Supabase `daytime_appointments`
+- This runs from Node.js (cron) so must use regex, not DOMParser
+
+**Update `api/cron-schedule.js`**
+- After fetching each schedule page, also call `parseDaytimeSchedulePage`
+- Upsert daytime appointments alongside boarding queue logic
+
+---
+
+### WhatsApp integration options
+- **Twilio** (simplest, has Node SDK, free trial) — recommended starting point
+- **Meta Cloud API** (official, free up to 1000 conversations/month)
+- **Baileys** (unofficial, no account needed, but risky ToS)
+
+Cron schedule for notifications (Vercel Hobby allows multiple crons):
+- 4am PST = 12:00 UTC (or 11:00 UTC after DST change March 8)
+- 7am PST = 15:00 UTC
+- 8:30am PST = 16:30 UTC
+
+Logic per notification:
+1. Fetch today's daytime_appointments (grouped by worker)
+2. Fetch yesterday's daytime_appointments (grouped by worker)
+3. Compute diff
+4. If 4am: always send
+5. If 7am or 8:30am: only send if diff vs. last-sent snapshot is non-empty
+
+---
+
+### "Picture of the day" message format (per worker)
+```
+Thursday Mar 5 - UPDATED!
+
+Charlie (1 dog)
+  Bronwyn Cottrell
+
+Kathalyn Dominguez (5 dogs)
+  John McClane (Stevenson) + Chester (Petry) + Billy (Cirelli) + Buddy Peters (Doan) + "Waldo" (McComb)
+
+[etc per worker...]
+
+Boarders today: Benny, Millie, Bowie, Peanut, Annie, Tracy
+```
+
+Added/removed lines:
+```
+  + Frances Wiebe [NEW from yesterday]
+  - Tasha See [NOT TODAY]
+```
+
+---
 
 ## Cron health (as of March 4, 2026)
-
-Crons ran overnight at their scheduled UTC times (UTC midnight = 4pm PST day prior):
 - `schedule` — 00:18 UTC → queued 14, skipped 124, 1 page scanned, cursor to 2026-03-10
 - `detail` — 00:27 UTC → idle (queue already empty)
 - `auth` — 00:54 UTC → skipped (session still valid)
@@ -36,141 +250,25 @@ SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY typ
 
 ---
 
-## v3.1 What Was Done (March 4, 2026 — sessions 1–3)
+## v3.2 What Was Done
 
-### Housekeeping (session 3) ✅
-- PR #34 confirmed merged (CI fully green)
-- Local `main` fast-forwarded to match `origin/main`
-- "Restrict force pushes" re-enabled in GitHub Rulesets
-- RLS enabled on `sync_queue` in Supabase
-- `Co-Authored-By: Claude` stripped from all commit messages (all branches + tags) via `git filter-branch --tag-name-filter cat` + force-push
+### Deployed and working
+- AM/PM capture from external site's `.event-time-scheduled` block
+- `arrival_ampm` / `departure_ampm` columns on `boardings` (migration 017 applied)
+- DogsPage shows "Mar 4, 2026 AM" when ampm present
+- CalendarPage detail panel + print section show AM/PM
+- SyncSettings dead UI removed (auto-sync toggle, interval, setup mode)
+- PR #37 stale title month fix deployed and confirmed working
 
-### Git history rewrite (session 1) ✅
-All 218 commits rewritten to use `kcoffie@gmail.com` (was `kcoffie@directcommerce.com`, no longer valid). Force-pushed to all branches (main, fix/v3.1-code-hardening, uat, develop) and tags. Local git config updated: `git config user.email "kcoffie@gmail.com"`.
-
-### Tests: 697/697 passing ✅
-Fixed 9 pre-existing test failures + 2 CI-only failures:
-
-1. **BoardingMatrix sorting tests** (`src/components/BoardingMatrix.test.jsx`): Added mocks for `useBoardingForms`, `EmployeeDropdown`, `BoardingFormModal`. Fixed `getDogNamesInOrder` helper: dog name is in `<button>`, not `spans[1]`.
-2. **DateNavigator DST test**: `Math.floor` → `Math.round` (fixes flakiness near DST boundary).
-3. **CsvImport.test.jsx** (CI-only fail): Replaced stale `useLocalStorage` mock with `DataContext` mock — test was written before Supabase migration and still used localStorage mock; `DataProvider` imported supabase at module load time without env vars.
-4. **DogsPage.pastBoardings.test.jsx** (CI-only fail): Added `vi.mock('../../hooks/useBoardingForms', ...)` — DataContext was mocked but `DogsPage` also imports `useBoardingForms` directly → supabase import chain.
-
-### Code fixes in PR `fix/v3.1-code-hardening` ✅
-- **sync.js**: drain loop cap (`MAX_DRAIN = 20`) — prevents runaway drain in browser sync
-- **forms.js**: date validation in `parseMMDDYYYYtoISO` — reject month > 12 or day > 31
-- **BoardingFormModal.jsx**: popup blocker alert — was silently failing; now `alert()`s if `window.open()` returns null
-
-### Lint: all 21 errors/warnings fixed ✅
-Fixed across 16 files (unused imports, unused vars, eslint-disable comments for known-acceptable patterns).
-
-### README updated ✅
-Added live URL, boarding forms feature description, updated project structure, removed version references.
-
-### Supabase: enable RLS on sync_queue ⚠️ PENDING
-```sql
-ALTER TABLE public.sync_queue ENABLE ROW LEVEL SECURITY;
-```
-Safe — table only accessed by service role (crons + sync proxy), which bypasses RLS. No policies needed.
-
----
-
-## Bug Fix (March 5, 2026) — Stale title month causes wrong-month date parsing
-
-**Symptom:** Appointment `C63QgT8L` (Annie & Tracy, Michael Tam, March 5–7) was skipped as "out-of-range" during a March sync. Client had entered title `"2/5-7"` (originally a Feb booking, or a typo), which `parseServiceTypeDates` parsed as Feb 5–7. System timestamps correctly said March 5–7 but were only used as a fallback when the title had *no* parseable dates at all.
-
-**Fix in `extraction.js` (`parseAppointmentPage`):** After parsing title dates, cross-validate against the `data-start_scheduled` system timestamp. If a reasonable timestamp (within ±2 years of now) differs from the title date by >20 days, the title month is stale/wrong → use the system timestamps instead. Far-future/bogus timestamps (e.g. `9999999999`) are ignored.
-
-**Test added:** `falls back to system timestamps when title month is stale/wrong (>20 day gap)` in `extraction.test.js`.
-
----
-
-## v3.2 What Was Done (March 4, 2026)
-
-### AM/PM capture & display ✅
-- `extraction.js`: added `extractCheckInOutAmPm(html)` — grabs `event-time-scheduled` block, collects `.time-label` spans → `{ checkInAmPm, checkOutAmPm }`. Added `check_in_ampm` / `check_out_ampm` to `parseAppointmentPage` return.
-- `supabase/migrations/017_add_ampm_columns.sql`: adds `arrival_ampm TEXT`, `departure_ampm TEXT` to `boardings` table. **Apply manually in Supabase SQL editor before syncing.**
-- `mapping.js`: `mapToBoarding` includes `arrival_ampm`/`departure_ampm`. `upsertBoarding` writes them on update.
-- `useBoardings.js`: transform includes `arrivalAmPm`/`departureAmPm`.
-- `DogsPage.jsx`: `formatDateWithAmPm(dt, ampm)` helper — shows `Mar 4, 2026 AM` when ampm present, falls back to `formatDateTime`. Applied to desktop table + mobile cards.
-- `CalendarPage.jsx`: `calendarBookings` useMemo includes `arrival_ampm`/`departure_ampm`. Detail panel: arriving shows `AM →`, departing shows `→ PM`. PrintSection shows ampm in arriving/departing/staying rows.
-
-### SyncSettings cleanup ✅
-- Removed dead UI: "Automatic Sync" toggle, "Sync Interval" select, "Setup Mode" toggle + info banner + confirmation dialog.
-- `useSyncSettings.js`: removed `toggleEnabled`, `setInterval`, `toggleSetupMode` functions and `updateSyncSettings` import.
-- `SyncSettings.test.jsx` + `useSyncSettings.test.js`: updated to not reference removed functions.
-
----
-
-## v3.2 Next Steps / Backlog
-
-### v3.3 Payroll Report (planned design — ready to implement)
-New section at bottom of `PayrollPage.jsx`. New component `src/components/PayrollReport.jsx`.
-
-Layout:
-```
-Payroll Report: Mar 4 – Apr 3, 2026                    [Print]
-
-Employee       | Mar 4 | Mar 5 | ... | Apr 3 | Total
----------------|-------|-------|-----|-------|-------
-Alex           |  2/$80|  3/$120| ...| 1/$40 | $840
-Jordan         |   —   |  1/$40 | ...| 2/$80 | $520
-```
-- Each cell: `{numDogs} dog(s) / ${net_amount}` (employee's take, not gross)
-- Cell bg: light green if date is in `getPaidDatesForEmployee()`
-- Total column: sum of all net amounts for that employee
-- Print: `window.print()` + `@media print` CSS
-
-Data per cell:
-- `getNightAssignment(dateStr)` → which employee worked that night
-- Dogs overnight that night: `boardings.filter(b => isOvernight(b, dateStr))`
-- Net per dog: `dog.nightRate * getNetPercentageForDate(dateStr) / 100`
-- Paid check: `getPaidDatesForEmployee(employeeId).has(dateStr)`
-
-### Longer-term
-- Fix status field extraction (always null — `.appt-change-status` needs `textContent` on `<a><i>`)
-- **Low priority:** Store datetimes in PST (America/Los_Angeles) instead of UTC
-
----
-
-## v3.0 Summary (what was built)
-
-- **REQ-500:** Pet ID extraction → `external_pet_id` on dogs table
-- **REQ-501:** Forms scraping pipeline (`forms.js`) — fetch, parse, match, store boarding intake forms
-- **REQ-502:** Date discrepancy detection (`date_mismatch` flag on `boarding_forms`)
-- **REQ-503:** Boarding Form Modal — priority fields, date mismatch alert, print, source URL link
-- **REQ-504:** Missing form indicator — red/amber/indigo/slate dog name links in matrix
-- **REQ-505:** Forms scraper logging
-- **REQ-506:** Modal centering fix via React portal
-- **REQ-507:** Dog link three-state color coding
-- **REQ-508:** Source URL link + conditional Print button
-
-Key fixes in v3.0:
-- `.single()` → `.maybeSingle()` everywhere (killed 406 console errors)
-- Sync Now drains all pending form queue items (not just appointments)
-- Form field regex: `id="(field_\d+)-wrapper"` (not bare field ID)
-- Form matching: strict 7-day submission window, no fallback to stale forms
-- Print: isolated `_blank` window (avoids blank output from full-page print)
-- Re-enqueue: `boarding_forms` is source of truth; reset done→pending when form not yet stored
-
-See full session log: `docs/archive/SESSION_HANDOFF_v3.0_final.md`
-
----
-
-## Decisions Locked In
-
-- **Rate fallback:** `boarding.night_rate ?? dog.night_rate ?? 0`
-- **HASH_FIELDS:** identity/structure only — pricing fields intentionally excluded
-- **Unchanged path:** explicitly writes `appointment_total` + `pricing_line_items` when present
-- **Multi-pet:** secondary external_id = `{appt_id}_p{index}`
-- **sync_status column:** `sync_status = 'archived'` — `is_archived` does not exist
-- **`.maybeSingle()` vs `.single()`:** All existence-check find* queries use `.maybeSingle()`. Never `.single()` for existence checks.
-- **Form matching:** 7-day window `(arrival − 7 days)` to `(arrival day)` inclusive. No fallback.
-- **Form re-enqueue:** `boarding_forms` is source of truth. `resetIfDone: true` allows re-processing previously-done queue items when form not yet stored.
-- **VITE_SYNC_PROXY_TOKEN:** intentionally VITE_-prefixed (browser readable); different from `CRON_SECRET`
-- **cron-detail:** 1 queue item per invocation (Hobby plan). "Sync Now" drains all pending form items.
-- **Form field regex:** `id="(field_\d+)-wrapper"` — external site uses `-wrapper` suffix
-- **historicalSync.js:** kept — useful for full data rebuild, not dead code
+### Decisions locked in
+- Rate fallback: `boarding.night_rate ?? dog.night_rate ?? 0`
+- HASH_FIELDS: identity/structure only — pricing fields intentionally excluded
+- Unchanged path: explicitly writes `appointment_total` + `pricing_line_items` when present
+- Multi-pet: secondary external_id = `{appt_id}_p{index}`
+- `sync_status = 'archived'` — `is_archived` does not exist
+- `.maybeSingle()` for all existence checks. Never `.single()` for 0-row-valid queries
+- Form matching: 7-day window `(arrival − 7 days)` to `(arrival day)` inclusive. No fallback.
+- Form field regex: `id="(field_\d+)-wrapper"` — external site uses `-wrapper` suffix
 
 ---
 
@@ -208,8 +306,11 @@ DELETE FROM boardings WHERE external_id = 'REPLACE_ME';
 
 ---
 
-## Archive
+## GitHub Releases
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0 (Latest)
+- Next release after v4.0 merges: tag `v4.0.0`
 
+## Archive
 - v3.0 full session log: `docs/archive/SESSION_HANDOFF_v3.0_final.md`
 - v2.4 full session log: `docs/archive/SESSION_HANDOFF_v2.4_final.md`
 - Earlier versions: `docs/archive/SESSION_HANDOFF_v2.{0-3}_final.md`

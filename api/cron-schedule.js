@@ -24,6 +24,7 @@ import { setSession } from '../src/lib/scraper/auth.js';
 import { authenticatedFetch } from '../src/lib/scraper/auth.js';
 import { getSession, clearSession } from '../src/lib/scraper/sessionCache.js';
 import { enqueue, getQueueDepth } from '../src/lib/scraper/syncQueue.js';
+import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../src/lib/scraper/daytimeSchedule.js';
 import { writeCronHealth } from './_cronHealth.js';
 
 export const config = { runtime: 'nodejs' };
@@ -228,7 +229,7 @@ export default async function handler(req, res) {
     console.log(`[CronSchedule] 📅 Starting scan — cursor: ${cursorDate.toDateString()}, mode: micro`);
     console.log(`[CronSchedule] 🔑 Session: cached`);
 
-    const stats = { pagesScanned: 0, found: 0, skipped: 0, queued: 0 };
+    const stats = { pagesScanned: 0, found: 0, skipped: 0, queued: 0, daytimeUpserted: 0, daytimeErrors: 0 };
 
     // Fetch current week + cursor week (deduplicated)
     const datesToFetch = [today];
@@ -238,6 +239,9 @@ export default async function handler(req, res) {
 
     const seenIds = new Set();
     const appointments = [];
+    // Accumulates all daytime/boarding events across both fetched pages.
+    // upsertDaytimeAppointments deduplicates before the DB write.
+    const allDaytimeAppts = [];
 
     for (const date of datesToFetch) {
       let html;
@@ -262,6 +266,12 @@ export default async function handler(req, res) {
         seenIds.add(appt.id);
         appointments.push(appt);
       }
+
+      // Parse ALL events (DC, PG, Boarding) for daytime activity ingestion.
+      // Runs against the same HTML — no extra fetches.
+      const daytimeAppts = parseDaytimeSchedulePage(html);
+      console.log(`[CronSchedule] 🏃 Parsed ${daytimeAppts.length} daytime events on ${date.toDateString()} page`);
+      allDaytimeAppts.push(...daytimeAppts);
     }
 
     stats.found = appointments.length;
@@ -291,6 +301,13 @@ export default async function handler(req, res) {
     }
 
     console.log(`[CronSchedule] 🐕 ${stats.found} found, ${stats.skipped} skipped (non-boarding), ${stats.queued} queued`);
+
+    // Upsert all daytime appointments collected from every fetched page.
+    // This runs after the boarding queue loop so queue errors don't block it.
+    const daytimeResult = await upsertDaytimeAppointments(supabase, allDaytimeAppts);
+    stats.daytimeUpserted = daytimeResult.upserted;
+    stats.daytimeErrors = daytimeResult.errors;
+    console.log(`[CronSchedule] 📊 Daytime upserted: ${daytimeResult.upserted}, errors: ${daytimeResult.errors}`);
 
     // Advance cursor
     const nextCursor = advanceCursor(cursorDate);
