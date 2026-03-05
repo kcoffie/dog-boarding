@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseAppointmentPage, extractPricing } from '../../lib/scraper/extraction.js';
+import { parseAppointmentPage, extractPricing, extractCheckInOutAmPm } from '../../lib/scraper/extraction.js';
 import {
   mockAppointmentPage,
   mockAppointmentPageMinimal,
@@ -475,5 +475,29 @@ describe('REQ-200: extractPricing()', () => {
       const data = parseAppointmentPage(mockAppointmentPage);
       expect(data.all_pet_names[0]).toBe(data.pet_name);
     });
+  });
+});
+
+describe('extractCheckInOutAmPm()', () => {
+  it('extracts AM/PM from event-time-scheduled block', () => {
+    const html = `<div class="event-time-scheduled">
+      <span class="time the start"><span class="time-label" title="">AM</span>, </span>
+      <span class="time the"><span class="time-label" title="">PM</span>, </span>
+    </div>`;
+    expect(extractCheckInOutAmPm(html)).toEqual({ checkInAmPm: 'AM', checkOutAmPm: 'PM' });
+  });
+
+  it('extracts AM/PM from when-wrapper block (fallback)', () => {
+    const html = `<div class="dt-row" id="when-wrapper" data-start_scheduled="1772791200" data-end_scheduled="1773072900">
+      <div class="field-value"><span class="time the start"><span class="time-label" title="">AM</span>, </span>
+      <span class="time time-date">Friday, March 6, 2026</span><br>
+      <span class="time the"><span class="time-label" title="">PM</span>, </span>
+      <span class="time time-date">Monday, March 9, 2026</span></div>
+    </div>`;
+    expect(extractCheckInOutAmPm(html)).toEqual({ checkInAmPm: 'AM', checkOutAmPm: 'PM' });
+  });
+
+  it('returns nulls when neither block is present', () => {
+    expect(extractCheckInOutAmPm('<div>no time info</div>')).toEqual({ checkInAmPm: null, checkOutAmPm: null });
   });
 });
