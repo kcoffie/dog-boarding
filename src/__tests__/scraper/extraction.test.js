@@ -266,6 +266,17 @@ describe('REQ-102: Appointment Detail Extraction', () => {
         expect(data.check_out_datetime).toContain(`${year}-12-23`);
       });
 
+      it('falls back to system timestamps when title month is stale/wrong (>20 day gap)', () => {
+        // Title says "2/5-7" (Feb) but system timestamps say March 5–7, 2026.
+        // 1772704800 = 2026-03-05T10:00:00Z, 1772900100 = 2026-03-07T17:15:00Z
+        const html = '<h1>2/5-7</h1><div id="when-wrapper" data-start_scheduled="1772704800" data-end_scheduled="1772900100"></div>';
+        const data = parseAppointmentPage(html);
+
+        // Should use system timestamps (March), not the stale title (February)
+        expect(data.check_in_datetime).toBe('2026-03-05T10:00:00.000Z');
+        expect(data.check_out_datetime).toBe('2026-03-07T16:15:00.000Z');
+      });
+
       it('returns null for check_in/out when no date source is available', () => {
         const data = parseAppointmentPage('<div class="unrelated">content</div>');
 
