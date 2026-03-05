@@ -1,13 +1,13 @@
 # Dog Boarding App — Session Handoff (v3.2)
-**Last updated:** March 4, 2026 (v3.2 session — end of session)
-**Status:** v3.2 committed at `afd8e53`. **One manual step required before deploying — see below.**
+**Last updated:** March 5, 2026 (v3.2 — stale title bug fix)
+**Status:** v3.2 committed at `4bfc212`. **One manual step required before deploying — see below.**
 
 ---
 
 ## Current State
 
-- **688 tests pass** (9 pre-existing failures unchanged: 1 DST-flaky DateNavigator + 8 BoardingMatrix sorting).
-- **`main`** local is at `afd8e53`, ahead of `origin/main` (`7a70a17`). Not yet pushed.
+- **692 tests pass** (all 692 — 4 additional tests added this session).
+- **`main`** local is at `4bfc212`, ahead of `origin/main` (`a8abb6e`). Not yet pushed.
 - **Live URL:** [qboarding.vercel.app](https://qboarding.vercel.app) (still running v3.1)
 
 ## IMMEDIATE NEXT ACTIONS (do these first)
@@ -72,6 +72,16 @@ Added live URL, boarding forms feature description, updated project structure, r
 ALTER TABLE public.sync_queue ENABLE ROW LEVEL SECURITY;
 ```
 Safe — table only accessed by service role (crons + sync proxy), which bypasses RLS. No policies needed.
+
+---
+
+## Bug Fix (March 5, 2026) — Stale title month causes wrong-month date parsing
+
+**Symptom:** Appointment `C63QgT8L` (Annie & Tracy, Michael Tam, March 5–7) was skipped as "out-of-range" during a March sync. Client had entered title `"2/5-7"` (originally a Feb booking, or a typo), which `parseServiceTypeDates` parsed as Feb 5–7. System timestamps correctly said March 5–7 but were only used as a fallback when the title had *no* parseable dates at all.
+
+**Fix in `extraction.js` (`parseAppointmentPage`):** After parsing title dates, cross-validate against the `data-start_scheduled` system timestamp. If a reasonable timestamp (within ±2 years of now) differs from the title date by >20 days, the title month is stale/wrong → use the system timestamps instead. Far-future/bogus timestamps (e.g. `9999999999`) are ignored.
+
+**Test added:** `falls back to system timestamps when title month is stale/wrong (>20 day gap)` in `extraction.test.js`.
 
 ---
 
