@@ -52,6 +52,28 @@ const KNOWN_WORKERS = Object.freeze({
 const PICKUP_RE = /pick-?up/i;
 
 // ---------------------------------------------------------------------------
+// Entity decoder
+// ---------------------------------------------------------------------------
+
+/**
+ * Decode common HTML character entities in a text node string.
+ * The external site encodes pet names with &quot;, &#x27;, &amp;, etc.
+ * Called on every text value extracted from the schedule HTML.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function decodeEntities(text) {
+  return text
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+// ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
 
@@ -88,7 +110,7 @@ function attr(attrStr, name) {
 function innerText(html, className) {
   const re = new RegExp(`class="[^"]*\\b${className}\\b[^"]*"[^>]*>([^<]*)<`);
   const m = html.match(re);
-  return m ? m[1].trim() : '';
+  return m ? decodeEntities(m[1].trim()) : '';
 }
 
 /**
@@ -226,7 +248,7 @@ export function parseDaytimeSchedulePage(html) {
     const petNameRe = /class="[^"]*\bevent-pet\b[^"]*"[^>]*>([^<]+)</g;
     let pn;
     while ((pn = petNameRe.exec(inner)) !== null) {
-      const name = pn[1].trim();
+      const name = decodeEntities(pn[1].trim());
       if (name) petNames.push(name);
     }
 
