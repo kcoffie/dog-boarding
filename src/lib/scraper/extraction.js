@@ -69,19 +69,38 @@ export function parseAppointmentPage(html, sourceUrl = '') {
                     || extractPageTitle(html);
 
   // Primary: parse dates from the service_type title (e.g. "2/13-18" → Feb 13–18).
-  // The title date is the accurate boarding range per the business owner.
-  // The system timestamp (data-start_scheduled) can be off by a day (appointment
-  // creation time vs actual check-in date).
+  // Cross-validate against system timestamps: if they diverge by more than 20 days
+  // (indicating a stale or wrong-month title like "2/5-7" for a March appointment),
+  // fall back to the system timestamps.
   // Fallback: use system timestamps for appointments without dates in the title
   // (e.g. "Boarding (Nights)").
   let checkInDatetime  = null;
   let checkOutDatetime = null;
+  const timestamps = extractScheduledTimestamps(html);
   const parsedDates = parseServiceTypeDates(serviceType);
   if (parsedDates) {
-    checkInDatetime  = parsedDates.checkIn.toISOString();
-    checkOutDatetime = parsedDates.checkOut.toISOString();
+    // Validate: if a reasonable system timestamp exists and differs by >20 days,
+    // the title month is likely stale/wrong (e.g. title "2/5-7" for a March appt).
+    // Only cross-validate against timestamps within 2 years of now — ignore
+    // far-future/bogus timestamps (e.g. 9999999999).
+    const tsDate = timestamps?.checkIn ? new Date(timestamps.checkIn) : null;
+    const now = new Date();
+    const tsReasonable = tsDate && Math.abs(tsDate.getFullYear() - now.getFullYear()) <= 2;
+    if (tsReasonable) {
+      const diffDays = Math.abs(parsedDates.checkIn - tsDate) / (1000 * 60 * 60 * 24);
+      if (diffDays > 20) {
+        // Title month is stale/wrong; use system timestamps
+        checkInDatetime  = timestamps.checkIn;
+        checkOutDatetime = timestamps.checkOut || null;
+      } else {
+        checkInDatetime  = parsedDates.checkIn.toISOString();
+        checkOutDatetime = parsedDates.checkOut.toISOString();
+      }
+    } else {
+      checkInDatetime  = parsedDates.checkIn.toISOString();
+      checkOutDatetime = parsedDates.checkOut.toISOString();
+    }
   } else {
-    const timestamps = extractScheduledTimestamps(html);
     checkInDatetime  = timestamps?.checkIn  || null;
     checkOutDatetime = timestamps?.checkOut || null;
   }
