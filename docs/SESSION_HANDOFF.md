@@ -1,22 +1,24 @@
-# Dog Boarding App — Session Handoff (v3.2 deployed + v4 planning)
-**Last updated:** March 5, 2026 (v3.2 deployed, v4 planning started)
+# Dog Boarding App — Session Handoff (v4.0 deployed)
+**Last updated:** March 5, 2026 (v4.0 daytime ingestion live, migration 018 applied)
 
 ---
 
 ## Current State
 
-- **v3.2 is LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- PR #37 merged, deployed, tested — stale title month fix working correctly
-- Migration 017 applied in Supabase (`arrival_ampm`, `departure_ampm` columns exist)
-- RLS enabled on `sync_queue` table in Supabase
-- v3.3 Payroll Report deferred to a future version (not v3.3 — pick a new version number TBD)
-- **No uncommitted code.** Clean working tree.
+- **v4.0 is LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
+- PR #38 merged — daytime schedule ingestion deployed
+- Migration 018 applied in Supabase (`workers` + `daytime_appointments` tables exist, `workers` seeded)
+- `cron-schedule` now writes to `daytime_appointments` on every run — no extra fetches
+- **No uncommitted code.** Clean working tree on `main`.
+- **Next release tag:** `v4.0.0` (not yet created — create after live verification)
 
 ---
 
 ## IMMEDIATE NEXT ACTIONS
 
-None. v3.2 is done. Next work is v4 planning and implementation.
+1. **Verify live ingestion** — check `daytime_appointments` has rows after next cron-schedule run (or trigger a manual sync), confirm `workers` seeded correctly
+2. **Create GitHub Release** `v4.0.0`
+3. **Start v4.1** — "picture of the day" API endpoint
 
 ---
 
