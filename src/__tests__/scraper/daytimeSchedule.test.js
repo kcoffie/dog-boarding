@@ -293,4 +293,62 @@ describe('parseDaytimeSchedulePage()', () => {
 
     expect(appt.start_ts).toBeNull();
   });
+
+  // --- HTML entity decoding ---
+
+  it('decodes &quot; in pet names to double-quote characters', () => {
+    // Mirrors real data: &quot;Waldo&quot; Ralph McComb-Hernandez
+    const html = buildPage(
+      buildEvent({ pets: [{ id: 55555, name: '&quot;Waldo&quot; Ralph McComb-Hernandez' }] })
+    );
+    const [appt] = parseDaytimeSchedulePage(html);
+
+    expect(appt.pet_names).toEqual(['"Waldo" Ralph McComb-Hernandez']);
+  });
+
+  it("decodes &#x27; in pet names to apostrophes", () => {
+    // Mirrors real data: Lilly O&#x27;Brien
+    const html = buildPage(
+      buildEvent({ pets: [{ id: 66666, name: "Lilly O&#x27;Brien" }] })
+    );
+    const [appt] = parseDaytimeSchedulePage(html);
+
+    expect(appt.pet_names).toEqual(["Lilly O'Brien"]);
+  });
+
+  it('decodes &amp; in client name', () => {
+    const html = buildPage(buildEvent({ clientName: 'Smith &amp; Jones', pets: [{ id: 77777, name: 'Rex' }] }));
+    const [appt] = parseDaytimeSchedulePage(html);
+
+    expect(appt.client_name).toBe('Smith & Jones');
+  });
+
+  // --- Staff Boarding / empty pets ---
+
+  it('stores empty pet_ids and pet_names for Staff Boarding with no pet wrapper in HTML', () => {
+    // Mirrors real "Goose 3/7-8(Sun)" Staff Boarding — source HTML has
+    // <span class="pets"></span> with no event-pet-wrapper elements.
+    const staffBoardingHtml = `
+<a href="/schedule/a/C63QgTXx/${TS_MAR5}"
+   data-id="C63QgTXx"
+   data-series="C63QgTWl"
+   data-ts="${TS_MAR5}"
+   data-start="${TS_8AM}"
+   data-status="1"
+   class="day-event ew-0 cat-5635 ser-22387">
+  <div class="day-event-title">Goose 3/7-8(Sun)</div>
+  <div class="day-event-time">All day</div>
+  <div class="event-clients-pets" data-uid="98765">
+    <span class="event-client">Staff Member</span>
+    <span class="pets"></span>
+  </div>
+</a>`;
+    const html = buildPage(staffBoardingHtml);
+    const [appt] = parseDaytimeSchedulePage(html);
+
+    expect(appt.external_id).toBe('C63QgTXx');
+    expect(appt.service_category).toBe('Boarding');
+    expect(appt.pet_ids).toEqual([]);
+    expect(appt.pet_names).toEqual([]);
+  });
 });
