@@ -195,8 +195,10 @@ function extractPageTitle(html) {
  * Returns { checkInAmPm: 'AM'|'PM'|null, checkOutAmPm: 'AM'|'PM'|null }.
  */
 export function extractCheckInOutAmPm(html) {
-  // Grab ~600 chars starting from the event-time-scheduled marker
-  const blockIdx = html.indexOf('event-time-scheduled');
+  // Grab ~600 chars starting from the event-time-scheduled marker.
+  // Some detail pages use class="event-time-scheduled"; others use id="when-wrapper".
+  let blockIdx = html.indexOf('event-time-scheduled');
+  if (blockIdx === -1) blockIdx = html.indexOf('when-wrapper');
   if (blockIdx === -1) return { checkInAmPm: null, checkOutAmPm: null };
   const block = html.slice(blockIdx, blockIdx + 600);
 
