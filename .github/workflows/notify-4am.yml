@@ -7,8 +7,8 @@ name: Notify 4am PST
 
 on:
   schedule:
-    # 12:00 UTC = 4am PST (standard time, Nov–Mar)
-    - cron: '0 12 * * *'
+    # 11:00 UTC = 4am PDT (daylight time, Mar–Nov)
+    - cron: '0 11 * * *'
   workflow_dispatch:  # Allow manual trigger for testing
 
 jobs:
