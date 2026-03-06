@@ -1,157 +1,203 @@
-# Dog Boarding App — Session Handoff (v4.1 in progress)
-**Last updated:** March 5, 2026 (v4.0.0 released; v4.1 roster image implementation started)
+# Dog Boarding App — Session Handoff (v4.1 live; v4.1.1 image polish in progress)
+**Last updated:** March 5, 2026 (v4.1.0 released; v4.1.1 work designed, not started)
 
 ---
 
 ## Current State
 
-- **v4.0 is LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **v4.0.0 GitHub Release tagged** — demoted v3.2.0 from latest, v4.0.0 is now latest
-- **PR #40 merged** — HTML entity decode fix for pet/client names
-- **v4.1 branch open** — `feat/v4.1-roster-image`; PR not yet opened
-- **737 tests pass, 46 files, 0 failures**
+- **v4.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
+- **v4.1.0 GitHub Release tagged** — latest
+- **PR #41 merged** — roster image + WhatsApp notifications
+- **PR #42 open** — `fix/dst-pdt-cron-times` — DST cron schedule shift for March 8 PDT. Merge this first.
+- **Branch `fix/v4.1.1-image-polish`** — created, no commits yet. All planned work described below.
+- **737 tests, 46 files, 0 failures**
+- Twilio sandbox confirmed working — WhatsApp image delivered successfully in testing
 
 ---
 
-## IMMEDIATE NEXT ACTIONS
+## IMMEDIATE NEXT ACTIONS (in order)
 
-1. **Twilio setup** — sign up at twilio.com, activate WhatsApp sandbox, get a sandbox number
-2. **Add Vercel env vars** — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `NOTIFY_RECIPIENTS=+18312477375`
-3. **Add GitHub Actions secrets** — `APP_URL` (production URL e.g. `https://qboarding.vercel.app`), `VITE_SYNC_PROXY_TOKEN` (copy from Vercel dashboard)
-4. **Test the image endpoint** — `GET /api/roster-image?date=2026-03-05&token=...` in browser; verify PNG renders correctly
-5. **Test the notify endpoint** — `GET /api/notify?window=4am&token=...`; verify Twilio delivers image to test number
-6. **Open PR** for `feat/v4.1-roster-image` → merge → tag `v4.1.0`
+### 1. Merge PR #42 (DST cron times)
+No code review needed — 3-line change shifting GitHub Actions cron schedules from PST to PDT.
+DST starts March 8, 2026. Merge before then.
 
----
+```bash
+git checkout main && git fetch origin && git reset --hard origin/main
+```
 
-## v4.1 Staff Engineer Pre-Implementation Review (archived)
-
-### Decision Log — Critical Branching Points
-
-| Branching Point | What to Log |
-|---|---|
-| `getPictureOfDay` entry | `date`, query date range (today + yesterday) |
-| Today's query result | Row count per worker; warn if 0 rows (cron may not have run yet) |
-| Yesterday's query result | Row count; if 0 rows → "no baseline, treating all as new" |
-| Diff computation per worker | Worker name, added count, removed count |
-| `shouldSend` check | `window`, `hasUpdates`, decision + reason |
-| Image generation | Dimensions (width x computed height), worker count, total dog count |
-| `satori` render | Success or error; error → abort (do not send broken image) |
-| Twilio send attempt | Masked number (last 4 only), response SID |
-| Twilio error | HTTP status, error code, message |
-
-### Pattern Alignment
-
-- Pure data layer: `getPictureOfDay` is side-effect-free, fully unit-testable
-- Dependency injection: supabase + Twilio clients passed in, never constructed inside business logic
-- Single-responsibility routes: `/api/roster-image` only generates images; `/api/notify` only orchestrates
-- Explicit state: last_notified_hash stored in `cron_health` table under `cron_name='notify'` — no new migration needed
-- No full phone numbers in logs — masked to last 4 digits everywhere
-
-### Security Surface Area
-
-- No new RLS policies needed — all routes use service role key (server-side only)
-- Env vars: `TWILIO_ACCOUNT_SID` (secret), `TWILIO_AUTH_TOKEN` (secret), `TWILIO_FROM_NUMBER`, `NOTIFY_RECIPIENTS` (secret — contains Kate's number), `VITE_SYNC_PROXY_TOKEN` (reused for auth)
-- `date` param: validated against `/^\d{4}-\d{2}-\d{2}$/`, parsed as local Date (no UTC trap)
-- `window` param: exact allowlist `['4am', '7am', '8:30am']`
-- `token` param: compared against env var; constant-time string comparison
-- Roster image URL contains token — standard Twilio media URL pattern
+### 2. Implement v4.1.1 image polish on `fix/v4.1.1-image-polish`
+Branch exists locally. All changes below are approved by Kate — implement, test, commit, PR.
 
 ---
 
-## v4.1 Implementation (completed this session)
+## v4.1.1 — Planned Changes (approved, not yet coded)
 
-### New files
+### Change 1: Live schedule refresh in `notify.js`
+
+**Problem:** `notify.js` currently reads stale DB data. The daytime cron runs at 12:05 AM UTC. When GitHub Actions fires at 4am / 7am / 8:30am PDT, nothing has updated the DB since midnight. The 7am and 8:30am hash-change checks are therefore pointless — the data never changes between sends.
+
+**Fix:** At the top of `notify.js`'s handler, before calling `getPictureOfDay`, add a `refreshDaytimeSchedule(supabase)` step:
+1. `getSession(supabase)` — load cached auth session
+2. `setSession(cookies)` — inject into `authenticatedFetch`
+3. Build today's week URL: `${BASE_URL}/schedule/days-7/YYYY/M/D`
+4. `authenticatedFetch(url)` → HTML
+5. `parseDaytimeSchedulePage(html)` → daytime rows
+6. `upsertDaytimeAppointments(supabase, rows)` → DB upsert
+
+**Error handling:** If session is missing or fetch fails → log warning, continue with stale DB data (non-fatal — don't block the send).
+
+This mirrors what `cron-schedule.js` does at lines 216–274. Reuse the same imports: `getSession`, `setSession`, `authenticatedFetch` from auth/sessionCache, `parseDaytimeSchedulePage` + `upsertDaytimeAppointments` from daytimeSchedule.
+
+---
+
+### Change 2: "As of" timestamp in image header
+
+**Decision:** After `notify.js` refreshes the data, `daytime_appointments.updated_at` reflects the actual refresh time. Query `max(updated_at)` from today's DC/PG rows and return it from `getPictureOfDay`. Display it in the image header.
+
+**Why not `cron_health.last_ran_at`:** Once notify.js does the live refresh, `cron_health.schedule.last_ran_at` always shows 12:05 AM (midnight cron) — not the 7am/8:30am refresh time. `max(updated_at)` from the data itself is always accurate.
+
+**Header layout:**
+```
+Thursday, March 5 (as of 7:03 AM)          Daily Roster   UPDATED!
+```
+
+**`pictureOfDay.js` change:** In `queryAppointmentsByDate` for today's rows, also select `updated_at` and return the max. Add `lastSyncedAt: string | null` to `getPictureOfDay`'s return value.
+
+**`roster-image.js` change:** Format `lastSyncedAt` as `h:MM AM/PM` local time. Append `(as of HH:MM AM)` to the date string in the header span.
+
+---
+
+### Change 3: Remove boarders from image and hash
+
+**`roster-image.js`:**
+- Remove `boardersSection` from `buildLayout()`
+- Remove `boardersSectionH` from `computeImageHeight()`
+- Remove `boardersBg` and `boardersText` from `COLORS`
+
+**`pictureOfDay.js` — `hashPicture`:** Remove `boarders` from the hash key object. Boarder changes should not trigger a resend since boarders are no longer shown.
+
+**Test update (`pictureOfDay.test.js`):** Remove the test `'returns a different hash when boarders change'`. Update `'sends for 8:30am when hash changed'` — it currently creates a hash difference via `boarders: ['Benny']` vs `boarders: []`; change it to use a worker/dog difference instead.
+
+Note: `queryBoarders` and `boarders` field can remain in the data struct (harmless, easy to restore later). Only rendering and hash need updating.
+
+---
+
+### Change 4: HTML entity decode (defensive)
+
+**Problem:** `daytime_appointments` rows stored before PR #40 have literal `&quot;`, `&amp;`, etc. in `pet_names` / `client_name`. Example: `&quot;Waldo&quot; Ralph` displays instead of `"Waldo" Ralph`.
+
+**Fix:** Add a `decodeEntities` helper in `roster-image.js` (same logic as `daytimeSchedule.js`):
+```js
+function decodeEntities(str) {
+  return str
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+```
+Apply it in `dogLabel()` on each pet name and on the client name. Display-layer safety net; parse layer already decodes but stale DB rows bypass it.
+
+---
+
+### Change 5: AGYD brand colors in image
+
+Update `COLORS` in `roster-image.js`:
+
+| Key | Old | New | Reason |
+|---|---|---|---|
+| `headerBg` | `#1e293b` | `#4A773C` | Forest Green — main brand color |
+| `headerText` | `#f8fafc` | `#FFFFFF` | Pure white on green |
+| `workerBg` | `#f8fafc` | `#FFFFFF` | Pure white cards |
+| `workerBorder` | `#e2e8f0` | `#d0e8c2` | Light sage green border |
+| `workerName` | `#1e293b` | `#78A354` | Sage Green — headings |
+| `dogCount` | `#64748b` | `#777777` | Medium Gray — secondary text |
+| `unchanged` | `#374151` | `#333333` | Deep Charcoal — body text |
+| `added` | `#16a34a` | keep | Functional green |
+| `removed` | `#dc2626` | keep | Functional red |
+| `updated` | `#ea580c` | keep | Functional orange badge |
+
+**Brand reference (A Girl and Your Dog):**
+- Forest Green `#4A773C` — header backgrounds
+- Sage Green `#78A354` — H1/H2 headings, accented text
+- Deep Charcoal `#333333` — body text
+- Pure White `#FFFFFF` — content background
+- Medium Gray `#777777` — nav items, secondary text
+
+---
+
+## Open PRs
+
+| PR | Branch | Status | Action |
+|---|---|---|---|
+| #42 | `fix/dst-pdt-cron-times` | Open | Merge before March 8 |
+
+---
+
+## After v4.1.1 merges
+
+- Reset local main: `git checkout main && git fetch origin && git reset --hard origin/main`
+- Tag `v4.1.1` GitHub Release (`/usr/local/bin/gh release create v4.1.1 ...`)
+- Mark `v4.1.0` as `--latest=false`
+
+---
+
+## v4.2 Backlog (next after v4.1.1)
+
+- Add second test number, then production group chat
+- DST-aware scheduling (or a single cron that computes its own send window by checking wall-clock time)
+- Move from Twilio sandbox to registered WhatsApp Business sender
+
+## v4.3 Backlog
+
+- On-demand daytime ingest via "Sync Now" button
+
+---
+
+## v4.1 Architecture — What Was Built
+
+### Files added in v4.1
 
 | File | Purpose |
 |---|---|
-| `src/lib/pictureOfDay.js` | `getPictureOfDay`, `hashPicture`, `shouldSendNotification`, `parseDateParam` |
-| `api/roster-image.js` | Vercel serverless fn; validates token+date, generates PNG via satori+@resvg/resvg-js |
+| `src/lib/pictureOfDay.js` | Data layer: `getPictureOfDay`, `hashPicture`, `shouldSendNotification`, `parseDateParam` |
+| `api/roster-image.js` | Token-gated endpoint → queries DB, renders PNG via satori+resvg |
 | `src/lib/notifyWhatsApp.js` | Twilio wrapper: `createTwilioClient`, `sendRosterImage`, `getRecipients` |
-| `api/notify.js` | Orchestrator: validates params, fetches data, gates send, calls Twilio |
-| `src/__tests__/pictureOfDay.test.js` | 22 tests for data layer (all passing) |
-| `.github/workflows/notify-4am.yml` | GitHub Actions: 4am PST daily (always sends) |
-| `.github/workflows/notify-7am.yml` | GitHub Actions: 7am PST daily (sends if diff) |
-| `.github/workflows/notify-830am.yml` | GitHub Actions: 8:30am PST daily (sends if diff) |
-| `api/_fonts/inter-400.ttf` | Inter Regular (bundled font for satori, ~398KB) |
-| `api/_fonts/inter-700.ttf` | Inter Bold (bundled font for satori, ~405KB) |
-| `docs/archive/SESSION_HANDOFF_v4.0_final.md` | Archived v4.0 handoff |
+| `api/notify.js` | Orchestrator: validates `window`+`token`, gates send via hash, calls Twilio |
+| `src/__tests__/pictureOfDay.test.js` | 22 unit tests for data layer (mock Supabase, no real DB) |
+| `.github/workflows/notify-4am.yml` | Fires 11:00 UTC (4am PDT after PR #42) |
+| `.github/workflows/notify-7am.yml` | Fires 14:00 UTC (7am PDT after PR #42) |
+| `.github/workflows/notify-830am.yml` | Fires 15:30 UTC (8:30am PDT after PR #42) |
+| `api/_fonts/inter-400.ttf` | Bundled Inter Regular for satori |
+| `api/_fonts/inter-700.ttf` | Bundled Inter Bold for satori |
 
-### New packages installed
+### Packages added in v4.1
+- `satori@0.25.0` — element tree → SVG
+- `@resvg/resvg-js@2.6.2` — SVG → PNG (native Node.js bindings)
+- `twilio@5.12.2` — WhatsApp delivery
 
-| Package | Version | Purpose |
-|---|---|---|
-| `satori` | 0.25.0 | HTML/CSS-like element tree → SVG |
-| `@resvg/resvg-js` | 2.6.2 | SVG → PNG (native bindings, Node.js runtime) |
-| `twilio` | 5.12.2 | WhatsApp message delivery |
-
-### No new DB migrations needed
-All data comes from existing `daytime_appointments` + `workers` tables.
-Change-detection state stored in `cron_health` under `cron_name='notify'`.
-
-### DST note — update GitHub Actions workflows twice/year
-- PST (Nov–Mar): 4am=12:00 UTC, 7am=15:00 UTC, 8:30am=16:30 UTC
-- PDT (Mar–Nov): 4am=11:00 UTC, 7am=14:00 UTC, 8:30am=15:30 UTC
-- **DST starts March 8, 2026** — update workflow cron strings soon
-
----
-
-## v4.1 Image Format (confirmed)
-
+### API surface
 ```
-┌────────────────────────────────────────────────┐
-│  Thursday, March 5      Daily Roster  UPDATED! │  ← dark header
-├──────────────────┬─────────────────────────────┤
-│ Charlie (3 dogs) │ Kathalyn (5 dogs)           │  ← worker cards (2-3 col)
-│ + Bronwyn (C)    │ + Frances (Wiebe)           │  ← green (+)
-│ + Rex (Smith)    │ − Tasha (See)               │  ← red (−), strikethrough
-│   Benny (Jones)  │   Milo (Park)               │  ← gray (unchanged)
-├──────────────────┴─────────────────────────────┤
-│ Boarders: Benny · Millie · Bowie               │
-└────────────────────────────────────────────────┘
+GET /api/roster-image?date=YYYY-MM-DD&token=SECRET  → PNG
+GET /api/notify?window=4am|7am|8:30am&token=SECRET[&date=YYYY-MM-DD]  → JSON
 ```
 
-- Layout: 800px wide, dynamic height
-- Columns: 2 columns for ≤2 workers; 3 columns for 3–6 workers
-- Dog line: `Pet (LastName)` format; added first → removed → unchanged
+### Send gate logic (notify.js, current — pre-v4.1.1)
+1. `window=4am` → always send; stores hash in `cron_health` after send
+2. `window=7am|8:30am` → reads `cron_health.result` for `cron_name='notify'`; if `lastDate` matches today and `lastHash` matches current hash → skip; otherwise send + update hash
+3. If `lastDate` is yesterday → treat as no baseline (first send of new day)
+
+### No DB migrations in v4.1
+All data from existing `daytime_appointments` + `workers` tables.
+Change-detection hash stored in `cron_health.result` under `cron_name='notify'`.
 
 ---
 
 ## v4 — Daytime Activity Intelligence
 
-### Goal
-Ingest ALL daytime dog activities (Daycare + Playgroup) from the schedule page. Deliver a "picture of the day" image per worker showing who's in their group, who was added vs. yesterday, who was removed — sent via WhatsApp.
-
-### Delivery phases
-1. **v4.0** ✅ — Data ingestion: parse full schedule page, store all daytime appointments
-2. **v4.1** 🚧 — Roster image: generate PNG + send via Twilio WhatsApp
-3. **v4.2** — Multiple numbers + group chat; DST-aware cron times
-4. **v4.3** — On-demand daytime ingest via "Sync Now" button
-
----
-
-### What the schedule page gives us (no detail fetches needed)
-
-Each `.day-event <a>` element on the weekly grid (`/schedule/days-7/YYYY/M/D`) exposes:
-
-| Data | Source |
-|---|---|
-| Appointment external ID | `data-id` |
-| Day-column date | `data-ts` (Unix ts, midnight of that day) |
-| Actual check-in time | `data-start` (Unix ts) |
-| Status | `data-status` (1=upcoming, 5=in-progress, 6=completed) |
-| Recurring series ID | `data-series` (stable across same dog's recurring appts) |
-| Worker ID | class `ew-{uid}` (0 = no worker = boardings) |
-| Service category + type | classes `cat-{id}` `ser-{id}` |
-| Title (free-form) | `.day-event-title` inner text |
-| Display time | `.day-event-time` inner text |
-| Client UID | `data-uid` on `.event-clients-pets` |
-| Client name | `.event-client` inner text |
-| Pet external IDs | `data-pet` on each `.event-pet-wrapper` |
-| Pet names | `.event-pet` inner text |
-| Multi-day span | classes `appt-before`, `appt-after`, `appt-all-day` |
-
-### Workers (confirmed from HTML)
+### Workers
 | Name | External UID |
 |---|---|
 | Charlie | 61023 |
@@ -160,39 +206,18 @@ Each `.day-event <a>` element on the weekly grid (`/schedule/days-7/YYYY/M/D`) e
 | Max Posse | 174385 |
 | Sierra Tagle | 189436 |
 | Stephen Muro | 164375 |
-| No worker set (boardings) | 0 |
+| No worker / boardings | 0 |
 
-### Service categories (confirmed)
-| Category | cat-ID | service | ser-ID |
-|---|---|---|---|
-| Daycare | 5634 | Daycare Monthly | 10692 |
-| Playgroup | 7431 | Playgroup Monthly | 15824 |
-| Boarding | 5635 | Boarding (Nights) | 17357 |
-| Boarding | 5635 | Boarding (Days) | 11778 |
-| Boarding | 5635 | Boarding discounted (DC FT) | 22215 |
-| Boarding | 5635 | Staff Boarding (nights) | 22387 |
-
-### Day-over-day diff logic
-`data-series` is stable for recurring appointments of the same dog with the same worker.
-- For each worker: collect `Set<series_id>` for day N and day N-1
-- Added = in N but not N-1
-- Removed = in N-1 but not N
+### Service categories
+| Category | cat-ID | ser-ID |
+|---|---|---|
+| Daycare | 5634 | 10692 |
+| Playgroup | 7431 | 15824 |
+| Boarding | 5635 | 17357, 11778, 22215, 22387 |
 
 ---
 
-### WhatsApp integration
-- **Twilio** chosen — Node SDK, free trial, WhatsApp sandbox for testing
-- Three GitHub Actions workflows (not Vercel crons — already at 3-cron Hobby limit)
-- Send gate: 4am always sends; 7am/8:30am compare hash vs. `cron_health.result.lastHash`
-
----
-
-## Data quality notes
-- **Staff Boarding empty pets**: `ser-22387` events have no pet data. Expected, not a bug.
-
----
-
-## Cron health (as of March 4, 2026)
+## Cron health (as of March 5, 2026)
 - `schedule` — 00:18 UTC → queued 14, skipped 124, 1 page scanned
 - `detail` — 00:27 UTC → idle
 - `auth` — 00:54 UTC → skipped (session still valid)
@@ -201,9 +226,21 @@ Check each session:
 ```sql
 SELECT cron_name, last_ran_at, status, result, error_msg FROM cron_health ORDER BY cron_name;
 SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY type, status;
--- Check notify state (last hash sent):
+-- Notify state:
 SELECT result FROM cron_health WHERE cron_name = 'notify';
+-- Last daytime sync time:
+SELECT MAX(updated_at) FROM daytime_appointments WHERE appointment_date = CURRENT_DATE;
 ```
+
+---
+
+## v3.2 Decisions Locked In
+- Rate fallback: `boarding.night_rate ?? dog.night_rate ?? 0`
+- HASH_FIELDS: identity/structure only — pricing excluded
+- `.maybeSingle()` everywhere a 0-row result is valid; never `.single()` for existence checks
+- Form matching: 7-day window `(arrival − 7 days)` to `(arrival day)` inclusive
+- Form field regex: `id="(field_\d+)-wrapper"` — external site uses `-wrapper` suffix
+- `sync_status = 'archived'` — `is_archived` column does NOT exist
 
 ---
 
@@ -221,13 +258,11 @@ SELECT b.external_id, d.name, b.billed_amount, b.night_rate, b.updated_at
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
 ORDER BY b.updated_at DESC LIMIT 20;
 
--- Stored forms
-SELECT bf.boarding_id, d.name, bf.submission_id, bf.date_mismatch,
-       bf.form_arrival_date, bf.form_departure_date, bf.fetched_at
-FROM boarding_forms bf
-JOIN boardings b ON bf.boarding_id = b.id
-JOIN dogs d ON b.dog_id = d.id
-ORDER BY bf.fetched_at DESC LIMIT 10;
+-- Notify state (last image sent)
+SELECT result FROM cron_health WHERE cron_name = 'notify';
+
+-- Last time daytime data was refreshed
+SELECT MAX(updated_at) FROM daytime_appointments WHERE appointment_date = CURRENT_DATE;
 
 -- If sync gets stuck
 UPDATE sync_logs SET status = 'failed', completed_at = NOW()
@@ -242,11 +277,10 @@ DELETE FROM boardings WHERE external_id = 'REPLACE_ME';
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, **v4.0.0 (Latest)**
-- Next release: `v4.1.0` after `feat/v4.1-roster-image` PR merges
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, **v4.1.0 (Latest)**
+- Next: `v4.1.1` after image polish PR merges
 
 ## Archive
 - v4.0 full session log: `docs/archive/SESSION_HANDOFF_v4.0_final.md`
 - v3.0 full session log: `docs/archive/SESSION_HANDOFF_v3.0_final.md`
 - v2.4 full session log: `docs/archive/SESSION_HANDOFF_v2.4_final.md`
-- Earlier versions: `docs/archive/SESSION_HANDOFF_v2.{0-3}_final.md`
