@@ -77,21 +77,23 @@ function yesterdayStr(date) {
 
 /**
  * Query DC/PG appointments for one date, grouped by worker_external_id.
+ * Also computes max(updated_at) across all rows for the "as of" timestamp
+ * displayed in the image header. This avoids a second DB round-trip.
  *
- * Error-handling: Supabase errors throw (caller decides fatal vs. retry).
- * An empty result is not an error — it means no cron data yet.
+ * Error-handling: Supabase errors throw — caller decides fatal vs. retry.
+ * An empty result is not an error (means no cron data yet for this date).
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} dateStr - YYYY-MM-DD
  * @param {string} label   - 'today' | 'yesterday' (for log readability)
- * @returns {Promise<Map<number, Array>>} Map of workerExternalId → appointments[]
+ * @returns {Promise<{ byWorker: Map<number, Array>, maxUpdatedAt: string|null }>}
  */
 async function queryAppointmentsByDate(supabase, dateStr, label) {
   log(`Querying ${label} DC/PG appointments for ${dateStr}`);
 
   const { data, error } = await supabase
     .from('daytime_appointments')
-    .select('external_id, series_id, worker_external_id, pet_names, client_name, service_category, title')
+    .select('external_id, series_id, worker_external_id, pet_names, client_name, service_category, title, updated_at')
     .eq('appointment_date', dateStr)
     .in('service_category', ['DC', 'PG'])
     .order('worker_external_id');
@@ -102,7 +104,23 @@ async function queryAppointmentsByDate(supabase, dateStr, label) {
     throw new Error(`DB query failed for ${label}: ${error.message}`);
   }
 
-  log(`${label} (${dateStr}): ${data.length} DC/PG rows`);
+  // Compute max(updated_at) in JS — single pass, no extra query.
+  // Decision: null when there are no rows (cron hasn't run yet for this date).
+  // Numeric timestamp comparison (.getTime()) rather than string comparison —
+  // ISO strings are lexicographically sortable but the intent should be explicit.
+  let maxUpdatedAt = null;
+  let maxUpdatedAtMs = 0;
+  for (const row of data) {
+    if (row.updated_at) {
+      const ms = new Date(row.updated_at).getTime();
+      if (ms > maxUpdatedAtMs) {
+        maxUpdatedAtMs = ms;
+        maxUpdatedAt = row.updated_at;
+      }
+    }
+  }
+
+  log(`${label} (${dateStr}): ${data.length} DC/PG rows, max updated_at: ${maxUpdatedAt ?? 'none'}`);
 
   // Decision: group by worker_external_id for O(1) diff lookup below.
   const byWorker = new Map();
@@ -111,7 +129,7 @@ async function queryAppointmentsByDate(supabase, dateStr, label) {
     if (!byWorker.has(wid)) byWorker.set(wid, []);
     byWorker.get(wid).push(row);
   }
-  return byWorker;
+  return { byWorker, maxUpdatedAt };
 }
 
 /**
@@ -256,12 +274,19 @@ export async function getPictureOfDay(supabase, date) {
   log(`getPictureOfDay — date: ${dateStr}, yesterday: ${yestDateStr}`);
 
   // Run all four queries in parallel — none depend on each other.
-  const [todayByWorker, yestByWorker, workerNames, boarders] = await Promise.all([
+  // todayResult carries { byWorker, maxUpdatedAt }; yesterday only needs byWorker.
+  const [todayResult, yestResult, workerNames, boarders] = await Promise.all([
     queryAppointmentsByDate(supabase, dateStr, 'today'),
     queryAppointmentsByDate(supabase, yestDateStr, 'yesterday'),
     queryWorkers(supabase),
     queryBoarders(supabase, dateStr),
   ]);
+
+  const todayByWorker = todayResult.byWorker;
+  const yestByWorker = yestResult.byWorker;
+  // lastSyncedAt: ISO timestamp of most recently updated today row, or null.
+  // Decision: null means the midnight cron data is being used (no intra-day refresh ran).
+  const lastSyncedAt = todayResult.maxUpdatedAt;
 
   // Decision log: zero today rows means cron hasn't run yet for this date.
   if (todayByWorker.size === 0) {
@@ -313,9 +338,11 @@ export async function getPictureOfDay(supabase, date) {
     workers.push({ workerId, name, dogs, addedCount, removedCount });
   }
 
-  log(`getPictureOfDay complete — ${workers.length} workers, ${boarders.length} boarders, hasUpdates: ${hasUpdates}`);
+  log(`getPictureOfDay complete — ${workers.length} workers, ${boarders.length} boarders, hasUpdates: ${hasUpdates}, lastSyncedAt: ${lastSyncedAt ?? 'none'}`);
 
-  return { date: dateStr, workers, boarders, hasUpdates };
+  // lastSyncedAt: ISO string or null. Rendered as "(as of HH:MM AM)" in the image header.
+  // boarders: kept in data struct for easy restoration; not rendered or hashed in v4.1.1+.
+  return { date: dateStr, workers, boarders, hasUpdates, lastSyncedAt };
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +360,9 @@ export async function getPictureOfDay(supabase, date) {
  * @returns {string} Unsigned 32-bit integer as a decimal string
  */
 export function hashPicture(data) {
+  // Decision: boarders intentionally excluded from hash in v4.1.1.
+  // Boarder changes should not trigger a resend since boarders are not rendered.
+  // lastSyncedAt intentionally excluded — timestamp changes must not trigger resend.
   const key = JSON.stringify({
     date: data.date,
     workers: data.workers.map(w => ({
@@ -340,7 +370,6 @@ export function hashPicture(data) {
       // Use series_id as the stable identifier; fall back to pet names for null-series rows.
       dogs: w.dogs.map(d => d.series_id || d.pet_names.join(',')),
     })),
-    boarders: data.boarders,
   });
 
   // djb2 hash — fast, sufficient entropy for change detection.
