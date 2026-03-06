@@ -245,7 +245,23 @@ function computeWorkerDiff(todayAppts, yestAppts) {
     }
   }
 
-  return dogs;
+  // Deduplicate by canonical pet_names key — a dog with multiple slots in one day
+  // (e.g., morning DC + afternoon DC) should appear once in the roster.
+  // When the same dog appears with different statuses, prefer added > removed > unchanged.
+  const rankOf = d => (d.isAdded ? 0 : d.isRemoved ? 1 : 2);
+  const seen = new Map(); // canonicalKey → index in deduped
+  const deduped = [];
+  for (const dog of dogs) {
+    const key = dog.pet_names.slice().sort().join('|') || dog.title || dog.series_id || '';
+    if (seen.has(key)) {
+      const idx = seen.get(key);
+      if (rankOf(dog) < rankOf(deduped[idx])) deduped[idx] = dog;
+    } else {
+      seen.set(key, deduped.length);
+      deduped.push(dog);
+    }
+  }
+  return deduped;
 }
 
 // ---------------------------------------------------------------------------
