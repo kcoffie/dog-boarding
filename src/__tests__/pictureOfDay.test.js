@@ -140,10 +140,17 @@ describe('hashPicture', () => {
     expect(hashPicture(base)).not.toBe(hashPicture(changed));
   });
 
-  it('returns a different hash when boarders change', () => {
+  it('returns the same hash regardless of boarder changes (boarders excluded in v4.1.1)', () => {
+    // Boarders are no longer rendered or hashed — boarder changes must not trigger a resend.
     const base = { date: DATE, workers: [], boarders: ['Benny'] };
     const changed = { date: DATE, workers: [], boarders: ['Millie'] };
-    expect(hashPicture(base)).not.toBe(hashPicture(changed));
+    expect(hashPicture(base)).toBe(hashPicture(changed));
+  });
+
+  it('returns the same hash regardless of lastSyncedAt (timestamp must not trigger resend)', () => {
+    const a = { date: DATE, workers: [], boarders: [], lastSyncedAt: '2026-03-05T15:03:00Z' };
+    const b = { date: DATE, workers: [], boarders: [], lastSyncedAt: null };
+    expect(hashPicture(a)).toBe(hashPicture(b));
   });
 });
 
@@ -175,7 +182,13 @@ describe('shouldSendNotification', () => {
   });
 
   it('sends for 8:30am when hash changed', () => {
-    const oldHash = hashPicture({ date: DATE, workers: [], boarders: ['Benny'] });
+    // Baseline hash has a worker with a dog; current data has no workers — genuine diff.
+    const oldHash = hashPicture({
+      date: DATE,
+      workers: [{ workerId: 61023, dogs: [{ series_id: 'SRS001', pet_names: ['Benny'] }] }],
+      boarders: [],
+    });
+    // data = { date: DATE, workers: [], boarders: [], hasUpdates: false } — no workers
     const result = shouldSendNotification('8:30am', data, oldHash);
     expect(result.shouldSend).toBe(true);
     expect(result.reason).toBe('data_changed');
