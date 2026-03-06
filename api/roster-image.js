@@ -69,30 +69,50 @@ const V_PADDING = 16;   // vertical padding inside worker cards
 const DOG_ROW_H = 24;   // height of one dog row (px)
 const WORKER_NAME_H = 28; // height of worker name row
 const HEADER_H = 64;
-const BOARDERS_H = 48;
 const OUTER_PAD = 20;
 
-// Color palette — clean, minimal
+// Color palette — AGYD brand colors
+// Forest Green #4A773C (header bg), Sage Green #78A354 (headings),
+// Deep Charcoal #333333 (body), Pure White #FFFFFF (bg), Medium Gray #777777 (secondary)
 const COLORS = {
   bg: '#ffffff',
-  headerBg: '#1e293b',       // slate-800
-  headerText: '#f8fafc',     // slate-50
-  workerBg: '#f8fafc',       // slate-50
-  workerBorder: '#e2e8f0',   // slate-200
-  workerName: '#1e293b',     // slate-800
-  dogCount: '#64748b',       // slate-500
-  added: '#16a34a',          // green-600
-  removed: '#dc2626',        // red-600
-  unchanged: '#374151',      // gray-700
+  headerBg: '#4A773C',       // Forest Green — main brand color
+  headerText: '#FFFFFF',     // Pure white on green
+  workerBg: '#FFFFFF',       // Pure white cards
+  workerBorder: '#d0e8c2',   // Light sage green border
+  workerName: '#78A354',     // Sage Green — headings
+  dogCount: '#777777',       // Medium Gray — secondary text
+  added: '#16a34a',          // green-600 — functional indicator, keep
+  removed: '#dc2626',        // red-600 — functional indicator, keep
+  unchanged: '#333333',      // Deep Charcoal — body text
   clientName: '#6b7280',     // gray-500
-  boardersBg: '#f1f5f9',     // slate-100
-  boardersText: '#475569',   // slate-600
-  updated: '#ea580c',        // orange-600
+  updated: '#ea580c',        // orange-600 — functional indicator, keep
 };
 
 // ---------------------------------------------------------------------------
 // Layout helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Decode HTML entities in a string.
+ * Applied at the display layer so stale DB rows with encoded characters
+ * (e.g. &quot;Waldo&quot; Ralph) render correctly. The parse layer already
+ * decodes, but rows stored before PR #40 bypass it.
+ * Error-handling: non-string input returns empty string (defensive).
+ *
+ * @param {string} str
+ * @returns {string}
+ */
+function decodeEntities(str) {
+  if (!str) return '';
+  return str
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
 
 /**
  * Build a satori element (plain object, no JSX).
@@ -130,19 +150,22 @@ function lastName(fullName) {
 /**
  * Format a dog row's primary label.
  * Joins multiple pet names with ' + '; appends last name in parens.
+ * Applies decodeEntities on each name — handles stale DB rows with
+ * literal &quot; or &amp; sequences stored before PR #40.
  *
  * @param {string[]} petNames
  * @param {string} clientName
  * @returns {string}
  */
 function dogLabel(petNames, clientName) {
-  const pets = (petNames || []).join(' + ') || '(unknown)';
-  const client = lastName(clientName);
+  const pets = (petNames || []).map(decodeEntities).join(' + ') || '(unknown)';
+  const client = lastName(decodeEntities(clientName));
   return client ? `${pets} (${client})` : pets;
 }
 
 /**
  * Format the header date string: "Thursday, March 5"
+ * Never uses toISOString (UTC trap) — constructs local Date from parts.
  *
  * @param {string} dateStr - YYYY-MM-DD
  * @returns {string}
@@ -151,6 +174,22 @@ function formatDate(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+/**
+ * Format an ISO timestamp as a short local time string: "7:03 AM".
+ * Returns null if isoStr is null/undefined, so callers can gate display.
+ * Error-handling: invalid date input returns null rather than "Invalid Date".
+ *
+ * @param {string|null} isoStr - ISO 8601 timestamp from Supabase updated_at
+ * @returns {string|null}
+ */
+function formatTime(isoStr) {
+  if (!isoStr) return null;
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return null;
+  // Explicit timezone required — Vercel Lambdas run in UTC; the user is in PST/PDT.
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' });
 }
 
 // ---------------------------------------------------------------------------
@@ -281,6 +320,7 @@ function cardHeight(worker) {
 
 /**
  * Compute the total image height dynamically based on content.
+ * Boarders section removed in v4.1.1 — only worker cards are rendered.
  *
  * @param {object} data - getPictureOfDay result
  * @returns {number}
@@ -295,19 +335,20 @@ function computeImageHeight(data) {
     gridH += rowH + ROW_GAP;
   }
 
-  const boardersSectionH = data.boarders.length > 0 ? BOARDERS_H + 12 : 0;
-  return HEADER_H + gridH + boardersSectionH + OUTER_PAD * 3;
+  return HEADER_H + gridH + OUTER_PAD * 3;
 }
 
 /**
  * Build the full satori element tree for the roster image.
  *
  * Structure:
- *   [Header: date + "UPDATED!" badge]
+ *   [Header: "Thursday, March 5 (as of 7:03 AM)"  ·  Daily Roster  ·  UPDATED!]
  *   [Worker grid: N columns, each worker gets a card]
- *   [Boarders footer row]
  *
- * @param {object} data - getPictureOfDay result
+ * Boarders section removed in v4.1.1 — data.boarders still exists in the
+ * data struct for easy restoration, but is not rendered here.
+ *
+ * @param {object} data - getPictureOfDay result (includes lastSyncedAt)
  * @returns {object} Satori element tree
  */
 function buildLayout(data) {
@@ -339,36 +380,6 @@ function buildLayout(data) {
     );
   }
 
-  // Boarders footer
-  const boardersSection = data.boarders.length > 0
-    ? h('div', {
-        display: 'flex',
-        flexDirection: 'row',
-        alignItems: 'center',
-        width: availableWidth,
-        backgroundColor: COLORS.boardersBg,
-        borderRadius: 8,
-        paddingLeft: H_PADDING,
-        paddingRight: H_PADDING,
-        height: BOARDERS_H,
-        marginTop: 4,
-      },
-        h('span', {
-          fontFamily: 'Inter',
-          fontWeight: 700,
-          fontSize: 13,
-          color: COLORS.boardersText,
-          marginRight: 8,
-        }, 'Boarders:'),
-        h('span', {
-          fontFamily: 'Inter',
-          fontWeight: 400,
-          fontSize: 13,
-          color: COLORS.boardersText,
-        }, data.boarders.join(' · ')),
-      )
-    : null;
-
   // "UPDATED!" badge — shown when there are diffs vs. yesterday.
   const updatedBadge = data.hasUpdates
     ? h('span', {
@@ -385,6 +396,14 @@ function buildLayout(data) {
         borderRadius: 4,
       }, 'UPDATED!')
     : null;
+
+  // "as of HH:MM AM" suffix — present when live refresh ran before this render.
+  // Decision: null lastSyncedAt means we're rendering from midnight cron data;
+  // omit the suffix rather than show a stale time.
+  const asOfTime = formatTime(data.lastSyncedAt);
+  const dateLabel = asOfTime
+    ? `${formatDate(data.date)} (as of ${asOfTime})`
+    : formatDate(data.date);
 
   return h('div', {
     display: 'flex',
@@ -410,7 +429,7 @@ function buildLayout(data) {
         fontSize: 18,
         color: COLORS.headerText,
         flex: 1,
-      }, formatDate(data.date)),
+      }, dateLabel),
       h('span', {
         fontFamily: 'Inter',
         fontWeight: 400,
@@ -420,14 +439,13 @@ function buildLayout(data) {
       updatedBadge,
     ),
 
-    // Worker grid + boarders
+    // Worker grid
     h('div', {
       display: 'flex',
       flexDirection: 'column',
       padding: OUTER_PAD,
     },
       ...rows,
-      boardersSection,
     ),
   );
 }
@@ -463,11 +481,14 @@ export default async function handler(req, res) {
 
     // Fetch picture data
     const data = await getPictureOfDay(supabase, date);
-    console.log(`[RosterImage] Data: ${data.workers.length} workers, ${data.boarders.length} boarders, hasUpdates: ${data.hasUpdates}`);
+    console.log(`[RosterImage] Data: ${data.workers.length} workers, hasUpdates: ${data.hasUpdates}, lastSyncedAt: ${data.lastSyncedAt ?? 'none'}`);
 
-    // Build layout
+    // Build layout — log dateLabel so we can verify the "(as of HH:MM AM)" suffix
+    // was applied (or explain its absence if formatTime returned null).
     const element = buildLayout(data);
     const height = computeImageHeight(data);
+    const asOf = data.lastSyncedAt ? ` (as of ${data.lastSyncedAt})` : ' (no live refresh)';
+    console.log(`[RosterImage] Header timestamp: ${asOf.trim()}`);
     console.log(`[RosterImage] Computed dimensions: ${IMAGE_WIDTH}x${height}`);
 
     // Render SVG via satori
