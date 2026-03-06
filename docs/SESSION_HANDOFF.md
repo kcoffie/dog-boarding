@@ -1,37 +1,45 @@
-# Dog Boarding App — Session Handoff (v4.1 live; v4.1.1 PR open)
-**Last updated:** March 6, 2026 (v4.1.1 fully implemented, PR open, awaiting merge)
+# Dog Boarding App — Session Handoff (v4.1.1 merged; pending release tag)
+**Last updated:** March 6, 2026 (v4.1.1 merged to main; manual testing in progress before tagging)
 
 ---
 
 ## Current State
 
-- **v4.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **v4.1.0 GitHub Release tagged** — latest
-- **PR #42** — `fix/dst-pdt-cron-times` — DST cron shift. **Merge before March 8.**
-- **PR #43** — `fix/v4.1.1-image-polish` — all 5 changes implemented + stress-test fixes. **Ready to merge.**
-- **738 tests, 46 files, 0 failures**
+- **v4.1.1 code LIVE** on main at [qboarding.vercel.app](https://qboarding.vercel.app) — PR #43 merged ✅
+- **v4.1.0 GitHub Release** still tagged as latest — v4.1.1 release NOT yet created
+- **PR #42** (DST cron times) — merged ✅
+- **PR #43** (v4.1.1 image polish) — merged ✅
+- **Local main** reset to `origin/main` (commit `60eca95`) ✅
+- **738 tests, 46 files, 0 failures** ✅
+- **Kate is doing manual testing before tagging the release**
 
 ---
 
 ## IMMEDIATE NEXT ACTIONS (in order)
 
-### 1. Merge PR #42 (DST cron times) — URGENT before March 8
-No code review needed — 3-line change shifting GitHub Actions cron schedules from PST to PDT.
+### 1. Manual testing — Kate doing this now
+See `NOTES.md` in project root (gitignored) for full curl commands and Vercel log locations.
+Three checks:
+- Roster image: visual — forest green header, "as of H:MM AM" timestamp, no boarders, sage green worker names
+- Notify `window=4am`: JSON shows `refreshed: true`, `sent: true`, WhatsApp delivered to phone
+- Notify `window=7am` x2: first `sent: true`, second `sent: false` + `reason: "no change"`
 
-### 2. Merge PR #43 (v4.1.1 image polish) — ready now
-All 5 planned changes implemented and stress-tested. See full change log below.
+### 2. Tag v4.1.1 GitHub Release (after testing passes)
+```bash
+cat > /tmp/release-v411.md << 'EOF'
+- Live schedule refresh in notify.js before building image
+- "As of H:MM AM" timestamp in image header
+- AGYD brand colors (forest green header, sage green worker names)
+- Remove boarders section from image
+- HTML entity decode for dog/client names
+EOF
 
-### 3. After both PRs merge
-```bash
-git checkout main && git fetch origin && git reset --hard origin/main
-```
-Tag `v4.1.1` GitHub Release:
-```bash
-# Write notes to temp file first (avoids shell quoting issues)
 /usr/local/bin/gh release create v4.1.1 --title "v4.1.1 - Image Polish" --notes-file /tmp/release-v411.md
 /usr/local/bin/gh release edit v4.1.0 --latest=false
 ```
-Mark `v4.1.0` as `--latest=false`.
+
+### 3. Archive SESSION_HANDOFF
+Copy this file to `docs/archive/SESSION_HANDOFF_v4.1.1_final.md`, then reset this file for v4.2 planning.
 
 ---
 
@@ -112,16 +120,13 @@ Five changes, four require explicit log points.
 
 ## Open PRs
 
-| PR | Branch | Status | Action |
-|---|---|---|---|
-| #42 | `fix/dst-pdt-cron-times` | Open | Merge before March 8 |
+None. All PRs merged.
 
 ---
 
-## After v4.1.1 merges
+## After manual testing passes
 
-- Reset local main: `git checkout main && git fetch origin && git reset --hard origin/main`
-- Tag v4.1.1 GitHub Release (see step 3 in IMMEDIATE NEXT ACTIONS above)
+- Tag v4.1.1 GitHub Release (see step 2 in IMMEDIATE NEXT ACTIONS above)
 - Mark `v4.1.0` as `--latest=false`
 - Archive this SESSION_HANDOFF as `docs/archive/SESSION_HANDOFF_v4.1.1_final.md`
 
