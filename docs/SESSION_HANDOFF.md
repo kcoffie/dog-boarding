@@ -1,5 +1,5 @@
-# Dog Boarding App — Session Handoff (v4.1 live; v4.1.1 image polish in progress)
-**Last updated:** March 5, 2026 (v4.1.0 released; v4.1.1 work designed, not started)
+# Dog Boarding App — Session Handoff (v4.1 live; v4.1.1 PR open)
+**Last updated:** March 6, 2026 (v4.1.1 fully implemented, PR open, awaiting merge)
 
 ---
 
@@ -7,124 +7,106 @@
 
 - **v4.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
 - **v4.1.0 GitHub Release tagged** — latest
-- **PR #41 merged** — roster image + WhatsApp notifications
-- **PR #42 open** — `fix/dst-pdt-cron-times` — DST cron schedule shift for March 8 PDT. Merge this first.
-- **Branch `fix/v4.1.1-image-polish`** — created, no commits yet. All planned work described below.
-- **737 tests, 46 files, 0 failures**
-- Twilio sandbox confirmed working — WhatsApp image delivered successfully in testing
+- **PR #42** — `fix/dst-pdt-cron-times` — DST cron shift. **Merge before March 8.**
+- **PR #43** — `fix/v4.1.1-image-polish` — all 5 changes implemented + stress-test fixes. **Ready to merge.**
+- **738 tests, 46 files, 0 failures**
 
 ---
 
 ## IMMEDIATE NEXT ACTIONS (in order)
 
-### 1. Merge PR #42 (DST cron times)
+### 1. Merge PR #42 (DST cron times) — URGENT before March 8
 No code review needed — 3-line change shifting GitHub Actions cron schedules from PST to PDT.
-DST starts March 8, 2026. Merge before then.
 
+### 2. Merge PR #43 (v4.1.1 image polish) — ready now
+All 5 planned changes implemented and stress-tested. See full change log below.
+
+### 3. After both PRs merge
 ```bash
 git checkout main && git fetch origin && git reset --hard origin/main
 ```
-
-### 2. Implement v4.1.1 image polish on `fix/v4.1.1-image-polish`
-Branch exists locally. All changes below are approved by Kate — implement, test, commit, PR.
-
----
-
-## v4.1.1 — Planned Changes (approved, not yet coded)
-
-### Change 1: Live schedule refresh in `notify.js`
-
-**Problem:** `notify.js` currently reads stale DB data. The daytime cron runs at 12:05 AM UTC. When GitHub Actions fires at 4am / 7am / 8:30am PDT, nothing has updated the DB since midnight. The 7am and 8:30am hash-change checks are therefore pointless — the data never changes between sends.
-
-**Fix:** At the top of `notify.js`'s handler, before calling `getPictureOfDay`, add a `refreshDaytimeSchedule(supabase)` step:
-1. `getSession(supabase)` — load cached auth session
-2. `setSession(cookies)` — inject into `authenticatedFetch`
-3. Build today's week URL: `${BASE_URL}/schedule/days-7/YYYY/M/D`
-4. `authenticatedFetch(url)` → HTML
-5. `parseDaytimeSchedulePage(html)` → daytime rows
-6. `upsertDaytimeAppointments(supabase, rows)` → DB upsert
-
-**Error handling:** If session is missing or fetch fails → log warning, continue with stale DB data (non-fatal — don't block the send).
-
-This mirrors what `cron-schedule.js` does at lines 216–274. Reuse the same imports: `getSession`, `setSession`, `authenticatedFetch` from auth/sessionCache, `parseDaytimeSchedulePage` + `upsertDaytimeAppointments` from daytimeSchedule.
-
----
-
-### Change 2: "As of" timestamp in image header
-
-**Decision:** After `notify.js` refreshes the data, `daytime_appointments.updated_at` reflects the actual refresh time. Query `max(updated_at)` from today's DC/PG rows and return it from `getPictureOfDay`. Display it in the image header.
-
-**Why not `cron_health.last_ran_at`:** Once notify.js does the live refresh, `cron_health.schedule.last_ran_at` always shows 12:05 AM (midnight cron) — not the 7am/8:30am refresh time. `max(updated_at)` from the data itself is always accurate.
-
-**Header layout:**
+Tag `v4.1.1` GitHub Release:
+```bash
+# Write notes to temp file first (avoids shell quoting issues)
+/usr/local/bin/gh release create v4.1.1 --title "v4.1.1 - Image Polish" --notes-file /tmp/release-v411.md
+/usr/local/bin/gh release edit v4.1.0 --latest=false
 ```
-Thursday, March 5 (as of 7:03 AM)          Daily Roster   UPDATED!
-```
-
-**`pictureOfDay.js` change:** In `queryAppointmentsByDate` for today's rows, also select `updated_at` and return the max. Add `lastSyncedAt: string | null` to `getPictureOfDay`'s return value.
-
-**`roster-image.js` change:** Format `lastSyncedAt` as `h:MM AM/PM` local time. Append `(as of HH:MM AM)` to the date string in the header span.
+Mark `v4.1.0` as `--latest=false`.
 
 ---
 
-### Change 3: Remove boarders from image and hash
+## v4.1.1 — What Was Implemented (PR #43)
 
-**`roster-image.js`:**
-- Remove `boardersSection` from `buildLayout()`
-- Remove `boardersSectionH` from `computeImageHeight()`
-- Remove `boardersBg` and `boardersText` from `COLORS`
+All 5 planned changes plus 5 stress-test fixes from Lead Reviewer audit.
 
-**`pictureOfDay.js` — `hashPicture`:** Remove `boarders` from the hash key object. Boarder changes should not trigger a resend since boarders are no longer shown.
+### Changes implemented
 
-**Test update (`pictureOfDay.test.js`):** Remove the test `'returns a different hash when boarders change'`. Update `'sends for 8:30am when hash changed'` — it currently creates a hash difference via `boarders: ['Benny']` vs `boarders: []`; change it to use a worker/dog difference instead.
+**Change 1: Live schedule refresh in `notify.js`**
+`refreshDaytimeSchedule(supabase, date)` — new function called before `getPictureOfDay`.
+- Loads cached session → sets it → fetches today's week page → parses → upserts
+- Fully wrapped in outer try/catch (non-fatal contract enforced for all code paths)
+- SESSION_EXPIRED: calls `clearSession` so next `cron-auth` re-authenticates (prevents poisoning 7am/8:30am sends)
+- Large HTML + 0 events → warns about possible access-denied redirect page
+- Returns `{ refreshed: boolean, rowCount: number }` for observability in response JSON
 
-Note: `queryBoarders` and `boarders` field can remain in the data struct (harmless, easy to restore later). Only rendering and hash need updating.
+**Change 2: "As of" timestamp in image header**
+- `queryAppointmentsByDate` now selects `updated_at`; computes `maxUpdatedAt` via numeric `.getTime()` comparison (not string comparison)
+- `getPictureOfDay` returns `lastSyncedAt: string | null`
+- `roster-image.js`: `formatTime(isoStr)` helper formats to `"7:03 AM"` in `America/Los_Angeles` TZ (explicit — Vercel Lambdas run UTC)
+- Header: `"Thursday, March 6 (as of 7:03 AM)"` when live refresh ran; bare date when not
+
+**Change 3: Remove boarders from image and hash**
+- `buildLayout`, `computeImageHeight`, `COLORS` — boarders section removed
+- `hashPicture` — `boarders` and `lastSyncedAt` both excluded (boarder changes / timestamp changes must not trigger resend)
+- `queryBoarders` and `data.boarders` field kept in data struct for easy restoration
+- Test: `'returns a different hash when boarders change'` inverted to confirm exclusion; new test for `lastSyncedAt` exclusion; `'sends for 8:30am'` fixture updated to use worker diff
+
+**Change 4: HTML entity decode**
+- `decodeEntities(str)` in `roster-image.js`, applied in `dogLabel()` — display-layer safety net for stale pre-PR#40 DB rows
+
+**Change 5: AGYD brand colors**
+- `headerBg: #4A773C`, `headerText: #FFFFFF`, `workerBg: #FFFFFF`, `workerBorder: #d0e8c2`, `workerName: #78A354`, `dogCount: #777777`, `unchanged: #333333`
+
+### Stress-test fixes (from Lead Reviewer audit, same PR)
+- `formatTime` timezone bug fixed: `timeZone: 'America/Los_Angeles'` added (was UTC)
+- `refreshDaytimeSchedule` outer try/catch added
+- SESSION_EXPIRED clearing added to refresh
+- `maxUpdatedAt` string comparison → numeric `.getTime()`
+- `[RosterImage] Header timestamp:` log added before `buildLayout`
 
 ---
 
-### Change 4: HTML entity decode (defensive)
+## v4.1.1 — Senior Staff Engineer Pre-Implementation Review
 
-**Problem:** `daytime_appointments` rows stored before PR #40 have literal `&quot;`, `&amp;`, etc. in `pet_names` / `client_name`. Example: `&quot;Waldo&quot; Ralph` displays instead of `"Waldo" Ralph`.
+*(Recorded before coding began; archived with this version.)*
 
-**Fix:** Add a `decodeEntities` helper in `roster-image.js` (same logic as `daytimeSchedule.js`):
-```js
-function decodeEntities(str) {
-  return str
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/gi, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-}
-```
-Apply it in `dogLabel()` on each pet name and on the client name. Display-layer safety net; parse layer already decodes but stale DB rows bypass it.
+### Decision Log Logic
+Five changes, four require explicit log points.
 
----
+**Change 1 — `refreshDaytimeSchedule` in `notify.js`:** Log at every external branch: session missing (warn, return), HTML fetch (byte count), parse (row count), upsert (upserted/error count), any thrown error (message + "continuing with stale DB data"). Function returns `{ refreshed: boolean, rowCount: number }` so the outer handler can include it in the JSON response for observability.
 
-### Change 5: AGYD brand colors in image
+**Change 2 — `lastSyncedAt` threading:** Add `max(updated_at)` to the existing today-row log line. Log the formatted time in `roster-image.js` before render. Log null case ("data may be from midnight cron").
 
-Update `COLORS` in `roster-image.js`:
+**Changes 3, 4, 5** — no new branching; Change 3 gets a single comment in `hashPicture` noting boarders are intentionally excluded.
 
-| Key | Old | New | Reason |
-|---|---|---|---|
-| `headerBg` | `#1e293b` | `#4A773C` | Forest Green — main brand color |
-| `headerText` | `#f8fafc` | `#FFFFFF` | Pure white on green |
-| `workerBg` | `#f8fafc` | `#FFFFFF` | Pure white cards |
-| `workerBorder` | `#e2e8f0` | `#d0e8c2` | Light sage green border |
-| `workerName` | `#1e293b` | `#78A354` | Sage Green — headings |
-| `dogCount` | `#64748b` | `#777777` | Medium Gray — secondary text |
-| `unchanged` | `#374151` | `#333333` | Deep Charcoal — body text |
-| `added` | `#16a34a` | keep | Functional green |
-| `removed` | `#dc2626` | keep | Functional red |
-| `updated` | `#ea580c` | keep | Functional orange badge |
+### Pattern Alignment
+- **Graceful degradation** (Change 1) — `refreshDaytimeSchedule` catches all errors internally, never throws into the handler. Mirrors `queryBoarders` and `queryWorkers`.
+- **Data threading, not re-querying** (Change 2) — `max(updated_at)` comes from the same query already fetching today's rows. No second DB round-trip.
+- **Dependency injection** (Change 1) — `supabase` and `date` are passed in; no module-level singletons.
+- **Anti-patterns avoided:** no exporting `fetchScheduleHtml` from `cron-schedule.js`; no removing `queryBoarders`/`boarders` from data struct; `lastSyncedAt` excluded from `hashPicture` (timestamp must not trigger resend).
 
-**Brand reference (A Girl and Your Dog):**
-- Forest Green `#4A773C` — header backgrounds
-- Sage Green `#78A354` — H1/H2 headings, accented text
-- Deep Charcoal `#333333` — body text
-- Pure White `#FFFFFF` — content background
-- Medium Gray `#777777` — nav items, secondary text
+### Implementation Order
+1. Changes 3, 4, 5 (zero-logic risk) — boarders removal, entity decode, color swap. Full suite green before touching logic.
+2. Change 2 — `lastSyncedAt` threading through `queryAppointmentsByDate` → `getPictureOfDay` → `roster-image.js` header.
+3. Change 1 — `refreshDaytimeSchedule` in `notify.js`.
+
+### Security Surface Area
+- All tables (`daytime_appointments`, `workers`, `cron_health`) accessed via `SUPABASE_SERVICE_ROLE_KEY` — RLS bypassed, no policy changes needed.
+- No new env vars introduced by v4.1.1. All secrets already set in Vercel + GitHub Actions.
+- Change 1 refresh URL built from `BASE_URL` (env var) + `new Date()` components — no user-input injection vector.
+- Change 2 `lastSyncedAt`: ISO string from Supabase, formatted server-side into PNG — no XSS surface.
+- Change 4 `decodeEntities`: server-side PNG rendering only, no HTML output — no XSS surface.
+- Pre-existing note (not in scope): `notify.js` host-header construction for `imageUrl` uses `x-forwarded-host`. On Vercel this is infrastructure-set; flagged for future hardening.
 
 ---
 
@@ -139,8 +121,9 @@ Update `COLORS` in `roster-image.js`:
 ## After v4.1.1 merges
 
 - Reset local main: `git checkout main && git fetch origin && git reset --hard origin/main`
-- Tag `v4.1.1` GitHub Release (`/usr/local/bin/gh release create v4.1.1 ...`)
+- Tag v4.1.1 GitHub Release (see step 3 in IMMEDIATE NEXT ACTIONS above)
 - Mark `v4.1.0` as `--latest=false`
+- Archive this SESSION_HANDOFF as `docs/archive/SESSION_HANDOFF_v4.1.1_final.md`
 
 ---
 

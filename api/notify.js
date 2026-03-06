@@ -34,10 +34,108 @@ import {
   getRecipients,
 } from '../src/lib/notifyWhatsApp.js';
 import { writeCronHealth } from './_cronHealth.js';
+import { getSession, clearSession } from '../src/lib/scraper/sessionCache.js';
+import { setSession, authenticatedFetch } from '../src/lib/scraper/auth.js';
+import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../src/lib/scraper/daytimeSchedule.js';
 
 export const config = { runtime: 'nodejs' };
 
 const VALID_WINDOWS = ['4am', '7am', '8:30am'];
+const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com';
+
+// ---------------------------------------------------------------------------
+// Live schedule refresh
+// ---------------------------------------------------------------------------
+
+/**
+ * Refresh today's daytime schedule data from the external site before building
+ * the image. This ensures the 7am and 8:30am sends reflect actual changes made
+ * after the midnight cron ran, making the hash-change gate meaningful.
+ *
+ * Strategy: mirrors the fetch + parse + upsert pattern from cron-schedule.js
+ * lines 216–274, but scoped to just the current day and with no side effects
+ * on boarding sync state.
+ *
+ * Error-handling: ALL errors are caught internally — this is a best-effort
+ * pre-flight. A missing session, failed fetch, or upsert error logs a warning
+ * and returns { refreshed: false } so the caller continues with stale DB data.
+ * The send must never be blocked by a refresh failure.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {Date} date - Local Date for the day being notified (usually today)
+ * @returns {Promise<{ refreshed: boolean, rowCount: number }>}
+ */
+async function refreshDaytimeSchedule(supabase, date) {
+  // Outer try/catch ensures this function NEVER throws — every exit path returns
+  // { refreshed: boolean, rowCount: number }. Docstring contract: "non-fatal pre-flight."
+  try {
+    // Decision gate: load cached auth session. Without it there is nothing to fetch.
+    // getSession makes a DB call — must be inside the outer catch.
+    const cookies = await getSession(supabase);
+    if (!cookies) {
+      console.warn('[Notify/Refresh] No cached session — skipping live refresh, using stale DB data');
+      return { refreshed: false, rowCount: 0 };
+    }
+
+    // Inject session cookies so authenticatedFetch uses them.
+    setSession(cookies);
+
+    // Build the week-page URL for today. Month and day are NOT zero-padded —
+    // the external site uses bare numbers in its URL (e.g. /schedule/days-7/2026/3/6).
+    const y = date.getFullYear();
+    const m = date.getMonth() + 1; // 0-indexed → 1-indexed
+    const d = date.getDate();
+    const url = `${BASE_URL}/schedule/days-7/${y}/${m}/${d}`;
+    console.log(`[Notify/Refresh] Fetching schedule for ${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')} from ${url}`);
+
+    let html;
+    try {
+      html = await authenticatedFetch(url);
+    } catch (err) {
+      // Decision: SESSION_EXPIRED means the cached session was rejected by the server.
+      // Clear it so cron-auth re-authenticates on its next run rather than leaving a
+      // poisoned session in the cache that would cause the same failure at 7am and 8:30am.
+      if (err.message === 'SESSION_EXPIRED') {
+        console.warn('[Notify/Refresh] Session expired — clearing cached session so cron-auth re-authenticates');
+        await clearSession(supabase).catch(e =>
+          console.warn(`[Notify/Refresh] clearSession also failed: ${e.message}`)
+        );
+      } else {
+        console.warn(`[Notify/Refresh] Fetch failed (${err.message}) — continuing with stale DB data`);
+      }
+      return { refreshed: false, rowCount: 0 };
+    }
+
+    console.log(`[Notify/Refresh] Fetched HTML — ${html.length} bytes`);
+
+    // Parse all daytime events (DC, PG, Boarding) from the schedule HTML.
+    const rows = parseDaytimeSchedulePage(html);
+    console.log(`[Notify/Refresh] Parsed ${rows.length} daytime events`);
+
+    // Warn if we got a large HTML response with zero events — likely an access-denied
+    // redirect page rather than a genuinely empty schedule day.
+    if (rows.length === 0 && html.length > 10000) {
+      console.warn(`[Notify/Refresh] Large HTML (${html.length} bytes) but 0 events parsed — possible access-denied page`);
+    }
+
+    // Upsert to DB. Non-fatal: upsertDaytimeAppointments does not throw on DB
+    // errors — it returns { upserted, errors } — so we log and carry on.
+    const { upserted, errors } = await upsertDaytimeAppointments(supabase, rows);
+    if (errors > 0) {
+      console.warn(`[Notify/Refresh] Upsert completed with ${errors} error(s) — ${upserted} rows written`);
+    } else {
+      console.log(`[Notify/Refresh] Upserted ${upserted} rows`);
+    }
+
+    return { refreshed: true, rowCount: upserted };
+
+  } catch (err) {
+    // Catch-all: any unexpected error (getSession DB failure, parse crash, etc.)
+    // must not propagate — the send must not be blocked by a refresh failure.
+    console.warn(`[Notify/Refresh] Unexpected error: ${err.message} — continuing with stale DB data`);
+    return { refreshed: false, rowCount: 0 };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -150,10 +248,18 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabase();
 
+    // --- Live schedule refresh (best-effort pre-flight) ---
+    // Refreshes daytime_appointments so the hash-change gate at 7am/8:30am
+    // compares against current data, not stale midnight-cron data.
+    // Decision: non-fatal — if refresh fails, getPictureOfDay reads stale DB rows.
+    console.log(`[Notify] Starting live schedule refresh for ${dateStr}`);
+    const refresh = await refreshDaytimeSchedule(supabase, date);
+    console.log(`[Notify] Refresh result: refreshed=${refresh.refreshed}, rowCount=${refresh.rowCount}`);
+
     // --- Fetch picture data ---
     console.log(`[Notify] Fetching picture data for ${dateStr}`);
     const data = await getPictureOfDay(supabase, date);
-    console.log(`[Notify] Data: ${data.workers.length} workers, ${data.boarders.length} boarders, hasUpdates: ${data.hasUpdates}`);
+    console.log(`[Notify] Data: ${data.workers.length} workers, hasUpdates: ${data.hasUpdates}, lastSyncedAt: ${data.lastSyncedAt ?? 'none'}`);
 
     // --- Read last sent state (for 7am/8:30am gate) ---
     const lastState = await readLastSentState(supabase);
