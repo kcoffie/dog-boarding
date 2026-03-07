@@ -255,12 +255,12 @@ describe('REQ-102: Appointment Detail Extraction', () => {
         expect(data.check_out_datetime).toBe('2025-12-23T10:00:00.000Z');
       });
 
-      it('uses service_type title date pattern as primary source over #when-wrapper', () => {
-        // Title has parseable dates; #when-wrapper has far-future bogus timestamps
+      it('falls back to title dates when system timestamps are unreasonably far in future', () => {
+        // Title has parseable dates; #when-wrapper has far-future bogus timestamps (year ~2286)
+        // tsReasonable = false → use title-parsed dates as fallback
         const html = '<h1>12/21-23</h1><div id="when-wrapper" data-start_scheduled="9999999999" data-end_scheduled="9999999999"></div>';
         const data = parseAppointmentPage(html);
 
-        // Dates come from title (parseServiceTypeDates), not from #when-wrapper
         const year = new Date().getFullYear();
         expect(data.check_in_datetime).toContain(`${year}-12-21`);
         expect(data.check_out_datetime).toContain(`${year}-12-23`);
@@ -275,6 +275,21 @@ describe('REQ-102: Appointment Detail Extraction', () => {
         // Should use system timestamps (March), not the stale title (February)
         expect(data.check_in_datetime).toBe('2026-03-05T10:00:00.000Z');
         expect(data.check_out_datetime).toBe('2026-03-07T16:15:00.000Z');
+      });
+
+      it('uses system timestamps when title date matches current month — Goose staff boarding case', () => {
+        // "Goose 3/7-8(Sun)" title would parse to Mar 7-8 midnight (same month, <20 day gap).
+        // System timestamps must win to preserve actual time-of-day (5:15pm check-in, 11pm check-out).
+        // 1772903700 = 2026-03-07T17:15:00Z, 1773010800 = 2026-03-08T23:00:00Z
+        const html = '<title>Goose 3/7-8(Sun) | A Girl and Your Dog</title>' +
+          '<div id="when-wrapper" data-start_scheduled="1772903700" data-end_scheduled="1773010800"></div>';
+        const data = parseAppointmentPage(html);
+
+        // Should use timestamps, NOT midnight-parsed title dates
+        expect(data.check_in_datetime).toBe('2026-03-07T17:15:00.000Z');
+        expect(data.check_out_datetime).toBe('2026-03-08T23:00:00.000Z');
+        // Title still used as service_type fallback
+        expect(data.service_type).toBe('Goose 3/7-8(Sun)');
       });
 
       it('returns null for check_in/out when no date source is available', () => {
