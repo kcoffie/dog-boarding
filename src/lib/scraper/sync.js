@@ -426,17 +426,15 @@ export async function runSync(options = {}) {
         // Post-fetch pricing filter: catch appointments that passed title filters but whose
         // pricing reveals they are not client boardings:
         //   - All day services (e.g. "Daycare Add-On Day") → title looked like a date range
-        //   - "Staff Boarding (nights)" → internal staff booking, rate=$0, not a client record
+        // Note: "Staff Boarding (nights)" appointments (staff dogs boarding for free) are
+        // intentionally NOT filtered — they are real boardings that need to be tracked.
         if (boardingOnly && details.pricing?.lineItems?.length > 0) {
           const { dayServicePatterns } = SCRAPER_CONFIG;
           const allDayServices = details.pricing.lineItems.every(item =>
             dayServicePatterns.some(dp => dp.test(item.serviceName))
           );
-          const hasStaffService = details.pricing.lineItems.some(item =>
-            /staff\s*boarding/i.test(item.serviceName)
-          );
           const services = details.pricing.lineItems.map(i => i.serviceName).join(', ');
-          if (allDayServices || hasStaffService) {
+          if (allDayServices) {
             syncLog(`[Sync] ⏭️ Skipping non-client appointment ${appt.id} (services: ${services})`);
             result.appointmentsSkipped++;
             continue;

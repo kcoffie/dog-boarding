@@ -13,6 +13,8 @@
  */
 
 import { createSyncLogger } from './logger.js';
+import { decodeEntities } from '../htmlUtils.js';
+import { KNOWN_WORKERS } from '../workers.js';
 
 const logger = createSyncLogger('DaytimeSched');
 const log = logger.log;
@@ -33,45 +35,12 @@ const SERVICE_CATS = Object.freeze({
   5635: 'Boarding',
 });
 
-/**
- * Maps ew-{uid} class number → worker name.
- * Worker uid 0 means no worker assigned (typical for boarding events).
- * An unknown uid emits a warning but the event is still stored.
- */
-const KNOWN_WORKERS = Object.freeze({
-  0: null,
-  61023: 'Charlie',
-  208669: 'Kathalyn Dominguez',
-  141407: 'Kentaro Cavey',
-  174385: 'Max Posse',
-  189436: 'Sierra Tagle',
-  164375: 'Stephen Muro',
-});
+// KNOWN_WORKERS imported from src/lib/workers.js — single source of truth for worker IDs/names.
 
 /** Matches "Pick-Up" variants in title or display_time text. */
 const PICKUP_RE = /pick-?up/i;
 
-// ---------------------------------------------------------------------------
-// Entity decoder
-// ---------------------------------------------------------------------------
-
-/**
- * Decode common HTML character entities in a text node string.
- * The external site encodes pet names with &quot;, &#x27;, &amp;, etc.
- * Called on every text value extracted from the schedule HTML.
- *
- * @param {string} text
- * @returns {string}
- */
-function decodeEntities(text) {
-  return text
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/gi, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-}
+// decodeEntities imported from src/lib/htmlUtils.js
 
 // ---------------------------------------------------------------------------
 // Private helpers
