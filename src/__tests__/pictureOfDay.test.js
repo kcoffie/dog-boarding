@@ -20,8 +20,12 @@ import {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const DATE = '2026-03-05';
+const DATE = '2026-03-05'; // Thursday
 const YEST = '2026-03-04';
+const MONDAY = '2026-03-09';
+const MONDAY_YEST = '2026-03-08';
+const TUESDAY = '2026-03-10';
+const TUESDAY_YEST = '2026-03-09';
 
 /** Build a minimal daytime_appointment row for test purposes. */
 function appt(overrides = {}) {
@@ -46,13 +50,13 @@ function appt(overrides = {}) {
  *
  * This is intentionally minimal — only the fields used by getPictureOfDay.
  */
-function buildSupaMock({ todayRows = [], yestRows = [], workerRows = [], boarderRows = [] } = {}) {
+function buildSupaMock({ todayRows = [], yestRows = [], workerRows = [], boarderRows = [], yestDateStr = YEST } = {}) {
   const buildChain = (rows) => {
     const chain = {
       select: () => chain,
       eq: (col, val) => {
         // Distinguish today vs yesterday vs boarding queries
-        if (col === 'appointment_date' && val === YEST) {
+        if (col === 'appointment_date' && val === yestDateStr) {
           chain._rows = yestRows;
         } else if (col === 'service_category' && val === 'Boarding') {
           chain._rows = boarderRows;
@@ -301,6 +305,59 @@ describe('getPictureOfDay diff logic', () => {
     const result = await getPictureOfDay(supa, date);
 
     expect(result.hasUpdates).toBe(false);
+  });
+
+  it('Monday: all dogs have isAdded: false and isRemoved: false regardless of yesterday data', async () => {
+    // Dog has a series_id not present yesterday — on a non-Monday this would be isAdded: true.
+    // On Monday, skipDiff=true suppresses the diff so all dogs appear unchanged.
+    const todayAppt = appt({ series_id: 'NEW_MON', pet_names: ['Benny'] });
+    const supa = buildSupaMock({
+      todayRows: [todayAppt],
+      yestRows: [],
+      workerRows: [],
+      yestDateStr: MONDAY_YEST,
+    });
+
+    const date = parseDateParam(MONDAY);
+    const result = await getPictureOfDay(supa, date);
+
+    const dog = result.workers[0].dogs[0];
+    expect(dog.isAdded).toBe(false);
+    expect(dog.isRemoved).toBe(false);
+  });
+
+  it('Monday: hasUpdates is false even when dogs differ from yesterday', async () => {
+    const todayAppt = appt({ series_id: 'NEW_MON2', pet_names: ['Rex'] });
+    const supa = buildSupaMock({
+      todayRows: [todayAppt],
+      yestRows: [],
+      workerRows: [],
+      yestDateStr: MONDAY_YEST,
+    });
+
+    const date = parseDateParam(MONDAY);
+    const result = await getPictureOfDay(supa, date);
+
+    expect(result.hasUpdates).toBe(false);
+  });
+
+  it('Tuesday: same scenario returns isAdded: true (skipDiff not active on non-Monday)', async () => {
+    // Same dog with series_id, empty yesterday — on Tuesday this should be isAdded: true.
+    const todayAppt = appt({ series_id: 'NEW_TUE', pet_names: ['Benny'] });
+    const supa = buildSupaMock({
+      todayRows: [todayAppt],
+      yestRows: [],
+      workerRows: [],
+      yestDateStr: TUESDAY_YEST,
+    });
+
+    const date = parseDateParam(TUESDAY);
+    const result = await getPictureOfDay(supa, date);
+
+    const dog = result.workers[0].dogs[0];
+    expect(dog.isAdded).toBe(true);
+    expect(dog.isRemoved).toBe(false);
+    expect(result.hasUpdates).toBe(true);
   });
 
   it('excludes worker 0 (boardings bucket) from the workers list', async () => {

@@ -26,6 +26,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getPictureOfDay, parseDateParam } from '../src/lib/pictureOfDay.js';
+import { decodeEntities } from '../src/lib/htmlUtils.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -93,26 +94,7 @@ const COLORS = {
 // Layout helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Decode HTML entities in a string.
- * Applied at the display layer so stale DB rows with encoded characters
- * (e.g. &quot;Waldo&quot; Ralph) render correctly. The parse layer already
- * decodes, but rows stored before PR #40 bypass it.
- * Error-handling: non-string input returns empty string (defensive).
- *
- * @param {string} str
- * @returns {string}
- */
-function decodeEntities(str) {
-  if (!str) return '';
-  return str
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/gi, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
-}
+// decodeEntities imported from src/lib/htmlUtils.js
 
 /**
  * Build a satori element (plain object, no JSX).
