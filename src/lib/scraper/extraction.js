@@ -87,15 +87,12 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     const now = new Date();
     const tsReasonable = tsDate && Math.abs(tsDate.getFullYear() - now.getFullYear()) <= 2;
     if (tsReasonable) {
-      const diffDays = Math.abs(parsedDates.checkIn - tsDate) / (1000 * 60 * 60 * 24);
-      if (diffDays > 20) {
-        // Title month is stale/wrong; use system timestamps
-        checkInDatetime  = timestamps.checkIn;
-        checkOutDatetime = timestamps.checkOut || null;
-      } else {
-        checkInDatetime  = parsedDates.checkIn.toISOString();
-        checkOutDatetime = parsedDates.checkOut.toISOString();
-      }
+      // System timestamps have actual time-of-day precision; parsed title dates are midnight-only.
+      // Always prefer timestamps when available and reasonable — even when the title date
+      // matches the same month (e.g. "Goose 3/7-8(Sun)" for a Mar 7 appointment would
+      // produce midnight dates, losing the 5:15pm start time from the timestamp).
+      checkInDatetime  = timestamps.checkIn;
+      checkOutDatetime = timestamps.checkOut || null;
     } else {
       checkInDatetime  = parsedDates.checkIn.toISOString();
       checkOutDatetime = parsedDates.checkOut.toISOString();
