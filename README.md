@@ -14,6 +14,8 @@ A web application for managing a dog boarding business. Track bookings, sync app
 - **Payroll** — Track and manage employee payments with payment history
 - **CSV Import** — Bulk import bookings from spreadsheets
 - **External Sync** — Automatically sync appointments from agirlandyourdog.com via scheduled cron jobs
+- **Daytime Activity Intelligence** — Ingest all DC/PG appointments from the schedule; track per-worker rosters with day-over-day diff (added/removed dogs)
+- **Daily Roster Image** — Generate a branded PNG of each worker's dogs; delivered via WhatsApp at 4am, 7am, and 8:30am PDT
 - **Cron Health Monitoring** — Settings page shows last run time and status of each cron job
 - **Secure Access** — Invite-only signup, all users share one organization
 
@@ -22,6 +24,8 @@ A web application for managing a dog boarding business. Track bookings, sync app
 - **Frontend:** React 18, Vite, Tailwind CSS
 - **Backend:** Supabase (PostgreSQL + Auth)
 - **Hosting:** Vercel (frontend + serverless API + cron jobs)
+- **Notifications:** Twilio WhatsApp API
+- **Scheduling:** GitHub Actions (notify delivery windows)
 - **Testing:** Vitest, React Testing Library
 
 ---
@@ -38,7 +42,7 @@ A web application for managing a dog boarding business. Track bookings, sync app
 ### Installation
 
 ```bash
-git clone https://github.com/yourusername/dog-boarding.git
+git clone https://github.com/kcoffie/dog-boarding.git
 cd dog-boarding
 npm install
 cp .env.example .env.local
@@ -72,10 +76,19 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 | `EXTERNAL_SITE_USERNAME` | Login email for agirlandyourdog.com (server-side only — no `VITE_` prefix) |
 | `EXTERNAL_SITE_PASSWORD` | Login password for agirlandyourdog.com (server-side only — no `VITE_` prefix) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only — bypasses RLS) |
-| `VITE_SYNC_PROXY_TOKEN` | Bearer token for sync-proxy authentication (set to any random string) |
+| `VITE_SYNC_PROXY_TOKEN` | Bearer token for sync-proxy, roster-image, and notify authentication (set to any random string) |
 | `CRON_SECRET` | Secret header value Vercel sends with cron requests (optional but recommended in production) |
 
-Set all variables in `.env.local` for local development and in your Vercel project dashboard for production.
+### Required for WhatsApp Notifications
+
+| Variable | Description |
+|---|---|
+| `TWILIO_ACCOUNT_SID` | Twilio account SID |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token |
+| `TWILIO_FROM_NUMBER` | Twilio WhatsApp sender number (e.g. `whatsapp:+14155238886`) |
+| `NOTIFY_RECIPIENTS` | Comma-separated recipient numbers (e.g. `+18005551234,+18005555678`) |
+
+Set all variables in `.env.local` for local development and in your Vercel project dashboard for production. Also set `VITE_SYNC_PROXY_TOKEN` as a GitHub Actions secret (used by the notify workflows).
 
 > **Important:** `EXTERNAL_SITE_USERNAME` and `EXTERNAL_SITE_PASSWORD` must NOT use the `VITE_` prefix — Vite bakes `VITE_*` variables into the browser bundle, which would expose credentials publicly.
 
@@ -121,6 +134,35 @@ When a booking is amended on the external site, the old appointment URL becomes 
 
 ---
 
+## WhatsApp Notifications
+
+Qboard sends a daily roster image to a WhatsApp number via Twilio at three delivery windows: **4am**, **7am**, and **8:30am PDT**. Each message contains a branded PNG showing every worker's dogs for the day with a day-over-day diff (green `+` for newly added dogs, red strikethrough for removed dogs).
+
+### How it works
+
+1. A GitHub Actions workflow fires at each delivery window and calls `GET /api/notify?window=4am` (or `7am`/`830am`)
+2. `notify.js` refreshes the daytime schedule from the external site, then calls `/api/roster-image` to generate the PNG
+3. The image is sent to all numbers in `NOTIFY_RECIPIENTS` via the Twilio WhatsApp API
+4. A hash of the roster data is stored in the `cron_health` table — if nothing changed since the last send, the 7am and 8:30am windows skip the send to avoid duplicate messages
+
+### GitHub Actions schedules (PDT, UTC-7)
+
+| Workflow | UTC cron | PDT time |
+|---|---|---|
+| `notify-4am.yml` | `0 11 * * *` | 4:00 AM |
+| `notify-7am.yml` | `0 14 * * *` | 7:00 AM |
+| `notify-830am.yml` | `30 15 * * *` | 8:30 AM |
+
+> Note: cron schedules shift by 1 hour when DST ends (PDT → PST, UTC-8). Update the workflows in November.
+
+### Manual test
+
+```bash
+curl "https://qboarding.vercel.app/api/notify?window=4am&token=YOUR_TOKEN&date=YYYY-MM-DD"
+```
+
+---
+
 ## Development
 
 ```bash
@@ -157,22 +199,32 @@ src/
 ├── utils/            # Utility functions (date, calculations, etc.)
 ├── context/          # React contexts
 └── lib/
-    └── scraper/      # External sync modules
-        ├── auth.js          # Authentication with external site
-        ├── schedule.js      # Schedule page parsing and pagination
-        ├── extraction.js    # Appointment detail extraction
-        ├── sync.js          # Main sync orchestrator
-        ├── mapping.js       # Maps scraped data to DB schema
-        ├── forms.js         # Boarding form fetch + parse pipeline
-        ├── reconcile.js     # Detects and archives amended appointments
-        ├── sessionCache.js  # Session cookie caching in DB
-        └── syncQueue.js     # Queue management for cron detail processing
+    ├── pictureOfDay.js      # Daily roster data: DC/PG diff, boarders, workers
+    ├── notifyWhatsApp.js    # Twilio wrapper (sendRosterImage)
+    └── scraper/             # External sync modules
+        ├── auth.js              # Authentication with external site
+        ├── schedule.js          # Schedule page parsing and pagination
+        ├── daytimeSchedule.js   # DC/PG/Boarding ingest for daytime_appointments
+        ├── extraction.js        # Appointment detail extraction
+        ├── sync.js              # Main sync orchestrator
+        ├── mapping.js           # Maps scraped data to DB schema
+        ├── forms.js             # Boarding form fetch + parse pipeline
+        ├── reconcile.js         # Detects and archives amended appointments
+        ├── sessionCache.js      # Session cookie caching in DB
+        └── syncQueue.js         # Queue management for cron detail processing
 
 api/
 ├── sync-proxy.js    # Vercel Edge Function — CORS proxy for browser→external site
 ├── cron-auth.js     # Cron: refresh session
 ├── cron-schedule.js # Cron: scan schedule pages, enqueue candidates
-└── cron-detail.js   # Cron: process one queued appointment or boarding form
+├── cron-detail.js   # Cron: process one queued appointment or boarding form
+├── roster-image.js  # Generate daily roster PNG (satori + resvg, token-gated)
+└── notify.js        # WhatsApp notification orchestrator (window-gated)
+
+.github/workflows/
+├── notify-4am.yml   # GitHub Actions: call /api/notify at 4am PDT
+├── notify-7am.yml   # GitHub Actions: call /api/notify at 7am PDT
+└── notify-830am.yml # GitHub Actions: call /api/notify at 8:30am PDT
 
 supabase/
 └── migrations/      # Numbered SQL migrations (apply in order)
