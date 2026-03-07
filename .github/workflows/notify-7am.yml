@@ -4,8 +4,8 @@ name: Notify 7am PST
 
 on:
   schedule:
-    # 14:00 UTC = 7am PDT (daylight time, Mar–Nov)
-    - cron: '0 14 * * *'
+    # 14:00 UTC = 7am PDT (daylight time, Mar–Nov) — weekdays only
+    - cron: '0 14 * * 1-5'
   workflow_dispatch:
 
 jobs:
