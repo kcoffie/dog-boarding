@@ -116,6 +116,7 @@ async function refreshDaytimeSchedule(supabase, date) {
     // redirect page rather than a genuinely empty schedule day.
     if (rows.length === 0 && html.length > 10000) {
       console.warn(`[Notify/Refresh] Large HTML (${html.length} bytes) but 0 events parsed — possible access-denied page`);
+      console.warn(`[Notify/Refresh] HTML preview: ${html.slice(0, 150).replace(/\s+/g, ' ')}`);
     }
 
     // Upsert to DB. Non-fatal: upsertDaytimeAppointments does not throw on DB
@@ -260,6 +261,14 @@ export default async function handler(req, res) {
     console.log(`[Notify] Fetching picture data for ${dateStr}`);
     const data = await getPictureOfDay(supabase, date);
     console.log(`[Notify] Data: ${data.workers.length} workers, hasUpdates: ${data.hasUpdates}, lastSyncedAt: ${data.lastSyncedAt ?? 'none'}`);
+
+    // Guard: 0 workers means the midnight cron hasn't run yet for today (or refresh failed).
+    // Sending would produce a near-blank image (header bar only). Skip and let the next
+    // window (7am or 8:30am) retry after the cron has had time to complete.
+    if (data.workers.length === 0) {
+      console.warn(`[Notify] No worker data for today — skipping send (refreshed=${refresh.refreshed}, rowCount=${refresh.rowCount})`);
+      return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_data' });
+    }
 
     // --- Read last sent state (for 7am/8:30am gate) ---
     const lastState = await readLastSentState(supabase);

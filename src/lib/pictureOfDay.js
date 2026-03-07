@@ -13,14 +13,13 @@
  */
 
 import { createSyncLogger } from './scraper/logger.js';
+import { WORKER_ORDER } from './workers.js';
 
 const logger = createSyncLogger('PictureOfDay');
 const log = logger.log;
 const logWarn = logger.warn;
 
-// Stable display order for workers in the rendered image.
-// Matches the KNOWN_WORKERS map in daytimeSchedule.js.
-const WORKER_ORDER = [61023, 208669, 141407, 174385, 189436, 164375];
+// WORKER_ORDER imported from src/lib/workers.js — single source of truth.
 
 // ---------------------------------------------------------------------------
 // Date helpers
@@ -214,9 +213,36 @@ async function queryWorkers(supabase) {
  *
  * @param {Array} todayAppts
  * @param {Array} yestAppts
+ * @param {boolean} [skipDiff=false] - When true (Mondays), return all today's dogs
+ *   as unchanged. IMPORTANT: do NOT implement this by passing empty yestAppts —
+ *   an empty yestSeries causes every series-id dog to show as isAdded: true.
  * @returns {Array<{pet_names, client_name, series_id, title, isAdded, isRemoved}>}
  */
-function computeWorkerDiff(todayAppts, yestAppts) {
+function computeWorkerDiff(todayAppts, yestAppts, skipDiff = false) {
+  if (skipDiff) {
+    // Monday path: return all today's dogs as unchanged, still deduplicated.
+    // Dedup key is identical to the normal path so roster display is consistent.
+    const dogs = todayAppts.map(a => ({
+      pet_names: a.pet_names || [],
+      client_name: a.client_name || '',
+      series_id: a.series_id,
+      title: a.title,
+      isAdded: false,
+      isRemoved: false,
+    }));
+    const seen = new Map();
+    const deduped = [];
+    for (const dog of dogs) {
+      const key = dog.pet_names.slice().sort().join('|') || dog.title || dog.series_id || '';
+      if (!seen.has(key)) {
+        seen.set(key, deduped.length);
+        deduped.push(dog);
+      }
+    }
+    log(`Diff (skipDiff=Monday): ${todayAppts.length} today -> ${deduped.length} after dedup, all unchanged`);
+    return deduped;
+  }
+
   // Build series ID sets for set-difference comparison.
   const yestSeries = new Set(yestAppts.map(a => a.series_id).filter(Boolean));
   const todaySeries = new Set(todayAppts.map(a => a.series_id).filter(Boolean));
@@ -261,6 +287,13 @@ function computeWorkerDiff(todayAppts, yestAppts) {
       deduped.push(dog);
     }
   }
+
+  log(
+    `Diff: ${todayAppts.length} today (${todaySeries.size} w/ series), ` +
+    `${yestAppts.length} yesterday (${yestSeries.size} w/ series) -> ` +
+    `${deduped.filter(d => d.isAdded).length} added, ` +
+    `${deduped.filter(d => d.isRemoved).length} removed`
+  );
   return deduped;
 }
 
@@ -314,6 +347,14 @@ export async function getPictureOfDay(supabase, date) {
     log(`No yesterday data for ${yestDateStr} — all today dogs will appear as added`);
   }
 
+  // Monday gate: skip diff so dogs don't falsely show as added after the weekend.
+  // Decision: date.getDay() === 1 in local time. The date param is always local midnight
+  // (constructed via parseDateParam or new Date()), so getDay() is the correct local weekday.
+  const isMonday = date.getDay() === 1;
+  if (isMonday) {
+    log(`Monday detected (${dateStr}) — skipDiff=true, all dogs will render as unchanged`);
+  }
+
   // Collect all worker IDs that appear in today or yesterday (excluding 0 = boardings).
   const allWorkerIds = new Set([...todayByWorker.keys(), ...yestByWorker.keys()]);
   allWorkerIds.delete(0);
@@ -336,7 +377,7 @@ export async function getPictureOfDay(supabase, date) {
     const yestAppts = yestByWorker.get(workerId) || [];
     const name = workerNames.get(workerId) || `Worker ${workerId}`;
 
-    const dogs = computeWorkerDiff(todayAppts, yestAppts);
+    const dogs = computeWorkerDiff(todayAppts, yestAppts, isMonday);
 
     // Sort within worker: added first → removed → unchanged.
     dogs.sort((a, b) => {
@@ -352,6 +393,14 @@ export async function getPictureOfDay(supabase, date) {
     log(`Worker ${name} (${workerId}): +${addedCount} added, -${removedCount} removed, ${todayAppts.length - addedCount} unchanged`);
 
     workers.push({ workerId, name, dogs, addedCount, removedCount });
+  }
+
+  // Monday: force hasUpdates false regardless of what computeWorkerDiff returned.
+  // This prevents the UPDATED! badge from appearing on Mondays when there is no
+  // meaningful prior-day baseline to compare against.
+  if (isMonday && hasUpdates) {
+    log(`hasUpdates forced false for Monday (was: true) — no weekend baseline`);
+    hasUpdates = false;
   }
 
   log(`getPictureOfDay complete — ${workers.length} workers, ${boarders.length} boarders, hasUpdates: ${hasUpdates}, lastSyncedAt: ${lastSyncedAt ?? 'none'}`);
