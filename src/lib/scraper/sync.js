@@ -461,7 +461,12 @@ export async function runSync(options = {}) {
         // Use schedule-page data as fallback for fields the detail-page selectors
         // can't extract yet.  Without this, pet_name falls back to "Unknown" and
         // all null-name dogs collapse into a single DB record.
-        details.pet_name    = details.pet_name    || appt.petName    || null;
+        // Last resort: derive pet name from schedule title (e.g. "Goose 3/7-8(Sun)" → "Goose").
+        // Staff boarding appointments have no .event-pet element, so petName is empty.
+        const nameFromTitle = appt.title
+          ? (appt.title.replace(/\s+\d+\/\d+[\s\S]*$/, '').trim() || null)
+          : null;
+        details.pet_name    = details.pet_name    || appt.petName    || nameFromTitle || null;
         details.client_name = details.client_name || appt.clientName || null;
 
         // Parse degradation tracking (REQ-110).
