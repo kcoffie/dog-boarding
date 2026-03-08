@@ -24,10 +24,24 @@
  *   5. Compare → flag missing IDs, Unknown dog names, name mismatches
  *   6. Send WhatsApp text report to NOTIFY_RECIPIENTS
  *
+ * Flow:
+ *   0. Trigger sync — POST /api/run-sync (runs runSync for today+7d window)
+ *   1. Load session cookies from Supabase sync_settings (same cache the crons use)
+ *   2. Playwright: render /schedule, take screenshot + extract appointment IDs
+ *      from live DOM links
+ *   3. Claude API: read screenshot → list dog names visible on the page
+ *   4. Supabase: query boardings overlapping today → today+7d
+ *   5. Compare → flag missing IDs, Unknown dog names, name mismatches
+ *   6. Send WhatsApp text report to INTEGRATION_CHECK_RECIPIENTS (separate from
+ *      the roster NOTIFY_RECIPIENTS — this is a technical report for Kate only)
+ *
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   ANTHROPIC_API_KEY
- *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, NOTIFY_RECIPIENTS
+ *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+ *   INTEGRATION_CHECK_RECIPIENTS  (separate from NOTIFY_RECIPIENTS)
+ *   APP_URL                       (Vercel deployment URL for sync trigger)
+ *   VITE_SYNC_PROXY_TOKEN         (auth token for /api/run-sync)
  */
 
 import { chromium } from 'playwright';
@@ -79,12 +93,67 @@ function getAnthropicClient() {
 }
 
 function getRecipients() {
-  return (process.env.NOTIFY_RECIPIENTS || '').split(',').map(n => n.trim()).filter(Boolean);
+  // Intentionally separate from NOTIFY_RECIPIENTS (roster → whole team).
+  // Integration check results are technical; they go to Kate only.
+  return (process.env.INTEGRATION_CHECK_RECIPIENTS || '').split(',').map(n => n.trim()).filter(Boolean);
 }
 
 function maskNumber(n) {
   const d = n.replace(/\D/g, '');
   return `***-***-${d.slice(-4)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Step 0: Trigger sync via /api/run-sync
+// ---------------------------------------------------------------------------
+
+/**
+ * POST to /api/run-sync and wait for it to complete.
+ *
+ * This runs before the Playwright scrape so we're comparing against fresh DB
+ * data, not yesterday's midnight cron result.
+ *
+ * Fails loudly — if sync fails, we abort rather than produce a false pass by
+ * comparing the scrape against stale data.
+ *
+ * @param {string} appUrl   - Vercel deployment base URL (APP_URL secret)
+ * @param {string} token    - VITE_SYNC_PROXY_TOKEN
+ * @returns {Promise<{synced, skipped, failed, durationMs}>}
+ */
+async function triggerSync(appUrl, token) {
+  const url = `${appUrl}/api/run-sync`;
+  console.log('[IntegCheck] Step 0: triggering sync at %s...', url);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const body = await res.json().catch(() => ({}));
+
+  if (res.status === 503 && body.reason === 'no_session') {
+    throw new Error('Sync skipped — no valid session cached. Run cron-auth first.');
+  }
+
+  if (!res.ok || body.ok === false) {
+    throw new Error(
+      `Sync endpoint returned ${res.status}: ${body.error ?? JSON.stringify(body)}`
+    );
+  }
+
+  console.log(
+    '[IntegCheck] Sync complete — synced: %d, skipped: %d, failed: %d, duration: %dms',
+    body.synced, body.skipped, body.failed, body.durationMs,
+  );
+
+  if (body.failed > 0) {
+    console.warn('[IntegCheck] ⚠️  Sync reported %d failed appointments: %o', body.failed, body.errors);
+  }
+
+  return { synced: body.synced, skipped: body.skipped, failed: body.failed, durationMs: body.durationMs };
 }
 
 // ---------------------------------------------------------------------------
@@ -385,6 +454,20 @@ async function main() {
   const supabase = getSupabase();
   const anthropic = getAnthropicClient();
   const twilioClient = getTwilioClient();
+
+  const appUrl = process.env.APP_URL;
+  const syncToken = process.env.VITE_SYNC_PROXY_TOKEN;
+  if (!appUrl || !syncToken) throw new Error('Missing APP_URL or VITE_SYNC_PROXY_TOKEN');
+
+  // Step 0: Sync — must succeed before we compare, or we risk a false pass on stale data
+  try {
+    await triggerSync(appUrl, syncToken);
+  } catch (err) {
+    const msg = `⚠️ Integration check aborted (${today})\nSync failed: ${err.message}`;
+    console.error('[IntegCheck]', msg);
+    await sendWhatsApp(twilioClient, msg);
+    process.exit(1);
+  }
 
   // Step 1: Session
   const cookieString = await loadSession(supabase);
