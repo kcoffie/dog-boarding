@@ -1,0 +1,56 @@
+# Integration check — triggers a live sync, then scrapes the AGYD schedule via
+# real browser + Claude vision, compares against DB, sends WhatsApp report.
+#
+# Runs 3x/day. Also available on-demand via workflow_dispatch.
+#
+# DST note: Pacific Daylight Time = UTC-7 (Mar–Nov), Standard = UTC-8 (Nov–Mar).
+#           Update cron times each March and November DST transition.
+#
+# Required Repository secrets (Settings → Secrets → Actions → Repository secrets):
+#   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#   ANTHROPIC_API_KEY
+#   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+#   INTEGRATION_CHECK_RECIPIENTS  ← separate from NOTIFY_RECIPIENTS (Kate only)
+#   APP_URL, VITE_SYNC_PROXY_TOKEN
+name: Integration Check
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 1:00 AM PDT (08:00 UTC) — shortly after midnight cron finishes
+    - cron: '0 8 * * *'
+    # 9:00 AM PDT (16:00 UTC)
+    - cron: '0 16 * * *'
+    # 5:00 PM PDT (00:00 UTC next day)
+    - cron: '0 0 * * *'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Run integration check
+        run: node scripts/integration-check.js
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          INTEGRATION_CHECK_RECIPIENTS: ${{ secrets.INTEGRATION_CHECK_RECIPIENTS }}
+          APP_URL: ${{ secrets.APP_URL }}
+          VITE_SYNC_PROXY_TOKEN: ${{ secrets.VITE_SYNC_PROXY_TOKEN }}
