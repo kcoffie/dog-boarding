@@ -142,6 +142,15 @@ export function useBoardings() {
     if (!user) return;
 
     try {
+      // Null FK on sync_appointments before delete to avoid 23503 constraint error
+      console.log('[deleteBoarding] Nulling mapped_boarding_id for boarding id=%s', id);
+      const { error: nullError } = await supabase
+        .from('sync_appointments')
+        .update({ mapped_boarding_id: null })
+        .eq('mapped_boarding_id', id);
+
+      if (nullError) throw nullError;
+
       const { error } = await supabase
         .from('boardings')
         .delete()
@@ -151,7 +160,7 @@ export function useBoardings() {
 
       setBoardings(prev => prev.filter(b => b.id !== id));
     } catch (err) {
-      console.error('Error deleting boarding:', err);
+      console.error('[deleteBoarding] Failed for boarding id=%s:', id, err);
       setError(err.message);
       throw err;
     }
@@ -161,6 +170,30 @@ export function useBoardings() {
     if (!user) return;
 
     try {
+      // Fetch boarding IDs first so we can null their FKs (no subquery support in Supabase JS)
+      const { data: boardingRows, error: fetchError } = await supabase
+        .from('boardings')
+        .select('id')
+        .eq('dog_id', dogId);
+
+      if (fetchError) throw fetchError;
+
+      // Guard against Supabase returning null data on a network error that
+      // didn't populate the error field (rare but possible).
+      const boardingIds = (boardingRows ?? []).map(b => b.id);
+
+      if (boardingIds.length > 0) {
+        console.log('[deleteBoardingsForDog] Nulling mapped_boarding_id for %d boardings, dog_id=%s', boardingIds.length, dogId);
+        const { error: nullError } = await supabase
+          .from('sync_appointments')
+          .update({ mapped_boarding_id: null })
+          .in('mapped_boarding_id', boardingIds);
+
+        if (nullError) throw nullError;
+      } else {
+        console.log('[deleteBoardingsForDog] No boardings found for dog_id=%s — skipping FK null step', dogId);
+      }
+
       const { error } = await supabase
         .from('boardings')
         .delete()
@@ -170,7 +203,7 @@ export function useBoardings() {
 
       setBoardings(prev => prev.filter(b => b.dogId !== dogId));
     } catch (err) {
-      console.error('Error deleting boardings for dog:', err);
+      console.error('[deleteBoardingsForDog] Failed for dog_id=%s:', dogId, err);
       setError(err.message);
       throw err;
     }
