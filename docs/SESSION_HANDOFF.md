@@ -1,76 +1,85 @@
-# Dog Boarding App — Session Handoff (v4.1.2 in PR, v4.2 next)
-**Last updated:** March 7, 2026 (end of session — v4.1.2 fully implemented, PR #48 open)
+# Dog Boarding App — Session Handoff (v4.2 live)
+**Last updated:** March 8, 2026 (end of session — v4.2 shipped, Goose boarding fixed)
 
 ---
 
 ## Current State
 
-- **v4.1.1 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **PR #48 open** — `fix/v4.1.2-polish` — all 6 v4.1.2 tasks complete, CI pending
-- **741 tests, 46 files, 0 failures** (was 738 before this session — 3 new Monday tests added)
+- **v4.2 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
+- **743 tests, 46 files, 0 failures** (3 new extraction tests added this session)
 - **NOTIFY_RECIPIENTS** has 1 number — second number still pending (Kate to provide)
-- **Main branch clean** — no uncommitted changes on main
+- **Main branch clean**
+- **Local branch `fix/goose-boarding-tests`** — extraction test commit exists locally, not yet pushed or PRed
 
 ---
 
-## IMMEDIATE NEXT: Merge PR #48 + Tag v4.1.2
+## IMMEDIATE NEXT
 
-1. Let CI pass on PR #48
-2. Merge PR #48 via GitHub (squash merge)
-3. Reset local main: `git reset --hard origin/main`
-4. Tag GitHub Release `v4.1.2`:
+1. Push and PR the goose extraction test:
+   ```bash
+   git checkout fix/goose-boarding-tests
+   git push -u origin fix/goose-boarding-tests
+   # then create PR
+   ```
+2. Archive this handoff: `cp docs/SESSION_HANDOFF.md docs/archive/SESSION_HANDOFF_v4.2_final.md`
+   (Also archive the v4.1.2 one that was never archived: `cp docs/archive/SESSION_HANDOFF_v4.1.2_final.md` — if it exists)
 
-```bash
-cat > /tmp/release-v412.md << 'EOF'
-## v4.1.2 — Monday Roster, Blank-Image Guard, Shared Utils
+---
 
-### Changes
-- **Monday clean roster** — no +/- diff markers or UPDATED! badge on Mondays (no weekend baseline)
-- **Blank image guard** — notify skips send when 0 workers returned (prevents header-only image)
-- **Shared `decodeEntities`** — extracted to `src/lib/htmlUtils.js`; local copies removed
-- **Worker source of truth** — `src/lib/workers.js` owns WORKERS/WORKER_ORDER/KNOWN_WORKERS
-- **HTML preview log** — 0-events + large HTML now logs first 150 chars for redirect detection
-- **Per-worker diff log** — computeWorkerDiff logs series counts + added/removed before returning
-EOF
-/usr/local/bin/gh release create v4.1.2 --title "v4.1.2 - Monday Roster Polish" --notes-file /tmp/release-v412.md --latest
+## What Was Done This Session (v4.2)
+
+### Staff dog boarding sync — Goose (PR #49, merged)
+
+Three bugs fixed in `sync.js` and `extraction.js`:
+
+| Bug | Root cause | Fix |
+|---|---|---|
+| Staff boarding filtered out | `hasStaffService` check blocked all "Staff Boarding (nights)" appts | Removed filter — staff dogs are real boardings |
+| Dog name "Unknown" | No `.event-pet` on schedule page → `appt.petName = ''` → null fallback | Added `nameFromTitle`: strip date from schedule title ("Goose 3/7-8(Sun)" → "Goose") |
+| Midnight dates | Title parsed to midnight; cross-validation (20-day threshold) didn't override same-month titles | Changed: always prefer system timestamps when `tsReasonable` — they have actual time-of-day precision |
+
+**Confirmed working via Supabase:**
+```sql
+SELECT d.name, b.arrival_datetime, b.departure_datetime
+FROM boardings b JOIN dogs d ON b.dog_id = d.id
+WHERE b.external_id = 'C63QgTXx';
+-- → Goose | 2026-03-07 17:15:00+00 | 2026-03-08 23:00:00+00  ✓
 ```
 
-5. Archive this handoff: `cp docs/SESSION_HANDOFF.md docs/archive/SESSION_HANDOFF_v4.1.2_final.md`
+### Extraction test added (local, not yet PRed)
+- `fix/goose-boarding-tests` branch — adds 3 tests to `extraction.test.js`:
+  1. Renamed existing misleading test: "falls back to title dates when system timestamps are unreasonably far in future"
+  2. Kept existing stale-month test (20-day gap → timestamps)
+  3. **NEW — Goose case**: `"Goose 3/7-8(Sun)"` title with real timestamps → expects `2026-03-07T17:15:00.000Z` (not midnight)
+
+### GitHub Releases
+- **v4.1.2** — tagged (Monday roster polish, PR #48)
+- **v4.2** — tagged (staff dog boarding sync fix, PR #49)
 
 ---
 
-## What Was Done This Session (v4.1.2)
+## Full TODO List
 
-### All 6 tasks shipped in PR #48 (`fix/v4.1.2-polish`)
+### Bugs
+- [ ] **Delete boarding button broken** — `23503` FK constraint: `sync_appointments.mapped_boarding_id` must be NULLed before DELETE. Fix in `useBoardings.js` delete path. SQL workaround already in Useful SQL section below.
 
-| Task | Status | Key detail |
-|---|---|---|
-| Monday clean roster | Done | `skipDiff` param in `computeWorkerDiff`; `hasUpdates` forced false |
-| Blank image guard | Done | Early return in `notify.js` when `data.workers.length === 0` |
-| Extract `decodeEntities` | Done | `src/lib/htmlUtils.js` — null-safe; both callers updated |
-| Worker source of truth | Done | `src/lib/workers.js` — WORKERS, WORKER_ORDER, KNOWN_WORKERS |
-| HTML preview log | Done | One line in `refreshDaytimeSchedule` 0-events block |
-| Per-worker diff log | Done | Added before `return deduped` in normal path |
+### Polish / Low-priority (carried from v4.1.2)
+- [ ] Fix misleading "constant-time" comment in `roster-image.js` token check — use `crypto.timingSafeEqual` or remove the claim
+- [ ] Rename `window` param in `shouldSendNotification` → `sendWindow` (shadows browser global)
+- [ ] Pre-compile `attr()` regexes in `daytimeSchedule.js` — `new RegExp(name + ...)` inside hot loop, called 1,400+ times per parse run
 
-**CRITICAL gotcha (documented in code):** Never implement Monday skipDiff by passing empty `yestAppts`. An empty `yestSeries` causes every dog with a `series_id` to show `isAdded: true`. The `skipDiff = true` flag is the correct approach.
+### v4.3 Features
+- [ ] **Second WhatsApp recipient** — Kate to provide number; add to Vercel `NOTIFY_RECIPIENTS` as `+18312477375,+1XXXXXXXXXX`. No code change needed.
+- [ ] **Production WhatsApp sender** — move off Twilio sandbox to registered WhatsApp Business number. Eliminates the "text sandbox within 24hrs" requirement.
+- [ ] **Friday afternoon weekend WhatsApp job** — new GitHub Actions workflow (e.g. `notify-friday-pm.yml`), `window=friday-pm` param, sends Sat–Sun boarding preview. Reuses `api/notify` or gets its own endpoint.
+- [ ] **DST-aware cron scheduling** — currently must manually update UTC cron times each March/November DST transition.
+- [ ] **Group chat delivery** — send to a WhatsApp group instead of individual numbers.
 
-### Test additions
-- `buildSupaMock` now accepts `yestDateStr` param (was hardcoded to `YEST = '2026-03-04'`)
-- 3 new Monday tests: all-unchanged, hasUpdates=false, Tuesday control shows isAdded=true
-
-### Lower-priority items NOT done (carry to v4.2 or later)
-- **Fix misleading "constant-time" comment** in `roster-image.js` token check — use `crypto.timingSafeEqual` or remove the claim
-- **Rename `window` param** in `shouldSendNotification` → `sendWindow` (shadows browser global)
-- **Pre-compile `attr()` regexes** in `daytimeSchedule.js` — `new RegExp(name + ...)` inside hot loop, called 1,400+ times per parse run
-
----
-
-## v4.2 Backlog
-
-1. **Second WhatsApp recipient** — Kate to provide number; add to Vercel `NOTIFY_RECIPIENTS` as `+18312477375,+1XXXXXXXXXX`. No code change needed.
-2. **Production WhatsApp sender** — move off Twilio sandbox to registered WhatsApp Business number. Eliminates the "text sandbox within 24hrs" requirement.
-3. **DST-aware cron scheduling** — currently must manually update UTC cron times each March/November DST transition.
-4. **Group chat delivery** — send to a WhatsApp group instead of individual numbers.
+### v4.4 Feature: Integration smoke test job
+- [ ] Runs a sync → scrapes live AGYD schedule → reads DB → compares: do they match?
+- [ ] Sends WhatsApp to Kate with pass/fail + any mismatches (Unknown dogs, date discrepancies)
+- [ ] Key checks: dog names match, dates match, no "Unknown" dogs for known appointments
+- [ ] Can run on-demand or scheduled (e.g. daily after midnight cron)
 
 ---
 
@@ -92,12 +101,14 @@ GitHub Actions (3 workflows, Mon-Fri) -> GET /api/notify?window=4am|7am|8:30am
 | File | Purpose |
 |---|---|
 | `src/lib/pictureOfDay.js` | Data layer: getPictureOfDay, computeWorkerDiff (skipDiff), hashPicture |
-| `src/lib/workers.js` | **NEW v4.1.2** — single source of truth for WORKERS/WORKER_ORDER/KNOWN_WORKERS |
-| `src/lib/htmlUtils.js` | **NEW v4.1.2** — shared decodeEntities (null-safe) |
+| `src/lib/workers.js` | Single source of truth for WORKERS/WORKER_ORDER/KNOWN_WORKERS |
+| `src/lib/htmlUtils.js` | Shared decodeEntities (null-safe) |
 | `api/roster-image.js` | Token-gated PNG endpoint (satori + resvg) |
 | `api/notify.js` | Orchestrator: window gate, 0-workers guard, refresh, send, hash |
 | `src/lib/notifyWhatsApp.js` | Twilio wrapper |
 | `src/lib/scraper/daytimeSchedule.js` | DC/PG/Boarding schedule parse + upsert |
+| `src/lib/scraper/sync.js` | runSync, 6-layer filter, nameFromTitle fallback |
+| `src/lib/scraper/extraction.js` | parseAppointmentPage — timestamps always preferred over midnight title dates |
 | `.github/workflows/notify-*.yml` | GitHub Actions schedulers (Mon-Fri) |
 
 ### Env vars
@@ -155,19 +166,24 @@ SELECT MAX(updated_at) FROM daytime_appointments WHERE appointment_date = CURREN
 UPDATE sync_logs SET status = 'failed', completed_at = NOW()
 WHERE status = 'running' AND started_at < NOW() - INTERVAL '5 minutes';
 
--- Null FK before deleting a boarding
+-- Null FK before deleting a boarding (workaround for delete button bug)
 UPDATE sync_appointments SET mapped_boarding_id = NULL
-WHERE mapped_boarding_id = (SELECT id FROM boardings WHERE external_id = 'REPLACE_ME');
-DELETE FROM boardings WHERE external_id = 'REPLACE_ME';
+WHERE mapped_boarding_id = '<boarding-uuid>';
+DELETE FROM boardings WHERE id = '<boarding-uuid>';
+
+-- Verify staff dog boarding (Goose)
+SELECT d.name, d.external_id, b.arrival_datetime, b.departure_datetime
+FROM boardings b JOIN dogs d ON b.dog_id = d.id
+WHERE b.external_id = 'C63QgTXx';
 ```
 
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, **v4.1.2 (pending PR #48 merge)**
-- v4.2.0 will be next after v4.1.2
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, **v4.2 (latest)**
 
 ## Archive
+- v4.1.2 session: `docs/archive/SESSION_HANDOFF_v4.1.2_final.md` (archive pending)
 - v4.1.1 session: `docs/archive/SESSION_HANDOFF_v4.1.1_final.md`
 - v4.0 session: `docs/archive/SESSION_HANDOFF_v4.0_final.md`
 - v3.0 session: `docs/archive/SESSION_HANDOFF_v3.0_final.md`
