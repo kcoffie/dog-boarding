@@ -1,135 +1,142 @@
-# Dog Boarding App — Session Handoff (v4.2 live)
-**Last updated:** March 8, 2026 (end of session — v4.2 shipped, Goose boarding fixed)
+# Dog Boarding App — Session Handoff (v4.3 in progress)
+**Last updated:** March 8, 2026 (end of session)
 
 ---
 
 ## Current State
 
 - **v4.2 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **743 tests, 46 files, 0 failures** (3 new extraction tests added this session)
-- **NOTIFY_RECIPIENTS** has 1 number — second number still pending (Kate to provide)
-- **Main branch clean**
-- **Local branch `fix/goose-boarding-tests`** — extraction test commit exists locally, not yet pushed or PRed
+- **742 tests, 46 files, 0 failures**
+- **Main branch clean** — all PRs merged
+- **PR #51 open** — `fix/goose-boarding-tests` — extraction tests for Goose case, CI green, ready to merge
+- **Integration check LIVE** — runs 3×/day, last run passed ✅ (0 issues, 11 boardings on schedule, all in DB)
 
 ---
 
 ## IMMEDIATE NEXT
 
-1. Push and PR the goose extraction test:
-   ```bash
-   git checkout fix/goose-boarding-tests
-   git push -u origin fix/goose-boarding-tests
-   # then create PR
-   ```
-2. Archive this handoff: `cp docs/SESSION_HANDOFF.md docs/archive/SESSION_HANDOFF_v4.2_final.md`
-   (Also archive the v4.1.2 one that was never archived: `cp docs/archive/SESSION_HANDOFF_v4.1.2_final.md` — if it exists)
+1. Merge PR #51 (`fix/goose-boarding-tests`) — just needs merge, CI is green
+2. Add Anthropic API credits so the Claude name-check step in the integration check activates (console.anthropic.com → Plans & Billing)
+3. Decide on Step 0 sync fix — see integration check known issues below
 
 ---
 
-## What Was Done This Session (v4.2)
+## What Was Done This Session
 
-### Staff dog boarding sync — Goose (PR #49, merged)
+### PRs merged to main (all squash-merged)
 
-Three bugs fixed in `sync.js` and `extraction.js`:
-
-| Bug | Root cause | Fix |
+| PR | Branch | What |
 |---|---|---|
-| Staff boarding filtered out | `hasStaffService` check blocked all "Staff Boarding (nights)" appts | Removed filter — staff dogs are real boardings |
-| Dog name "Unknown" | No `.event-pet` on schedule page → `appt.petName = ''` → null fallback | Added `nameFromTitle`: strip date from schedule title ("Goose 3/7-8(Sun)" → "Goose") |
-| Midnight dates | Title parsed to midnight; cross-validation (20-day threshold) didn't override same-month titles | Changed: always prefer system timestamps when `tsReasonable` — they have actual time-of-day precision |
+| #51 | `fix/goose-boarding-tests` | Extraction tests for Goose staff boarding case (OPEN — ready to merge) |
+| #52 | `fix/delete-boarding-fk` | Delete boarding FK fix + integration check initial implementation |
+| #53 | `fix/integration-check-skip-sync` | SKIP_SYNC flag — Step 0 disabled by default, workflow_dispatch input |
+| #54 | `fix/integ-check-window-and-add-filter` | DB query window fix (midnight UTC lower bound) + `/\badd\b/i` case fix |
+| #55 | `docs/integration-check-job-doc` | `docs/job_docs/integration-check.md` reference doc + handoff TODO |
 
-**Confirmed working via Supabase:**
-```sql
-SELECT d.name, b.arrival_datetime, b.departure_datetime
-FROM boardings b JOIN dogs d ON b.dog_id = d.id
-WHERE b.external_id = 'C63QgTXx';
--- → Goose | 2026-03-07 17:15:00+00 | 2026-03-08 23:00:00+00  ✓
-```
+### Delete boarding fix (`useBoardings.js`)
+- `deleteBoarding`: nulls `sync_appointments.mapped_boarding_id` FK before DELETE → fixes 23503 error
+- `deleteBoardingsForDog`: fetches boarding IDs first → nulls FKs via `.in()` → deletes
 
-### Extraction test added (local, not yet PRed)
-- `fix/goose-boarding-tests` branch — adds 3 tests to `extraction.test.js`:
-  1. Renamed existing misleading test: "falls back to title dates when system timestamps are unreasonably far in future"
-  2. Kept existing stale-month test (20-day gap → timestamps)
-  3. **NEW — Goose case**: `"Goose 3/7-8(Sun)"` title with real timestamps → expects `2026-03-07T17:15:00.000Z` (not midnight)
+### Integration check (`scripts/integration-check.js`)
+Live and passing. Runs 3×/day (1am, 9am, 5pm PDT) in GH Actions. Steps:
+1. *(Step 0 — skipped, broken — see below)*
+2. Load session cookies from `sync_settings`
+3. Playwright renders AGYD schedule, extracts appointment IDs from DOM + screenshots
+4. Claude vision reads screenshot → dog names (currently inactive — no API credits)
+5. DB query: boardings overlapping midnight UTC today → today+7d
+6. Compare: missing IDs, Unknown names, Claude name mismatches
+7. WhatsApp to `INTEGRATION_CHECK_RECIPIENTS` (Kate only)
 
-### GitHub Releases
-- **v4.1.2** — tagged (Monday roster polish, PR #48)
-- **v4.2** — tagged (staff dog boarding sync fix, PR #49)
+**First live run results (3/8 at 21:44 UTC):**
+- Found 74 DOM links, 11 boarding candidates
+- DB returned 15 boardings in window
+- ✅ PASS — 0 issues
+
+### Session archiving
+- `docs/archive/SESSION_HANDOFF_v4.2_final.md` — created
+- `docs/job_docs/integration-check.md` — new comprehensive reference doc
 
 ---
 
-## Full TODO List
+## v4.3 Open TODO
 
 ### Bugs
-- [ ] **Delete boarding button broken** — `23503` FK constraint: `sync_appointments.mapped_boarding_id` must be NULLed before DELETE. Fix in `useBoardings.js` delete path. SQL workaround already in Useful SQL section below.
-- [ ] **`cron-schedule.js` ADD filter is case-sensitive** — `/\badd\b/` doesn't match uppercase `ADD` titles (e.g. "ADD Leo T/TH"). Same bug fixed in `integration-check.js` (PR #54) but `cron-schedule.js` has its own copy. Low priority — sync pipeline's post-filter catches these downstream anyway.
+- [ ] **`cron-schedule.js` ADD filter case-sensitive** — `/\badd\b/` doesn't match uppercase `ADD`. Fixed in `integration-check.js` (PR #54) but `cron-schedule.js` has its own copy. Low priority — sync pipeline's post-filter catches these downstream anyway.
 
-### Polish / Low-priority (carried from v4.1.2)
+### Integration check — Step 0 sync (broken, needs fix)
+`api/run-sync.js` calls `runSync()` from `sync.js`, which calls `fetchAllSchedulePages()` from `schedule.js`. That uses `DOMParser` — browser-only, unavailable in Vercel Node.js runtime. Vercel Hobby 10s timeout also too short for a full sync.
+
+Fix options (documented in detail in `docs/job_docs/integration-check.md`):
+- **Option A (recommended):** Have `api/run-sync.js` call the existing cron endpoints via HTTP using `CRON_SECRET` (already a Vercel env var). Call `cron-schedule` once to enqueue, then loop `cron-detail` until queue depth = 0.
+- **Option B:** Remove Step 0 entirely — the check already verifies DB state vs live site. If the midnight cron is broken, missing boardings surface in Step 5 anyway.
+
+### Integration check — Claude credits needed
+Step 3 (name-check) is silently skipped because the Anthropic API key has no credits. Add credits at console.anthropic.com.
+
+### Polish (low priority, carried from v4.1.2)
 - [ ] Fix misleading "constant-time" comment in `roster-image.js` token check — use `crypto.timingSafeEqual` or remove the claim
 - [ ] Rename `window` param in `shouldSendNotification` → `sendWindow` (shadows browser global)
-- [ ] Pre-compile `attr()` regexes in `daytimeSchedule.js` — `new RegExp(name + ...)` inside hot loop, called 1,400+ times per parse run
+- [ ] Pre-compile `attr()` regexes in `daytimeSchedule.js` — `new RegExp(name + ...)` inside hot loop, 1,400+ calls per parse run
 
-### v4.3 Features
-- [ ] **Second WhatsApp recipient** — Kate to provide number; add to Vercel `NOTIFY_RECIPIENTS` as `+18312477375,+1XXXXXXXXXX`. No code change needed.
-- [ ] **Production WhatsApp sender** — move off Twilio sandbox to registered WhatsApp Business number. Eliminates the "text sandbox within 24hrs" requirement.
-- [ ] **Friday afternoon weekend WhatsApp job** — new GitHub Actions workflow (e.g. `notify-friday-pm.yml`), `window=friday-pm` param, sends Sat–Sun boarding preview. Reuses `api/notify` or gets its own endpoint.
-- [ ] **DST-aware cron scheduling** — currently must manually update UTC cron times each March/November DST transition.
-- [ ] **Group chat delivery** — send to a WhatsApp group instead of individual numbers.
-
-### v4.4 Feature: Integration smoke test job
-- [ ] Runs a sync → scrapes live AGYD schedule → reads DB → compares: do they match?
-- [ ] Sends WhatsApp to Kate with pass/fail + any mismatches (Unknown dogs, date discrepancies)
-- [ ] Key checks: dog names match, dates match, no "Unknown" dogs for known appointments
-- [ ] Can run on-demand or scheduled (e.g. daily after midnight cron)
+### Post v4.3 backlog
+- Second WhatsApp recipient (Kate to provide number — no code change, just Vercel `NOTIFY_RECIPIENTS`)
+- Move off Twilio sandbox → production WhatsApp Business sender
+- Friday afternoon weekend WhatsApp job (`notify-friday-pm.yml`)
+- DST-aware cron scheduling (manual UTC update required each March/November)
+- Group chat delivery
+- Gmail monitoring agent — scans `notifications@github.com` from kcoffie/vercel[bot]; if not routine → WhatsApp Kate
 
 ---
 
 ## Architecture Reference
 
-### Notify flow
+### Integration check flow
 ```
-GitHub Actions (3 workflows, Mon-Fri) -> GET /api/notify?window=4am|7am|8:30am
-  -> refreshDaytimeSchedule (live schedule fetch + upsert)
-  -> getPictureOfDay (DB query: today + yesterday DC/PG, workers, boarders)
-  -> computeWorkerDiff per worker (series_id set-diff + pet_names dedup)
-     [Monday: skipDiff=true — all dogs unchanged, hasUpdates forced false]
-  -> /api/roster-image -> PNG (satori + resvg)
-  -> Twilio WhatsApp -> NOTIFY_RECIPIENTS
-  -> hash stored in cron_health (7am/8:30am skip if no change)
+GitHub Actions (3×/day + on-demand, SKIP_SYNC=true)
+  → [Step 0 disabled — see above]
+  → Load session cookies from sync_settings (Supabase)
+  → Playwright: render /schedule, screenshot + DOM link extraction
+  → Claude vision: screenshot → dog names[] (needs API credits)
+  → Supabase: boardings JOIN dogs WHERE departure >= midnight UTC AND arrival <= today+7d
+  → compareResults: missing IDs, Unknown names, name mismatches
+  → Twilio WhatsApp → INTEGRATION_CHECK_RECIPIENTS
+```
+
+### Notify flow (unchanged)
+```
+GitHub Actions (3 workflows, Mon-Fri) → GET /api/notify?window=4am|7am|8:30am
+  → refreshDaytimeSchedule → getPictureOfDay → computeWorkerDiff
+  → /api/roster-image → PNG → Twilio WhatsApp → NOTIFY_RECIPIENTS
+  → hash stored in cron_health (7am/8:30am skip if no change)
 ```
 
 ### Key files
 | File | Purpose |
 |---|---|
-| `src/lib/pictureOfDay.js` | Data layer: getPictureOfDay, computeWorkerDiff (skipDiff), hashPicture |
-| `src/lib/workers.js` | Single source of truth for WORKERS/WORKER_ORDER/KNOWN_WORKERS |
-| `src/lib/htmlUtils.js` | Shared decodeEntities (null-safe) |
-| `api/roster-image.js` | Token-gated PNG endpoint (satori + resvg) |
-| `api/notify.js` | Orchestrator: window gate, 0-workers guard, refresh, send, hash |
+| `scripts/integration-check.js` | Integration check script (GH Actions) |
+| `api/run-sync.js` | On-demand sync endpoint (Step 0 — currently broken) |
+| `.github/workflows/integration-check.yml` | 3×/day + on-demand, SKIP_SYNC env var |
+| `docs/job_docs/integration-check.md` | Full reference doc for the integration check |
+| `src/hooks/useBoardings.js` | DELETE boarding with FK null pre-step (fixed this session) |
+| `src/lib/pictureOfDay.js` | getPictureOfDay, computeWorkerDiff, hashPicture |
+| `api/roster-image.js` | Token-gated PNG endpoint |
+| `api/notify.js` | Notify orchestrator |
 | `src/lib/notifyWhatsApp.js` | Twilio wrapper |
-| `src/lib/scraper/daytimeSchedule.js` | DC/PG/Boarding schedule parse + upsert |
-| `src/lib/scraper/sync.js` | runSync, 6-layer filter, nameFromTitle fallback |
-| `src/lib/scraper/extraction.js` | parseAppointmentPage — timestamps always preferred over midnight title dates |
-| `.github/workflows/notify-*.yml` | GitHub Actions schedulers (Mon-Fri) |
+| `src/lib/scraper/sync.js` | runSync, 6-layer filter |
+| `src/lib/scraper/extraction.js` | parseAppointmentPage |
 
-### Env vars
-| Var | Where |
+### GitHub Actions repo secrets (all must be Repository secrets, NOT environment secrets)
+| Secret | Status |
 |---|---|
-| `TWILIO_ACCOUNT_SID` | Vercel |
-| `TWILIO_AUTH_TOKEN` | Vercel |
-| `TWILIO_FROM_NUMBER` | Vercel |
-| `NOTIFY_RECIPIENTS` | Vercel (comma-separated — add second number when Kate provides it) |
-| `VITE_SYNC_PROXY_TOKEN` | Vercel + GitHub Actions Repository secrets |
-| `APP_URL` | GitHub Actions Repository secrets ONLY (not environment secrets) |
-
-### GitHub Actions secrets — critical gotcha
-Secrets must be **Repository secrets**: Settings -> Secrets and variables -> Actions -> "Repository secrets" tab.
-Previously set only as Environment secrets (under "Production" environment). Workflows don't declare `environment:` so they got null values -> curl exit code 3 -> workflow failure.
-
-### DB tables (daytime)
-- `daytime_appointments` — `external_id, series_id, appointment_date, worker_external_id, pet_names[], service_category, updated_at, synced_at, ...`
-- `workers` — `external_id, name, active`
-- `cron_health` — notify hash stored under `cron_name='notify'`
+| `VITE_SUPABASE_URL` | ✅ Set |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ Set |
+| `ANTHROPIC_API_KEY` | ✅ Set (no credits) |
+| `TWILIO_ACCOUNT_SID` | ✅ Set |
+| `TWILIO_AUTH_TOKEN` | ✅ Set |
+| `TWILIO_FROM_NUMBER` | ✅ Set |
+| `INTEGRATION_CHECK_RECIPIENTS` | ✅ Set (Kate's number) |
+| `APP_URL` | ✅ Set |
+| `VITE_SYNC_PROXY_TOKEN` | ✅ Set |
 
 ### Workers
 | Name | External UID |
@@ -160,31 +167,30 @@ ORDER BY b.updated_at DESC LIMIT 20;
 -- Notify state (last image sent + hash)
 SELECT result FROM cron_health WHERE cron_name = 'notify';
 
--- Last time daytime data was refreshed
-SELECT MAX(updated_at) FROM daytime_appointments WHERE appointment_date = CURRENT_DATE;
-
 -- If sync gets stuck
 UPDATE sync_logs SET status = 'failed', completed_at = NOW()
 WHERE status = 'running' AND started_at < NOW() - INTERVAL '5 minutes';
 
--- Null FK before deleting a boarding (workaround for delete button bug)
+-- Null FK before deleting a boarding (now handled automatically in useBoardings.js)
 UPDATE sync_appointments SET mapped_boarding_id = NULL
 WHERE mapped_boarding_id = '<boarding-uuid>';
 DELETE FROM boardings WHERE id = '<boarding-uuid>';
 
--- Verify staff dog boarding (Goose)
-SELECT d.name, d.external_id, b.arrival_datetime, b.departure_datetime
+-- Integration check window query (what the check uses)
+SELECT b.external_id, d.name, b.arrival_datetime, b.departure_datetime
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
-WHERE b.external_id = 'C63QgTXx';
+WHERE b.arrival_datetime <= NOW() + INTERVAL '7 days'
+  AND b.departure_datetime >= DATE_TRUNC('day', NOW());
 ```
 
 ---
 
 ## GitHub Releases
 - v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, **v4.2 (latest)**
+- Note: no v4.3 release yet — PRs #52-55 are incremental fixes, not a versioned feature release
 
 ## Archive
-- v4.1.2 session: `docs/archive/SESSION_HANDOFF_v4.1.2_final.md` (archive pending)
+- v4.2 session: `docs/archive/SESSION_HANDOFF_v4.2_final.md`
 - v4.1.1 session: `docs/archive/SESSION_HANDOFF_v4.1.1_final.md`
 - v4.0 session: `docs/archive/SESSION_HANDOFF_v4.0_final.md`
 - v3.0 session: `docs/archive/SESSION_HANDOFF_v3.0_final.md`
