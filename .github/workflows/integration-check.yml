@@ -1,5 +1,8 @@
-# Integration check — triggers a live sync, then scrapes the AGYD schedule via
-# real browser + Claude vision, compares against DB, sends WhatsApp report.
+# Integration check — scrapes the AGYD schedule via real browser + Claude vision,
+# compares against DB, sends WhatsApp report.
+#
+# Step 0 (sync) is currently disabled — see SKIP_SYNC note in integration-check.js.
+# Set skip_sync=false on a manual run to attempt sync (will likely fail until fixed).
 #
 # Runs 3x/day. Also available on-demand via workflow_dispatch.
 #
@@ -16,6 +19,11 @@ name: Integration Check
 
 on:
   workflow_dispatch:
+    inputs:
+      skip_sync:
+        description: 'Skip Step 0 sync (set false to attempt sync — currently broken)'
+        required: false
+        default: 'true'
   schedule:
     # 1:00 AM PDT (08:00 UTC) — shortly after midnight cron finishes
     - cron: '0 8 * * *'
@@ -54,3 +62,5 @@ jobs:
           INTEGRATION_CHECK_RECIPIENTS: ${{ secrets.INTEGRATION_CHECK_RECIPIENTS }}
           APP_URL: ${{ secrets.APP_URL }}
           VITE_SYNC_PROXY_TOKEN: ${{ secrets.VITE_SYNC_PROXY_TOKEN }}
+          # Scheduled runs always skip sync. Manual runs can override via the input.
+          SKIP_SYNC: ${{ github.event.inputs.skip_sync || 'true' }}
