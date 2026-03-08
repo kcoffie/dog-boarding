@@ -50,7 +50,7 @@ const SYNC_TIMEOUT_MS = 5 * 60 * 1000; // 5 min — runSync can be slow on a ful
 const NON_BOARDING_PATTERNS = [
   /(d\/c|\bdc\b)/i,
   /(p\/g|g\/p|\bpg\b)/i,
-  /\badd\b/,
+  /\badd\b/i,
   /switch\s+day/i,
   /back\s+to\s+\d+/i,
   /initial\s+eval/i,
@@ -362,16 +362,20 @@ If you see no boardings, return: []`,
 // ---------------------------------------------------------------------------
 
 async function queryDbBoardings(supabase) {
-  const now = new Date().toISOString();
+  // Use start of today (midnight UTC) as the lower bound so boardings that
+  // depart earlier today aren't falsely flagged as missing — they're still
+  // on the schedule page but would fall out of a `>= now()` query.
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
   const windowEnd = new Date(Date.now() + WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  console.log('[IntegCheck] Querying DB for boardings overlapping now → now+%dd (%s → %s)...', WINDOW_DAYS, now, windowEnd);
+  console.log('[IntegCheck] Querying DB for boardings overlapping today → today+%dd (%s → %s)...', WINDOW_DAYS, startOfDay.toISOString(), windowEnd);
 
   const { data, error } = await supabase
     .from('boardings')
     .select('external_id, arrival_datetime, departure_datetime, dogs(name)')
     .lte('arrival_datetime', windowEnd)
-    .gte('departure_datetime', now);
+    .gte('departure_datetime', startOfDay.toISOString());
 
   if (error) throw error;
 
