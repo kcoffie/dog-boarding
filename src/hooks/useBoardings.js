@@ -178,7 +178,9 @@ export function useBoardings() {
 
       if (fetchError) throw fetchError;
 
-      const boardingIds = boardingRows.map(b => b.id);
+      // Guard against Supabase returning null data on a network error that
+      // didn't populate the error field (rare but possible).
+      const boardingIds = (boardingRows ?? []).map(b => b.id);
 
       if (boardingIds.length > 0) {
         console.log('[deleteBoardingsForDog] Nulling mapped_boarding_id for %d boardings, dog_id=%s', boardingIds.length, dogId);
@@ -188,6 +190,8 @@ export function useBoardings() {
           .in('mapped_boarding_id', boardingIds);
 
         if (nullError) throw nullError;
+      } else {
+        console.log('[deleteBoardingsForDog] No boardings found for dog_id=%s — skipping FK null step', dogId);
       }
 
       const { error } = await supabase

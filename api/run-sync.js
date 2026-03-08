@@ -27,8 +27,11 @@ export const config = { runtime: 'nodejs' };
 
 function getSupabase() {
   const url = process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error('Supabase env vars not configured');
+  // Service role key is required — anon key is subject to RLS and cannot read
+  // sync_settings. Fail loud rather than silently falling back to a key that
+  // will produce cryptic permission errors downstream.
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Missing VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
   return createClient(url, key);
 }
 
@@ -37,8 +40,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Fail closed — if the token env var is missing, reject rather than allowing
+  // any caller to trigger a full production sync.
   const proxyToken = process.env.VITE_SYNC_PROXY_TOKEN;
-  if (proxyToken && req.headers.authorization !== `Bearer ${proxyToken}`) {
+  if (!proxyToken) {
+    console.error('[RunSync] VITE_SYNC_PROXY_TOKEN not configured — rejecting request');
+    return res.status(500).json({ error: 'Server misconfigured' });
+  }
+  if (req.headers.authorization !== `Bearer ${proxyToken}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -58,13 +67,16 @@ export default async function handler(req, res) {
     }
 
     setSession(cookies);
-    console.log('[RunSync] Session loaded, starting runSync...');
 
     // Default window: today → today+7d (matches the integration check query window)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const windowEnd = new Date(today);
     windowEnd.setDate(windowEnd.getDate() + 7);
+
+    // Log the window before the expensive call so a Vercel timeout mid-run
+    // still leaves a breadcrumb showing what was attempted.
+    console.log('[RunSync] Starting runSync — window: %s → %s', today.toISOString(), windowEnd.toISOString());
 
     const result = await runSync({
       supabase,
@@ -73,7 +85,9 @@ export default async function handler(req, res) {
     });
 
     console.log(
-      '[RunSync] Sync complete — found: %d, created: %d, updated: %d, skipped: %d, failed: %d, duration: %dms',
+      '[RunSync] runSync returned — success: %s, status: %s, found: %d, created: %d, updated: %d, skipped: %d, failed: %d, duration: %dms',
+      result.success,
+      result.status,
       result.appointmentsFound,
       result.appointmentsCreated,
       result.appointmentsUpdated,

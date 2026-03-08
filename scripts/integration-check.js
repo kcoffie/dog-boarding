@@ -16,15 +16,6 @@
  *   cannot catch about itself.
  *
  * Flow:
- *   1. Load session cookies from Supabase sync_settings (same cache the crons use)
- *   2. Playwright: render /schedule, take screenshot + extract appointment IDs
- *      from live DOM links
- *   3. Claude API: read screenshot → list dog names visible on the page
- *   4. Supabase: query boardings overlapping today → today+7d
- *   5. Compare → flag missing IDs, Unknown dog names, name mismatches
- *   6. Send WhatsApp text report to NOTIFY_RECIPIENTS
- *
- * Flow:
  *   0. Trigger sync — POST /api/run-sync (runs runSync for today+7d window)
  *   1. Load session cookies from Supabase sync_settings (same cache the crons use)
  *   2. Playwright: render /schedule, take screenshot + extract appointment IDs
@@ -51,6 +42,8 @@ import twilio from 'twilio';
 
 const BASE_URL = 'https://agirlandyourdog.com';
 const WINDOW_DAYS = 7;
+const PLAYWRIGHT_TIMEOUT_MS = 30_000;
+const SYNC_TIMEOUT_MS = 5 * 60 * 1000; // 5 min — runSync can be slow on a full week
 
 // Mirrors NON_BOARDING_RE from cron-schedule.js.
 // Defined here independently — do not import from src/ to preserve signal isolation.
@@ -130,6 +123,9 @@ async function triggerSync(appUrl, token) {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
+    // Guard against a hung runSync leaving the GH Actions job with a cryptic
+    // "job cancelled" failure instead of a clear timeout message.
+    signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
   });
 
   const body = await res.json().catch(() => ({}));
@@ -167,9 +163,9 @@ async function loadSession(supabase) {
     .from('sync_settings')
     .select('session_cookies, session_expires_at')
     .limit(1)
-    .single();
+    .maybeSingle(); // .single() logs HTTP 406 to Supabase console on 0 rows even when caught
 
-  if (error && error.code !== 'PGRST116') throw error;
+  if (error) throw error;
 
   if (!data?.session_cookies) {
     console.log('[IntegCheck] No session_cookies found in DB');
@@ -220,65 +216,71 @@ function parseCookieString(raw, domain) {
  *
  * Signal independence: document.querySelectorAll reads the rendered DOM after
  * JavaScript execution — completely different from regex on raw server HTML.
+ *
+ * Browser is always closed via try/finally, even if screenshot or evaluate throws.
  */
 async function scrapeWithPlaywright(cookieString) {
   console.log('[IntegCheck] Launching headless Chromium...');
   const browser = await chromium.launch();
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-    viewport: { width: 1280, height: 900 },
-  });
 
-  const cookies = parseCookieString(cookieString, 'agirlandyourdog.com');
-  console.log('[IntegCheck] Injecting %d cookies into browser context', cookies.length);
-  await context.addCookies(cookies);
-
-  const page = await context.newPage();
-  const scheduleUrl = `${BASE_URL}/schedule`;
-
-  console.log('[IntegCheck] Navigating to %s...', scheduleUrl);
-  const response = await page.goto(scheduleUrl, { waitUntil: 'networkidle', timeout: 30_000 });
-  console.log('[IntegCheck] Page loaded — HTTP %d', response.status());
-
-  // Detect session rejection — AGYD redirects to login if cookies are stale
-  const isLoginPage = await page.locator('input[type="password"]').count();
-  if (isLoginPage > 0) {
-    await browser.close();
-    throw new Error('SESSION_REJECTED — AGYD served login page. Run cron-auth to refresh session.');
-  }
-
-  console.log('[IntegCheck] Taking full-page screenshot...');
-  const screenshot = await page.screenshot({ fullPage: true });
-  console.log('[IntegCheck] Screenshot: %d bytes', screenshot.length);
-
-  // Extract appointment IDs + titles from rendered DOM links.
-  // This reads the live post-JS DOM, not raw HTML — a different failure surface
-  // than the cron-schedule regex parser.
-  console.log('[IntegCheck] Extracting appointment links from rendered DOM...');
-  const allAppointments = await page.evaluate(() => {
-    const seen = new Set();
-    const results = [];
-    document.querySelectorAll('a[href*="/schedule/a/"]').forEach(a => {
-      const m = a.href.match(/\/schedule\/a\/([^/]+)\/\d+/);
-      if (!m) return;
-      const id = m[1];
-      if (seen.has(id)) return;
-      seen.add(id);
-      const title = a.querySelector('.day-event-title')?.textContent?.trim() ?? '';
-      results.push({ id, title });
+  try {
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36',
+      viewport: { width: 1280, height: 900 },
     });
-    return results;
-  });
 
-  const appointments = allAppointments.filter(a => isBoardingTitle(a.title));
-  console.log(
-    '[IntegCheck] DOM links: %d total, %d boarding candidates after non-boarding filter',
-    allAppointments.length,
-    appointments.length,
-  );
+    const cookies = parseCookieString(cookieString, 'agirlandyourdog.com');
+    console.log('[IntegCheck] Injecting %d cookies into browser context', cookies.length);
+    await context.addCookies(cookies);
 
-  await browser.close();
-  return { screenshot, appointments };
+    const page = await context.newPage();
+    const scheduleUrl = `${BASE_URL}/schedule`;
+
+    console.log('[IntegCheck] Navigating to %s...', scheduleUrl);
+    const response = await page.goto(scheduleUrl, { waitUntil: 'networkidle', timeout: PLAYWRIGHT_TIMEOUT_MS });
+    console.log('[IntegCheck] Page loaded — HTTP %d', response.status());
+
+    // Detect session rejection — AGYD redirects to login if cookies are stale
+    const isLoginPage = await page.locator('input[type="password"]').count();
+    if (isLoginPage > 0) {
+      throw new Error('SESSION_REJECTED — AGYD served login page. Run cron-auth to refresh session.');
+    }
+
+    console.log('[IntegCheck] Taking full-page screenshot...');
+    const screenshot = await page.screenshot({ fullPage: true });
+    console.log('[IntegCheck] Screenshot: %d bytes', screenshot.length);
+
+    // Extract appointment IDs + titles from rendered DOM links.
+    // This reads the live post-JS DOM, not raw HTML — a different failure surface
+    // than the cron-schedule regex parser.
+    console.log('[IntegCheck] Extracting appointment links from rendered DOM...');
+    const allAppointments = await page.evaluate(() => {
+      const seen = new Set();
+      const results = [];
+      document.querySelectorAll('a[href*="/schedule/a/"]').forEach(a => {
+        const m = a.href.match(/\/schedule\/a\/([^/]+)\/\d+/);
+        if (!m) return;
+        const id = m[1];
+        if (seen.has(id)) return;
+        seen.add(id);
+        const title = a.querySelector('.day-event-title')?.textContent?.trim() ?? '';
+        results.push({ id, title });
+      });
+      return results;
+    });
+
+    const appointments = allAppointments.filter(a => isBoardingTitle(a.title));
+    console.log(
+      '[IntegCheck] DOM links: %d total, %d boarding candidates after non-boarding filter',
+      allAppointments.length,
+      appointments.length,
+    );
+
+    return { screenshot, appointments };
+  } finally {
+    // Always close the browser — even if screenshot or evaluate threw.
+    await browser.close();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +293,9 @@ async function scrapeWithPlaywright(cookieString) {
  *
  * Returns dog names Claude sees on the page. Cross-checked against DB names
  * to catch cases where the sync stored a wrong or "Unknown" name.
+ *
+ * Response is validated to be string[] before returning — Claude occasionally
+ * returns mixed types (numbers, null) that would crash .toLowerCase() downstream.
  */
 async function extractNamesFromScreenshot(client, screenshotBuffer) {
   console.log('[IntegCheck] Sending screenshot to Claude for visual name extraction...');
@@ -328,11 +333,26 @@ If you see no boardings, return: []`,
 
   try {
     const match = raw.match(/\[[\s\S]*\]/);
-    const names = match ? JSON.parse(match[0]) : [];
+    const parsed = match ? JSON.parse(match[0]) : [];
+
+    // Validate every element is a non-empty string. Claude occasionally returns
+    // numbers or null in the array, which would crash .toLowerCase() in compareResults.
+    const names = Array.isArray(parsed)
+      ? parsed.filter(n => typeof n === 'string' && n.trim().length > 0)
+      : [];
+
+    if (names.length !== (Array.isArray(parsed) ? parsed.length : 0)) {
+      console.warn(
+        '[IntegCheck] Claude response contained %d non-string/empty entries — filtered out (raw: %s)',
+        (Array.isArray(parsed) ? parsed.length : 0) - names.length,
+        raw.slice(0, 200),
+      );
+    }
+
     console.log('[IntegCheck] Claude identified %d dog name(s): %s', names.length, names.join(', ') || '(none)');
     return names;
   } catch (err) {
-    console.error('[IntegCheck] Failed to parse Claude response as JSON: %s', err.message);
+    console.error('[IntegCheck] Failed to parse Claude response as JSON: %s (raw: %s)', err.message, raw.slice(0, 200));
     return [];
   }
 }
@@ -345,7 +365,7 @@ async function queryDbBoardings(supabase) {
   const now = new Date().toISOString();
   const windowEnd = new Date(Date.now() + WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  console.log('[IntegCheck] Querying DB for boardings overlapping now → now+%dd...', WINDOW_DAYS);
+  console.log('[IntegCheck] Querying DB for boardings overlapping now → now+%dd (%s → %s)...', WINDOW_DAYS, now, windowEnd);
 
   const { data, error } = await supabase
     .from('boardings')
@@ -376,6 +396,10 @@ async function queryDbBoardings(supabase) {
  *   2. DB boardings with "Unknown" dog name — name extraction failed during sync
  *   3. Claude sees a name not present in any DB boarding — name mismatch
  *      (only flagged when Claude returned names; skipped on empty schedule)
+ *
+ * Known limitation: Check 3 compares first-word names (Claude) against full
+ * DB names (lowercase). "Buddy Jr." in DB won't match "Buddy" from Claude —
+ * this is an acceptable false positive rate for a smoke test.
  */
 function compareResults(scraped, claudeNames, dbBoardings) {
   const issues = [];
@@ -390,8 +414,10 @@ function compareResults(scraped, claudeNames, dbBoardings) {
     }
   }
 
-  // Check 2: Unknown dog names in the current window
-  for (const b of dbBoardings.filter(b => !b.dog_name || b.dog_name === 'Unknown')) {
+  // Check 2: DB boardings with Unknown dog name in the current window.
+  // dog_name is always set (defaults to 'Unknown' in queryDbBoardings) so
+  // we only need the explicit 'Unknown' check here.
+  for (const b of dbBoardings.filter(b => b.dog_name === 'Unknown')) {
     console.log('[IntegCheck] ⚠️  Unknown dog in DB: external_id=%s', b.external_id);
     issues.push(`Unknown dog name in DB: ${b.external_id ?? '(no external_id)'}`);
   }
@@ -424,7 +450,7 @@ async function sendWhatsApp(twilioClient, message) {
     return;
   }
   if (recipients.length === 0) {
-    console.log('[IntegCheck] No NOTIFY_RECIPIENTS configured — skipping WhatsApp send');
+    console.log('[IntegCheck] No INTEGRATION_CHECK_RECIPIENTS configured — skipping WhatsApp send');
     return;
   }
 
@@ -451,13 +477,30 @@ async function main() {
   console.log('[IntegCheck] === Integration check starting ===');
 
   const today = new Date().toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
-  const supabase = getSupabase();
-  const anthropic = getAnthropicClient();
+
+  // Twilio is initialized first so that any subsequent startup failure can be
+  // reported via WhatsApp rather than dying silently in the GH Actions log.
   const twilioClient = getTwilioClient();
+
+  let supabase, anthropic;
+  try {
+    supabase = getSupabase();
+    anthropic = getAnthropicClient();
+  } catch (err) {
+    const msg = `⚠️ Integration check crashed at startup (${today}): ${err.message}`;
+    console.error('[IntegCheck]', msg);
+    await sendWhatsApp(twilioClient, msg);
+    process.exit(1);
+  }
 
   const appUrl = process.env.APP_URL;
   const syncToken = process.env.VITE_SYNC_PROXY_TOKEN;
-  if (!appUrl || !syncToken) throw new Error('Missing APP_URL or VITE_SYNC_PROXY_TOKEN');
+  if (!appUrl || !syncToken) {
+    const msg = `⚠️ Integration check crashed at startup (${today}): Missing APP_URL or VITE_SYNC_PROXY_TOKEN`;
+    console.error('[IntegCheck]', msg);
+    await sendWhatsApp(twilioClient, msg);
+    process.exit(1);
+  }
 
   // Step 0: Sync — must succeed before we compare, or we risk a false pass on stale data
   try {
