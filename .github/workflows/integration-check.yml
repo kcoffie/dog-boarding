@@ -1,0 +1,43 @@
+# Integration check — scrapes live AGYD schedule via real browser + Claude vision,
+# compares against DB, sends WhatsApp report to NOTIFY_RECIPIENTS.
+#
+# Triggered manually only (workflow_dispatch). Add a schedule: block here when
+# you want automated daily runs (e.g. after the midnight cron-detail finishes).
+#
+# Required Repository secrets (Settings → Secrets → Actions → Repository secrets):
+#   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#   ANTHROPIC_API_KEY
+#   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, NOTIFY_RECIPIENTS
+name: Integration Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Run integration check
+        run: node scripts/integration-check.js
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          NOTIFY_RECIPIENTS: ${{ secrets.NOTIFY_RECIPIENTS }}
