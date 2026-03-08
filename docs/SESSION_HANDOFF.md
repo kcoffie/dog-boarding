@@ -62,6 +62,7 @@ WHERE b.external_id = 'C63QgTXx';
 
 ### Bugs
 - [ ] **Delete boarding button broken** — `23503` FK constraint: `sync_appointments.mapped_boarding_id` must be NULLed before DELETE. Fix in `useBoardings.js` delete path. SQL workaround already in Useful SQL section below.
+- [ ] **`cron-schedule.js` ADD filter is case-sensitive** — `/\badd\b/` doesn't match uppercase `ADD` titles (e.g. "ADD Leo T/TH"). Same bug fixed in `integration-check.js` (PR #54) but `cron-schedule.js` has its own copy. Low priority — sync pipeline's post-filter catches these downstream anyway.
 
 ### Polish / Low-priority (carried from v4.1.2)
 - [ ] Fix misleading "constant-time" comment in `roster-image.js` token check — use `crypto.timingSafeEqual` or remove the claim
