@@ -495,21 +495,38 @@ async function main() {
 
   const appUrl = process.env.APP_URL;
   const syncToken = process.env.VITE_SYNC_PROXY_TOKEN;
-  if (!appUrl || !syncToken) {
-    const msg = `⚠️ Integration check crashed at startup (${today}): Missing APP_URL or VITE_SYNC_PROXY_TOKEN`;
-    console.error('[IntegCheck]', msg);
-    await sendWhatsApp(twilioClient, msg);
-    process.exit(1);
-  }
 
-  // Step 0: Sync — must succeed before we compare, or we risk a false pass on stale data
-  try {
-    await triggerSync(appUrl, syncToken);
-  } catch (err) {
-    const msg = `⚠️ Integration check aborted (${today})\nSync failed: ${err.message}`;
-    console.error('[IntegCheck]', msg);
-    await sendWhatsApp(twilioClient, msg);
-    process.exit(1);
+  // Step 0: Sync (currently disabled — SKIP_SYNC=true in workflow)
+  //
+  // KNOWN ISSUE: api/run-sync.js calls runSync() from sync.js, which calls
+  // fetchAllSchedulePages() from schedule.js. That file uses DOMParser — a
+  // browser API unavailable in Vercel's Node.js runtime. Additionally, the
+  // Vercel Hobby plan 10s timeout is too short for a full sync.
+  //
+  // TODO: Fix by either:
+  //   A) Having run-sync.js call the existing cron endpoints via HTTP
+  //      (cron-schedule + cron-detail loop) instead of runSync() directly.
+  //      Requires CRON_SECRET as a GH repo secret.
+  //   B) Removing this step entirely — the check is a verifier, not a syncer.
+  //      If the midnight cron is broken, missing boardings will surface here anyway.
+  const skipSync = process.env.SKIP_SYNC === 'true';
+  if (skipSync) {
+    console.log('[IntegCheck] Step 0: skipped (SKIP_SYNC=true)');
+  } else {
+    if (!appUrl || !syncToken) {
+      const msg = `⚠️ Integration check crashed at startup (${today}): Missing APP_URL or VITE_SYNC_PROXY_TOKEN`;
+      console.error('[IntegCheck]', msg);
+      await sendWhatsApp(twilioClient, msg);
+      process.exit(1);
+    }
+    try {
+      await triggerSync(appUrl, syncToken);
+    } catch (err) {
+      const msg = `⚠️ Integration check aborted (${today})\nSync failed: ${err.message}`;
+      console.error('[IntegCheck]', msg);
+      await sendWhatsApp(twilioClient, msg);
+      process.exit(1);
+    }
   }
 
   // Step 1: Session
