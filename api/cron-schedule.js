@@ -37,7 +37,7 @@ const CURSOR_WINDOW_WEEKS = 8; // how many weeks the cursor cycles through
 const NON_BOARDING_RE = [
   /(d\/c|\bdc\b)/i,
   /(p\/g|g\/p|\bpg\b)/i,
-  /\badd\b/,
+  /\badd\b/i,
   /switch\s+day/i,
   /back\s+to\s+\d+/i,
   /initial\s+eval/i,
