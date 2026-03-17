@@ -36,6 +36,7 @@ export function useBoardings() {
         nightRate: b.night_rate != null ? parseFloat(b.night_rate) : null,
         billedAmount: b.billed_amount != null ? parseFloat(b.billed_amount) : null,
         source: b.source ?? null,
+        bookingStatus: b.booking_status ?? 'confirmed',
       })));
     } catch (err) {
       console.error('Error fetching boardings:', err);
