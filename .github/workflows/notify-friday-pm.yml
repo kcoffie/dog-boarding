@@ -1,0 +1,28 @@
+# Sends the weekend boarding preview at 3pm PDT every Friday.
+# Shows arrivals + departures for Fri–Sun so Kate has a heads-up before the weekend.
+# DST note: Pacific Daylight Time = UTC-7 (3pm PDT = 22:00 UTC, Mar–Nov).
+#           Pacific Standard Time  = UTC-8 (3pm PST = 23:00 UTC, Nov–Mar).
+#           Update the cron below each March and November DST transition.
+name: Notify Friday PM (Weekend Boarding)
+
+on:
+  schedule:
+    # 22:00 UTC = 3pm PDT (daylight time, Mar–Nov) — Fridays only
+    - cron: '0 22 * * 5'
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send weekend boarding preview
+        run: |
+          RESPONSE=$(curl -s -o /tmp/notify_response.json -w "%{http_code}" \
+            "${{ secrets.APP_URL }}/api/notify?window=friday-pm&token=${{ secrets.VITE_SYNC_PROXY_TOKEN }}")
+          echo "HTTP status: $RESPONSE"
+          cat /tmp/notify_response.json
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Notify endpoint returned non-200 status"
+            exit 1
+          fi
