@@ -366,7 +366,7 @@ export async function runSync(options = {}) {
           const isKnownNonBoarding =
             /(d\/c|\bdc\b)/i.test(titleLower) ||
             /(p\/g|g\/p|\bpg\b)/i.test(titleLower) ||
-            /\badd\b/.test(titleLower) ||
+            /\badd\b/i.test(titleLower) ||
             /switch\s+day/i.test(titleLower) ||
             /back\s+to\s+\d+/i.test(titleLower) ||
             /initial\s+eval/i.test(titleLower) ||
@@ -411,7 +411,7 @@ export async function runSync(options = {}) {
           const isKnownNonBoarding =
             /(d\/c|\bdc\b)/i.test(checkLower) ||
             /(p\/g|g\/p|\bpg\b)/i.test(checkLower) ||
-            /\badd\b/.test(checkLower) ||
+            /\badd\b/i.test(checkLower) ||
             /switch\s+day/i.test(checkLower) ||
             /back\s+to\s+\d+/i.test(checkLower) ||
             /initial\s+eval/i.test(checkLower) ||
