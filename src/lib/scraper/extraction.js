@@ -110,6 +110,7 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     // Appointment info
     service_type: serviceType,
     status: extractText(html, SCRAPER_CONFIG.selectors.status),
+    booking_status: extractEventStatus(html),
     scheduled_check_in: null,
     scheduled_check_out: null,
     check_in_datetime: checkInDatetime,
@@ -284,6 +285,26 @@ function extractAddressFromDataAttr(html) {
 function extractDuration(html) {
   const match = html.match(/class="scheduled-duration"[^>]*>\(Scheduled:\s*([^)]+)\)/);
   return match ? match[1].trim() : null;
+}
+
+/**
+ * Extract booking status from the .event-status block on the detail page.
+ *
+ * The external site renders an .event-status div only for non-confirmed appointments:
+ *   <div class="event-status"><div class="field-value">Request canceled</div></div>
+ *
+ * Returns:
+ *   'canceled' — status text contains "cancel" (request was never confirmed)
+ *   'pending'  — status text contains "request" but not "cancel" (awaiting confirmation)
+ *   'confirmed' — no .event-status div present (normal confirmed booking)
+ */
+function extractEventStatus(html) {
+  const match = html.match(/class="event-status">\s*<div[^>]*>\s*([^<]+?)\s*<\/div>/i);
+  if (!match) return 'confirmed';
+  const text = match[1].trim();
+  if (/cancel/i.test(text)) return 'canceled';
+  if (/request/i.test(text)) return 'pending';
+  return 'confirmed';
 }
 
 /**

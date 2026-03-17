@@ -16,6 +16,8 @@ import {
   mockPricingDecimalTotal,
   mockPricingNoPriceDivs,
   mockPricingMultiPet,
+  mockRequestCanceledPage,
+  mockPendingRequestPage,
 } from './fixtures.js';
 
 describe('REQ-102: Appointment Detail Extraction', () => {
@@ -525,5 +527,29 @@ describe('extractCheckInOutAmPm()', () => {
 
   it('returns nulls when neither block is present', () => {
     expect(extractCheckInOutAmPm('<div>no time info</div>')).toEqual({ checkInAmPm: null, checkOutAmPm: null });
+  });
+});
+
+describe('booking_status extraction', () => {
+  it('returns "confirmed" for a normal appointment (no .event-status div)', () => {
+    const data = parseAppointmentPage(mockAppointmentPage);
+    expect(data.booking_status).toBe('confirmed');
+  });
+
+  it('returns "canceled" for a Request canceled appointment', () => {
+    const data = parseAppointmentPage(mockRequestCanceledPage);
+    expect(data.booking_status).toBe('canceled');
+  });
+
+  it('returns "pending" for a Request (not yet confirmed) appointment', () => {
+    const data = parseAppointmentPage(mockPendingRequestPage);
+    expect(data.booking_status).toBe('pending');
+  });
+
+  it('still extracts dates and service type from a canceled-request page', () => {
+    const data = parseAppointmentPage(mockRequestCanceledPage);
+    expect(data.booking_status).toBe('canceled');
+    expect(data.check_in_datetime).toBe('2026-03-12T10:00:00.000Z');
+    expect(data.check_out_datetime).toBe('2026-03-17T16:15:00.000Z');
   });
 });

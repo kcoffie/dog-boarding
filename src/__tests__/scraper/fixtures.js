@@ -463,6 +463,89 @@ export const mockExternalAppointmentSingleLinePricing = {
   },
 };
 
+// Minimal detail page for a "Request canceled" appointment (e.g. C63QgSdB).
+// The .event-status div signals the appointment was never confirmed.
+// Verified against real AGYD HTML (2026-03-17).
+export const mockRequestCanceledPage = `
+<!DOCTYPE html>
+<html>
+<head><title>Boarding (Nights) | A Girl and Your Dog</title></head>
+<body>
+  <div class="events-view es-9 et-1">
+    <div class="event-status"><div class="field-value">Request canceled</div></div>
+    <div class="appt-info">
+      <div class="dt-row" id="services-wrapper">
+        <div class="field-value" data-id="17357" data-cat_id="5635">
+          <a class="service-link" href="/services/categories/5635?view_id=17357">Boarding (Nights)</a>
+        </div>
+      </div>
+      <div class="dt-row" id="when-wrapper"
+           data-start_scheduled="1773309600" data-end_scheduled="1773764100"
+           data-start_actual="1773309600" data-end_actual="1773764100">
+        <div class="field-value">
+          <span class="time the start"><span class="time-label" title="">AM</span>, </span>
+          <span class="time time-date">Thursday, March 12, 2026</span>
+          <span class="time the"><span class="time-label" title="">PM</span>, </span>
+          <span class="time time-date">Tuesday, March 17, 2026</span>
+        </div>
+      </div>
+      <div class="cancel_at" data-cancel_by="91854" data-cancel_at="1772565535">Canceled at: 3/3/2026</div>
+    </div>
+    <div class="appt-clients-pets">
+      <div class="event-clients-pets" id="events-clients-pets-91854" data-uid="91854">
+        <a href="/clients/91854" class="event-client">Cathy Price</a>
+        <div class="event-pets pets-count-1" data-pets="77457">
+          <div class="event-pet-wrapper" data-pet="77457">
+            <a href="/pets/77457" class="event-pet pet-77457" data-pet="77457">Olive Price</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+// Minimal detail page for a "Request" (pending, not yet confirmed or canceled).
+export const mockPendingRequestPage = `
+<!DOCTYPE html>
+<html>
+<head><title>Boarding (Nights) | A Girl and Your Dog</title></head>
+<body>
+  <div class="events-view es-2 et-1">
+    <div class="event-status"><div class="field-value">Request</div></div>
+    <div class="appt-info">
+      <div class="dt-row" id="services-wrapper">
+        <div class="field-value" data-id="17357" data-cat_id="5635">
+          <a class="service-link" href="/services/categories/5635?view_id=17357">Boarding (Nights)</a>
+        </div>
+      </div>
+      <div class="dt-row" id="when-wrapper"
+           data-start_scheduled="1773309600" data-end_scheduled="1773764100"
+           data-start_actual="1773309600" data-end_actual="1773764100">
+        <div class="field-value">
+          <span class="time the start"><span class="time-label" title="">AM</span>, </span>
+          <span class="time time-date">Thursday, March 12, 2026</span>
+          <span class="time the"><span class="time-label" title="">PM</span>, </span>
+          <span class="time time-date">Tuesday, March 17, 2026</span>
+        </div>
+      </div>
+    </div>
+    <div class="appt-clients-pets">
+      <div class="event-clients-pets" id="events-clients-pets-91854" data-uid="91854">
+        <a href="/clients/91854" class="event-client">Cathy Price</a>
+        <div class="event-pets pets-count-1" data-pets="77457">
+          <div class="event-pet-wrapper" data-pet="77457">
+            <a href="/pets/77457" class="event-pet pet-77457" data-pet="77457">Olive Price</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
 export const mockSyncLog = {
   id: 'test-sync-1',
   started_at: '2025-12-20T10:00:00Z',
