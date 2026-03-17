@@ -16,13 +16,13 @@
  *   cannot catch about itself.
  *
  * Flow:
- *   0. Trigger sync — POST /api/run-sync (runs runSync for today+7d window)
  *   1. Load session cookies from Supabase sync_settings (same cache the crons use)
  *   2. Playwright: render /schedule, take screenshot + extract appointment IDs
- *      from live DOM links
+ *      from live DOM links (boarding + daytime)
  *   3. Claude API: read screenshot → list dog names visible on the page
- *   4. Supabase: query boardings overlapping today → today+7d
- *   5. Compare → flag missing IDs, Unknown dog names, name mismatches
+ *   4. Supabase: query boardings overlapping today → today+7d; query daytime_appointments for today
+ *   5. Compare → flag missing IDs, Unknown dog names, name mismatches (boarding);
+ *      flag missing daytime events (daytime smoke check)
  *   6. Send WhatsApp text report to INTEGRATION_CHECK_RECIPIENTS (separate from
  *      the roster NOTIFY_RECIPIENTS — this is a technical report for Kate only)
  *
@@ -31,8 +31,6 @@
  *   ANTHROPIC_API_KEY
  *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
  *   INTEGRATION_CHECK_RECIPIENTS  (separate from NOTIFY_RECIPIENTS)
- *   APP_URL                       (Vercel deployment URL for sync trigger)
- *   VITE_SYNC_PROXY_TOKEN         (auth token for /api/run-sync)
  */
 
 import { chromium } from 'playwright';
@@ -43,9 +41,8 @@ import twilio from 'twilio';
 const BASE_URL = 'https://agirlandyourdog.com';
 const WINDOW_DAYS = 7;
 const PLAYWRIGHT_TIMEOUT_MS = 30_000;
-const SYNC_TIMEOUT_MS = 5 * 60 * 1000; // 5 min — runSync can be slow on a full week
 
-// Mirrors NON_BOARDING_RE from cron-schedule.js.
+// Mirrors NON_BOARDING_RE from cron-schedule.js and sync.js.
 // Defined here independently — do not import from src/ to preserve signal isolation.
 const NON_BOARDING_PATTERNS = [
   /(d\/c|\bdc\b)/i,
@@ -60,6 +57,10 @@ const NON_BOARDING_PATTERNS = [
 function isBoardingTitle(title) {
   return !NON_BOARDING_PATTERNS.some(re => re.test(title));
 }
+
+// Daytime service category IDs — mirrors SERVICE_CATS in daytimeSchedule.js.
+// Defined here independently to preserve signal isolation from src/.
+const DAYTIME_CAT_IDS = [5634, 7431]; // DC, PG
 
 // ---------------------------------------------------------------------------
 // Client factories
@@ -94,62 +95,6 @@ function getRecipients() {
 function maskNumber(n) {
   const d = n.replace(/\D/g, '');
   return `***-***-${d.slice(-4)}`;
-}
-
-// ---------------------------------------------------------------------------
-// Step 0: Trigger sync via /api/run-sync
-// ---------------------------------------------------------------------------
-
-/**
- * POST to /api/run-sync and wait for it to complete.
- *
- * This runs before the Playwright scrape so we're comparing against fresh DB
- * data, not yesterday's midnight cron result.
- *
- * Fails loudly — if sync fails, we abort rather than produce a false pass by
- * comparing the scrape against stale data.
- *
- * @param {string} appUrl   - Vercel deployment base URL (APP_URL secret)
- * @param {string} token    - VITE_SYNC_PROXY_TOKEN
- * @returns {Promise<{synced, skipped, failed, durationMs}>}
- */
-async function triggerSync(appUrl, token) {
-  const url = `${appUrl}/api/run-sync`;
-  console.log('[IntegCheck] Step 0: triggering sync at %s...', url);
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    // Guard against a hung runSync leaving the GH Actions job with a cryptic
-    // "job cancelled" failure instead of a clear timeout message.
-    signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
-  });
-
-  const body = await res.json().catch(() => ({}));
-
-  if (res.status === 503 && body.reason === 'no_session') {
-    throw new Error('Sync skipped — no valid session cached. Run cron-auth first.');
-  }
-
-  if (!res.ok || body.ok === false) {
-    throw new Error(
-      `Sync endpoint returned ${res.status}: ${body.error ?? JSON.stringify(body)}`
-    );
-  }
-
-  console.log(
-    '[IntegCheck] Sync complete — synced: %d, skipped: %d, failed: %d, duration: %dms',
-    body.synced, body.skipped, body.failed, body.durationMs,
-  );
-
-  if (body.failed > 0) {
-    console.warn('[IntegCheck] ⚠️  Sync reported %d failed appointments: %o', body.failed, body.errors);
-  }
-
-  return { synced: body.synced, skipped: body.skipped, failed: body.failed, durationMs: body.durationMs };
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +157,8 @@ function parseCookieString(raw, domain) {
 /**
  * Render the schedule page in a headless Chromium browser and return:
  *   - screenshot: Buffer (PNG) — for Claude vision
- *   - appointments: Array<{id, title}> — boarding candidates from live DOM
+ *   - boardingAppointments: Array<{id, title}> — boarding candidates from live DOM
+ *   - daytimeAppointments: Array<{id, catId, dayTs, title}> — DC/PG events from live DOM
  *
  * Signal independence: document.querySelectorAll reads the rendered DOM after
  * JavaScript execution — completely different from regex on raw server HTML.
@@ -250,33 +196,50 @@ async function scrapeWithPlaywright(cookieString) {
     const screenshot = await page.screenshot({ fullPage: true });
     console.log('[IntegCheck] Screenshot: %d bytes', screenshot.length);
 
-    // Extract appointment IDs + titles from rendered DOM links.
-    // This reads the live post-JS DOM, not raw HTML — a different failure surface
-    // than the cron-schedule regex parser.
+    // Extract appointment IDs + titles from rendered DOM.
+    // Boarding: schedule/a/ links. Daytime: .day-event links with cat-{id} class.
+    // Reads the live post-JS DOM — different failure surface than cron-schedule regex parser.
     console.log('[IntegCheck] Extracting appointment links from rendered DOM...');
-    const allAppointments = await page.evaluate(() => {
-      const seen = new Set();
-      const results = [];
+    const { allBoardingAppts, daytimeAppointments } = await page.evaluate((daytimeCatIds) => {
+      const seenBoarding = new Set();
+      const allBoardingAppts = [];
       document.querySelectorAll('a[href*="/schedule/a/"]').forEach(a => {
         const m = a.href.match(/\/schedule\/a\/([^/]+)\/\d+/);
         if (!m) return;
         const id = m[1];
-        if (seen.has(id)) return;
-        seen.add(id);
+        if (seenBoarding.has(id)) return;
+        seenBoarding.add(id);
         const title = a.querySelector('.day-event-title')?.textContent?.trim() ?? '';
-        results.push({ id, title });
+        allBoardingAppts.push({ id, title });
       });
-      return results;
-    });
 
-    const appointments = allAppointments.filter(a => isBoardingTitle(a.title));
+      const seenDaytime = new Set();
+      const daytimeAppointments = [];
+      document.querySelectorAll('a.day-event').forEach(a => {
+        const catMatch = a.className.match(/\bcat-(\d+)\b/);
+        if (!catMatch) return;
+        const catId = parseInt(catMatch[1], 10);
+        if (!daytimeCatIds.includes(catId)) return;
+        const id = a.dataset.id;
+        if (!id || seenDaytime.has(id)) return;
+        seenDaytime.add(id);
+        const dayTs = parseInt(a.dataset.ts || '0', 10);
+        const title = a.querySelector('.day-event-title')?.textContent?.trim() ?? '';
+        daytimeAppointments.push({ id, catId, dayTs, title });
+      });
+
+      return { allBoardingAppts, daytimeAppointments };
+    }, DAYTIME_CAT_IDS);
+
+    const boardingAppointments = allBoardingAppts.filter(a => isBoardingTitle(a.title));
     console.log(
-      '[IntegCheck] DOM links: %d total, %d boarding candidates after non-boarding filter',
-      allAppointments.length,
-      appointments.length,
+      '[IntegCheck] DOM boarding links: %d total, %d candidates after non-boarding filter',
+      allBoardingAppts.length,
+      boardingAppointments.length,
     );
+    console.log('[IntegCheck] DOM daytime events: %d DC/PG events extracted', daytimeAppointments.length);
 
-    return { screenshot, appointments };
+    return { screenshot, boardingAppointments, daytimeAppointments };
   } finally {
     // Always close the browser — even if screenshot or evaluate threw.
     await browser.close();
@@ -390,6 +353,28 @@ async function queryDbBoardings(supabase) {
   return boardings;
 }
 
+async function queryDbDaytimeAppointments(supabase) {
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  console.log('[IntegCheck] Querying DB for daytime appointments on %s...', todayStr);
+
+  const { data, error } = await supabase
+    .from('daytime_appointments')
+    .select('external_id, service_category, title')
+    .eq('appointment_date', todayStr);
+
+  if (error) throw error;
+
+  const appointments = (data || []).map(a => ({
+    external_id: a.external_id,
+    service_category: a.service_category,
+    title: a.title,
+  }));
+
+  console.log('[IntegCheck] DB returned %d daytime appointment(s) for today', appointments.length);
+  return appointments;
+}
+
 // ---------------------------------------------------------------------------
 // Step 5: Compare
 // ---------------------------------------------------------------------------
@@ -439,6 +424,43 @@ function compareResults(scraped, claudeNames, dbBoardings) {
   const passed = issues.length === 0;
   console.log('[IntegCheck] Result: %s (%d issue(s))', passed ? 'PASS ✅' : 'FAIL ⚠️', issues.length);
   return { passed, issues };
+}
+
+/**
+ * Smoke check: daytime DC/PG appointments visible in today's DOM column
+ * should be present in the DB for today.
+ *
+ * Filters DOM events to today's day column (by dayTs), then checks each
+ * external_id against the DB result for today.
+ *
+ * Returns { passed, issues, domCount, dbCount }.
+ */
+function compareDaytimeResults(domDaytime, dbDaytime) {
+  const issues = [];
+
+  // Filter to today's day column only (dayTs is midnight of the column in Unix seconds)
+  const todayMidnightSec = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
+  const tomorrowMidnightSec = todayMidnightSec + 86400;
+  const todayDom = domDaytime.filter(a => a.dayTs >= todayMidnightSec && a.dayTs < tomorrowMidnightSec);
+
+  const dbIds = new Set(dbDaytime.map(a => a.external_id));
+
+  for (const appt of todayDom) {
+    if (!dbIds.has(appt.id)) {
+      console.log('[IntegCheck] ⚠️  Daytime missing from DB: %s ("%s")', appt.id, appt.title);
+      issues.push(`Daytime missing from DB: ${appt.id} ("${appt.title}")`);
+    }
+  }
+
+  const passed = issues.length === 0;
+  console.log(
+    '[IntegCheck] Daytime result: %s — DOM today: %d, DB today: %d, issues: %d',
+    passed ? 'PASS ✅' : 'FAIL ⚠️',
+    todayDom.length,
+    dbDaytime.length,
+    issues.length,
+  );
+  return { passed, issues, domCount: todayDom.length, dbCount: dbDaytime.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -497,42 +519,6 @@ async function main() {
     process.exit(1);
   }
 
-  const appUrl = process.env.APP_URL;
-  const syncToken = process.env.VITE_SYNC_PROXY_TOKEN;
-
-  // Step 0: Sync (currently disabled — SKIP_SYNC=true in workflow)
-  //
-  // KNOWN ISSUE: api/run-sync.js calls runSync() from sync.js, which calls
-  // fetchAllSchedulePages() from schedule.js. That file uses DOMParser — a
-  // browser API unavailable in Vercel's Node.js runtime. Additionally, the
-  // Vercel Hobby plan 10s timeout is too short for a full sync.
-  //
-  // TODO: Fix by either:
-  //   A) Having run-sync.js call the existing cron endpoints via HTTP
-  //      (cron-schedule + cron-detail loop) instead of runSync() directly.
-  //      Requires CRON_SECRET as a GH repo secret.
-  //   B) Removing this step entirely — the check is a verifier, not a syncer.
-  //      If the midnight cron is broken, missing boardings will surface here anyway.
-  const skipSync = process.env.SKIP_SYNC === 'true';
-  if (skipSync) {
-    console.log('[IntegCheck] Step 0: skipped (SKIP_SYNC=true)');
-  } else {
-    if (!appUrl || !syncToken) {
-      const msg = `⚠️ Integration check crashed at startup (${today}): Missing APP_URL or VITE_SYNC_PROXY_TOKEN`;
-      console.error('[IntegCheck]', msg);
-      await sendWhatsApp(twilioClient, msg);
-      process.exit(1);
-    }
-    try {
-      await triggerSync(appUrl, syncToken);
-    } catch (err) {
-      const msg = `⚠️ Integration check aborted (${today})\nSync failed: ${err.message}`;
-      console.error('[IntegCheck]', msg);
-      await sendWhatsApp(twilioClient, msg);
-      process.exit(1);
-    }
-  }
-
   // Step 1: Session
   const cookieString = await loadSession(supabase);
   if (!cookieString) {
@@ -543,9 +529,9 @@ async function main() {
   }
 
   // Step 2: Playwright
-  let screenshot, appointments;
+  let screenshot, boardingAppointments, daytimeAppointments;
   try {
-    ({ screenshot, appointments } = await scrapeWithPlaywright(cookieString));
+    ({ screenshot, boardingAppointments, daytimeAppointments } = await scrapeWithPlaywright(cookieString));
   } catch (err) {
     const msg = `⚠️ Integration check failed (${today})\nPlaywright error: ${err.message}`;
     console.error('[IntegCheck]', msg);
@@ -561,25 +547,42 @@ async function main() {
     console.error('[IntegCheck] Claude vision failed (skipping name check): %s', err.message);
   }
 
-  // Step 4: DB
-  const dbBoardings = await queryDbBoardings(supabase);
+  // Step 4: DB — boarding + daytime in parallel
+  const [dbBoardings, dbDaytime] = await Promise.all([
+    queryDbBoardings(supabase),
+    queryDbDaytimeAppointments(supabase),
+  ]);
 
   // Step 5: Compare
-  const { passed, issues } = compareResults(appointments, claudeNames, dbBoardings);
+  const { passed: boardingPassed, issues: boardingIssues } = compareResults(boardingAppointments, claudeNames, dbBoardings);
+  const { passed: daytimePassed, issues: daytimeIssues, domCount, dbCount } = compareDaytimeResults(daytimeAppointments, dbDaytime);
+  const passed = boardingPassed && daytimePassed;
+  const allIssues = [...boardingIssues, ...daytimeIssues];
 
   // Step 6: Report
+  const bn = dbBoardings.length;
   let message;
   if (passed) {
-    const n = dbBoardings.length;
-    message = `✅ Integration check passed (${today})\n${n} boarding${n !== 1 ? 's' : ''} — all match DB`;
+    message = [
+      `✅ Integration check passed (${today})`,
+      `Boarding: ${bn} in DB — all match schedule`,
+      `Daytime today: ${domCount} on schedule, ${dbCount} in DB — all good`,
+    ].join('\n');
   } else {
-    message = `⚠️ Integration check found issues (${today})\n${issues.map(i => `• ${i}`).join('\n')}`;
+    const lines = [`⚠️ Integration check found issues (${today})`];
+    if (boardingIssues.length > 0) {
+      lines.push('Boarding:', ...boardingIssues.map(i => `• ${i}`));
+    }
+    if (daytimeIssues.length > 0) {
+      lines.push('Daytime:', ...daytimeIssues.map(i => `• ${i}`));
+    }
+    message = lines.join('\n');
   }
 
   console.log('[IntegCheck] === Final report ===\n%s', message);
   await sendWhatsApp(twilioClient, message);
 
-  console.log('[IntegCheck] === Done ===');
+  console.log('[IntegCheck] === Done === (%d issue(s))', allIssues.length);
   process.exit(passed ? 0 : 1);
 }
 
