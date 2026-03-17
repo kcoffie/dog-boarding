@@ -423,6 +423,15 @@ export async function runSync(options = {}) {
           }
         }
 
+        // Layer 3b: Filter canceled booking requests.
+        // "Request canceled" appointments have booking_status='canceled' — the client
+        // submitted a request that was never confirmed. Skip silently; do not save as boardings.
+        if (details.booking_status === 'canceled') {
+          syncLog(`[Sync] ⏭️ Skipping canceled-request appointment ${appt.id} (status: "${details.booking_status}")`);
+          result.appointmentsSkipped++;
+          continue;
+        }
+
         // Post-fetch pricing filter: catch appointments that passed title filters but whose
         // pricing reveals they are not client boardings:
         //   - All day services (e.g. "Daycare Add-On Day") → title looked like a date range
