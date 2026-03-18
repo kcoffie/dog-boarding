@@ -21,15 +21,15 @@
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
-    "@supabase/supabase-js": "^2.89.0",
+    "@supabase/supabase-js": "^2.99.2",
     "papaparse": "^5.5.3",
-    "react": "^19.2.0",
+    "react": "^19.2.4",
     "react-datepicker": "^9.1.0",
-    "react-dom": "^19.2.0",
-    "react-router-dom": "^7.11.0",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.1",
     "react-select": "^5.10.2",
     "satori": "^0.25.0",
-    "twilio": "^5.12.2"
+    "twilio": "^5.13.0"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.36.0",
@@ -38,7 +38,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^19.2.5",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "@vitest/coverage-v8": "^4.0.16",
@@ -47,7 +47,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^17.4.0",
     "husky": "^9.1.7",
-    "jsdom": "^27.4.0",
+    "jsdom": "^28.1.0",
     "lint-staged": "^16.2.7",
     "playwright": "^1.49.0",
     "tailwindcss": "^4.1.18",
@@ -61,6 +61,6 @@
     ]
   },
   "optionalDependencies": {
-    "@rollup/rollup-darwin-x64": "^4.54.0"
+    "@rollup/rollup-darwin-x64": "^4.59.0"
   }
 }
