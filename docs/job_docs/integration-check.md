@@ -1,7 +1,7 @@
 # Integration Check Job
 
-**Status:** Live — boarding + daytime checks, Step 0 removed
-**Last reviewed:** March 17, 2026
+**Status:** Live — boarding + daytime checks, Step 0 removed, always exits 0
+**Last reviewed:** March 18, 2026
 
 ---
 
@@ -37,8 +37,8 @@ Reads `session_cookies` from `sync_settings` in Supabase — the same auth token
 - Navigates to `https://agirlandyourdog.com/schedule`
 - Detects login redirect (if session is stale, AGYD redirects to login page)
 - Takes a full-page PNG screenshot (~600KB)
-- Extracts **boarding appointments**: all `<a href="/schedule/a/{id}/{ts}">` links from the rendered DOM → list of `{id, title}`, then filtered by `NON_BOARDING_PATTERNS`
-- Extracts **daytime appointments**: all `<a class="day-event cat-5634 ...">` and `cat-7431` links → list of `{id, catId, dayTs, title}` (DC + PG only)
+- Extracts **boarding appointments**: all `<a href="/schedule/a/{id}/{ts}">` links from the rendered DOM → list of `{id, title, petName}`, then filtered by `NON_BOARDING_PATTERNS`. `petName` comes from `.event-pet` text inside the link.
+- Extracts **daytime appointments**: all `<a class="day-event cat-5634 ...">` and `cat-7431` links → list of `{id, catId, dayTs, title, petName}` (DC + PG only)
 - `NON_BOARDING_PATTERNS` and `DAYTIME_CAT_IDS` are defined independently in this file — no import from `src/` (signal isolation)
 
 ### Step 3 — Claude reads the screenshot *(requires Anthropic credits)*
@@ -49,25 +49,25 @@ Two queries run in parallel:
 
 **Boardings** — `boardings JOIN dogs` where:
 - `arrival_datetime <= today + 7 days`
-- `departure_datetime >= midnight UTC today`
+- `departure_datetime >= 7 days ago (midnight UTC)`
 
-The lower bound is **midnight UTC** (not exact now) so boardings that depart earlier today are still included — otherwise they show as "missing" even though they're in the DB.
+The lower bound is **7 days ago** so boardings that departed earlier this week (but are still visible on the AGYD schedule page, which shows ~2 weeks) are included. Using `now()` or midnight today creates false positives for past-departed boardings that are still on the page.
 
 **Daytime** — `daytime_appointments` where `appointment_date = today` (UTC). Returns `{external_id, service_category, title}`.
 
 ### Step 5 — Compare (4 checks)
 
 **Boarding (3 checks):**
-1. **Missing from DB** — any schedule appointment ID from Playwright not found in DB → "Missing from DB: {id} ({title})"
+1. **Missing from DB** — any schedule appointment ID from Playwright not found in DB → `"Missing from DB: Buddy — 3/16-19 (C63QgY32)"`. Format is `"{petName} — {title} ({id})"` when a pet name is available, otherwise falls back to just `"{title} ({id})"`.
 2. **Unknown dog name** — any DB boarding in the window with `dog_name = 'Unknown'` → "Unknown dog name in DB: {id}"
 3. **Claude name mismatch** — any name Claude sees that doesn't match any DB boarding name → "Claude sees '{name}' but no DB boarding matches"
    - Only runs when Claude returned names (skipped if Claude failed)
    - Known limitation: compares first-word names ("Buddy Jr." in DB won't match "Buddy" from Claude)
 
 **Daytime (1 check — smoke test):**
-4. **Daytime missing from DB** — DOM events in today's column (filtered by `dayTs`) not found in DB by `external_id` → "Daytime missing from DB: {id} ({title})"
+4. **Daytime missing from DB** — DOM events in today's column (filtered by `dayTs`) not found in DB by `external_id` → `"Daytime missing from DB: Buddy — D/C FT (C63QgY4U)"`. Same `petName — title (id)` format as boarding.
 
-### Step 6 — WhatsApp report
+### Step 6 — WhatsApp report + exit
 Sends to `INTEGRATION_CHECK_RECIPIENTS` (Kate only — separate from `NOTIFY_RECIPIENTS` which goes to the whole team). Two-section text:
 - ✅ Pass:
   ```
@@ -75,14 +75,16 @@ Sends to `INTEGRATION_CHECK_RECIPIENTS` (Kate only — separate from `NOTIFY_REC
   Boarding: 3 in DB — all match schedule
   Daytime today: 12 on schedule, 12 in DB — all good
   ```
-- ⚠️ Fail:
+- ⚠️ Issues found:
   ```
   ⚠️ Integration check found issues (3/17)
   Boarding:
-  • Missing from DB: C63QgSdB ("Buddy")
+  • Missing from DB: Buddy — 3/16-19 (C63QgY32)
   Daytime:
-  • Daytime missing from DB: C63QgSdC ("Max DC")
+  • Daytime missing from DB: Max — D/C FT (C63QgY4U)
   ```
+
+**Always exits 0.** The job's responsibility is to run and deliver the report. Data issues are content of the report — not a job failure. GH Actions will show ✅ green whether or not issues were found. A non-zero exit is only used if the job crashes (unhandled exception).
 
 ---
 
@@ -91,7 +93,7 @@ Sends to `INTEGRATION_CHECK_RECIPIENTS` (Kate only — separate from `NOTIFY_REC
 | Gotcha | Detail |
 |---|---|
 | **Session cookie is a live auth credential** | `session_cookies` from `sync_settings` must never be logged — only log hours remaining |
-| **Same-day departures** | DB query uses midnight UTC as lower bound. If you switch to `now()` you'll get false positives for boardings that departed earlier today |
+| **Past-week departures still visible on schedule** | DB query uses 7-days-ago as lower bound. The AGYD schedule page shows ~2 weeks. If you narrow the lower bound to midnight today, past-departed boardings still on the page will be falsely flagged as missing |
 | **NON_BOARDING_PATTERNS must be case-insensitive** | `ADD` is uppercase on the schedule. `/\badd\b/i` not `/\badd\b/`. Same fix needed in `cron-schedule.js` |
 | **NON_BOARDING_PATTERNS are duplicated on purpose** | Defined independently in `integration-check.js`, not imported from `src/` — signal isolation. If you update them in the sync pipeline, update here too |
 | **Claude name check is fuzzy** | Claude returns first-word names from appointment titles. A dog named "Buddy Jr." will always trigger a false positive. This is acceptable for a smoke test |
@@ -165,10 +167,10 @@ The check uses Playwright (headless Chromium, ~280MB) and runs for ~1 minute. Ve
 
 ## Known False Positive Patterns
 
-These will look like failures but aren't:
+These will look like issues but aren't:
 
-1. **Same-day departures before midnight UTC** — fixed in PR #54 (start-of-day window)
-2. **`ADD *` appointments** — filtered; `i` flag fix applied in this PR
-3. **Multi-word dog names vs Claude first-word extraction** — by design, low-priority
-4. **No boardings this week** — passes with "0 in DB — all match schedule" which is correct
-5. **No daytime events today** — passes with "0 on schedule, 0 in DB — all good" which is correct
+1. **`ADD *` appointments** — filtered by `NON_BOARDING_PATTERNS` with `i` flag
+2. **Multi-word dog names vs Claude first-word extraction** — by design, low-priority (e.g. "Buddy Jr." in DB won't match "Buddy" from Claude)
+3. **No boardings this week** — passes with "0 in DB — all match schedule" which is correct
+4. **No daytime events today** — passes with "0 on schedule, 0 in DB — all good" which is correct
+5. **DB daytime count > DOM count** — the DB may have stale records from previous syncs for appointments that were removed from the AGYD schedule. The daytime check only flags DOM→DB misses, not DB→DOM misses, so these don't trigger alerts.

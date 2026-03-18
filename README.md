@@ -138,22 +138,50 @@ When a booking is amended on the external site, the old appointment URL becomes 
 
 Qboard sends a daily roster image to a WhatsApp number via Twilio at three delivery windows: **4am**, **7am**, and **8:30am PDT**. Each message contains a branded PNG showing every worker's dogs for the day with a day-over-day diff (green `+` for newly added dogs, red strikethrough for removed dogs).
 
+On Fridays, a fourth message is sent in the afternoon with a **weekend boarding preview** — who is arriving and departing Saturday–Sunday, with check-in/out times and night counts.
+
 ### How it works
 
-1. A GitHub Actions workflow fires at each delivery window and calls `GET /api/notify?window=4am` (or `7am`/`830am`)
+1. A GitHub Actions workflow fires at each delivery window and calls `GET /api/notify?window=4am` (or `7am`/`830am`/`friday-pm`)
 2. `notify.js` refreshes the daytime schedule from the external site, then calls `/api/roster-image` to generate the PNG
 3. The image is sent to all numbers in `NOTIFY_RECIPIENTS` via the Twilio WhatsApp API
 4. A hash of the roster data is stored in the `cron_health` table — if nothing changed since the last send, the 7am and 8:30am windows skip the send to avoid duplicate messages
+5. The Friday PM workflow calls the same endpoint with `window=friday-pm`, which generates a weekend-themed image (arrivals + departures for Sat–Sun) and always sends regardless of hash
 
 ### GitHub Actions schedules (PDT, UTC-7)
 
-| Workflow | UTC cron | PDT time |
-|---|---|---|
-| `notify-4am.yml` | `0 11 * * *` | 4:00 AM |
-| `notify-7am.yml` | `0 14 * * *` | 7:00 AM |
-| `notify-830am.yml` | `30 15 * * *` | 8:30 AM |
+| Workflow | UTC cron | PDT time | Days |
+|---|---|---|---|
+| `notify-4am.yml` | `0 11 * * 1-5` | 4:00 AM | Mon–Fri |
+| `notify-7am.yml` | `0 14 * * 1-5` | 7:00 AM | Mon–Fri |
+| `notify-830am.yml` | `30 15 * * 1-5` | 8:30 AM | Mon–Fri |
+| `notify-friday-pm.yml` | `0 22 * * 5` | 3:00 PM | Fri only |
 
 > Note: cron schedules shift by 1 hour when DST ends (PDT → PST, UTC-8). Update the workflows in November.
+
+---
+
+## Integration Check
+
+An automated integration check runs independently of the sync pipeline to verify that what Qboard has in its database matches what's actually on the external booking site.
+
+### What it does
+
+1. Loads session cookies from the DB (same cache the crons use)
+2. Renders the schedule page in a headless Chromium browser (via Playwright), extracts all boarding and DC/PG appointment IDs from the live DOM
+3. Queries the DB for boardings overlapping the past 7 days through today+7d, and daytime appointments for today
+4. Compares: flags boarding IDs visible on the schedule but missing from DB; flags daytime events missing from DB
+5. Sends a WhatsApp text report to `INTEGRATION_CHECK_RECIPIENTS`
+
+The check uses two independent signal paths (Playwright DOM + DB query) to catch bugs the sync pipeline cannot catch about itself.
+
+### Schedule
+
+Runs 3× daily (1am, 9am, 5pm PDT) via `integration-check.yml`, and on demand via `workflow_dispatch`.
+
+### Required secrets (GitHub Actions)
+
+`VITE_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `INTEGRATION_CHECK_RECIPIENTS`, `APP_URL`, `VITE_SYNC_PROXY_TOKEN`
 
 ### Manual test
 
@@ -217,14 +245,20 @@ api/
 ├── sync-proxy.js    # Vercel Edge Function — CORS proxy for browser→external site
 ├── cron-auth.js     # Cron: refresh session
 ├── cron-schedule.js # Cron: scan schedule pages, enqueue candidates
-├── cron-detail.js   # Cron: process one queued appointment or boarding form
+├── cron-detail.js   # Cron: process one queued appointment or boarding form (00:10 UTC)
+├── cron-detail-2.js # Cron: second detail processor, runs in parallel (00:15 UTC)
 ├── roster-image.js  # Generate daily roster PNG (satori + resvg, token-gated)
-└── notify.js        # WhatsApp notification orchestrator (window-gated)
+└── notify.js        # WhatsApp notification orchestrator (window-gated; 4am/7am/830am/friday-pm)
 
 .github/workflows/
-├── notify-4am.yml   # GitHub Actions: call /api/notify at 4am PDT
-├── notify-7am.yml   # GitHub Actions: call /api/notify at 7am PDT
-└── notify-830am.yml # GitHub Actions: call /api/notify at 8:30am PDT
+├── notify-4am.yml        # GitHub Actions: call /api/notify at 4am PDT (Mon–Fri)
+├── notify-7am.yml        # GitHub Actions: call /api/notify at 7am PDT (Mon–Fri)
+├── notify-830am.yml      # GitHub Actions: call /api/notify at 8:30am PDT (Mon–Fri)
+├── notify-friday-pm.yml  # GitHub Actions: weekend boarding preview at 3pm PDT (Fri)
+└── integration-check.yml # GitHub Actions: DB vs live schedule check 3×/day
+
+scripts/
+└── integration-check.js  # Integration check script (Playwright + Supabase + Twilio)
 
 supabase/
 └── migrations/      # Numbered SQL migrations (apply in order)
