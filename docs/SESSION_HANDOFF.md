@@ -1,5 +1,5 @@
-# Dog Boarding App — Session Handoff (v4.4 complete)
-**Last updated:** March 18, 2026 (end of session)
+# Dog Boarding App — Session Handoff (v4.4 + hotfix)
+**Last updated:** March 18, 2026 (mid-session)
 
 ---
 
@@ -7,16 +7,18 @@
 
 - **v4.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
 - **746 tests, 46 files, 0 failures**
-- **Main branch clean** — all PRs merged (latest: #73)
+- **Main branch clean** — all PRs merged (latest: #75)
 - **Integration check LIVE** — runs 3×/day, exits 0 (always green in Actions), dog names in alerts, 7-day DB window
+- **Daytime refresh bug fixed (PR #75)** — `refreshDaytimeSchedule` was silently failing since March 16; see below
 
 ---
 
 ## IMMEDIATE NEXT
 
-1. Run integration check manually to verify dog names appear in WhatsApp alerts and job shows green
-2. Add Anthropic API credits so the Claude name-check step in the integration check activates (console.anthropic.com → Plans & Billing)
-3. Investigate 3 real missing boardings from integration check run (3/18): C63QgY32, C63QgYI8 ("3/16-19"), C63QgY4c ("3/17-19") — why didn't nightly cron pick these up?
+1. Trigger notify-4am workflow_dispatch to verify daytime refresh now works (Vercel logs should show real byte count and rowCount > 0)
+2. Run integration check manually to confirm the 13 missing dogs are now in DB
+3. Add Anthropic API credits so the Claude name-check step in the integration check activates (console.anthropic.com → Plans & Billing)
+4. Investigate 3 real missing boardings from integration check run (3/18): C63QgY32, C63QgYI8 ("3/16-19"), C63QgY4c ("3/17-19") — why didn't nightly cron pick these up?
 
 ---
 
@@ -28,6 +30,7 @@
 |---|---|---|
 | #71 | `feat/friday-pm-notify` | Friday PM weekend boarding notify — workflow, endpoint, weekend image |
 | #73 | `fix/integ-check-dog-name-exit-window` | Integration check: dog name in alerts, exit 0, 7-day DB window |
+| #75 | `fix/notify-refresh-response-text` | Fix daytime refresh silent failure + WhatsApp alerts on refresh errors |
 
 ### Friday PM weekend notify (`api/notify.js`, `notify-friday-pm.yml`)
 - New `window=friday-pm` path in `notify.js` — generates a weekend-themed PNG (arrivals + departures Sat–Sun) and always sends
@@ -38,6 +41,13 @@
 - **Dog name in alerts** — Playwright DOM step now extracts `.event-pet` text; issue messages read `Buddy — 3/16-19 (C63QgY32)` instead of just ID + raw title
 - **Always exit 0** — job ran + delivered report = success; data issues are content of the report, not a job failure (GH Actions now shows ✅ green always)
 - **7-day DB window** — boarding query lower bound extended from midnight today → 7 days ago; eliminates false positives for past-departed boardings still visible on the schedule page
+
+### Daytime refresh silent failure fix (PR #75)
+- **Root cause:** `refreshDaytimeSchedule` in `api/notify.js` was doing `html = await authenticatedFetch(url)` — assigning the `Response` object directly to `html` instead of calling `.text()`. `html.length` was `undefined`, parser got garbage, 0 events returned. The bug was completely silent: `refreshed=true, rowCount=0` logged with no error.
+- **Impact:** Daytime appointments had not refreshed since the midnight cron on March 16. All notify runs (4am/7am/8:30am) on 3/17 and 3/18 were sending the roster from 2-day-old data. The integration check caught 13 dogs missing from DB.
+- **Fix:** `const response = await authenticatedFetch(url); html = await response.text();` — matches every other caller in the codebase.
+- **Added WhatsApp alerts** for all refresh failure paths: no session, session expired, fetch error, 0 events parsed, unexpected error. Previously these all silently fell through to stale DB data with a Vercel log that expires in 1 hour.
+- **Backlog (separate ticket):** "as of" timestamp in roster image — show date after time (e.g. `as of 6:04 PM, Mon 3/16`) so staleness is immediately obvious to workers receiving the image.
 
 ---
 
