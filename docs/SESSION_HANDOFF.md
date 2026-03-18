@@ -1,23 +1,23 @@
-# Dog Boarding App — Session Handoff (v4.3 in progress)
-**Last updated:** March 8, 2026 (end of session)
+# Dog Boarding App — Session Handoff (v4.4 in progress)
+**Last updated:** March 17, 2026 (end of session)
 
 ---
 
 ## Current State
 
-- **v4.2 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **742 tests, 46 files, 0 failures**
-- **Main branch clean** — all PRs merged
-- **PR #51 open** — `fix/goose-boarding-tests` — extraction tests for Goose case, CI green, ready to merge
-- **Integration check LIVE** — runs 3×/day, last run passed ✅ (0 issues, 11 boardings on schedule, all in DB)
+- **v4.3.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
+- **746 tests, 46 files, 0 failures**
+- **Main branch clean** — all v4.3 PRs merged
+- **PR #69 merged** — integration check daytime + Step 0 removal + ADD filter fix
+- **feat/friday-pm-notify OPEN** — PR not yet created, branch pushed
+- **Integration check LIVE** — runs 3×/day, now reports daytime count alongside boarding count
 
 ---
 
 ## IMMEDIATE NEXT
 
-1. Merge PR #51 (`fix/goose-boarding-tests`) — just needs merge, CI is green
+1. Merge PR for `feat/friday-pm-notify` (v4.4 Friday PM weekend notify) — in progress
 2. Add Anthropic API credits so the Claude name-check step in the integration check activates (console.anthropic.com → Plans & Billing)
-3. Decide on Step 0 sync fix — see integration check known issues below
 
 ---
 

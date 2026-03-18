@@ -4,12 +4,13 @@
  * Hobby plan schedule (vercel.json): "5 0 * * *" — once per day at 12:05am UTC
  * Pro plan schedule (upgrade path):  "0 * * * *" — every hour
  *
- * Strategy: fetch TWO pages per call —
+ * Strategy: fetch THREE pages per call —
  *   1. Current week (always) — catches active long-stay boardings
- *   2. Cursor week (rotating) — advances +7 days each call, wraps at today+56d
+ *   2. Next week (always) — eliminates 1-week discovery blind spot
+ *   3. Cursor week (rotating, weeks 2–8) — advances +7d each call, wraps at today+56d
  *
- * This ensures currently-active boardings are checked every hour, and future
- * bookings appear in the queue within 8 hours (one full 8-week cursor cycle).
+ * This ensures bookings in the next 2 weeks are seen every night, and bookings
+ * 2–8 weeks out appear within 6 nights (one full cursor cycle over weeks 2–7).
  *
  * Appointment HTML parsing uses a regex-based approach (no DOMParser) so this
  * handler works in the Node.js runtime without browser APIs.
@@ -36,7 +37,7 @@ const CURSOR_WINDOW_WEEKS = 8; // how many weeks the cursor cycles through
 const NON_BOARDING_RE = [
   /(d\/c|\bdc\b)/i,
   /(p\/g|g\/p|\bpg\b)/i,
-  /\badd\b/,
+  /\badd\b/i,
   /switch\s+day/i,
   /back\s+to\s+\d+/i,
   /initial\s+eval/i,
@@ -231,11 +232,16 @@ export default async function handler(req, res) {
 
     const stats = { pagesScanned: 0, found: 0, skipped: 0, queued: 0, daytimeUpserted: 0, daytimeErrors: 0 };
 
-    // Fetch current week + cursor week (deduplicated)
+    // Page 1: current week — always fetched
     const datesToFetch = [today];
-    // Only add cursor if it's a different week than today
-    const sameWeek = Math.abs(cursorDate - today) < 7 * 24 * 60 * 60 * 1000;
-    if (!sameWeek) datesToFetch.push(cursorDate);
+    // Page 2: next week — always fetched (eliminates 1-week discovery blind spot)
+    const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    datesToFetch.push(nextWeek);
+    // Page 3: cursor week (rotating, weeks 2–8) — skip if it overlaps page 1 or 2
+    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const sameAsToday    = Math.abs(cursorDate - today)    < ONE_WEEK_MS;
+    const sameAsNextWeek = Math.abs(cursorDate - nextWeek) < ONE_WEEK_MS;
+    if (!sameAsToday && !sameAsNextWeek) datesToFetch.push(cursorDate);
 
     const seenIds = new Set();
     const appointments = [];

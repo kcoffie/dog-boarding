@@ -40,7 +40,7 @@ import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../src/lib/
 
 export const config = { runtime: 'nodejs' };
 
-const VALID_WINDOWS = ['4am', '7am', '8:30am'];
+const VALID_WINDOWS = ['4am', '7am', '8:30am', 'friday-pm'];
 const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com';
 
 // ---------------------------------------------------------------------------
@@ -222,6 +222,49 @@ export default async function handler(req, res) {
     return res.status(400).json({
       error: `Invalid window: "${window}". Must be one of: ${VALID_WINDOWS.join(', ')}`,
     });
+  }
+
+  // --- friday-pm: distinct path — no hash gate, no getPictureOfDay ---
+  if (window === 'friday-pm') {
+    try {
+      const protocol = req.headers['x-forwarded-proto'] || 'https';
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const imageUrl = `${protocol}://${host}/api/roster-image?type=weekend&token=${expectedToken}`;
+      console.log(`[Notify] friday-pm — image URL: ${protocol}://${host}/api/roster-image?type=weekend&token=***`);
+
+      const recipients = getRecipients();
+      if (recipients.length === 0) {
+        console.warn('[Notify] NOTIFY_RECIPIENTS not configured — send skipped');
+        return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_recipients', window });
+      }
+      const fromNumber = process.env.TWILIO_FROM_NUMBER;
+      if (!fromNumber) {
+        console.warn('[Notify] TWILIO_FROM_NUMBER not configured — send skipped');
+        return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_from_number', window });
+      }
+
+      const supabase = getSupabase();
+      const twilioClient = createTwilioClient();
+      console.log(`[Notify] Sending weekend roster to ${recipients.length} recipient(s)`);
+      const sendResults = await sendRosterImage(twilioClient, imageUrl, recipients, fromNumber);
+      await writeCronHealth(supabase, 'notify-friday-pm', 'success', {
+        sentAt: new Date().toISOString(),
+        recipients: sendResults.map(r => r.to),
+        results: sendResults,
+      }, null);
+
+      const sentCount = sendResults.filter(r => r.status === 'sent').length;
+      const failedCount = sendResults.filter(r => r.status === 'failed').length;
+      console.log(`[Notify] friday-pm complete — ${sentCount} sent, ${failedCount} failed`);
+      return res.status(200).json({ ok: true, action: 'sent', window, sentCount, failedCount, results: sendResults });
+    } catch (err) {
+      console.error('[Notify] ❌ friday-pm error:', err.message, err.stack);
+      try {
+        const supabase = getSupabase();
+        await writeCronHealth(supabase, 'notify-friday-pm', 'failure', null, err.message.slice(0, 500));
+      } catch { /* ignore */ }
+      return res.status(500).json({ error: err.message });
+    }
   }
 
   // --- Input validation: date param (defaults to today) ---
