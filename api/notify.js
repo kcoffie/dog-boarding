@@ -90,7 +90,8 @@ async function refreshDaytimeSchedule(supabase, date) {
 
     let html;
     try {
-      html = await authenticatedFetch(url);
+      const response = await authenticatedFetch(url);
+      html = await response.text();
     } catch (err) {
       // Decision: SESSION_EXPIRED means the cached session was rejected by the server.
       // Clear it so cron-auth re-authenticates on its next run rather than leaving a
