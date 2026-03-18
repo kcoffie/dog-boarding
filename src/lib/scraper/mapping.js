@@ -93,9 +93,10 @@ export function mapToBoarding(externalData, dogId) {
     departure_ampm: externalData.check_out_ampm ?? null,
     source: 'external',
     external_id: externalData.external_id,
-    billed_amount: pricing ? pricing.total : null,
-    night_rate:    nightItem ? nightItem.rate : null,
-    day_rate:      dayItem   ? dayItem.rate   : null,
+    billed_amount:  pricing ? pricing.total : null,
+    night_rate:     nightItem ? nightItem.rate : null,
+    day_rate:       dayItem   ? dayItem.rate   : null,
+    booking_status: externalData.booking_status ?? 'confirmed',
   };
 }
 
@@ -463,6 +464,7 @@ export async function upsertBoarding(supabase, boardingData) {
     if ('day_rate'      in boardingData) updateFields.day_rate      = boardingData.day_rate;
     if (boardingData.arrival_ampm   != null) updateFields.arrival_ampm   = boardingData.arrival_ampm;
     if (boardingData.departure_ampm != null) updateFields.departure_ampm = boardingData.departure_ampm;
+    if (boardingData.booking_status != null) updateFields.booking_status = boardingData.booking_status;
     mappingLogger.log(
       `[Mapping] Updating boarding ${existing.id} (${boardingData.external_id}) —`,
       `billed=$${updateFields.billed_amount ?? 'null'},`,
