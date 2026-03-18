@@ -210,7 +210,8 @@ async function scrapeWithPlaywright(cookieString) {
         if (seenBoarding.has(id)) return;
         seenBoarding.add(id);
         const title = a.querySelector('.day-event-title')?.textContent?.trim() ?? '';
-        allBoardingAppts.push({ id, title });
+        const petName = a.querySelector('.event-pet')?.textContent?.trim() ?? '';
+        allBoardingAppts.push({ id, title, petName });
       });
 
       const seenDaytime = new Set();
@@ -225,7 +226,8 @@ async function scrapeWithPlaywright(cookieString) {
         seenDaytime.add(id);
         const dayTs = parseInt(a.dataset.ts || '0', 10);
         const title = a.querySelector('.day-event-title')?.textContent?.trim() ?? '';
-        daytimeAppointments.push({ id, catId, dayTs, title });
+        const petName = a.querySelector('.event-pet')?.textContent?.trim() ?? '';
+        daytimeAppointments.push({ id, catId, dayTs, title, petName });
       });
 
       return { allBoardingAppts, daytimeAppointments };
@@ -325,20 +327,20 @@ If you see no boardings, return: []`,
 // ---------------------------------------------------------------------------
 
 async function queryDbBoardings(supabase) {
-  // Use start of today (midnight UTC) as the lower bound so boardings that
-  // depart earlier today aren't falsely flagged as missing — they're still
-  // on the schedule page but would fall out of a `>= now()` query.
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(0, 0, 0, 0);
+  // Lower bound: 7 days ago — the schedule page shows the current week plus
+  // some days of the previous week, so past-departed boardings still visible
+  // on the page must be included or they'd be falsely flagged as missing.
+  const windowStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  windowStart.setUTCHours(0, 0, 0, 0);
   const windowEnd = new Date(Date.now() + WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  console.log('[IntegCheck] Querying DB for boardings overlapping today → today+%dd (%s → %s)...', WINDOW_DAYS, startOfDay.toISOString(), windowEnd);
+  console.log('[IntegCheck] Querying DB for boardings overlapping past 7d → today+%dd (%s → %s)...', WINDOW_DAYS, windowStart.toISOString(), windowEnd);
 
   const { data, error } = await supabase
     .from('boardings')
     .select('external_id, arrival_datetime, departure_datetime, dogs(name)')
     .lte('arrival_datetime', windowEnd)
-    .gte('departure_datetime', startOfDay.toISOString());
+    .gte('departure_datetime', windowStart.toISOString());
 
   if (error) throw error;
 
@@ -398,8 +400,9 @@ function compareResults(scraped, claudeNames, dbBoardings) {
   // Check 1: IDs on schedule not in DB
   for (const appt of scraped) {
     if (!dbIds.has(appt.id)) {
-      console.log('[IntegCheck] ⚠️  Missing from DB: %s ("%s")', appt.id, appt.title);
-      issues.push(`Missing from DB: ${appt.id} ("${appt.title}")`);
+      const label = appt.petName ? `${appt.petName} — ${appt.title}` : appt.title;
+      console.log('[IntegCheck] ⚠️  Missing from DB: %s ("%s")', appt.id, label);
+      issues.push(`Missing from DB: ${label} (${appt.id})`);
     }
   }
 
@@ -447,8 +450,9 @@ function compareDaytimeResults(domDaytime, dbDaytime) {
 
   for (const appt of todayDom) {
     if (!dbIds.has(appt.id)) {
-      console.log('[IntegCheck] ⚠️  Daytime missing from DB: %s ("%s")', appt.id, appt.title);
-      issues.push(`Daytime missing from DB: ${appt.id} ("${appt.title}")`);
+      const label = appt.petName ? `${appt.petName} — ${appt.title}` : appt.title;
+      console.log('[IntegCheck] ⚠️  Daytime missing from DB: %s ("%s")', appt.id, label);
+      issues.push(`Daytime missing from DB: ${label} (${appt.id})`);
     }
   }
 
@@ -583,7 +587,7 @@ async function main() {
   await sendWhatsApp(twilioClient, message);
 
   console.log('[IntegCheck] === Done === (%d issue(s))', allIssues.length);
-  process.exit(passed ? 0 : 1);
+  process.exit(0); // job succeeded — data issues are content of the report, not a job failure
 }
 
 main().catch(err => {
