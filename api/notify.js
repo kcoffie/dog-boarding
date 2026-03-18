@@ -63,18 +63,19 @@ const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {Date} date - Local Date for the day being notified (usually today)
- * @returns {Promise<{ refreshed: boolean, rowCount: number }>}
+ * @returns {Promise<{ refreshed: boolean, rowCount: number, warning: string|null }>}
  */
 async function refreshDaytimeSchedule(supabase, date) {
   // Outer try/catch ensures this function NEVER throws — every exit path returns
-  // { refreshed: boolean, rowCount: number }. Docstring contract: "non-fatal pre-flight."
+  // { refreshed: boolean, rowCount: number, warning: string|null }.
+  // Docstring contract: "non-fatal pre-flight."
   try {
     // Decision gate: load cached auth session. Without it there is nothing to fetch.
     // getSession makes a DB call — must be inside the outer catch.
     const cookies = await getSession(supabase);
     if (!cookies) {
       console.warn('[Notify/Refresh] No cached session — skipping live refresh, using stale DB data');
-      return { refreshed: false, rowCount: 0 };
+      return { refreshed: false, rowCount: 0, warning: 'No cached session — cron-auth may not have run' };
     }
 
     // Inject session cookies so authenticatedFetch uses them.
@@ -101,10 +102,10 @@ async function refreshDaytimeSchedule(supabase, date) {
         await clearSession(supabase).catch(e =>
           console.warn(`[Notify/Refresh] clearSession also failed: ${e.message}`)
         );
-      } else {
-        console.warn(`[Notify/Refresh] Fetch failed (${err.message}) — continuing with stale DB data`);
+        return { refreshed: false, rowCount: 0, warning: 'Session expired — cron-auth will re-authenticate at midnight' };
       }
-      return { refreshed: false, rowCount: 0 };
+      console.warn(`[Notify/Refresh] Fetch failed (${err.message}) — continuing with stale DB data`);
+      return { refreshed: false, rowCount: 0, warning: `Schedule fetch failed: ${err.message}` };
     }
 
     console.log(`[Notify/Refresh] Fetched HTML — ${html.length} bytes`);
@@ -113,11 +114,16 @@ async function refreshDaytimeSchedule(supabase, date) {
     const rows = parseDaytimeSchedulePage(html);
     console.log(`[Notify/Refresh] Parsed ${rows.length} daytime events`);
 
-    // Warn if we got a large HTML response with zero events — likely an access-denied
-    // redirect page rather than a genuinely empty schedule day.
-    if (rows.length === 0 && html.length > 10000) {
-      console.warn(`[Notify/Refresh] Large HTML (${html.length} bytes) but 0 events parsed — possible access-denied page`);
-      console.warn(`[Notify/Refresh] HTML preview: ${html.slice(0, 150).replace(/\s+/g, ' ')}`);
+    // Surface zero-parse as a warning — could be access-denied redirect (large HTML)
+    // or empty/malformed response (small HTML). Either way the DB won't be updated.
+    let parseWarning = null;
+    if (rows.length === 0) {
+      const sizeNote = html.length > 10000 ? 'possible access-denied redirect' : 'small/empty response';
+      console.warn(`[Notify/Refresh] 0 events parsed from ${html.length}-byte response — ${sizeNote}`);
+      if (html.length > 10000) {
+        console.warn(`[Notify/Refresh] HTML preview: ${html.slice(0, 150).replace(/\s+/g, ' ')}`);
+      }
+      parseWarning = `Schedule fetched (${html.length} bytes) but 0 daytime events parsed — ${sizeNote}`;
     }
 
     // Upsert to DB. Non-fatal: upsertDaytimeAppointments does not throw on DB
@@ -129,19 +135,47 @@ async function refreshDaytimeSchedule(supabase, date) {
       console.log(`[Notify/Refresh] Upserted ${upserted} rows`);
     }
 
-    return { refreshed: true, rowCount: upserted };
+    return { refreshed: true, rowCount: upserted, warning: parseWarning };
 
   } catch (err) {
     // Catch-all: any unexpected error (getSession DB failure, parse crash, etc.)
     // must not propagate — the send must not be blocked by a refresh failure.
     console.warn(`[Notify/Refresh] Unexpected error: ${err.message} — continuing with stale DB data`);
-    return { refreshed: false, rowCount: 0 };
+    return { refreshed: false, rowCount: 0, warning: `Unexpected refresh error: ${err.message}` };
   }
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Send a plain-text WhatsApp alert when the daytime schedule refresh fails or
+ * returns no events. Non-fatal — errors are caught and logged.
+ *
+ * Sends to NOTIFY_RECIPIENTS (same as the roster) so Kate sees it alongside
+ * the morning image and can investigate before the next notify window.
+ */
+async function sendRefreshAlert(warning, dateStr, window) {
+  const from = process.env.TWILIO_FROM_NUMBER;
+  const recipients = getRecipients();
+  if (!from || recipients.length === 0) return;
+
+  let client;
+  try {
+    client = createTwilioClient();
+  } catch (err) {
+    console.warn(`[Notify/RefreshAlert] Cannot create Twilio client: ${err.message}`);
+    return;
+  }
+
+  const body = `⚠️ Notify refresh issue (${dateStr}, ${window})\n${warning}`;
+  for (const to of recipients) {
+    await client.messages
+      .create({ from: `whatsapp:${from}`, to: `whatsapp:${to}`, body })
+      .catch(err => console.warn(`[Notify/RefreshAlert] Send failed to ***${to.slice(-4)}: ${err.message}`));
+  }
+}
 
 function getSupabase() {
   const url = process.env.VITE_SUPABASE_URL;
@@ -299,7 +333,15 @@ export default async function handler(req, res) {
     // Decision: non-fatal — if refresh fails, getPictureOfDay reads stale DB rows.
     console.log(`[Notify] Starting live schedule refresh for ${dateStr}`);
     const refresh = await refreshDaytimeSchedule(supabase, date);
-    console.log(`[Notify] Refresh result: refreshed=${refresh.refreshed}, rowCount=${refresh.rowCount}`);
+    console.log(`[Notify] Refresh result: refreshed=${refresh.refreshed}, rowCount=${refresh.rowCount}${refresh.warning ? `, warning: ${refresh.warning}` : ''}`);
+
+    // Alert on any refresh failure or zero-parse result — these are silent in Vercel
+    // logs (1-hour retention) so a WhatsApp is the only durable signal.
+    if (refresh.warning) {
+      await sendRefreshAlert(refresh.warning, dateStr, window).catch(err =>
+        console.warn(`[Notify] Failed to send refresh alert: ${err.message}`)
+      );
+    }
 
     // --- Fetch picture data ---
     console.log(`[Notify] Fetching picture data for ${dateStr}`);
