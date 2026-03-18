@@ -7,18 +7,20 @@
 
 - **v4.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
 - **746 tests, 46 files, 0 failures**
-- **Main branch clean** — all PRs merged (latest: #75)
+- **Main branch clean** — all PRs merged (latest: #79)
 - **Integration check LIVE** — runs 3×/day, exits 0 (always green in Actions), dog names in alerts, 7-day DB window
 - **Daytime refresh bug fixed (PR #75)** — `refreshDaytimeSchedule` was silently failing since March 16; see below
+- **Dev dependencies bumped (PR #79)** — 6 packages updated, Dependabot PRs #59 and #63 resolved
 
 ---
 
 ## IMMEDIATE NEXT
 
-1. Trigger notify-4am workflow_dispatch to verify daytime refresh now works (Vercel logs should show real byte count and rowCount > 0)
-2. Run integration check manually to confirm the 13 missing dogs are now in DB
+1. ~~Trigger notify-4am workflow_dispatch to verify daytime refresh now works~~ ✅ Done — 198 rows upserted, all 13 dogs now in DB
+2. ~~Run integration check manually~~ ✅ Done — 2 false positives (Tula, Lucy — canceled boarding requests, documented as known FP #6)
 3. Add Anthropic API credits so the Claude name-check step in the integration check activates (console.anthropic.com → Plans & Billing)
 4. Investigate 3 real missing boardings from integration check run (3/18): C63QgY32, C63QgYI8 ("3/16-19"), C63QgY4c ("3/17-19") — why didn't nightly cron pick these up?
+5. "As of" timestamp in roster image — show date after time (e.g. `as of 6:04 PM, Mon 3/16`) so staleness is immediately obvious (backlog)
 
 ---
 
@@ -31,6 +33,8 @@
 | #71 | `feat/friday-pm-notify` | Friday PM weekend boarding notify — workflow, endpoint, weekend image |
 | #73 | `fix/integ-check-dog-name-exit-window` | Integration check: dog name in alerts, exit 0, 7-day DB window |
 | #75 | `fix/notify-refresh-response-text` | Fix daytime refresh silent failure + WhatsApp alerts on refresh errors |
+| #76 | `docs/integ-check-canceled-false-positive` | Document canceled booking requests as known integration check FP #6 |
+| #79 | `chore/dev-deps-march-18` | Bump 6 dev dependencies (Dependabot PRs #59/#63 resolved) |
 
 ### Friday PM weekend notify (`api/notify.js`, `notify-friday-pm.yml`)
 - New `window=friday-pm` path in `notify.js` — generates a weekend-themed PNG (arrivals + departures Sat–Sun) and always sends
