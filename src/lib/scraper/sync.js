@@ -366,7 +366,7 @@ export async function runSync(options = {}) {
           const isKnownNonBoarding =
             /(d\/c|\bdc\b)/i.test(titleLower) ||
             /(p\/g|g\/p|\bpg\b)/i.test(titleLower) ||
-            /\badd\b/.test(titleLower) ||
+            /\badd\b/i.test(titleLower) ||
             /switch\s+day/i.test(titleLower) ||
             /back\s+to\s+\d+/i.test(titleLower) ||
             /initial\s+eval/i.test(titleLower) ||
@@ -411,7 +411,7 @@ export async function runSync(options = {}) {
           const isKnownNonBoarding =
             /(d\/c|\bdc\b)/i.test(checkLower) ||
             /(p\/g|g\/p|\bpg\b)/i.test(checkLower) ||
-            /\badd\b/.test(checkLower) ||
+            /\badd\b/i.test(checkLower) ||
             /switch\s+day/i.test(checkLower) ||
             /back\s+to\s+\d+/i.test(checkLower) ||
             /initial\s+eval/i.test(checkLower) ||
@@ -421,6 +421,15 @@ export async function runSync(options = {}) {
             result.appointmentsSkipped++;
             continue;
           }
+        }
+
+        // Layer 3b: Filter canceled booking requests.
+        // "Request canceled" appointments have booking_status='canceled' — the client
+        // submitted a request that was never confirmed. Skip silently; do not save as boardings.
+        if (details.booking_status === 'canceled') {
+          syncLog(`[Sync] ⏭️ Skipping canceled-request appointment ${appt.id} (status: "${details.booking_status}")`);
+          result.appointmentsSkipped++;
+          continue;
         }
 
         // Post-fetch pricing filter: catch appointments that passed title filters but whose

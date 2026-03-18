@@ -138,24 +138,27 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
 
     let isDay = false;
     let isNight = false;
+    let isPending = false;
 
     for (const boarding of dogBoardings) {
       if (isDayPresent(boarding, dateStr)) {
         isDay = true;
+        if (boarding.bookingStatus === 'pending') isPending = true;
       }
       if (isOvernight(boarding, dateStr)) {
         isNight = true;
+        if (boarding.bookingStatus === 'pending') isPending = true;
       }
     }
 
     if (isNight) {
-      return (
-        <div className="w-7 h-7 mx-auto rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-sm" title="Overnight" />
-      );
+      return isPending
+        ? <div className="w-7 h-7 mx-auto rounded-lg border-2 border-indigo-400 bg-indigo-50" title="Pending overnight request" />
+        : <div className="w-7 h-7 mx-auto rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-sm" title="Overnight" />;
     } else if (isDay) {
-      return (
-        <div className="w-7 h-7 mx-auto rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 shadow-sm" title="Day only" />
-      );
+      return isPending
+        ? <div className="w-7 h-7 mx-auto rounded-lg border-2 border-amber-400 bg-amber-50" title="Pending day request" />
+        : <div className="w-7 h-7 mx-auto rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 shadow-sm" title="Day only" />;
     }
     return <span className="text-slate-300">—</span>;
   };

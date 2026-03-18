@@ -433,6 +433,275 @@ function buildLayout(data) {
 }
 
 // ---------------------------------------------------------------------------
+// Weekend image — data + layout
+// ---------------------------------------------------------------------------
+
+const WEEKEND_SECTION_HEADER_H = 36;
+const WEEKEND_BOARDING_ROW_H = 30;
+const WEEKEND_SECTION_MARGIN = 20;
+
+/**
+ * Return { start, end } ISO strings for the "this weekend" query window.
+ * start = now. end = Monday noon UTC — safely past Sunday 11:59 PM PDT/PST.
+ *
+ * On Fri UTC: +3 days to Monday. On Sat: +2. On Sun: +1.
+ * Falls back to +3 for any other day (manual trigger on non-weekend day).
+ */
+function getWeekendWindowISO() {
+  const now = new Date();
+  const utcDay = now.getUTCDay(); // 0=Sun, 5=Fri, 6=Sat
+  const daysToMonday = utcDay === 6 ? 2 : utcDay === 0 ? 1 : 3;
+  const end = new Date(now);
+  end.setUTCDate(now.getUTCDate() + daysToMonday);
+  end.setUTCHours(12, 0, 0, 0); // Monday noon UTC — past Sunday midnight PDT
+  const displaySun = new Date(now);
+  displaySun.setUTCDate(now.getUTCDate() + daysToMonday - 1);
+  return { start: now.toISOString(), end: end.toISOString(), displayFri: now, displaySun };
+}
+
+/**
+ * Query boardings that arrive OR depart within the weekend window.
+ * Returns { arriving, departing } — a boarding can appear in both if it
+ * arrives and departs within the window (e.g. Fri arrival, Sun departure).
+ */
+async function getWeekendBoardings(supabase, start, end) {
+  console.log(`[RosterImage/Weekend] Querying boardings from ${start} to ${end}`);
+  const { data, error } = await supabase
+    .from('boardings')
+    .select('external_id, arrival_datetime, departure_datetime, client_name, booking_status, dogs(name)')
+    .or(`and(arrival_datetime.gte.${start},arrival_datetime.lte.${end}),and(departure_datetime.gte.${start},departure_datetime.lte.${end})`)
+    .order('arrival_datetime', { ascending: true });
+
+  if (error) throw error;
+
+  const rows = (data || []).map(b => ({
+    external_id: b.external_id,
+    arrival_datetime: b.arrival_datetime,
+    departure_datetime: b.departure_datetime,
+    client_name: b.client_name ?? '',
+    booking_status: b.booking_status ?? 'confirmed',
+    dog_name: b.dogs?.name ?? 'Unknown',
+  }));
+
+  const arriving = rows
+    .filter(b => b.arrival_datetime >= start && b.arrival_datetime <= end)
+    .sort((a, b) => a.arrival_datetime.localeCompare(b.arrival_datetime));
+
+  const departing = rows
+    .filter(b => b.departure_datetime >= start && b.departure_datetime <= end)
+    .sort((a, b) => a.departure_datetime.localeCompare(b.departure_datetime));
+
+  console.log(`[RosterImage/Weekend] ${arriving.length} arriving, ${departing.length} departing`);
+  return { arriving, departing };
+}
+
+/**
+ * Format a UTC ISO datetime as "Fri 3:00 PM" in America/Los_Angeles.
+ */
+function formatWeekendDatetime(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return '—';
+  const weekday = d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short' });
+  const time = d.toLocaleTimeString('en-US', {
+    timeZone: 'America/Los_Angeles',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `${weekday} ${time}`; // "Fri 3:00 PM"
+}
+
+/**
+ * Format the weekend header date range: "Fri Mar 17 – Sun Mar 19"
+ */
+function formatWeekendHeaderDates(displayFri, displaySun) {
+  const fmt = (d) => d
+    .toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      weekday: 'short', month: 'short', day: 'numeric',
+    })
+    .replace(',', '');
+  return `${fmt(displayFri)} – ${fmt(displaySun)}`;
+}
+
+/**
+ * Render one boarding row for the weekend image.
+ * datetime is arrival_datetime (for arriving section) or departure_datetime (for departing).
+ */
+function weekendBoardingRow(boarding, datetimeField) {
+  const isoStr = boarding[datetimeField];
+  const nightCount = Math.round(
+    Math.abs(new Date(boarding.departure_datetime) - new Date(boarding.arrival_datetime))
+    / (1000 * 60 * 60 * 24)
+  );
+  const nameStr = decodeEntities(boarding.dog_name);
+  const clientStr = lastName(decodeEntities(boarding.client_name));
+  const label = clientStr ? `${nameStr} (${clientStr})` : nameStr;
+  const isPending = boarding.booking_status === 'pending';
+  const labelSuffix = isPending ? ' (?)' : '';
+  const textColor = isPending ? '#6366f1' : COLORS.unchanged; // indigo for pending
+
+  return h('div', {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: WEEKEND_BOARDING_ROW_H,
+    paddingLeft: H_PADDING,
+    paddingRight: H_PADDING,
+    borderBottom: `1px solid #f3f4f6`,
+  },
+    // Dog name + client
+    h('span', {
+      fontFamily: 'Inter',
+      fontWeight: 400,
+      fontSize: 13,
+      color: textColor,
+      flex: 1,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    }, label + labelSuffix),
+    // Datetime
+    h('span', {
+      fontFamily: 'Inter',
+      fontWeight: 400,
+      fontSize: 13,
+      color: COLORS.unchanged,
+      width: 110,
+      textAlign: 'right',
+      flexShrink: 0,
+    }, formatWeekendDatetime(isoStr)),
+    // Night count
+    h('span', {
+      fontFamily: 'Inter',
+      fontWeight: 400,
+      fontSize: 12,
+      color: COLORS.dogCount,
+      width: 60,
+      textAlign: 'right',
+      flexShrink: 0,
+    }, `${nightCount}n`),
+  );
+}
+
+/**
+ * Render one section (Arriving / Departing) with a sage-green header and rows.
+ */
+function buildWeekendSection(title, boardings, datetimeField) {
+  const rows = boardings.length > 0
+    ? boardings.map(b => weekendBoardingRow(b, datetimeField))
+    : [h('div', {
+        display: 'flex',
+        alignItems: 'center',
+        height: WEEKEND_BOARDING_ROW_H,
+        paddingLeft: H_PADDING,
+        fontFamily: 'Inter',
+        fontWeight: 400,
+        fontSize: 13,
+        color: COLORS.dogCount,
+        fontStyle: 'italic',
+      }, '(none this weekend)')];
+
+  return h('div', { display: 'flex', flexDirection: 'column', marginBottom: WEEKEND_SECTION_MARGIN },
+    // Section header
+    h('div', {
+      display: 'flex',
+      alignItems: 'center',
+      height: WEEKEND_SECTION_HEADER_H,
+      paddingLeft: H_PADDING,
+      paddingRight: H_PADDING,
+      backgroundColor: COLORS.workerName, // Sage Green
+      borderRadius: 4,
+      marginBottom: 4,
+    },
+      h('span', {
+        fontFamily: 'Inter',
+        fontWeight: 700,
+        fontSize: 14,
+        color: '#ffffff',
+      }, title),
+      h('span', {
+        fontFamily: 'Inter',
+        fontWeight: 400,
+        fontSize: 12,
+        color: '#e5f5d8',
+        marginLeft: 8,
+      }, `${boardings.length} dog${boardings.length !== 1 ? 's' : ''}`),
+    ),
+    // Rows
+    h('div', {
+      display: 'flex',
+      flexDirection: 'column',
+      backgroundColor: COLORS.workerBg,
+      border: `1px solid ${COLORS.workerBorder}`,
+      borderRadius: 4,
+    }, ...rows),
+  );
+}
+
+/**
+ * Compute total image height for the weekend layout.
+ */
+function computeWeekendImageHeight(arriving, departing) {
+  const sectionH = (count) =>
+    WEEKEND_SECTION_HEADER_H + 4 + Math.max(count, 1) * WEEKEND_BOARDING_ROW_H + WEEKEND_SECTION_MARGIN;
+  return HEADER_H + OUTER_PAD * 2 + sectionH(arriving.length) + sectionH(departing.length);
+}
+
+/**
+ * Build the full satori element tree for the weekend roster image.
+ */
+function buildWeekendLayout(arriving, departing, displayFri, displaySun) {
+  const headerDates = formatWeekendHeaderDates(displayFri, displaySun);
+  const availableWidth = IMAGE_WIDTH - OUTER_PAD * 2;
+
+  return h('div', {
+    display: 'flex',
+    flexDirection: 'column',
+    width: IMAGE_WIDTH,
+    backgroundColor: COLORS.bg,
+    fontFamily: 'Inter',
+  },
+    // Header bar
+    h('div', {
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      width: IMAGE_WIDTH,
+      height: HEADER_H,
+      backgroundColor: COLORS.headerBg,
+      paddingLeft: OUTER_PAD,
+      paddingRight: OUTER_PAD,
+    },
+      h('span', {
+        fontFamily: 'Inter',
+        fontWeight: 700,
+        fontSize: 18,
+        color: COLORS.headerText,
+        flex: 1,
+      }, 'Weekend Boarding'),
+      h('span', {
+        fontFamily: 'Inter',
+        fontWeight: 400,
+        fontSize: 13,
+        color: '#94a3b8',
+      }, headerDates),
+    ),
+    // Content
+    h('div', {
+      display: 'flex',
+      flexDirection: 'column',
+      width: availableWidth,
+      padding: OUTER_PAD,
+    },
+      buildWeekendSection('Arriving this weekend', arriving, 'arrival_datetime'),
+      buildWeekendSection('Departing this weekend', departing, 'departure_datetime'),
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // HTTP handler
 // ---------------------------------------------------------------------------
 
@@ -446,6 +715,35 @@ export default async function handler(req, res) {
   const expectedToken = process.env.VITE_SYNC_PROXY_TOKEN || '';
   if (!expectedToken || providedToken !== expectedToken) {
     return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const imageType = req.query.type || 'daily';
+
+  // --- Weekend roster path ---
+  if (imageType === 'weekend') {
+    console.log('[RosterImage] Generating weekend roster image');
+    try {
+      const supabase = getSupabase();
+      const { start, end, displayFri, displaySun } = getWeekendWindowISO();
+      const { arriving, departing } = await getWeekendBoardings(supabase, start, end);
+
+      const element = buildWeekendLayout(arriving, departing, displayFri, displaySun);
+      const height = computeWeekendImageHeight(arriving, departing);
+      console.log(`[RosterImage/Weekend] ${arriving.length} arriving, ${departing.length} departing, height: ${height}px`);
+
+      const svg = await satori(element, { width: IMAGE_WIDTH, height, fonts: FONTS });
+      const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: IMAGE_WIDTH } });
+      const pngBuffer = resvg.render().asPng();
+
+      console.log(`[RosterImage/Weekend] PNG: ${pngBuffer.length} bytes`);
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Content-Length', pngBuffer.length);
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      return res.status(200).send(pngBuffer);
+    } catch (err) {
+      console.error('[RosterImage/Weekend] ❌ Error:', err.message, err.stack);
+      return res.status(500).json({ error: err.message });
+    }
   }
 
   // --- Input validation: date param ---
