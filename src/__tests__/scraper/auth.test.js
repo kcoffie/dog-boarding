@@ -14,7 +14,6 @@ import {
 import { mockLoginPage } from './fixtures.js';
 
 // Mock global fetch
-/* global global */
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 

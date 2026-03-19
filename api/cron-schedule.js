@@ -23,7 +23,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { setSession } from '../src/lib/scraper/auth.js';
 import { authenticatedFetch } from '../src/lib/scraper/auth.js';
-import { getSession, clearSession } from '../src/lib/scraper/sessionCache.js';
+import { ensureSession, clearSession } from '../src/lib/scraper/sessionCache.js';
 import { enqueue, getQueueDepth } from '../src/lib/scraper/syncQueue.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../src/lib/scraper/daytimeSchedule.js';
 import { writeCronHealth } from './_cronHealth.js';
@@ -213,12 +213,15 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabase();
 
-    // Load cached session — if missing, wait for cron-auth to run
-    const cookies = await getSession(supabase);
-    if (!cookies) {
-      console.log('[CronSchedule] ⏭️ No valid session — waiting for cron-auth');
-      await writeCronHealth(supabase, 'schedule', 'success', { action: 'skipped', reason: 'no_session' }, null);
-      return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_session' });
+    // Ensure we have a valid session — re-authenticates if cache is missing/expired.
+    // Throws if credentials are not configured or auth fails (caught below).
+    let cookies;
+    try {
+      cookies = await ensureSession(supabase);
+    } catch (sessionErr) {
+      console.error('[CronSchedule] ❌ Could not obtain session:', sessionErr.message);
+      await writeCronHealth(supabase, 'schedule', 'failure', { action: 'session_failed' }, sessionErr.message.slice(0, 500));
+      return res.status(200).json({ ok: true, action: 'session_failed', error: sessionErr.message });
     }
 
     // Inject session into auth module for authenticatedFetch to use
