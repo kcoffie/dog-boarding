@@ -4,8 +4,14 @@
  * Hobby plan schedule (vercel.json): "0 0 * * *" — once per day at midnight UTC
  * Pro plan schedule (upgrade path):  "0 *\/6 * * *" — every 6 hours
  *
- * If the cached session is still valid, skips re-authentication.
- * If expired or missing, authenticates fresh and stores the new session in DB.
+ * Always re-authenticates — no "skip if still valid" logic.
+ *
+ * Rationale: the previous skip caused a race condition. If the previous auth
+ * session was stored a few minutes late (e.g. 00:27 instead of 00:00), the
+ * midnight cron saw it as "still valid" and skipped re-auth. The session then
+ * expired at 00:27, leaving all subsequent crons (schedule, detail, notify)
+ * without a valid session for 24 hours. Since this cron runs once a day, the
+ * cost of an unconditional re-auth is negligible — one HTTP call at midnight.
  *
  * Runs on Node.js runtime (NOT edge) so process.env is available.
  *
@@ -14,7 +20,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { authenticate } from '../src/lib/scraper/auth.js';
-import { getSession, storeSession } from '../src/lib/scraper/sessionCache.js';
+import { storeSession } from '../src/lib/scraper/sessionCache.js';
 import { writeCronHealth } from './_cronHealth.js';
 
 export const config = { runtime: 'nodejs' };
@@ -39,19 +45,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log('[CronAuth] 🔐 Starting auth refresh');
+    // Always re-authenticate — unconditional daily refresh.
+    // See module docstring for why the "skip if valid" approach was removed.
+    console.log('[CronAuth] 🔐 Starting auth refresh (unconditional)');
     const supabase = getSupabase();
 
-    // If the cached session is still valid, nothing to do
-    const existing = await getSession(supabase);
-    if (existing) {
-      console.log('[CronAuth] ⏭️ Session still valid, skipping re-auth');
-      await writeCronHealth(supabase, 'auth', 'success', { action: 'skipped', reason: 'session_valid' }, null);
-      return res.status(200).json({ ok: true, action: 'skipped', reason: 'session_valid' });
-    }
-
-    // Re-authenticate
-    console.log('[CronAuth] 🔑 Session expired or missing, re-authenticating...');
     const username = process.env.EXTERNAL_SITE_USERNAME;
     const password = process.env.EXTERNAL_SITE_PASSWORD;
     if (!username || !password) {

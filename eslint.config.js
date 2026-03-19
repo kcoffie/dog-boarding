@@ -28,8 +28,10 @@ export default defineConfig([
   },
   // api/ cron handlers and server-side lib modules that run in Node.js context.
   // These files use process.env and other Node globals unavailable in the browser.
+  // Test files are also included — they run in Node.js via Vitest and may need
+  // Node globals (e.g. process.env) when testing server-side modules.
   {
-    files: ['api/**/*.js', 'src/lib/scraper/**/*.js', 'src/lib/notifyWhatsApp.js', 'src/lib/pictureOfDay.js'],
+    files: ['api/**/*.js', 'src/lib/scraper/**/*.js', 'src/lib/notifyWhatsApp.js', 'src/lib/pictureOfDay.js', 'src/__tests__/**/*.js'],
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },

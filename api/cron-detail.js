@@ -23,7 +23,7 @@ import { setSession } from '../src/lib/scraper/auth.js';
 import { fetchAppointmentDetails } from '../src/lib/scraper/extraction.js';
 import { mapAndSaveAppointment } from '../src/lib/scraper/mapping.js';
 import { fetchAndStoreBoardingForm } from '../src/lib/scraper/forms.js';
-import { getSession, clearSession } from '../src/lib/scraper/sessionCache.js';
+import { ensureSession, clearSession } from '../src/lib/scraper/sessionCache.js';
 import {
   dequeueOne,
   markDone,
@@ -57,6 +57,21 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabase();
 
+    // Ensure we have a valid session before dequeuing anything.
+    // Doing this first means we never need to put an item back if auth fails.
+    // ensureSession re-authenticates automatically if the cache is expired/missing.
+    let cookies;
+    try {
+      cookies = await ensureSession(supabase);
+    } catch (sessionErr) {
+      console.error('[CronDetail] ❌ Could not obtain session:', sessionErr.message);
+      await writeCronHealth(supabase, 'detail', 'failure', { action: 'session_failed' }, sessionErr.message.slice(0, 500));
+      return res.status(200).json({ ok: true, action: 'session_failed', error: sessionErr.message });
+    }
+
+    // Inject session into auth module
+    setSession(cookies);
+
     // Reset any items stuck in 'processing' before picking a new one
     const resetCount = await resetStuck(supabase);
     if (resetCount > 0) {
@@ -70,22 +85,6 @@ export default async function handler(req, res) {
       await writeCronHealth(supabase, 'detail', 'success', { action: 'idle' }, null);
       return res.status(200).json({ ok: true, action: 'idle' });
     }
-
-    // Load cached session
-    const cookies = await getSession(supabase);
-    if (!cookies) {
-      console.log('[CronDetail] ⏭️ No valid session — releasing item back to pending');
-      // Reset the item we just dequeued so it can be picked up after re-auth
-      await supabase
-        .from('sync_queue')
-        .update({ status: 'pending', processing_started_at: null })
-        .eq('id', item.id);
-      await writeCronHealth(supabase, 'detail', 'success', { action: 'skipped', reason: 'no_session' }, null);
-      return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_session' });
-    }
-
-    // Inject session into auth module
-    setSession(cookies);
 
     const itemType = item.type || 'appointment';
     const depth = await getQueueDepth(supabase);
