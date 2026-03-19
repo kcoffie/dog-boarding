@@ -1,5 +1,6 @@
 /**
  * Tests for the Picture of the Day data layer (v4.1).
+ * @requirements REQ-610, REQ-611, REQ-612
  *
  * getPictureOfDay, hashPicture, shouldSendNotification are all pure functions
  * (or accept an injected supabase client). Tests use fixture data and a

@@ -1,7 +1,7 @@
 # Sync Cron Jobs
 
 **Status:** Live (Hobby plan — once per day, midnight UTC; cron-detail runs twice via cron-detail-2)
-**Last reviewed:** March 18, 2026
+**Last reviewed:** March 19, 2026
 
 ---
 
@@ -35,23 +35,26 @@ This queue-based design means a single slow appointment detail page can't block 
 ## Job 1: `cron-auth` (`api/cron-auth.js`)
 
 ### What it does
-Checks whether a valid session exists in the `sync_settings` table. If yes, does nothing. If the session is expired or missing, authenticates against AGYD with stored credentials and caches the resulting cookies with a 24-hour TTL.
+Unconditionally re-authenticates against AGYD on every run, caching the resulting session cookies in `sync_settings` with a 24-hour TTL.
+
+There is **no skip-if-valid logic** — it always calls `authenticate()`. This was a deliberate fix (v4.4.1): the prior skip caused a race condition where a session stored a few minutes after midnight (e.g. 00:27) would appear valid at the 00:00 cron but expire before the morning notify windows (4am/7am/8:30am PST). All three notify windows would then fail with "no session."
+
+Since this cron runs once a day, the cost of an unconditional re-auth is one HTTP call — negligible.
 
 ### How it works
-1. Calls `getSession(supabase)` from `sessionCache.js`
-2. If session exists → logs "skipped" and returns
-3. If not → calls `authenticate(username, password)` from `auth.js`
-4. Stores result via `storeSession(supabase, cookies, 24h TTL)`
-5. Writes outcome to `cron_health` table (`auth` row)
+1. Reads `EXTERNAL_SITE_USERNAME` and `EXTERNAL_SITE_PASSWORD` from env
+2. Calls `authenticate(username, password)` from `auth.js` — unconditionally
+3. Stores result via `storeSession(supabase, cookies, 24h TTL)`
+4. Writes outcome to `cron_health` table (`auth` row) with `result.action = 'refreshed'`
 
 ### Key details
-- Uses `EXTERNAL_SITE_USERNAME` and `EXTERNAL_SITE_PASSWORD` Vercel env vars
 - Session TTL is hardcoded to 24 hours — matches the nightly run cadence
 - If credentials are wrong, throws → writes `failure` to `cron_health`
-- **Does NOT log the session cookie value** — only logs hours remaining (security)
+- **Does NOT log the session cookie value** — only logs expiry time (security)
+- `cron-schedule`, `cron-detail`, and `notify` all use `ensureSession()` which self-heals on cache miss — so even if `cron-auth` failed, they can recover mid-run
 
 ### On failure
-`cron-schedule` and `cron-detail` will both skip gracefully when they find no session. The system recovers automatically the next night when `cron-auth` retries.
+`cron-schedule` and `cron-detail` call `ensureSession()` — if the cached session is missing/expired, they re-authenticate themselves rather than skipping. This means a `cron-auth` failure is no longer catastrophic for the day's sync.
 
 ---
 
@@ -147,15 +150,25 @@ Loads cached session from `sessionCache.js`. If missing, resets the dequeued ite
 
 ## Cron Health Monitoring
 
-All three jobs write to the `cron_health` table after each run. Check it with:
+All jobs write to two tables after each run via `writeCronHealth()` in `api/_cronHealth.js`:
+
+- **`cron_health`** — one row per cron, always the latest run (upsert on `cron_name`)
+- **`cron_health_log`** — append-only history, every run is inserted (never overwritten)
 
 ```sql
+-- Latest state per cron
 SELECT cron_name, last_ran_at, status, result, error_msg
 FROM cron_health
 ORDER BY cron_name;
+
+-- Full history for debugging (e.g. see that cron-auth ran at 00:12 and what it did)
+SELECT cron_name, ran_at, status, result
+FROM cron_health_log
+ORDER BY ran_at DESC
+LIMIT 20;
 ```
 
-`status` is `success` or `failure`. Note: `success` means the job completed without an unhandled error — it does NOT mean data was changed (e.g., "skipped — session valid" is a `success`). Read the `result` JSON column for the actual action taken.
+`status` is `success` or `failure`. `success` means no unhandled error — read the `result` JSON for the actual action. For `cron-auth`, `result.action` should always be `'refreshed'` (the old `'skipped'` value was the bug).
 
 ---
 
@@ -185,7 +198,7 @@ Security: all three handlers check `Authorization: Bearer {CRON_SECRET}` before 
 | `vercel.json` | Cron schedules (Vercel Hobby: once/day at midnight UTC) |
 | `api/_cronHealth.js` | Shared `writeCronHealth()` helper |
 | `src/lib/scraper/auth.js` | `authenticate()`, `authenticatedFetch()`, `setSession()` |
-| `src/lib/scraper/sessionCache.js` | `getSession()`, `storeSession()`, `clearSession()` |
+| `src/lib/scraper/sessionCache.js` | `getSession()`, `storeSession()`, `clearSession()`, `ensureSession()` (self-healing: returns cached session or re-authenticates) |
 | `src/lib/scraper/syncQueue.js` | `enqueue()`, `dequeueOne()`, `markDone()`, `markFailed()`, `resetStuck()`, `getQueueDepth()` |
 | `src/lib/scraper/extraction.js` | `fetchAppointmentDetails()` — detail page parser |
 | `src/lib/scraper/mapping.js` | `mapAndSaveAppointment()` — DB upsert orchestrator |

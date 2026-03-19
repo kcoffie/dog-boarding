@@ -252,7 +252,18 @@ export function parseDaytimeSchedulePage(html) {
     });
   }
 
-  log(`Parsed ${appointments.length} appointments from schedule HTML`);
+  // Summary log: break down by service category and date span so a parse
+  // regression (e.g. all DC appointments suddenly missing) is immediately
+  // visible without digging through per-event warn logs.
+  const byCategory = {};
+  const dates = new Set();
+  for (const a of appointments) {
+    const cat = a.service_category ?? 'unknown';
+    byCategory[cat] = (byCategory[cat] || 0) + 1;
+    if (a.appointment_date) dates.add(a.appointment_date);
+  }
+  const catSummary = Object.entries(byCategory).map(([k, v]) => `${k}: ${v}`).join(', ');
+  log(`Parsed ${appointments.length} appointments — ${catSummary || 'none'} across ${dates.size} date(s)`);
   return appointments;
 }
 
