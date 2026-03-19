@@ -86,7 +86,8 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 | `TWILIO_ACCOUNT_SID` | Twilio account SID |
 | `TWILIO_AUTH_TOKEN` | Twilio auth token |
 | `TWILIO_FROM_NUMBER` | Twilio WhatsApp sender number (e.g. `whatsapp:+14155238886`) |
-| `NOTIFY_RECIPIENTS` | Comma-separated recipient numbers (e.g. `+18005551234,+18005555678`) |
+| `NOTIFY_RECIPIENTS` | Comma-separated recipient numbers for roster images (e.g. `+18005551234,+18005555678`) |
+| `INTEGRATION_CHECK_RECIPIENTS` | Comma-separated recipient numbers for integration check reports (Kate only — separate from `NOTIFY_RECIPIENTS`) |
 
 Set all variables in `.env.local` for local development and in your Vercel project dashboard for production. Also set `VITE_SYNC_PROXY_TOKEN` as a GitHub Actions secret (used by the notify workflows).
 
@@ -185,9 +186,7 @@ Runs 3× daily (1am, 9am, 5pm PDT) via `integration-check.yml`, and on demand vi
 
 ### Manual test
 
-```bash
-curl "https://qboarding.vercel.app/api/notify?window=4am&token=YOUR_TOKEN&date=YYYY-MM-DD"
-```
+Trigger via GitHub Actions → **integration-check** → **Run workflow** (workflow_dispatch). No HTTP endpoint exists — the check runs as a Node.js script in GH Actions.
 
 ---
 
