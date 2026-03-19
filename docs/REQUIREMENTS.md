@@ -25,7 +25,12 @@
 | v2.2    | Revenue intelligence           | Complete (REQ-200–203)    |
 | v2.3    | Data quality & UX polish       | Complete (REQ-300–306)    |
 | v2.4    | Reporting & observability      | Complete (REQ-400–402)    |
-| v3.0    | Boarding form scraping + modal | In Progress (REQ-500–508) |
+| v3.0    | Boarding form scraping + modal | Complete (REQ-500–508)    |
+| v4.0    | Daytime activity intelligence  | Complete (REQ-600–601)    |
+| v4.1    | WhatsApp roster notifications  | Complete (REQ-610–612)    |
+| v4.3    | Integration check              | Complete (REQ-620)        |
+| v4.4    | Friday PM weekend notify       | Complete (REQ-630)        |
+| v4.4.1  | Session self-healing + cron log| Complete (REQ-640–642)    |
 
 ---
 
@@ -675,12 +680,13 @@ cron functions that each complete within the Hobby plan's 10-second limit.
 
 | Cron | Schedule | Function |
 |------|----------|----------|
-| `cron-auth` | Every 6h | Re-authenticate and cache session in DB |
-| `cron-schedule` | Every 1h | Scan 2 schedule pages, queue boarding candidates |
-| `cron-detail` | Every 5min | Process 1 queued appointment detail |
+| `cron-auth` | Daily 0:00 UTC | Re-authenticate and cache session in DB (unconditional) |
+| `cron-schedule` | Daily 0:05 UTC | Scan schedule pages, queue boarding candidates |
+| `cron-detail` | Daily 0:10 UTC | Fetch detail page for one queued appointment or boarding form |
+| `cron-detail-2` | Daily 0:15 UTC | Second detail processor — doubles throughput on Hobby plan |
 
 **Acceptance Criteria:**
-- `cron-auth` skips re-authentication when a valid session is still cached in `sync_settings`
+- `cron-auth` always re-authenticates on every run — no skip-if-valid logic (unconditional refresh prevents the race condition where a late-stored session appears valid but expires before morning notify windows)
 - `cron-auth` stores new session cookies and expiry in `sync_settings` after successful auth
 - `cron-schedule` fetches the current week + a rotating cursor week per call
 - `cron-schedule` cursor advances 7 days each call, wraps back to today after 8 weeks (~today+56d)
@@ -875,9 +881,11 @@ Each cron job records its last run time and outcome in the database, visible on 
 page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hobby plan).
 
 **Acceptance Criteria:**
-- New `cron_health` table: `cron_name` (unique text), `last_ran_at`, `status` (`success`/`failure`), `result` (JSONB), `error_msg`, `updated_at`
-- **Migration 014** creates the table with RLS enabled; authenticated users can SELECT
-- All 3 cron handlers (`cron-auth`, `cron-schedule`, `cron-detail`) upsert to `cron_health` on completion
+- New `cron_health` table: `cron_name` (unique text), `last_ran_at`, `status` (`success`/`failure`), `result` (JSONB), `error_msg`, `updated_at` — one row per cron, always the latest run
+- New `cron_health_log` table: append-only history (`cron_name`, `status`, `result`, `error_msg`, `ran_at`) — every run appended, never overwritten. Created by **Migration 021**.
+- **Migration 014** creates `cron_health` with RLS enabled; authenticated users can SELECT
+- `writeCronHealth()` helper (`api/_cronHealth.js`) upserts to `cron_health` AND appends to `cron_health_log` — both writes are non-fatal (failure logs a warning but never breaks the calling cron)
+- All cron handlers (`cron-auth`, `cron-schedule`, `cron-detail`, `cron-detail-2`, `notify`) call `writeCronHealth` on completion
   - Success path: writes run stats as `result` JSON (e.g. queued count, pages scanned)
   - Catch block: writes `status = 'failure'` and `error_msg`
 - Settings page shows a "Cron Health" card with 3 rows (Auth / Schedule / Detail):
@@ -1105,6 +1113,183 @@ The modal should display it so the user can open the original form in a new tab.
 
 ---
 
+---
+
+## v4.0 — Daytime Activity Intelligence
+
+### REQ-600: Daytime Appointment Ingestion
+**Added:** v4.0 | **Status:** Complete
+
+The cron pipeline ingests all DC (Daycare) and PG (Pack Group) appointments from the weekly schedule page, storing them in `daytime_appointments` with per-worker attribution.
+
+**Acceptance Criteria:**
+- `daytimeSchedule.js` parses schedule HTML using regex (Node.js safe — no DOMParser)
+- Extracts `data-id`, `data-ts`, `data-start`, `data-status`, `data-series`, `class="ew-{uid}"` (worker), `cat-{id}`, `ser-{id}` (service) from `.day-event` elements
+- Only DC (cat-5634/ser-10692) and PG (cat-7431/ser-15824) appointments are stored
+- `cron-schedule.js` calls daytime ingest after boarding queue pass
+- `daytime_appointments` table stores: `external_id`, `series_id`, `worker_id`, `service_type` (`DC`/`PG`), `appointment_date`, `start_time`, `pet_names`, `status`, `raw_data`
+- Upsert on `external_id` — re-running is safe
+
+**Tests:** `src/__tests__/scraper/daytimeSchedule.test.js`
+
+---
+
+### REQ-601: Worker Registry
+**Added:** v4.0 | **Status:** Complete
+
+The `workers` table stores the known roster of workers with their external UIDs, enabling per-worker roster grouping.
+
+**Acceptance Criteria:**
+- `workers` table: `id`, `external_uid` (unique text), `name`, `active`
+- Seeded with 6 known workers: Charlie (61023), Kathalyn (208669), Kentaro (141407), Max (174385), Sierra (189436), Stephen (164375)
+- `daytime_appointments.worker_id` FK references `workers.id`
+- Unknown `ew-{uid}` values stored as-is; unmatched workers logged as warn
+
+**Tests:** Covered by `daytimeSchedule.test.js`
+
+---
+
+## v4.1 — WhatsApp Roster Notifications
+
+### REQ-610: Daily Roster Image Generation
+**Added:** v4.1 | **Status:** Complete
+
+`/api/roster-image` generates a branded PNG showing each worker's dogs for the day, with day-over-day diff indicators.
+
+**Acceptance Criteria:**
+- Token-gated (`VITE_SYNC_PROXY_TOKEN` Bearer header)
+- Uses `satori` + `resvg` to render JSX → PNG
+- AGYD brand colors: forest green `#4A773C` header, sage `#78A354` headings, charcoal `#333333` body
+- Green `+` for newly added dogs (series not in yesterday's set), red strikethrough for removed dogs
+- `getPictureOfDay()` in `src/lib/pictureOfDay.js` computes worker diffs from `daytime_appointments`
+- Boarding dogs shown in a separate section below worker rosters
+
+**Tests:** Manual/visual; `src/__tests__/lib/pictureOfDay.test.js` covers diff logic
+
+---
+
+### REQ-611: Morning Notify Delivery Windows
+**Added:** v4.1 | **Status:** Complete
+
+GitHub Actions workflows call `/api/notify` at three windows each weekday morning.
+
+**Acceptance Criteria:**
+- `notify-4am.yml` fires at 11:00 UTC (4am PDT, Mon–Fri)
+- `notify-7am.yml` fires at 14:00 UTC (7am PDT, Mon–Fri)
+- `notify-830am.yml` fires at 15:30 UTC (8:30am PDT, Mon–Fri)
+- Each calls `GET /api/notify?window=4am|7am|830am`
+- `notify.js` refreshes daytime schedule live before building image (not stale midnight data)
+- Sends to all numbers in `NOTIFY_RECIPIENTS` via Twilio WhatsApp
+
+**Tests:** Integration (manual); `api/notify.js` unit coverage via `cronHealth.test.js`
+
+---
+
+### REQ-612: Hash-Gated Deduplication
+**Added:** v4.1 | **Status:** Complete
+
+7am and 8:30am windows skip sending if roster hasn't changed since last send.
+
+**Acceptance Criteria:**
+- After each send, `hashPicture(data)` stored in `cron_health.result.lastHash` for cron `notify`
+- On next window: if hash matches → skip send, log "no change"
+- 4am always sends (first window of day)
+- `friday-pm` always sends (separate workflow, no hash gate)
+- `shouldSendNotification(window, lastHash, currentHash)` in `pictureOfDay.js`
+
+**Tests:** `src/__tests__/lib/pictureOfDay.test.js`
+
+---
+
+## v4.3 — Integration Check
+
+### REQ-620: Automated DB vs Live Schedule Check
+**Added:** v4.3 | **Status:** Complete
+
+An independent GH Actions script verifies that the DB matches the live external schedule 3× daily, alerting on discrepancies.
+
+**Acceptance Criteria:**
+- `scripts/integration-check.js` runs in GH Actions (`integration-check.yml`) at 1am, 9am, 5pm PDT and on-demand via `workflow_dispatch`
+- Loads session from DB (`sync_settings`); renders schedule page via Playwright (headless Chromium)
+- Extracts all boarding + DC/PG appointment IDs from live DOM
+- Queries DB: boardings in past-7d → today+7d window; daytime appointments for today
+- Flags: IDs on schedule missing from DB; IDs in DB with `Unknown` dog name; daytime events on schedule missing from DB
+- Sends WhatsApp text report to `INTEGRATION_CHECK_RECIPIENTS` (separate from `NOTIFY_RECIPIENTS`)
+- Always exits 0 — discrepancies are reported, not fatal
+- Canceled/request-type bookings are a known false positive (not imported); documented in `docs/job_docs/integration-check.md`
+- Step 3 (Claude vision name-check) silently skipped when `ANTHROPIC_API_KEY` has no credits
+
+**Tests:** Manual verification; no unit tests (Playwright + external dependencies)
+
+---
+
+## v4.4 — Friday PM Weekend Notify
+
+### REQ-630: Friday PM Weekend Boarding Preview
+**Added:** v4.4 | **Status:** Complete
+
+Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arrivals and departures Sat–Sun).
+
+**Acceptance Criteria:**
+- `notify-friday-pm.yml` fires at 22:00 UTC (3pm PDT, Fri only)
+- `GET /api/notify?window=friday-pm` generates a weekend-themed image
+- Shows two sections: dogs arriving and dogs departing Fri–Sun with check-in/out times and night counts
+- Always sends regardless of hash (weekend preview is always useful)
+- `cron_health` row written for `notify-friday-pm`
+
+**Tests:** Manual verification
+
+---
+
+## v4.4.1 — Session Self-Healing
+
+### REQ-640: Unconditional cron-auth Re-authentication
+**Added:** v4.4.1 | **Status:** Complete
+
+`cron-auth` always re-authenticates on every run. The prior "skip if valid" logic caused a race condition: if the session was stored a few minutes after midnight (e.g. 00:27), the midnight cron saw it as still valid and skipped re-auth. The session expired at 00:27 the next day, leaving all morning notify windows without a session.
+
+**Acceptance Criteria:**
+- `cron-auth` calls `authenticate()` unconditionally — no session validity check before auth
+- Response always includes `{"action": "refreshed", "expiresAt": "..."}` on success (no `"action": "skipped"`)
+- `writeCronHealth` records the refreshed state after every run
+
+**Tests:** `src/__tests__/scraper/auth.test.js`
+
+---
+
+### REQ-641: ensureSession Self-Healing
+**Added:** v4.4.1 | **Status:** Complete
+
+`ensureSession()` gives `cron-schedule`, `cron-detail`, and `notify` the ability to recover from a missing or expired session without waiting for the next `cron-auth` run.
+
+**Acceptance Criteria:**
+- `ensureSession(supabase, username, password)` exported from `sessionCache.js`
+- If cached session exists and is not expired → return it (fast path, no HTTP call)
+- If session missing or expired → call `authenticate()`, store result, return new session
+- `cron-schedule` and `cron-detail` call `ensureSession` instead of `getSession`
+- `notify.js` calls `ensureSession` in its daytime refresh path
+- `sendRefreshAlert` deduplicates: only 1 WhatsApp alert per day (checks `lastAlertDate` in cron_health result)
+
+**Tests:** `src/__tests__/scraper/sessionCache.test.js` (8 new tests)
+
+---
+
+### REQ-642: Cron Health History Log
+**Added:** v4.4.1 | **Status:** Complete
+
+`cron_health` stores only the latest run per cron. `cron_health_log` is an append-only companion that records every run, enabling post-hoc debugging (e.g. seeing that cron-auth ran at 00:12 and skipped re-auth — even after the next run overwrites `cron_health`).
+
+**Acceptance Criteria:**
+- **Migration 021** creates `cron_health_log(id SERIAL, cron_name TEXT, status TEXT, result JSONB, error_msg TEXT, ran_at TIMESTAMPTZ)` — append-only, no upsert
+- RLS enabled; authenticated users can SELECT
+- `writeCronHealth()` inserts to `cron_health_log` on every call (in addition to upsert on `cron_health`)
+- Log insert failure is non-fatal — logs a warning, does not throw
+- Rows accumulate indefinitely (no TTL at this scale)
+
+**Tests:** `src/__tests__/scraper/cronHealth.test.js` (2 new tests)
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section
@@ -1130,3 +1315,8 @@ The modal should display it so the user can open the original form in a new tab.
 - **REQ-300 to REQ-309**: Data Quality & UX Polish (v2.3)
 - **REQ-400 to REQ-409**: Reporting & Observability (v2.4)
 - **REQ-500 to REQ-509**: Boarding Form Scraping & Modal (v3.0)
+- **REQ-600 to REQ-609**: Daytime Activity Intelligence (v4.0)
+- **REQ-610 to REQ-619**: WhatsApp Roster Notifications (v4.1)
+- **REQ-620 to REQ-629**: Integration Check (v4.3)
+- **REQ-630 to REQ-639**: Friday PM Weekend Notify (v4.4)
+- **REQ-640 to REQ-649**: Session Self-Healing & Observability (v4.4.1)

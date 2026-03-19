@@ -1,7 +1,7 @@
 # Notify Jobs (WhatsApp Roster)
 
 **Status:** Live (weekdays + Friday PM, PDT schedule — update UTC times each DST transition)
-**Last reviewed:** March 18, 2026
+**Last reviewed:** March 19, 2026
 
 ---
 
@@ -39,7 +39,7 @@ Each workflow is a single step: a `curl` to `/api/notify?window={window}&token={
 
 The endpoint orchestrates the full notify flow:
 
-1. **Refresh live schedule** — calls `refreshDaytimeSchedule()` to fetch the current day's DC/PG appointments from AGYD and upsert into `daytime_appointments`. This ensures the image reflects live data, not just what was ingested at midnight.
+1. **Refresh live schedule** — calls `refreshDaytimeSchedule()` to fetch the current day's DC/PG appointments from AGYD and upsert into `daytime_appointments`. This ensures the image reflects live data, not just what was ingested at midnight. Uses `ensureSession()` (self-healing: re-authenticates if the cached session is missing or expired). If the refresh fails, `sendRefreshAlert()` fires a WhatsApp warning — but only once per day (deduplicates via `cron_health.result.lastAlertDate`).
 
 2. **Get picture of day** — calls `getPictureOfDay()` from `pictureOfDay.js`. This selects one dog per active worker for the day, building a roster of {worker → boarding dog}.
 

@@ -1,25 +1,24 @@
-# Dog Boarding App — Session Handoff (v4.4 complete, fix/session-self-healing in PR)
-**Last updated:** March 19, 2026 (mid-session)
+# Dog Boarding App — Session Handoff (v4.4.1 live, ready for v5)
+**Last updated:** March 19, 2026
 
 ---
 
 ## Current State
 
-- **v4.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
-- **756 tests, 46 files, 0 failures** (+10 from session self-healing fix)
-- **Main branch clean** — all PRs merged (latest: #80); PR #82 in progress on `fix/session-self-healing`
+- **v4.4.1 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
+- **756 tests, 46 files, 0 failures**
+- **Main branch clean** — all PRs merged (latest: #83)
 - **Integration check LIVE** — runs 3×/day, consistently green, dog names in alerts, 7-day DB window
-- **v4 is complete** — all tickets done; next is v5 (start after #82 merges)
-- **PR #82 (fix/session-self-healing) open** — needs: (1) run migration 021 in Supabase, (2) verify EXTERNAL_SITE_USERNAME/PASSWORD in Vercel dashboard, (3) merge
+- **v4 complete** — all tickets done including v4.4.1 session self-healing hotfix
+- **`cron_health_log` verified** — table live, first row written (manual trigger March 19); tonight's midnight cron will confirm unconditional re-auth end-to-end
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-1. **⚠️ Merge PR #82** — confirm migration 021 applied + Vercel env vars set before deploying
-2. **Tag v4.4.1** — self-healing hotfix is small but important; deserves its own release
-3. **Optional: code review v4** — large sprint; good to audit before v5 adds more surface area
-4. **Start v5** — see `docs/SPRINT_PLAN.md`. First ticket: Gmail monitoring agent
+1. **Start v5.0** — see `docs/SPRINT_PLAN.md`. First ticket: Gmail monitoring agent
+2. **Optional: code review v4** — large sprint; good to audit before v5 adds more surface area
+3. **Tomorrow: confirm tonight's cron** — `cron_health.auth.result.action` should be `refreshed` (not `skipped`) and new rows in `cron_health_log`
 
 ---
 
@@ -29,7 +28,7 @@
 
 **Session also interrupted mid-implementation** — picked up and completed in new session.
 
-**PR #82 (fix/session-self-healing):**
+**PR #83 (fix/session-self-healing) — merged March 19, tagged v4.4.1:**
 - `cron-auth.js` — always re-auth, removed skip-if-valid logic (was the race condition)
 - `sessionCache.js` — added `ensureSession()`: fast-path cache hit or re-authenticates on miss/expiry
 - `cron-schedule.js`, `cron-detail.js` — use `ensureSession` (self-healing); cron-detail: session before dequeue (no more put-back dance)
@@ -38,6 +37,12 @@
 - Migration 021 — `cron_health_log` append-only history table
 - 10 new tests (8 `ensureSession`, 2 `writeCronHealth`); 756 total, 0 failures
 - README: fixed wrong curl command (integration check has no HTTP endpoint); added `INTEGRATION_CHECK_RECIPIENTS` to env var table
+
+**Verified post-merge (March 19):**
+- Manual `curl /api/cron-auth` → `{"ok":true,"action":"refreshed"}` ✅
+- `cron_health.auth.result.action = 'refreshed'` (was `skipped` pre-fix) ✅
+- `cron_health_log` table live, first row (id=1) written ✅
+- Tonight's midnight cron will confirm unconditional re-auth in production
 
 ### Prior session PRs (all squash-merged to main)
 
@@ -51,6 +56,7 @@
 | #76 | `docs/integ-check-canceled-false-positive` | Document canceled booking requests as known FP #6 |
 | #79 | `chore/dev-deps-march-18` | Bump 6 dev dependencies |
 | #80 | `docs/session-handoff-v4.4` | SPRINT_PLAN + SESSION_HANDOFF session close |
+| #83 | `fix/session-self-healing` | Session self-healing, ensureSession, always re-auth, cron_health_log |
 
 ---
 
@@ -164,7 +170,7 @@ WHERE b.arrival_datetime <= NOW() + INTERVAL '7 days'
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, **v4.4.0 (latest)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, **v4.4.1 (latest)**
 
 ## Archive
 - v4.3 session: `docs/archive/SESSION_HANDOFF_v4.3_final.md`
