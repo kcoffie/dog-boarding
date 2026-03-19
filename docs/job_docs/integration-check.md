@@ -1,7 +1,7 @@
 # Integration Check Job
 
 **Status:** Live — boarding + daytime checks, Step 0 removed, always exits 0
-**Last reviewed:** March 18, 2026
+**Last reviewed:** March 19, 2026
 
 ---
 

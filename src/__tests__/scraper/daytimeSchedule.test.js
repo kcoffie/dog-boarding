@@ -1,5 +1,6 @@
 /**
  * Tests for the daytime schedule parser (v4.0 Activity Intelligence).
+ * @requirements REQ-600, REQ-601
  *
  * parseDaytimeSchedulePage is a pure function — all tests use fixture HTML
  * strings and require no mocking, no I/O, no Supabase client.

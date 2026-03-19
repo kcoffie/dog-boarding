@@ -169,7 +169,7 @@ async function queryBoarders(supabase, dateStr) {
     }
   }
 
-  log(`Boarders today: ${boarders.length} dogs`);
+  log(`Boarders today: ${boarders.length} (${boarders.join(', ') || 'none'})`);
   return boarders;
 }
 
@@ -456,34 +456,34 @@ export function hashPicture(data) {
  * Error-handling: invalid window throws (caller should validate before calling).
  * null lastSentHash (no prior send today) → send with reason 'no_baseline'.
  *
- * @param {string} window      - '4am' | '7am' | '8:30am'
+ * @param {string} sendWindow  - '4am' | '7am' | '8:30am'
  * @param {object} data        - Current picture data
  * @param {string|null} lastSentHash
  * @returns {{ shouldSend: boolean, reason: string, currentHash: string }}
  */
-export function shouldSendNotification(window, data, lastSentHash) {
+export function shouldSendNotification(sendWindow, data, lastSentHash) {
   const VALID_WINDOWS = ['4am', '7am', '8:30am'];
-  if (!VALID_WINDOWS.includes(window)) {
-    throw new Error(`Invalid window: "${window}". Must be one of: ${VALID_WINDOWS.join(', ')}`);
+  if (!VALID_WINDOWS.includes(sendWindow)) {
+    throw new Error(`Invalid window: "${sendWindow}". Must be one of: ${VALID_WINDOWS.join(', ')}`);
   }
 
   const currentHash = hashPicture(data);
 
-  if (window === '4am') {
+  if (sendWindow === '4am') {
     log(`shouldSend: window=4am — always send (hash: ${currentHash})`);
     return { shouldSend: true, reason: 'first_send_of_day', currentHash };
   }
 
   if (!lastSentHash) {
-    log(`shouldSend: window=${window} — no baseline hash → send`);
+    log(`shouldSend: window=${sendWindow} — no baseline hash → send`);
     return { shouldSend: true, reason: 'no_baseline', currentHash };
   }
 
   if (currentHash === lastSentHash) {
-    log(`shouldSend: window=${window} — hash unchanged (${currentHash}) → skip`);
+    log(`shouldSend: window=${sendWindow} — hash unchanged (${currentHash}) → skip`);
     return { shouldSend: false, reason: 'no_change', currentHash };
   }
 
-  log(`shouldSend: window=${window} — hash changed (${lastSentHash} → ${currentHash}) → send`);
+  log(`shouldSend: window=${sendWindow} — hash changed (${lastSentHash} → ${currentHash}) → send`);
   return { shouldSend: true, reason: 'data_changed', currentHash };
 }
