@@ -6,9 +6,14 @@
  * cron-auth calls storeSession() after a successful re-authentication.
  * Any cron function that detects a rejected session calls clearSession().
  *
+ * ensureSession() is the self-healing entry point: it returns a valid session
+ * (from cache if available, fresh from re-auth if not) or throws. Crons that
+ * call ensureSession() become resilient to missed auth refreshes.
+ *
  * @requirements REQ-109
  */
 
+import { authenticate } from './auth.js';
 import { syncLogger } from './logger.js';
 
 const log = syncLogger.log;
@@ -108,4 +113,50 @@ export async function clearSession(supabase) {
   log('[SessionCache] 🗑️ Session cleared');
 }
 
-export default { getSession, storeSession, clearSession };
+/**
+ * Get a valid session cookie string, re-authenticating if the cache is empty
+ * or expired. Throws if credentials are missing or authentication fails.
+ *
+ * This is the self-healing entry point for crons. Callers should use this
+ * instead of getSession() so they recover automatically from a missed
+ * cron-auth run rather than skipping their work entirely.
+ *
+ * After getting cookies back, callers must still call setSession(cookies) to
+ * inject them into the in-memory auth module for authenticatedFetch to use.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @returns {Promise<string>} Cookie string — never null
+ * @throws {Error} If credentials are missing or authentication fails
+ */
+export async function ensureSession(supabase) {
+  // Fast path: cached session is still valid — no network call needed
+  const cached = await getSession(supabase);
+  if (cached) {
+    log('[SessionCache] ✅ ensureSession: cached session valid');
+    return cached;
+  }
+
+  // Cache miss or expiry — re-authenticate now
+  log('[SessionCache] 🔑 ensureSession: no valid session, re-authenticating...');
+
+  const username = process.env.EXTERNAL_SITE_USERNAME;
+  const password = process.env.EXTERNAL_SITE_PASSWORD;
+  if (!username || !password) {
+    throw new Error(
+      'ensureSession: external site credentials not configured ' +
+      '(EXTERNAL_SITE_USERNAME / EXTERNAL_SITE_PASSWORD)'
+    );
+  }
+
+  const result = await authenticate(username, password);
+  if (!result.success) {
+    throw new Error(`ensureSession: authentication failed — ${result.error}`);
+  }
+
+  const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  await storeSession(supabase, result.cookies, SESSION_TTL_MS);
+  log('[SessionCache] ✅ ensureSession: session refreshed and cached');
+  return result.cookies;
+}
+
+export default { getSession, storeSession, clearSession, ensureSession };
