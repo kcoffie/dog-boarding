@@ -1,6 +1,6 @@
 /**
  * Session cache tests
- * @requirements REQ-109
+ * @requirements REQ-109, REQ-620, REQ-641
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

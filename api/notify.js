@@ -351,8 +351,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: err.message });
     }
   } else {
-    // Default to today in local time.
-    date = new Date();
+    // Default to today in Pacific time (America/Los_Angeles — where the business operates).
+    // new Date() on a UTC Vercel server gives UTC, which can be one calendar day ahead of
+    // Pacific between midnight–7am UTC (4pm–midnight Pacific). Using Intl ensures the date
+    // reflects the correct Pacific calendar day regardless of server timezone.
+    const pacificDateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Los_Angeles',
+    }).format(new Date());
+    date = parseDateParam(pacificDateStr);
   }
 
   const dateStr = [
