@@ -34,7 +34,7 @@ import {
   getRecipients,
 } from '../src/lib/notifyWhatsApp.js';
 import { writeCronHealth } from './_cronHealth.js';
-import { getSession, clearSession } from '../src/lib/scraper/sessionCache.js';
+import { ensureSession, clearSession } from '../src/lib/scraper/sessionCache.js';
 import { setSession, authenticatedFetch } from '../src/lib/scraper/auth.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../src/lib/scraper/daytimeSchedule.js';
 
@@ -70,12 +70,14 @@ async function refreshDaytimeSchedule(supabase, date) {
   // { refreshed: boolean, rowCount: number, warning: string|null }.
   // Docstring contract: "non-fatal pre-flight."
   try {
-    // Decision gate: load cached auth session. Without it there is nothing to fetch.
-    // getSession makes a DB call — must be inside the outer catch.
-    const cookies = await getSession(supabase);
-    if (!cookies) {
-      console.warn('[Notify/Refresh] No cached session — skipping live refresh, using stale DB data');
-      return { refreshed: false, rowCount: 0, warning: 'No cached session — cron-auth may not have run' };
+    // ensureSession: returns cached session or re-authenticates if expired/missing.
+    // Throws only if credentials are missing or auth fails — caught by outer catch.
+    let cookies;
+    try {
+      cookies = await ensureSession(supabase);
+    } catch (sessionErr) {
+      console.warn(`[Notify/Refresh] Could not obtain session: ${sessionErr.message} — skipping live refresh, using stale DB data`);
+      return { refreshed: false, rowCount: 0, warning: `Session unavailable: ${sessionErr.message}` };
     }
 
     // Inject session cookies so authenticatedFetch uses them.
@@ -153,10 +155,37 @@ async function refreshDaytimeSchedule(supabase, date) {
  * Send a plain-text WhatsApp alert when the daytime schedule refresh fails or
  * returns no events. Non-fatal — errors are caught and logged.
  *
- * Sends to NOTIFY_RECIPIENTS (same as the roster) so Kate sees it alongside
- * the morning image and can investigate before the next notify window.
+ * Deduplication: only fires once per calendar date. Subsequent windows (7am,
+ * 8:30am) with the same root cause are suppressed so a single session failure
+ * doesn't generate 3 identical WhatsApp alerts. The send is recorded in
+ * cron_health under 'notify-refresh-alert' with the date as a key.
+ *
+ * Sends to NOTIFY_RECIPIENTS (same as the roster) so the alert is visible
+ * alongside the morning image and can be investigated before the next window.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} warning
+ * @param {string} dateStr - YYYY-MM-DD of the day being notified
+ * @param {string} notifyWindow - '4am' | '7am' | '8:30am'
  */
-async function sendRefreshAlert(warning, dateStr, window) {
+async function sendRefreshAlert(supabase, warning, dateStr, notifyWindow) {
+  // Deduplicate: check if we already sent a refresh alert for this date
+  try {
+    const { data: last } = await supabase
+      .from('cron_health')
+      .select('result')
+      .eq('cron_name', 'notify-refresh-alert')
+      .maybeSingle();
+
+    if (last?.result?.alertDate === dateStr) {
+      console.log(`[Notify/RefreshAlert] Already sent refresh alert for ${dateStr} (window: ${last.result.window}) — suppressing duplicate`);
+      return;
+    }
+  } catch (err) {
+    // Non-fatal — if we can't read the dedup state, send the alert anyway
+    console.warn(`[Notify/RefreshAlert] Could not read dedup state: ${err.message} — sending alert`);
+  }
+
   const from = process.env.TWILIO_FROM_NUMBER;
   const recipients = getRecipients();
   if (!from || recipients.length === 0) return;
@@ -169,12 +198,22 @@ async function sendRefreshAlert(warning, dateStr, window) {
     return;
   }
 
-  const body = `⚠️ Notify refresh issue (${dateStr}, ${window})\n${warning}`;
+  const body = `⚠️ Notify refresh issue (${dateStr}, ${notifyWindow})\n${warning}`;
   for (const to of recipients) {
     await client.messages
       .create({ from: `whatsapp:${from}`, to: `whatsapp:${to}`, body })
       .catch(err => console.warn(`[Notify/RefreshAlert] Send failed to ***${to.slice(-4)}: ${err.message}`));
   }
+
+  // Record that we sent the alert for this date (non-fatal)
+  await writeCronHealth(supabase, 'notify-refresh-alert', 'success', {
+    alertDate: dateStr,
+    window: notifyWindow,
+    warning,
+    sentAt: new Date().toISOString(),
+  }, null).catch(err =>
+    console.warn(`[Notify/RefreshAlert] Could not record dedup state: ${err.message}`)
+  );
 }
 
 function getSupabase() {
@@ -337,8 +376,9 @@ export default async function handler(req, res) {
 
     // Alert on any refresh failure or zero-parse result — these are silent in Vercel
     // logs (1-hour retention) so a WhatsApp is the only durable signal.
+    // sendRefreshAlert deduplicates — only the first window fires per day.
     if (refresh.warning) {
-      await sendRefreshAlert(refresh.warning, dateStr, window).catch(err =>
+      await sendRefreshAlert(supabase, refresh.warning, dateStr, window).catch(err =>
         console.warn(`[Notify] Failed to send refresh alert: ${err.message}`)
       );
     }

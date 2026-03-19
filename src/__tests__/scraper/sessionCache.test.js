@@ -3,8 +3,8 @@
  * @requirements REQ-109
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { getSession, storeSession, clearSession } from '../../lib/scraper/sessionCache.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { getSession, storeSession, clearSession, ensureSession } from '../../lib/scraper/sessionCache.js';
 
 vi.mock('../../lib/scraper/logger.js', () => ({
   syncLogger: {
@@ -12,6 +12,13 @@ vi.mock('../../lib/scraper/logger.js', () => ({
     error: vi.fn(),
     warn: vi.fn(),
   },
+}));
+
+// Mock authenticate — sessionCache.js imports it from auth.js.
+// We don't want real HTTP calls in unit tests.
+const mockAuthenticate = vi.fn();
+vi.mock('../../lib/scraper/auth.js', () => ({
+  authenticate: (...args) => mockAuthenticate(...args),
 }));
 
 // ─── Supabase mock helper ─────────────────────────────────────────────────────
@@ -169,5 +176,124 @@ describe('REQ-109: clearSession()', () => {
 
     await clearSession(supabase);
     expect(await getSession(supabase)).toBeNull();
+  });
+});
+
+// ─── ensureSession() ──────────────────────────────────────────────────────────
+
+describe('REQ-109: ensureSession()', () => {
+  // Save and restore process.env so tests are isolated
+  let savedUsername;
+  let savedPassword;
+
+  beforeEach(() => {
+    mockAuthenticate.mockReset();
+    savedUsername = process.env.EXTERNAL_SITE_USERNAME;
+    savedPassword = process.env.EXTERNAL_SITE_PASSWORD;
+    process.env.EXTERNAL_SITE_USERNAME = 'test@example.com';
+    process.env.EXTERNAL_SITE_PASSWORD = 'test-password';
+  });
+
+  afterEach(() => {
+    // Restore original values (may be undefined if they weren't set)
+    if (savedUsername === undefined) {
+      delete process.env.EXTERNAL_SITE_USERNAME;
+    } else {
+      process.env.EXTERNAL_SITE_USERNAME = savedUsername;
+    }
+    if (savedPassword === undefined) {
+      delete process.env.EXTERNAL_SITE_PASSWORD;
+    } else {
+      process.env.EXTERNAL_SITE_PASSWORD = savedPassword;
+    }
+  });
+
+  it('fast path: returns cached session without calling authenticate', async () => {
+    const futureExpiry = new Date(Date.now() + 3600000).toISOString();
+    const supabase = createMockSupabase({
+      id: 'row-1',
+      session_cookies: 'cached-cookie=abc',
+      session_expires_at: futureExpiry,
+    });
+
+    const result = await ensureSession(supabase);
+
+    expect(result).toBe('cached-cookie=abc');
+    expect(mockAuthenticate).not.toHaveBeenCalled();
+  });
+
+  it('re-auth path: calls authenticate and stores session when cache is empty', async () => {
+    const supabase = createMockSupabase(null);
+    mockAuthenticate.mockResolvedValue({ success: true, cookies: 'fresh-cookie=xyz' });
+
+    const result = await ensureSession(supabase);
+
+    expect(mockAuthenticate).toHaveBeenCalledWith('test@example.com', 'test-password');
+    expect(result).toBe('fresh-cookie=xyz');
+    // Confirm session was persisted to DB
+    expect(supabase._getRow().session_cookies).toBe('fresh-cookie=xyz');
+  });
+
+  it('re-auth path: calls authenticate when cached session is expired', async () => {
+    const pastExpiry = new Date(Date.now() - 1000).toISOString();
+    const supabase = createMockSupabase({
+      id: 'row-1',
+      session_cookies: 'old-cookie=stale',
+      session_expires_at: pastExpiry,
+    });
+    mockAuthenticate.mockResolvedValue({ success: true, cookies: 'new-cookie=fresh' });
+
+    const result = await ensureSession(supabase);
+
+    expect(mockAuthenticate).toHaveBeenCalledOnce();
+    expect(result).toBe('new-cookie=fresh');
+    expect(supabase._getRow().session_cookies).toBe('new-cookie=fresh');
+  });
+
+  it('throws when EXTERNAL_SITE_USERNAME is not set', async () => {
+    delete process.env.EXTERNAL_SITE_USERNAME;
+    const supabase = createMockSupabase(null);
+
+    await expect(ensureSession(supabase)).rejects.toThrow('credentials not configured');
+    expect(mockAuthenticate).not.toHaveBeenCalled();
+  });
+
+  it('throws when EXTERNAL_SITE_PASSWORD is not set', async () => {
+    delete process.env.EXTERNAL_SITE_PASSWORD;
+    const supabase = createMockSupabase(null);
+
+    await expect(ensureSession(supabase)).rejects.toThrow('credentials not configured');
+    expect(mockAuthenticate).not.toHaveBeenCalled();
+  });
+
+  it('throws when authenticate returns success=false', async () => {
+    const supabase = createMockSupabase(null);
+    mockAuthenticate.mockResolvedValue({ success: false, error: 'invalid credentials' });
+
+    await expect(ensureSession(supabase)).rejects.toThrow('authentication failed');
+    // Nothing written to DB
+    expect(supabase._getRow()).toBeNull();
+  });
+
+  it('throws when authenticate itself throws', async () => {
+    const supabase = createMockSupabase(null);
+    mockAuthenticate.mockRejectedValue(new Error('network timeout'));
+
+    await expect(ensureSession(supabase)).rejects.toThrow('network timeout');
+    expect(supabase._getRow()).toBeNull();
+  });
+
+  it('re-auth: stored session has a future expiry ~24h from now', async () => {
+    const supabase = createMockSupabase(null);
+    mockAuthenticate.mockResolvedValue({ success: true, cookies: 'cookie=abc' });
+
+    const before = Date.now();
+    await ensureSession(supabase);
+    const after = Date.now();
+
+    const stored = new Date(supabase._getRow().session_expires_at).getTime();
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    expect(stored).toBeGreaterThanOrEqual(before + TWENTY_FOUR_HOURS_MS);
+    expect(stored).toBeLessThanOrEqual(after + TWENTY_FOUR_HOURS_MS);
   });
 });
