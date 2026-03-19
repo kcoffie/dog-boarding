@@ -1,6 +1,6 @@
 /**
  * Authentication module tests
- * @requirements REQ-100, REQ-402
+ * @requirements REQ-100, REQ-402, REQ-640
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

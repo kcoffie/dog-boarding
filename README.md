@@ -109,9 +109,10 @@ Three cron jobs run daily on the Vercel Hobby plan:
 
 | Cron | Schedule (UTC) | Purpose |
 |---|---|---|
-| `cron-auth` | 0:00 AM | Re-authenticate and cache session in DB |
+| `cron-auth` | 0:00 AM | Re-authenticate and cache session in DB (always re-auths) |
 | `cron-schedule` | 0:05 AM | Scan schedule pages, queue new boarding candidates |
 | `cron-detail` | 0:10 AM | Fetch detail page for one queued appointment or boarding form |
+| `cron-detail-2` | 0:15 AM | Second detail processor — doubles throughput on Hobby plan |
 
 On the Vercel **Pro plan**, crons can run more frequently (every 5–60 min). See the JSDoc header in each `api/cron-*.js` file for the upgrade path — no code changes required, only a `SYNC_MODE=standard` env var.
 
