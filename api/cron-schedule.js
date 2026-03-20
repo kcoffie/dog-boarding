@@ -12,8 +12,8 @@
  * This ensures bookings in the next 2 weeks are seen every night, and bookings
  * 2–8 weeks out appear within 6 nights (one full cursor cycle over weeks 2–7).
  *
- * Appointment HTML parsing uses a regex-based approach (no DOMParser) so this
- * handler works in the Node.js runtime without browser APIs.
+ * Core logic lives in src/lib/scraper/syncRunner.js — this is a thin Vercel
+ * handler wrapper responsible only for auth gating and health tracking.
  *
  * Runs on Node.js runtime (NOT edge) so process.env is available.
  *
@@ -21,183 +21,16 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { setSession } from '../src/lib/scraper/auth.js';
-import { authenticatedFetch } from '../src/lib/scraper/auth.js';
-import { ensureSession, clearSession } from '../src/lib/scraper/sessionCache.js';
-import { enqueue, getQueueDepth } from '../src/lib/scraper/syncQueue.js';
-import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../src/lib/scraper/daytimeSchedule.js';
+import { runScheduleSync } from '../src/lib/scraper/syncRunner.js';
 import { writeCronHealth } from './_cronHealth.js';
 
 export const config = { runtime: 'nodejs' };
 
-const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com';
-const CURSOR_WINDOW_WEEKS = 8; // how many weeks the cursor cycles through
-
-// Known non-boarding title patterns (mirrors sync.js pre-filter)
-const NON_BOARDING_RE = [
-  /(d\/c|\bdc\b)/i,
-  /(p\/g|g\/p|\bpg\b)/i,
-  /\badd\b/i,
-  /switch\s+day/i,
-  /back\s+to\s+\d+/i,
-  /initial\s+eval/i,
-  /^busy$/i,
-];
-
 function getSupabase() {
   const url = process.env.VITE_SUPABASE_URL;
-  // Prefer service role key (bypasses RLS) for server-side cron operations
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
   if (!url || !key) throw new Error('Supabase env vars not configured');
   return createClient(url, key);
-}
-
-/**
- * Build the schedule URL for a specific week start date.
- * /schedule/days-7/YYYY/M/D
- */
-function buildWeekUrl(date) {
-  const y = date.getFullYear();
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
-  return `${BASE_URL}/schedule/days-7/${y}/${m}/${d}`;
-}
-
-/**
- * Fetch one schedule page and return its raw HTML.
- * Throws with message 'SESSION_EXPIRED' if the site serves a login page.
- *
- * This avoids importing parseSchedulePage from schedule.js which uses
- * DOMParser — a browser API unavailable in the Node.js runtime.
- */
-async function fetchScheduleHtml(date) {
-  const url = buildWeekUrl(date);
-  const response = await authenticatedFetch(url);
-  if (!response.ok) throw new Error(`Schedule fetch failed: ${response.status}`);
-  const html = await response.text();
-  if (html.includes('login') && html.includes('password')) {
-    throw new Error('SESSION_EXPIRED');
-  }
-  return html;
-}
-
-/**
- * Extract appointment links from schedule page HTML using regex.
- * No DOMParser required — safe for Node.js runtime.
- *
- * Returns objects with: { id, url, timestamp, petName, clientName, time, title }
- */
-function parseScheduleHtml(html) {
-  const results = [];
-  const seen = new Set();
-
-  // Match each <a> block containing a /schedule/a/{id}/{ts} href.
-  // Appointment links contain only <span>/<div> children — no nested <a>.
-  const blockRe = /<a\b([^>]+href="[^"]*\/schedule\/a\/[^"]*"[^>]*)>([\s\S]*?)<\/a>/gi;
-  let m;
-
-  while ((m = blockRe.exec(html)) !== null) {
-    const attrs = m[1];
-    const inner = m[2];
-
-    const hrefMatch = attrs.match(/href="([^"]+)"/);
-    if (!hrefMatch) continue;
-
-    const href = hrefMatch[1];
-    const urlMatch = href.match(/\/schedule\/a\/([^/]+)\/(\d+)/);
-    if (!urlMatch) continue;
-
-    const id = urlMatch[1];
-    if (seen.has(id)) continue;
-    seen.add(id);
-
-    // Extract text content of named child elements
-    const pick = (cls) => {
-      const r = inner.match(new RegExp(`class="[^"]*${cls}[^"]*"[^>]*>([^<]*)<`));
-      return r ? r[1].trim() : '';
-    };
-
-    // Extract pet IDs from data-pet attributes on event-pet-wrapper elements
-    const petIds = [];
-    const petIdRe = /data-pet="([^"]+)"/g;
-    let petMatch;
-    while ((petMatch = petIdRe.exec(inner)) !== null) {
-      petIds.push(petMatch[1]);
-    }
-
-    const fullUrl = href.startsWith('http') ? href : `${BASE_URL}${href}`;
-    results.push({
-      id,
-      url: fullUrl,
-      timestamp: urlMatch[2],
-      petName: pick('event-pet'),
-      clientName: pick('event-client'),
-      time: pick('day-event-time'),
-      title: pick('day-event-title'),
-      petIds,
-    });
-  }
-
-  return results;
-}
-
-/**
- * Read the current cursor date from sync_settings.
- * Returns today if not set.
- */
-async function getCursorDate(supabase) {
-  const { data } = await supabase
-    .from('sync_settings')
-    .select('schedule_cursor_date')
-    .limit(1)
-    .single();
-
-  if (data?.schedule_cursor_date) {
-    const [y, mo, d] = data.schedule_cursor_date.split('-').map(Number);
-    return new Date(y, mo - 1, d); // local midnight
-  }
-  return new Date(); // first run: start at today
-}
-
-/**
- * Advance the cursor by 7 days.
- * Wraps back to today when the cursor would exceed today + CURSOR_WINDOW_WEEKS weeks.
- */
-function advanceCursor(cursor) {
-  const maxDate = new Date();
-  maxDate.setDate(maxDate.getDate() + CURSOR_WINDOW_WEEKS * 7);
-
-  const next = new Date(cursor);
-  next.setDate(next.getDate() + 7);
-
-  return next > maxDate ? new Date() : next;
-}
-
-/**
- * Persist the cursor date in sync_settings.
- */
-async function saveCursorDate(supabase, date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  const isoDate = `${y}-${m}-${d}`;
-
-  const { data: existing } = await supabase
-    .from('sync_settings')
-    .select('id')
-    .limit(1)
-    .single();
-
-  if (existing) {
-    await supabase
-      .from('sync_settings')
-      .update({ schedule_cursor_date: isoDate })
-      .eq('id', existing.id);
-  } else {
-    await supabase
-      .from('sync_settings')
-      .insert({ schedule_cursor_date: isoDate });
-  }
 }
 
 export default async function handler(req, res) {
@@ -212,136 +45,28 @@ export default async function handler(req, res) {
 
   try {
     const supabase = getSupabase();
+    const result = await runScheduleSync(supabase);
 
-    // Ensure we have a valid session — re-authenticates if cache is missing/expired.
-    // Throws if credentials are not configured or auth fails (caught below).
-    let cookies;
-    try {
-      cookies = await ensureSession(supabase);
-    } catch (sessionErr) {
-      console.error('[CronSchedule] ❌ Could not obtain session:', sessionErr.message);
-      await writeCronHealth(supabase, 'schedule', 'failure', { action: 'session_failed' }, sessionErr.message.slice(0, 500));
-      return res.status(200).json({ ok: true, action: 'session_failed', error: sessionErr.message });
+    if (result.action === 'session_failed') {
+      await writeCronHealth(supabase, 'schedule', 'failure', { action: 'session_failed' }, result.error?.slice(0, 500));
+      return res.status(200).json({ ok: true, ...result });
     }
 
-    // Inject session into auth module for authenticatedFetch to use
-    setSession(cookies);
-
-    const cursorDate = await getCursorDate(supabase);
-    const today = new Date();
-
-    console.log(`[CronSchedule] 📅 Starting scan — cursor: ${cursorDate.toDateString()}, mode: micro`);
-    console.log(`[CronSchedule] 🔑 Session: cached`);
-
-    const stats = { pagesScanned: 0, found: 0, skipped: 0, queued: 0, daytimeUpserted: 0, daytimeErrors: 0 };
-
-    // Page 1: current week — always fetched
-    const datesToFetch = [today];
-    // Page 2: next week — always fetched (eliminates 1-week discovery blind spot)
-    const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-    datesToFetch.push(nextWeek);
-    // Page 3: cursor week (rotating, weeks 2–8) — skip if it overlaps page 1 or 2
-    const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-    const sameAsToday    = Math.abs(cursorDate - today)    < ONE_WEEK_MS;
-    const sameAsNextWeek = Math.abs(cursorDate - nextWeek) < ONE_WEEK_MS;
-    if (!sameAsToday && !sameAsNextWeek) datesToFetch.push(cursorDate);
-
-    const seenIds = new Set();
-    const appointments = [];
-    // Accumulates all daytime/boarding events across both fetched pages.
-    // upsertDaytimeAppointments deduplicates before the DB write.
-    const allDaytimeAppts = [];
-
-    for (const date of datesToFetch) {
-      let html;
-      try {
-        html = await fetchScheduleHtml(date);
-      } catch (err) {
-        if (err.message === 'SESSION_EXPIRED') {
-          console.log('[CronSchedule] 🔒 Session rejected by server — clearing cached session');
-          await clearSession(supabase);
-          await writeCronHealth(supabase, 'schedule', 'success', { action: 'session_cleared', reason: 'session_expired' }, null);
-          return res.status(200).json({ ok: true, action: 'session_cleared', reason: 'session_expired' });
-        }
-        throw err;
-      }
-
-      const parsed = parseScheduleHtml(html);
-      stats.pagesScanned++;
-      console.log(`[CronSchedule] 📋 Found ${parsed.length} appointments on ${date.toDateString()} page`);
-
-      for (const appt of parsed) {
-        if (seenIds.has(appt.id)) continue;
-        seenIds.add(appt.id);
-        appointments.push(appt);
-      }
-
-      // Parse ALL events (DC, PG, Boarding) for daytime activity ingestion.
-      // Runs against the same HTML — no extra fetches.
-      const daytimeAppts = parseDaytimeSchedulePage(html);
-      console.log(`[CronSchedule] 🏃 Parsed ${daytimeAppts.length} daytime events on ${date.toDateString()} page`);
-      allDaytimeAppts.push(...daytimeAppts);
+    if (result.action === 'session_cleared') {
+      await writeCronHealth(supabase, 'schedule', 'success', { action: 'session_cleared', reason: result.reason }, null);
+      return res.status(200).json({ ok: true, ...result });
     }
 
-    stats.found = appointments.length;
+    await writeCronHealth(supabase, 'schedule', 'success', {
+      pagesScanned: result.pagesScanned,
+      found: result.found,
+      skipped: result.skipped,
+      queued: result.queued,
+      cursorAdvancedTo: result.cursorAdvancedTo,
+      queueDepth: result.queueDepth,
+    }, null);
 
-    // Filter and enqueue boarding candidates
-    for (const appt of appointments) {
-      const titleLower = (appt.title || '').toLowerCase().trim();
-      const isNonBoarding = NON_BOARDING_RE.some(re => re.test(titleLower));
-
-      if (isNonBoarding) {
-        stats.skipped++;
-        continue;
-      }
-
-      try {
-        await enqueue(supabase, {
-          external_id: appt.id,
-          source_url: appt.url,
-          title: appt.title || appt.petName || '',
-          meta: appt.petIds?.[0] ? { external_pet_id: appt.petIds[0] } : {},
-        });
-        stats.queued++;
-      } catch (err) {
-        // Log but don't fail the whole run for one enqueue error
-        console.error(`[CronSchedule] ⚠️ Failed to enqueue ${appt.id}:`, err.message);
-      }
-    }
-
-    console.log(`[CronSchedule] 🐕 ${stats.found} found, ${stats.skipped} skipped (non-boarding), ${stats.queued} queued`);
-
-    // Upsert all daytime appointments collected from every fetched page.
-    // This runs after the boarding queue loop so queue errors don't block it.
-    const daytimeResult = await upsertDaytimeAppointments(supabase, allDaytimeAppts);
-    stats.daytimeUpserted = daytimeResult.upserted;
-    stats.daytimeErrors = daytimeResult.errors;
-    console.log(`[CronSchedule] 📊 Daytime upserted: ${daytimeResult.upserted}, errors: ${daytimeResult.errors}`);
-
-    // Advance cursor
-    const nextCursor = advanceCursor(cursorDate);
-    await saveCursorDate(supabase, nextCursor);
-    const wrapped = nextCursor <= today;
-    if (wrapped) {
-      console.log('[CronSchedule] 🔄 Cursor wrapped back to today');
-    } else {
-      console.log(`[CronSchedule] ➡️ Cursor advanced to ${nextCursor.toDateString()}`);
-    }
-
-    const depth = await getQueueDepth(supabase);
-    console.log(`[CronSchedule] 📊 Queue depth after scan: ${depth} pending`);
-
-    const healthResult = {
-      pagesScanned: stats.pagesScanned,
-      found: stats.found,
-      skipped: stats.skipped,
-      queued: stats.queued,
-      cursorAdvancedTo: nextCursor.toISOString().slice(0, 10),
-      queueDepth: depth,
-    };
-    await writeCronHealth(supabase, 'schedule', 'success', healthResult, null);
-
-    return res.status(200).json({ ok: true, ...healthResult });
+    return res.status(200).json({ ok: true, ...result });
   } catch (err) {
     console.error('[CronSchedule] ❌ Unhandled error:', err.message, err.stack);
     try {
