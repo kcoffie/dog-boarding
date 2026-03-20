@@ -2,10 +2,10 @@
 /**
  * Integration check — independent verification of sync health.
  *
- * WHY this is decoupled from src/lib/scraper/:
+ * WHY this is decoupled from src/lib/scraper/ for Steps 2–5:
  *   The sync pipeline parses raw HTML with regexes. If that parser has a bug,
  *   using the same parser here would confirm its wrong output and call it a
- *   pass. This script uses two independent signal paths instead:
+ *   pass. Steps 2–5 use two independent signal paths instead:
  *
  *   1. Playwright renders the schedule page in a real browser, then
  *      document.querySelectorAll reads the live DOM — no regex, no raw HTML.
@@ -15,7 +15,15 @@
  *   Both signals are compared against the DB to catch bugs the sync pipeline
  *   cannot catch about itself.
  *
+ * WHY NON_BOARDING_PATTERNS is defined here instead of imported from syncRunner:
+ *   Signal isolation. If syncRunner's parser had a bug that misclassified a
+ *   non-boarding event as boarding, importing its filter would propagate the
+ *   same bug into the check. This copy is intentionally independent.
+ *
  * Flow:
+ *   0. Sync-before-compare: run schedule sync + drain detail queue so any
+ *      bookings added since the midnight cron are in the DB before we compare.
+ *      Non-fatal — if sync fails, the check continues with the current DB state.
  *   1. Load session cookies from Supabase sync_settings (same cache the crons use)
  *   2. Playwright: render /schedule, take screenshot + extract appointment IDs
  *      from live DOM links (boarding + daytime)
@@ -28,6 +36,7 @@
  *
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ *   EXTERNAL_SITE_USERNAME, EXTERNAL_SITE_PASSWORD  (for Step 0 re-auth on session expiry)
  *   ANTHROPIC_API_KEY
  *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
  *   INTEGRATION_CHECK_RECIPIENTS  (separate from NOTIFY_RECIPIENTS)
@@ -37,6 +46,8 @@ import { chromium } from 'playwright';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import twilio from 'twilio';
+import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
+import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 
 const BASE_URL = 'https://agirlandyourdog.com';
 const WINDOW_DAYS = 7;
@@ -521,6 +532,54 @@ async function main() {
     console.error('[IntegCheck]', msg);
     await sendWhatsApp(twilioClient, msg);
     process.exit(1);
+  }
+
+  // Step 0: Sync-before-compare
+  // Run schedule sync + drain detail queue so any bookings made since the midnight
+  // cron are in the DB before we compare. Non-fatal — if sync fails for any reason
+  // (session expired, network error, missing credentials), we log and continue.
+  // The check will run against whatever is currently in the DB.
+  //
+  // runDetailSync is called with runResetStuck:false after the first iteration —
+  // resetStuck is called once manually to avoid redundant DB queries in the loop.
+  console.log('[IntegCheck] Step 0: running sync-before-compare');
+  try {
+    const scheduleResult = await runScheduleSync(supabase);
+    console.log(
+      '[IntegCheck] Step 0 schedule: action=%s pagesScanned=%d queued=%d queueDepth=%d',
+      scheduleResult.action,
+      scheduleResult.pagesScanned,
+      scheduleResult.queued,
+      scheduleResult.queueDepth,
+    );
+
+    if (scheduleResult.action === 'ok' || scheduleResult.action === 'session_cleared') {
+      // Drain the detail queue. Reset stuck items once before the loop, then skip
+      // on subsequent iterations to avoid 20 redundant DB queries (Gap 3 fix).
+      const MAX_DETAIL_ITERATIONS = 20;
+      await resetStuck(supabase);
+      let drained = 0;
+      for (let i = 0; i < MAX_DETAIL_ITERATIONS; i++) {
+        const detailResult = await runDetailSync(supabase, { runResetStuck: false });
+        console.log(
+          '[IntegCheck] Step 0 detail [%d/%d]: action=%s queueDepth=%d',
+          i + 1,
+          MAX_DETAIL_ITERATIONS,
+          detailResult.action,
+          detailResult.queueDepth ?? 0,
+        );
+        drained++;
+        if (detailResult.action === 'idle' || detailResult.action === 'session_cleared' || detailResult.action === 'session_failed') {
+          break;
+        }
+        if (i === MAX_DETAIL_ITERATIONS - 1) {
+          console.warn('[IntegCheck] ⚠️ Step 0 detail: hit %d-iteration cap without reaching idle — queue may still have items', MAX_DETAIL_ITERATIONS);
+        }
+      }
+      console.log('[IntegCheck] Step 0 done: %d detail iteration(s)', drained);
+    }
+  } catch (step0Err) {
+    console.error('[IntegCheck] Step 0 error (continuing to check): %s', step0Err.message);
   }
 
   // Step 1: Session

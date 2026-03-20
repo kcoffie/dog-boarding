@@ -7,11 +7,8 @@
  * NOTE: Hobby plan processes 1 queue item per day (Vercel 10s timeout).
  * Use manual "Sync Now" in the UI for immediate processing of multiple items.
  *
- * Picks the oldest pending item from sync_queue, fetches its detail page,
- * and saves the appointment data. On success marks as 'done'; on failure
- * applies retry backoff (up to 3 retries, then 'failed').
- *
- * Also resets any items stuck in 'processing' for more than 10 minutes.
+ * Core logic lives in src/lib/scraper/syncRunner.js — this is a thin Vercel
+ * handler wrapper responsible only for auth gating and health tracking.
  *
  * Runs on Node.js runtime (NOT edge) so process.env is available.
  *
@@ -19,30 +16,18 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { setSession } from '../src/lib/scraper/auth.js';
-import { fetchAppointmentDetails } from '../src/lib/scraper/extraction.js';
-import { mapAndSaveAppointment } from '../src/lib/scraper/mapping.js';
-import { fetchAndStoreBoardingForm } from '../src/lib/scraper/forms.js';
-import { ensureSession, clearSession } from '../src/lib/scraper/sessionCache.js';
-import {
-  dequeueOne,
-  markDone,
-  markFailed,
-  resetStuck,
-  getQueueDepth,
-} from '../src/lib/scraper/syncQueue.js';
+import { runDetailSync } from '../src/lib/scraper/syncRunner.js';
+import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 import { writeCronHealth } from './_cronHealth.js';
 
 export const config = { runtime: 'nodejs' };
 
 function getSupabase() {
   const url = process.env.VITE_SUPABASE_URL;
-  // Prefer service role key (bypasses RLS) for server-side cron operations
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
   if (!url || !key) throw new Error('Supabase env vars not configured');
   return createClient(url, key);
 }
-
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -57,146 +42,33 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabase();
 
-    // Ensure we have a valid session before dequeuing anything.
-    // Doing this first means we never need to put an item back if auth fails.
-    // ensureSession re-authenticates automatically if the cache is expired/missing.
-    let cookies;
-    try {
-      cookies = await ensureSession(supabase);
-    } catch (sessionErr) {
-      console.error('[CronDetail] ❌ Could not obtain session:', sessionErr.message);
-      await writeCronHealth(supabase, 'detail', 'failure', { action: 'session_failed' }, sessionErr.message.slice(0, 500));
-      return res.status(200).json({ ok: true, action: 'session_failed', error: sessionErr.message });
-    }
-
-    // Inject session into auth module
-    setSession(cookies);
-
-    // Reset any items stuck in 'processing' before picking a new one
+    // Reset stuck items before processing. runDetailSync is called with
+    // runResetStuck: false because we handle it here explicitly (single call,
+    // no loop — no redundancy concern). This matches pre-refactor behavior.
     const resetCount = await resetStuck(supabase);
     if (resetCount > 0) {
       console.log(`[CronDetail] ⚠️ Reset ${resetCount} stuck item(s) to pending`);
     }
 
-    // Dequeue the next pending item
-    const item = await dequeueOne(supabase);
-    if (!item) {
-      console.log('[CronDetail] 📭 Queue empty — nothing to process');
-      await writeCronHealth(supabase, 'detail', 'success', { action: 'idle' }, null);
-      return res.status(200).json({ ok: true, action: 'idle' });
+    const result = await runDetailSync(supabase, { runResetStuck: false });
+
+    if (result.action === 'session_failed') {
+      await writeCronHealth(supabase, 'detail', 'failure', { action: 'session_failed' }, result.error?.slice(0, 500));
+      return res.status(200).json({ ok: true, ...result });
     }
 
-    const itemType = item.type || 'appointment';
-    const depth = await getQueueDepth(supabase);
-    console.log(`[CronDetail] 🐕 Processing 1 of ${depth + 1} queued: ${item.external_id} (type=${itemType})`);
-    console.log(`[CronDetail]    source_url: ${item.source_url}`);
-
-    // ── Form fetch job ────────────────────────────────────────────────────────
-    if (itemType === 'form') {
-      const { boarding_id: boardingId, external_pet_id: externalPetId } = item.meta || {};
-
-      if (!externalPetId) {
-        // Old queue item without pet ID — log and skip gracefully
-        console.log(`[CronDetail] ⏭️ Form job ${item.external_id} has no external_pet_id — skipping (pre-v3 queue item)`);
-        await markDone(supabase, item.id);
-        const remaining = await getQueueDepth(supabase);
-        await writeCronHealth(supabase, 'detail', 'success', { action: 'skipped', reason: 'no_pet_id', externalId: item.external_id, queueDepth: remaining }, null);
-        return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_pet_id', queueDepth: remaining });
-      }
-
-      console.log(`[CronDetail] 📋 Processing form job: boarding_id=${boardingId}, pet_id=${externalPetId}`);
-
-      try {
-        await fetchAndStoreBoardingForm(supabase, boardingId, externalPetId, item.title || '');
-        await markDone(supabase, item.id);
-
-        const remaining = await getQueueDepth(supabase);
-        console.log(`[CronDetail] ✅ Form stored for boarding ${boardingId}`);
-        console.log(`[CronDetail] 📊 Queue depth remaining: ${remaining}`);
-
-        await writeCronHealth(supabase, 'detail', 'success', { action: 'form_stored', externalId: item.external_id, queueDepth: remaining }, null);
-        return res.status(200).json({ ok: true, action: 'form_stored', externalId: item.external_id, queueDepth: remaining });
-      } catch (formErr) {
-        // Check for session expiry
-        if (formErr.message && formErr.message.includes('Session expired')) {
-          console.log('[CronDetail] 🔒 Session rejected during form fetch — clearing cached session');
-          await clearSession(supabase);
-          await supabase
-            .from('sync_queue')
-            .update({ status: 'pending', processing_started_at: null })
-            .eq('id', item.id);
-          await writeCronHealth(supabase, 'detail', 'success', { action: 'session_cleared' }, null);
-          return res.status(200).json({ ok: true, action: 'session_cleared', reason: 'session_expired' });
-        }
-        const msg = formErr.message.slice(0, 200);
-        console.error(`[CronDetail] ❌ Form fetch failed (retry ${(item.retry_count || 0) + 1}/3): ${msg}`);
-        await markFailed(supabase, item.id, msg);
-        const remaining = await getQueueDepth(supabase);
-        await writeCronHealth(supabase, 'detail', 'success', { action: 'form_failed', externalId: item.external_id, queueDepth: remaining }, null);
-        return res.status(200).json({ ok: true, action: 'form_failed', error: msg, queueDepth: remaining });
-      }
+    if (result.action === 'session_cleared') {
+      await writeCronHealth(supabase, 'detail', 'success', { action: 'session_cleared' }, null);
+      return res.status(200).json({ ok: true, ...result });
     }
 
-    // ── Appointment job (default) ─────────────────────────────────────────────
-    // Extract appointmentId and timestamp from source_url
-    const urlMatch = item.source_url.match(/\/schedule\/a\/([^/]+)\/(\d+)/);
-    const [, appointmentId, timestamp] = urlMatch || [null, item.external_id, ''];
+    await writeCronHealth(supabase, 'detail', 'success', {
+      action: result.action,
+      externalId: result.externalId,
+      queueDepth: result.queueDepth,
+    }, null);
 
-    const externalPetId = item.meta?.external_pet_id || null;
-
-    let details;
-    try {
-      details = await fetchAppointmentDetails(appointmentId, timestamp);
-    } catch (err) {
-      // Check for session expiry specifically
-      if (err.message && err.message.includes('Session expired')) {
-        console.log('[CronDetail] 🔒 Session rejected by server — clearing cached session');
-        await clearSession(supabase);
-        // Reset the dequeued item so it retries after re-auth
-        await supabase
-          .from('sync_queue')
-          .update({ status: 'pending', processing_started_at: null })
-          .eq('id', item.id);
-        await writeCronHealth(supabase, 'detail', 'success', { action: 'session_cleared' }, null);
-        return res.status(200).json({ ok: true, action: 'session_cleared', reason: 'session_expired' });
-      }
-      // Other fetch errors — apply retry backoff
-      const msg = err.message.slice(0, 200);
-      console.error(`[CronDetail] ❌ Failed (retry ${(item.retry_count || 0) + 1}/3): ${msg}`);
-      await markFailed(supabase, item.id, msg);
-      const remaining = await getQueueDepth(supabase);
-      await writeCronHealth(supabase, 'detail', 'success', { action: 'failed', externalId: item.external_id, queueDepth: remaining }, null);
-      return res.status(200).json({ ok: true, action: 'failed', error: msg, queueDepth: remaining });
-    }
-
-    // Use schedule-page data as fallback for pet/client name
-    // (same pattern as sync.js to prevent Unknown dog collapse)
-    if (!details.pet_name && item.title) details.pet_name = item.title;
-
-    try {
-      const saveResult = await mapAndSaveAppointment(details, { supabase, externalPetId });
-      await markDone(supabase, item.id);
-
-      const { stats } = saveResult;
-      const action = stats.syncCreated ? 'created'
-        : stats.syncUpdated || stats.dogUpdated || stats.boardingUpdated ? 'updated'
-        : 'unchanged';
-
-      console.log(`[CronDetail] ✅ Saved: ${details.pet_name || details.external_id} — ${action}`);
-
-      const remaining = await getQueueDepth(supabase);
-      console.log(`[CronDetail] 📊 Queue depth remaining: ${remaining}`);
-
-      await writeCronHealth(supabase, 'detail', 'success', { action, externalId: item.external_id, queueDepth: remaining }, null);
-      return res.status(200).json({ ok: true, action, externalId: item.external_id, queueDepth: remaining });
-    } catch (saveErr) {
-      const msg = saveErr.message.slice(0, 200);
-      console.error(`[CronDetail] ❌ Save failed (retry ${(item.retry_count || 0) + 1}/3): ${msg}`);
-      await markFailed(supabase, item.id, msg);
-      const remaining = await getQueueDepth(supabase);
-      await writeCronHealth(supabase, 'detail', 'success', { action: 'save_failed', externalId: item.external_id, queueDepth: remaining }, null);
-      return res.status(200).json({ ok: true, action: 'save_failed', error: msg, queueDepth: remaining });
-    }
+    return res.status(200).json({ ok: true, ...result });
   } catch (err) {
     console.error('[CronDetail] ❌ Unhandled error:', err.message, err.stack);
     try {
