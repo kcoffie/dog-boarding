@@ -50,6 +50,10 @@ export default async function handler(req, res) {
     console.log('[CronAuth] 🔐 Starting auth refresh (unconditional)');
     const supabase = getSupabase();
 
+    // Write 'started' immediately so the health checker can detect hard crashes
+    // (where the cron exits before writing success/failure).
+    await writeCronHealth(supabase, 'auth', 'started', { action: 'running' }, null);
+
     const username = process.env.EXTERNAL_SITE_USERNAME;
     const password = process.env.EXTERNAL_SITE_PASSWORD;
     if (!username || !password) {

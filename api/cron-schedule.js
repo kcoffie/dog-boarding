@@ -45,6 +45,10 @@ export default async function handler(req, res) {
 
   try {
     const supabase = getSupabase();
+
+    // Write 'started' immediately so the health checker can detect hard crashes.
+    await writeCronHealth(supabase, 'schedule', 'started', { action: 'running' }, null);
+
     const result = await runScheduleSync(supabase);
 
     if (result.action === 'session_failed') {

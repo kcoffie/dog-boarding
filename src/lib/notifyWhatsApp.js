@@ -1,26 +1,27 @@
 /**
- * WhatsApp notification wrapper — sends the daily roster image via Twilio.
+ * WhatsApp notification wrapper — sends messages via Meta Cloud API.
  *
- * Design: thin wrapper around the Twilio REST API. All Twilio-specific error
+ * Design: thin wrapper around the Meta Graph API. All Meta-specific error
  * handling is isolated here so callers (api/notify.js) work with a simple
- * { status, sid } contract. No business logic lives here.
+ * { status, messageId } contract. No business logic lives here.
  *
- * Twilio WhatsApp requires:
- *   from: "whatsapp:+14155238886"   (sandbox number or approved sender)
- *   to:   "whatsapp:+18312477375"
- *   mediaUrl: [publicly accessible image URL]
+ * Meta WhatsApp Cloud API requires:
+ *   META_PHONE_NUMBER_ID — the sender number ID from the Meta app dashboard
+ *   META_WHATSAPP_TOKEN  — permanent system user access token
  *
+ * Recipients: E.164 format without 'whatsapp:' prefix (Meta uses plain numbers).
  * Security: recipient numbers are masked to last 4 digits in all log output.
  *
- * @requirements REQ-v4.1
+ * @requirements REQ-v4.1, REQ-v5.0-M0
  */
 
-import twilio from 'twilio';
 import { createSyncLogger } from './scraper/logger.js';
 
 const logger = createSyncLogger('NotifyWA');
 const log = logger.log;
 const logWarn = logger.warn;
+
+const META_API_VERSION = 'v18.0';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,50 +54,75 @@ export function getRecipients() {
 }
 
 // ---------------------------------------------------------------------------
-// Twilio client factory
+// Meta Cloud API
 // ---------------------------------------------------------------------------
 
 /**
- * Create a Twilio REST client from environment variables.
+ * Read Meta credentials from environment.
+ * Returns null if either var is missing — callers handle the missing-config case.
  *
- * Error-handling: throws if required env vars are missing so the caller
- * can log a clear error and skip the send rather than passing undefined
- * credentials to Twilio (which would throw an opaque HTTP 401).
- *
- * @returns {import('twilio').Twilio}
+ * @returns {{ phoneNumberId: string, token: string }|null}
  */
-export function createTwilioClient() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) {
-    throw new Error('Twilio env vars not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)');
+function getMetaCredentials() {
+  const phoneNumberId = process.env.META_PHONE_NUMBER_ID;
+  const token = process.env.META_WHATSAPP_TOKEN;
+  if (!phoneNumberId || !token) return null;
+  return { phoneNumberId, token };
+}
+
+/**
+ * POST a single message to the Meta Cloud API.
+ *
+ * @param {string} phoneNumberId - Sender phone number ID
+ * @param {string} token         - System user access token
+ * @param {string} to            - Recipient E.164 number
+ * @param {object} messagePayload - { type, image|text } object
+ * @returns {Promise<{ messageId: string }>}
+ * @throws on non-2xx HTTP response
+ */
+async function metaApiSend(phoneNumberId, token, to, messagePayload) {
+  const url = `https://graph.facebook.com/${META_API_VERSION}/${phoneNumberId}/messages`;
+  const body = {
+    messaging_product: 'whatsapp',
+    to,
+    ...messagePayload,
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '(no body)');
+    throw new Error(`Meta API error ${response.status}: ${text}`);
   }
-  return twilio(sid, token);
+
+  const data = await response.json();
+  // Meta returns: { messages: [{ id: "wamid.xxx" }] }
+  return { messageId: data?.messages?.[0]?.id ?? 'unknown' };
 }
 
 // ---------------------------------------------------------------------------
-// Send function
+// Send functions
 // ---------------------------------------------------------------------------
 
 /**
- * Send the roster image to one or more WhatsApp numbers.
+ * Send the roster image to one or more WhatsApp numbers via Meta Cloud API.
  *
- * Iterates recipients sequentially (not parallel) to avoid Twilio rate limits.
- * Each recipient gets its own try/catch so a single bad number doesn't block
- * the rest of the list.
+ * Iterates recipients sequentially (not parallel) to stay within Meta's rate
+ * limits. Each recipient gets its own try/catch so a single bad number doesn't
+ * block the rest of the list.
  *
- * Decision logging at each step:
- *   - Entry: recipient count, masked numbers, image URL host
- *   - Per-recipient: masked number, Twilio SID on success, error code on failure
- *   - Exit: sent count, failed count
- *
- * @param {import('twilio').Twilio} client - Twilio client instance
- * @param {string} imageUrl               - Public URL to the roster PNG
- * @param {string[]} recipients           - E.164 phone numbers to send to
- * @param {string} fromNumber             - E.164 Twilio sender number
- * @returns {Promise<Array<{to, status, sid?, error?}>>}
+ * @param {string} imageUrl     - Publicly accessible URL to the roster PNG
+ * @param {string[]} recipients - E.164 phone numbers
+ * @returns {Promise<Array<{to, status, messageId?, error?}>>}
  */
-export async function sendRosterImage(client, imageUrl, recipients, fromNumber) {
+export async function sendRosterImage(imageUrl, recipients) {
   log(`sendRosterImage — ${recipients.length} recipients, imageUrl host: ${new URL(imageUrl).hostname}`);
 
   if (recipients.length === 0) {
@@ -104,37 +130,92 @@ export async function sendRosterImage(client, imageUrl, recipients, fromNumber) 
     return [];
   }
 
+  const creds = getMetaCredentials();
+  if (!creds) {
+    logWarn('Meta API credentials not configured (META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN)');
+    return recipients.map(to => ({
+      to: maskNumber(to),
+      status: 'failed',
+      error: 'Meta API credentials not configured',
+    }));
+  }
+
   const results = [];
 
   for (const to of recipients) {
     const masked = maskNumber(to);
-    log(`Sending to ${masked}...`);
+    log(`Sending image to ${masked}...`);
 
     try {
-      const message = await client.messages.create({
-        from: `whatsapp:${fromNumber}`,
-        to: `whatsapp:${to}`,
-        mediaUrl: [imageUrl],
-        // body is required by some WhatsApp clients even for media-only messages.
-        body: '',
+      const { messageId } = await metaApiSend(creds.phoneNumberId, creds.token, to, {
+        type: 'image',
+        image: { link: imageUrl },
       });
-
-      log(`Sent to ${masked} — SID: ${message.sid}, status: ${message.status}`);
-      results.push({ to: masked, status: 'sent', sid: message.sid });
-
+      log(`Sent to ${masked} — messageId: ${messageId}`);
+      results.push({ to: masked, status: 'sent', messageId });
     } catch (err) {
-      // Twilio errors have a `code` property (numeric error code) and `status` (HTTP).
-      // Log both for diagnosis. Common codes: 21608 (unverified number), 63016 (sandbox limit).
-      const code = err.code ?? 'unknown';
-      const httpStatus = err.status ?? 'unknown';
-      logWarn(`Failed to send to ${masked} — Twilio error ${code} (HTTP ${httpStatus}): ${err.message}`);
-      results.push({ to: masked, status: 'failed', error: err.message, twilioCode: code });
+      logWarn(`Failed to send to ${masked}: ${err.message}`);
+      results.push({ to: masked, status: 'failed', error: err.message });
     }
   }
 
   const sentCount = results.filter(r => r.status === 'sent').length;
   const failedCount = results.filter(r => r.status === 'failed').length;
   log(`sendRosterImage complete — ${sentCount} sent, ${failedCount} failed`);
+
+  return results;
+}
+
+/**
+ * Send a plain-text WhatsApp message to one or more numbers via Meta Cloud API.
+ *
+ * Used for operational alerts (refresh warnings, cron failure notices, etc.).
+ * Same sequential + isolated-error-handling pattern as sendRosterImage.
+ *
+ * @param {string} text         - Message body
+ * @param {string[]} recipients - E.164 phone numbers
+ * @returns {Promise<Array<{to, status, messageId?, error?}>>}
+ */
+export async function sendTextMessage(text, recipients) {
+  log(`sendTextMessage — ${recipients.length} recipients`);
+
+  if (recipients.length === 0) {
+    logWarn('No recipients configured — skipping send');
+    return [];
+  }
+
+  const creds = getMetaCredentials();
+  if (!creds) {
+    logWarn('Meta API credentials not configured (META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN)');
+    return recipients.map(to => ({
+      to: maskNumber(to),
+      status: 'failed',
+      error: 'Meta API credentials not configured',
+    }));
+  }
+
+  const results = [];
+
+  for (const to of recipients) {
+    const masked = maskNumber(to);
+    log(`Sending text to ${masked}...`);
+
+    try {
+      const { messageId } = await metaApiSend(creds.phoneNumberId, creds.token, to, {
+        type: 'text',
+        text: { body: text },
+      });
+      log(`Sent to ${masked} — messageId: ${messageId}`);
+      results.push({ to: masked, status: 'sent', messageId });
+    } catch (err) {
+      logWarn(`Failed to send to ${masked}: ${err.message}`);
+      results.push({ to: masked, status: 'failed', error: err.message });
+    }
+  }
+
+  const sentCount = results.filter(r => r.status === 'sent').length;
+  const failedCount = results.filter(r => r.status === 'failed').length;
+  log(`sendTextMessage complete — ${sentCount} sent, ${failedCount} failed`);
 
   return results;
 }
