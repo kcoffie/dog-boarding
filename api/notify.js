@@ -17,9 +17,9 @@
  * deployment URL (production, preview, local). Twilio fetches the image from
  * our own /api/roster-image endpoint at delivery time.
  *
- * Runs on Node.js runtime — Twilio SDK requires Node.js.
+ * Runs on Node.js runtime — required by the Meta fetch calls and Supabase client.
  *
- * @requirements REQ-v4.1
+ * @requirements REQ-v4.1, REQ-v5.0-M0
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -29,123 +29,18 @@ import {
   shouldSendNotification,
 } from '../src/lib/pictureOfDay.js';
 import {
-  createTwilioClient,
   sendRosterImage,
+  sendTextMessage,
   getRecipients,
 } from '../src/lib/notifyWhatsApp.js';
 import { writeCronHealth } from './_cronHealth.js';
-import { ensureSession, clearSession } from '../src/lib/scraper/sessionCache.js';
-import { setSession, authenticatedFetch } from '../src/lib/scraper/auth.js';
-import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../src/lib/scraper/daytimeSchedule.js';
+import { refreshDaytimeSchedule } from '../src/lib/notifyHelpers.js';
 
 export const config = { runtime: 'nodejs' };
 
 const VALID_WINDOWS = ['4am', '7am', '8:30am', 'friday-pm'];
-const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com';
 
-// ---------------------------------------------------------------------------
-// Live schedule refresh
-// ---------------------------------------------------------------------------
-
-/**
- * Refresh today's daytime schedule data from the external site before building
- * the image. This ensures the 7am and 8:30am sends reflect actual changes made
- * after the midnight cron ran, making the hash-change gate meaningful.
- *
- * Strategy: mirrors the fetch + parse + upsert pattern from cron-schedule.js
- * lines 216–274, but scoped to just the current day and with no side effects
- * on boarding sync state.
- *
- * Error-handling: ALL errors are caught internally — this is a best-effort
- * pre-flight. A missing session, failed fetch, or upsert error logs a warning
- * and returns { refreshed: false } so the caller continues with stale DB data.
- * The send must never be blocked by a refresh failure.
- *
- * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {Date} date - Local Date for the day being notified (usually today)
- * @returns {Promise<{ refreshed: boolean, rowCount: number, warning: string|null }>}
- */
-async function refreshDaytimeSchedule(supabase, date) {
-  // Outer try/catch ensures this function NEVER throws — every exit path returns
-  // { refreshed: boolean, rowCount: number, warning: string|null }.
-  // Docstring contract: "non-fatal pre-flight."
-  try {
-    // ensureSession: returns cached session or re-authenticates if expired/missing.
-    // Throws only if credentials are missing or auth fails — caught by outer catch.
-    let cookies;
-    try {
-      cookies = await ensureSession(supabase);
-    } catch (sessionErr) {
-      console.warn(`[Notify/Refresh] Could not obtain session: ${sessionErr.message} — skipping live refresh, using stale DB data`);
-      return { refreshed: false, rowCount: 0, warning: `Session unavailable: ${sessionErr.message}` };
-    }
-
-    // Inject session cookies so authenticatedFetch uses them.
-    setSession(cookies);
-
-    // Build the week-page URL for today. Month and day are NOT zero-padded —
-    // the external site uses bare numbers in its URL (e.g. /schedule/days-7/2026/3/6).
-    const y = date.getFullYear();
-    const m = date.getMonth() + 1; // 0-indexed → 1-indexed
-    const d = date.getDate();
-    const url = `${BASE_URL}/schedule/days-7/${y}/${m}/${d}`;
-    console.log(`[Notify/Refresh] Fetching schedule for ${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')} from ${url}`);
-
-    let html;
-    try {
-      const response = await authenticatedFetch(url);
-      html = await response.text();
-    } catch (err) {
-      // Decision: SESSION_EXPIRED means the cached session was rejected by the server.
-      // Clear it so cron-auth re-authenticates on its next run rather than leaving a
-      // poisoned session in the cache that would cause the same failure at 7am and 8:30am.
-      if (err.message === 'SESSION_EXPIRED') {
-        console.warn('[Notify/Refresh] Session expired — clearing cached session so cron-auth re-authenticates');
-        await clearSession(supabase).catch(e =>
-          console.warn(`[Notify/Refresh] clearSession also failed: ${e.message}`)
-        );
-        return { refreshed: false, rowCount: 0, warning: 'Session expired — cron-auth will re-authenticate at midnight' };
-      }
-      console.warn(`[Notify/Refresh] Fetch failed (${err.message}) — continuing with stale DB data`);
-      return { refreshed: false, rowCount: 0, warning: `Schedule fetch failed: ${err.message}` };
-    }
-
-    console.log(`[Notify/Refresh] Fetched HTML — ${html.length} bytes`);
-
-    // Parse all daytime events (DC, PG, Boarding) from the schedule HTML.
-    const rows = parseDaytimeSchedulePage(html);
-    console.log(`[Notify/Refresh] Parsed ${rows.length} daytime events`);
-
-    // Surface zero-parse as a warning — could be access-denied redirect (large HTML)
-    // or empty/malformed response (small HTML). Either way the DB won't be updated.
-    let parseWarning = null;
-    if (rows.length === 0) {
-      const sizeNote = html.length > 10000 ? 'possible access-denied redirect' : 'small/empty response';
-      console.warn(`[Notify/Refresh] 0 events parsed from ${html.length}-byte response — ${sizeNote}`);
-      if (html.length > 10000) {
-        console.warn(`[Notify/Refresh] HTML preview: ${html.slice(0, 150).replace(/\s+/g, ' ')}`);
-      }
-      parseWarning = `Schedule fetched (${html.length} bytes) but 0 daytime events parsed — ${sizeNote}`;
-    }
-
-    // Upsert to DB. Non-fatal: upsertDaytimeAppointments does not throw on DB
-    // errors — it returns { upserted, errors } — so we log and carry on.
-    const { upserted, errors } = await upsertDaytimeAppointments(supabase, rows);
-    if (errors > 0) {
-      console.warn(`[Notify/Refresh] Upsert completed with ${errors} error(s) — ${upserted} rows written`);
-    } else {
-      console.log(`[Notify/Refresh] Upserted ${upserted} rows`);
-    }
-
-    return { refreshed: true, rowCount: upserted, warning: parseWarning };
-
-  } catch (err) {
-    // Catch-all: any unexpected error (getSession DB failure, parse crash, etc.)
-    // must not propagate — the send must not be blocked by a refresh failure.
-    console.warn(`[Notify/Refresh] Unexpected error: ${err.message} — continuing with stale DB data`);
-    return { refreshed: false, rowCount: 0, warning: `Unexpected refresh error: ${err.message}` };
-  }
-}
+// refreshDaytimeSchedule is imported from src/lib/notifyHelpers.js (extracted for testability).
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -186,24 +81,13 @@ async function sendRefreshAlert(supabase, warning, dateStr, notifyWindow) {
     console.warn(`[Notify/RefreshAlert] Could not read dedup state: ${err.message} — sending alert`);
   }
 
-  const from = process.env.TWILIO_FROM_NUMBER;
   const recipients = getRecipients();
-  if (!from || recipients.length === 0) return;
-
-  let client;
-  try {
-    client = createTwilioClient();
-  } catch (err) {
-    console.warn(`[Notify/RefreshAlert] Cannot create Twilio client: ${err.message}`);
-    return;
-  }
+  if (recipients.length === 0) return;
 
   const body = `⚠️ Notify refresh issue (${dateStr}, ${notifyWindow})\n${warning}`;
-  for (const to of recipients) {
-    await client.messages
-      .create({ from: `whatsapp:${from}`, to: `whatsapp:${to}`, body })
-      .catch(err => console.warn(`[Notify/RefreshAlert] Send failed to ***${to.slice(-4)}: ${err.message}`));
-  }
+  await sendTextMessage(body, recipients).catch(err =>
+    console.warn(`[Notify/RefreshAlert] sendTextMessage failed: ${err.message}`)
+  );
 
   // Record that we sent the alert for this date (non-fatal)
   await writeCronHealth(supabase, 'notify-refresh-alert', 'success', {
@@ -311,16 +195,10 @@ export default async function handler(req, res) {
         console.warn('[Notify] NOTIFY_RECIPIENTS not configured — send skipped');
         return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_recipients', window });
       }
-      const fromNumber = process.env.TWILIO_FROM_NUMBER;
-      if (!fromNumber) {
-        console.warn('[Notify] TWILIO_FROM_NUMBER not configured — send skipped');
-        return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_from_number', window });
-      }
 
       const supabase = getSupabase();
-      const twilioClient = createTwilioClient();
       console.log(`[Notify] Sending weekend roster to ${recipients.length} recipient(s)`);
-      const sendResults = await sendRosterImage(twilioClient, imageUrl, recipients, fromNumber);
+      const sendResults = await sendRosterImage(imageUrl, recipients);
       await writeCronHealth(supabase, 'notify-friday-pm', 'success', {
         sentAt: new Date().toISOString(),
         recipients: sendResults.map(r => r.to),
@@ -434,24 +312,16 @@ export default async function handler(req, res) {
     const imageUrl = `${protocol}://${host}/api/roster-image?date=${dateStr}&token=${expectedToken}`;
     console.log(`[Notify] Image URL: ${protocol}://${host}/api/roster-image?date=${dateStr}&token=***`);
 
-    // --- Get recipients and Twilio client ---
+    // --- Get recipients ---
     const recipients = getRecipients();
     if (recipients.length === 0) {
       console.warn('[Notify] NOTIFY_RECIPIENTS not configured — send skipped');
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_recipients' });
     }
 
-    const fromNumber = process.env.TWILIO_FROM_NUMBER;
-    if (!fromNumber) {
-      console.warn('[Notify] TWILIO_FROM_NUMBER not configured — send skipped');
-      return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_from_number' });
-    }
-
-    const twilioClient = createTwilioClient();
-
     // --- Send ---
     console.log(`[Notify] Sending to ${recipients.length} recipient(s)`);
-    const sendResults = await sendRosterImage(twilioClient, imageUrl, recipients, fromNumber);
+    const sendResults = await sendRosterImage(imageUrl, recipients);
 
     // --- Persist state (non-fatal) ---
     await persistSentState(supabase, currentHash, dateStr, window, sendResults);

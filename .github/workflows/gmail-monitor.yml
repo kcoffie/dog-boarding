@@ -1,0 +1,59 @@
+# Gmail monitor — scans kcoffie@gmail.com for infrastructure failure emails
+# and sends a WhatsApp alert to INTEGRATION_CHECK_RECIPIENTS.
+#
+# Monitors for:
+#   - GitHub Actions workflow failures (notifications@github.com)
+#   - Vercel deployment failures (notifications@vercel.com)
+#   - Any email from *@supabase.com
+#
+# Subject-based filtering prevents false positives from GitHub PR comments,
+# Vercel preview deployment success emails, etc.
+#
+# Required Repository secrets:
+#   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#   GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN
+#   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+#   INTEGRATION_CHECK_RECIPIENTS
+#   ANTHROPIC_API_KEY (optional — used for 1-line email summaries; falls back to subject)
+#
+# Kate-actions required before first run:
+#   1. Create Google Cloud project + enable Gmail API
+#   2. Create OAuth2 credentials (web app type)
+#   3. Run one-time auth script locally → capture GMAIL_REFRESH_TOKEN
+#   4. Add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN to GH secrets
+name: Gmail Monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every hour at :15 past (offset from other hourly jobs)
+    - cron: '15 * * * *'
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Gmail monitor
+        run: node scripts/gmail-monitor.js
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          INTEGRATION_CHECK_RECIPIENTS: ${{ secrets.INTEGRATION_CHECK_RECIPIENTS }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
