@@ -42,6 +42,9 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabase();
 
+    // Write 'started' immediately so the health checker can detect hard crashes.
+    await writeCronHealth(supabase, 'detail', 'started', { action: 'running' }, null);
+
     // Reset stuck items before processing. runDetailSync is called with
     // runResetStuck: false because we handle it here explicitly (single call,
     // no loop — no redundancy concern). This matches pre-refactor behavior.
