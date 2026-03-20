@@ -7,14 +7,16 @@
 
 - **v5.0.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
 - **835 tests, 51 files, 0 failures**
-- PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live (March 20, 2026)
+- PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live
+- PR #93 merged — M3-1/2/3 done (README overhaul, runbook, ADRs); test files committed; SPRINT_PLAN.md now in git
 
 ### v5.0 milestones — all live ✅
 
 - **M0 LIVE** — Meta Cloud API wired up end-to-end. WhatsApp roster image delivery confirmed working to Kate's number. `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN` set in GH secrets + Vercel env.
-- **M1-1 LIVE** — Cron failure alerting running. Migrations 022 + 023 applied. `cron-health-check.yml` running at 00:30 UTC.
+- **M1-1 LIVE** — Cron failure alerting running. Migrations 022 + 023 applied. `cron-health-check.yml` running at 00:30 UTC. `checkHungCron` added (detects crons stuck in 'started' >20 min).
 - **M1-2 LIVE** — `refreshDaytimeSchedule` in `src/lib/notifyHelpers.js`, all 7 exit paths covered.
-- **M2 LIVE** — Gmail monitor running hourly. OAuth2 confirmed working. GH secrets set. First run sent 16 historical alerts (all now deduped in `gmail_processed_emails`).
+- **M2 LIVE** — Gmail monitor running hourly. OAuth2 confirmed working. GH secrets set. First run sent 16 historical alerts (all now deduped in `gmail_processed_emails`). Self-skip guard added (`SELF_SKIP_SUBJECTS`) to prevent alert loops on own GH Actions failures.
+- **M3-1/2/3 DONE** — README rewritten (mermaid diagram, architecture, testing, security, ADR links). `docs/RUNBOOK.md` created. Three ADRs created in `docs/adr/`.
 
 ### Pending (Kate)
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
@@ -24,14 +26,14 @@
 
 ## IMMEDIATE NEXT (next session)
 
-**M3 — Portfolio Polish** is the next milestone. All operational work is done.
+**M3 remaining tickets** — operational system is complete and portfolio docs are live. These are enhancements:
 
-1. **M3-1** — README overhaul: architecture diagram, tech stack, "how it works," screenshots of WhatsApp output
-2. **M3-2** — Operator runbook: one doc, "something broke, here's how to diagnose it"
-3. **M3-3** — ADRs: 3 biggest architectural decisions (scraper strategy, GH Actions vs. Vercel crons, Meta vs. alternatives)
-4. **M3-4** — "As of" timestamp in roster image
-5. **M3-5** — DST-aware scheduling + code polish (timing-safe equal, regex precompile)
-6. **M3-6** — Doc staleness CI check (non-blocking)
+1. **M3-4** — "As of" timestamp in roster image (e.g. `as of 6:04 PM, Mon 3/16`)
+2. **M3-5** — DST-aware scheduling + code polish (timing-safe equal in `roster-image.js`, regex precompile in `daytimeSchedule.js`)
+3. **M3-6** — Doc staleness CI check (non-blocking — detects when `api/` or `src/lib/scraper/` changed but `docs/job_docs/` wasn't touched)
+4. **M3-7** — Screen recording of WhatsApp roster image arriving on phone (most impactful portfolio artifact; embed in README)
+5. **M3-8** — App screenshots in README (boarding matrix, roster image — currently no visuals)
+6. **M3-9** — CHANGELOG.md documenting v1.0 → v5.0.0 release history
 
 ---
 
@@ -118,11 +120,11 @@ GitHub Actions (hourly at :15)
 | `INTEGRATION_CHECK_RECIPIENTS` | ✅ Set (Kate's number only) |
 | `APP_URL` | ✅ Set (not used in integration-check workflow) |
 | `VITE_SYNC_PROXY_TOKEN` | ✅ Set (not used in integration-check workflow) |
-| `META_PHONE_NUMBER_ID` | ⏳ Pending Kate — from Meta app dashboard |
-| `META_WHATSAPP_TOKEN` | ⏳ Pending Kate — system user access token from Meta app |
-| `GMAIL_CLIENT_ID` | ⏳ Pending Kate — from Google Cloud OAuth2 credentials |
-| `GMAIL_CLIENT_SECRET` | ⏳ Pending Kate — from Google Cloud OAuth2 credentials |
-| `GMAIL_REFRESH_TOKEN` | ⏳ Pending Kate — from one-time local auth flow |
+| `META_PHONE_NUMBER_ID` | ✅ Set |
+| `META_WHATSAPP_TOKEN` | ✅ Set (system user token — must be assigned to both QApp AND WhatsApp Business Account) |
+| `GMAIL_CLIENT_ID` | ✅ Set |
+| `GMAIL_CLIENT_SECRET` | ✅ Set |
+| `GMAIL_REFRESH_TOKEN` | ✅ Set |
 
 ### Workers
 | Name | External UID |

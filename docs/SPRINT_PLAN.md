@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan (v5.0)
 
-_Last updated: March 20, 2026 — M0/M1/M2 all live_
+_Last updated: March 20, 2026 — M0/M1/M2/M3-1/2/3 all live_
 
 ---
 
@@ -60,7 +60,9 @@ Twilio sandbox → production is Milestone 0. Everything else unblocks after it.
 | Meta Cloud API (WhatsApp sender) | ✅ LIVE | M0 — confirmed working March 20, 2026 |
 | Direct cron failure alerting | ✅ LIVE | M1-1 — cron-health-check.yml at 00:30 UTC |
 | Gmail monitoring agent | ✅ LIVE | M2 — hourly, first run confirmed March 20, 2026 |
-| README overhaul | 0% | M3 — portfolio front door |
+| README overhaul | ✅ DONE | M3-1 — mermaid diagram, architecture, testing, security, ADR links |
+| Operator runbook | ✅ DONE | M3-2 — docs/RUNBOOK.md |
+| Architecture Decision Records | ✅ DONE | M3-3 — docs/adr/001/002/003 |
 
 ---
 
@@ -138,12 +140,15 @@ All v4 work is done. See `docs/archive/SESSION_HANDOFF_v4.5_final.md` for full h
 
 | # | Ticket | Status |
 |---|--------|--------|
-| M3-1 | README overhaul — architecture diagram, tech stack, "how it works," screenshots of WhatsApp output | — |
-| M3-2 | Operator runbook — one doc: "something broke, here's how to diagnose it" | — |
-| M3-3 | ADRs — document the 3 biggest architectural decisions (scraper strategy, GH Actions vs. Vercel crons, Twilio vs. alternatives) | — |
+| M3-1 | README overhaul — architecture diagram, tech stack, "how it works," screenshots of WhatsApp output | ✅ DONE |
+| M3-2 | Operator runbook — one doc: "something broke, here's how to diagnose it" | ✅ DONE |
+| M3-3 | ADRs — document the 3 biggest architectural decisions (scraper strategy, GH Actions vs. Vercel crons, Meta vs. Twilio) | ✅ DONE |
 | M3-4 | "As of" timestamp in roster image — e.g. `as of 6:04 PM, Mon 3/16` | — |
 | M3-5 | DST-aware scheduling + code polish (timing-safe equal in `roster-image.js`, regex precompile in `daytimeSchedule.js`) | — |
 | M3-6 | Doc staleness CI check — non-blocking: detects when `api/` or `src/lib/scraper/` changed but `docs/job_docs/` wasn't touched | — |
+| M3-7 | Screen recording of WhatsApp roster image arriving on phone — most impactful portfolio artifact; embed in README | — |
+| M3-8 | App screenshots in README — boarding matrix, roster image — currently no visuals | — |
+| M3-9 | CHANGELOG.md — document iterative release history from v1.0 → v5.0.0; shows production-minded development discipline | — |
 
 ---
 
