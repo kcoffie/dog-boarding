@@ -5,32 +5,17 @@
 
 ## Current State
 
-- **v4.4.2 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
+- **v4.4.3 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
 - **775 tests, 47 files, 0 failures**
-- **PR #86 merged** — stable alpha sort fix (v4.4.3 tag pending PR merge of v4.5 branch)
-- **PR open** (`feat/v4.5-sync-runner`) — v4.5 implementation, issue #87
-- **Integration check LIVE** — v4.5 will eliminate the known false positive for post-midnight bookings
+- **Main branch clean** — latest merged: #88 (v4.5 sync-before-compare)
+- **Integration check Step 0 LIVE** — verified 3/20: drained 15 items (updated/created/form_stored), idle, PASS ✅
 - **`cron_health_log` verified** — table live, first row written (manual trigger March 19)
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-1. **Merge v4.5 PR** (`feat/v4.5-sync-runner`) — add `EXTERNAL_SITE_USERNAME` + `EXTERNAL_SITE_PASSWORD` as GH repo secrets first (see below), then merge + tag v4.4.3
-2. **Start v5.0** — see `docs/SPRINT_PLAN.md`. First ticket: Gmail monitoring agent
-
----
-
-## ⚠️ ACTION REQUIRED BEFORE MERGING v4.5
-
-Add two new GH repo secrets (Settings → Secrets → Actions → Repository secrets):
-
-| Secret | Value | Purpose |
-|---|---|---|
-| `EXTERNAL_SITE_USERNAME` | AGYD login email | Step 0 re-auth when session is expired |
-| `EXTERNAL_SITE_PASSWORD` | AGYD login password | Step 0 re-auth when session is expired |
-
-These are already Vercel env vars — copy the values from there. Without them, Step 0 still runs but can't re-authenticate if the session is stale (degrades gracefully, does not break anything).
+1. **Start v5.0** — see `docs/SPRINT_PLAN.md`. First ticket: Gmail monitoring agent
 
 ---
 
@@ -147,8 +132,8 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 | `TWILIO_FROM_NUMBER` | ✅ Set |
 | `NOTIFY_RECIPIENTS` | ✅ Set (1 number — second pending Kate) |
 | `INTEGRATION_CHECK_RECIPIENTS` | ✅ Set (Kate's number only) |
-| `EXTERNAL_SITE_USERNAME` | ⚠️ Needs to be added (v4.5 Step 0 re-auth) |
-| `EXTERNAL_SITE_PASSWORD` | ⚠️ Needs to be added (v4.5 Step 0 re-auth) |
+| `EXTERNAL_SITE_USERNAME` | ✅ Set (v4.5 Step 0 re-auth) |
+| `EXTERNAL_SITE_PASSWORD` | ✅ Set (v4.5 Step 0 re-auth) |
 | `APP_URL` | ✅ Set (no longer used in integration-check workflow) |
 | `VITE_SYNC_PROXY_TOKEN` | ✅ Set (no longer used in integration-check workflow) |
 
@@ -200,7 +185,7 @@ WHERE b.arrival_datetime <= NOW() + INTERVAL '7 days'
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, **v4.4.2 (latest)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, **v4.4.3 (latest)**
 
 ## Archive
 - v4.3 session: `docs/archive/SESSION_HANDOFF_v4.3_final.md`
