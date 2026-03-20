@@ -1,0 +1,45 @@
+# Cron health check — verifies the midnight Vercel crons (auth, schedule, detail) ran.
+#
+# Runs at 00:30 UTC — 30 minutes after cron-auth fires at 00:00 UTC, giving the
+# full cron chain time to complete before we check.
+#
+# Sends a WhatsApp alert to INTEGRATION_CHECK_RECIPIENTS when:
+#   - Any cron did not run since midnight UTC
+#   - Any cron shows 2 consecutive failures in cron_health_log
+#
+# Required Repository secrets:
+#   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+#   INTEGRATION_CHECK_RECIPIENTS
+name: Cron Health Check
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 00:30 UTC daily — 30 min after midnight crons
+    - cron: '30 0 * * *'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run cron health check
+        run: node scripts/cron-health-check.js
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          INTEGRATION_CHECK_RECIPIENTS: ${{ secrets.INTEGRATION_CHECK_RECIPIENTS }}
