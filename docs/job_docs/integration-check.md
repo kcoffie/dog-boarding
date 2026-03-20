@@ -1,7 +1,7 @@
 # Integration Check Job
 
-**Status:** Live — boarding + daytime checks, Step 0 removed, always exits 0
-**Last reviewed:** March 19, 2026
+**Status:** Live — Step 0 sync-before-compare (v4.5), boarding + daytime checks, always exits 0
+**Last reviewed:** March 20, 2026
 
 ---
 
@@ -27,6 +27,18 @@ If either signal sees something the DB doesn't have → WhatsApp to Kate.
 ---
 
 ## How It Works (Step by Step)
+
+### Step 0 — Sync-before-compare *(v4.5)*
+Runs the schedule sync and drains the detail queue **before** the Playwright compare. This eliminates the known false positive where a booking made after midnight UTC (after the midnight cron ran) but before the 1am check appears as "Missing from DB."
+
+- Calls `runScheduleSync(supabase)` from `src/lib/scraper/syncRunner.js` — scans schedule pages, enqueues new items, upserts daytime events
+- Calls `runDetailSync(supabase)` in a loop (max 20 iterations) until `action === 'idle'`, processing any newly queued (or previously queued) detail items
+- `resetStuck` is called once before the loop, not on every iteration (avoids 20 redundant DB queries)
+- **Non-fatal** — if Step 0 throws for any reason (session expired and no credentials configured, network error), the error is logged and the check continues to Step 1 with whatever is currently in the DB
+- Does NOT call `writeCronHealth` — health tracking is the Vercel cron handlers' responsibility. Step 0 is a "best effort" sync, not a scheduled cron run.
+- Signal isolation is preserved: Steps 2–5 (Playwright, Claude, DB compare) are unchanged and import nothing from `src/lib/scraper/`. Step 0 runs before the independent check begins.
+
+**Session re-auth in Step 0:** `ensureSession` can re-authenticate if the session is expired, provided `EXTERNAL_SITE_USERNAME` and `EXTERNAL_SITE_PASSWORD` are set as GH repo secrets. If they are, a stale session will be refreshed and the fresh session is available to Step 1's `loadSession` (making Playwright work too). If they're not set, re-auth silently fails and Step 0 is skipped.
 
 ### Step 1 — Load session cookies
 Reads `session_cookies` from `sync_settings` in Supabase — the same auth token the midnight cron uses. If missing or expired, sends WhatsApp and exits. The session is refreshed by `cron-auth.js` which runs at midnight.
@@ -124,15 +136,17 @@ All must be **Repository secrets** in GitHub (Settings → Secrets → Actions �
 |---|---|---|
 | `VITE_SUPABASE_URL` | Supabase project URL (public) | Supabase project settings |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key — bypasses RLS | Supabase project settings → API → Secret keys |
+| `EXTERNAL_SITE_USERNAME` | AGYD login email — Step 0 re-auth | Copy from Vercel env vars |
+| `EXTERNAL_SITE_PASSWORD` | AGYD login password — Step 0 re-auth | Copy from Vercel env vars |
 | `ANTHROPIC_API_KEY` | Claude API key | console.anthropic.com → API Keys |
 | `TWILIO_ACCOUNT_SID` | Twilio account | Copy from Vercel env vars |
 | `TWILIO_AUTH_TOKEN` | Twilio auth token | Copy from Vercel env vars |
 | `TWILIO_FROM_NUMBER` | Twilio sandbox number | Copy from Vercel env vars |
 | `INTEGRATION_CHECK_RECIPIENTS` | Kate's phone number only (E.164) | Manually set — NOT from Vercel |
 
-Note: `TWILIO_*` and `SUPABASE_SERVICE_ROLE_KEY` are also Vercel env vars. They must be separately added as GH repo secrets — Vercel and GitHub Actions do not share env vars.
+Note: `TWILIO_*`, `SUPABASE_SERVICE_ROLE_KEY`, `EXTERNAL_SITE_USERNAME`, and `EXTERNAL_SITE_PASSWORD` are also Vercel env vars. They must be separately added as GH repo secrets — Vercel and GitHub Actions do not share env vars.
 
-`APP_URL` and `VITE_SYNC_PROXY_TOKEN` are no longer required (Step 0 removed).
+`APP_URL` and `VITE_SYNC_PROXY_TOKEN` were removed in v4.5 (Step 0 no longer uses an HTTP endpoint).
 
 ---
 
