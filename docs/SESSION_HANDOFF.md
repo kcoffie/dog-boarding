@@ -7,22 +7,31 @@
 
 - **v5.0.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
 - **835 tests, 51 files, 0 failures**
-- PR #91 merged — M0, M1-1, M1-2, M2 all shipped
+- PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live (March 20, 2026)
 
-### v5.0 milestones — shipped
+### v5.0 milestones — all live ✅
 
-- **M0 DONE** — `notifyWhatsApp.js` rewritten from Twilio to Meta Cloud API (`sendRosterImage`, `sendTextMessage`). `notify.js` updated accordingly. **Kate still needs to:** set up Meta app + register phone number + add `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN` to GH secrets + Vercel env.
-- **M1-1 DONE** — Cron failure alerting: `'started'` status added to `cron_health` (migration 022), each cron (auth/schedule/detail) writes 'started' at top of run, `scripts/cron-health-check.js` + `.github/workflows/cron-health-check.yml` run at 00:30 UTC.
-- **M1-2 DONE** — `refreshDaytimeSchedule` extracted to `src/lib/notifyHelpers.js` (testable); all 7 exit paths covered by unit tests.
-- **M2 DONE** — Gmail monitor implemented: `scripts/gmail-monitor.js` + `.github/workflows/gmail-monitor.yml` (hourly at :15). **Kate still needs to:** create Google Cloud project, enable Gmail API, create OAuth2 creds, run one-time auth script → GMAIL_REFRESH_TOKEN, add `GMAIL_CLIENT_ID` + `GMAIL_CLIENT_SECRET` + `GMAIL_REFRESH_TOKEN` to GH secrets.
+- **M0 LIVE** — Meta Cloud API wired up end-to-end. WhatsApp roster image delivery confirmed working to Kate's number. `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN` set in GH secrets + Vercel env.
+- **M1-1 LIVE** — Cron failure alerting running. Migrations 022 + 023 applied. `cron-health-check.yml` running at 00:30 UTC.
+- **M1-2 LIVE** — `refreshDaytimeSchedule` in `src/lib/notifyHelpers.js`, all 7 exit paths covered.
+- **M2 LIVE** — Gmail monitor running hourly. OAuth2 confirmed working. GH secrets set. First run sent 16 historical alerts (all now deduped in `gmail_processed_emails`).
+
+### Pending (Kate)
+- **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
+- **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-1. **Kate actions for M0 (WhatsApp live)**: Create Meta app, register phone number, get `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN`, add to GH secrets + Vercel env
-2. **Kate actions for M2 (Gmail monitor live)**: Google Cloud project + Gmail API + OAuth2 refresh token, add `GMAIL_CLIENT_ID` + `GMAIL_CLIENT_SECRET` + `GMAIL_REFRESH_TOKEN` to GH secrets
-3. **Deploy migrations 022 + 023** via Supabase dashboard (ALTER TABLE + CREATE TABLE) — required for M1-1 and M2 to work correctly
+**M3 — Portfolio Polish** is the next milestone. All operational work is done.
+
+1. **M3-1** — README overhaul: architecture diagram, tech stack, "how it works," screenshots of WhatsApp output
+2. **M3-2** — Operator runbook: one doc, "something broke, here's how to diagnose it"
+3. **M3-3** — ADRs: 3 biggest architectural decisions (scraper strategy, GH Actions vs. Vercel crons, Meta vs. alternatives)
+4. **M3-4** — "As of" timestamp in roster image
+5. **M3-5** — DST-aware scheduling + code polish (timing-safe equal, regex precompile)
+6. **M3-6** — Doc staleness CI check (non-blocking)
 
 ---
 
@@ -165,7 +174,7 @@ WHERE b.arrival_datetime <= NOW() + INTERVAL '7 days'
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3 **(latest)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0 **(latest)**
 
 ## Archive
 - v4.5 session: `docs/archive/SESSION_HANDOFF_v4.5_final.md`

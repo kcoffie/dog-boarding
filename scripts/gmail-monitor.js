@@ -35,6 +35,11 @@ import twilio from 'twilio';
 // Known sender configuration
 // ---------------------------------------------------------------------------
 
+// Subjects that should never trigger an alert — prevents infinite alert loops.
+// If the Gmail Monitor workflow itself fails, GitHub sends an email that would
+// match the GitHub Actions sender filter. SELF_SKIP_SUBJECTS catches it first.
+export const SELF_SKIP_SUBJECTS = [/gmail[- ]monitor/i];
+
 const KNOWN_SENDERS = [
   {
     from: 'notifications@github.com',
@@ -225,10 +230,21 @@ function matchesSender(from, config) {
  * Find the matching sender config for an email, and check if its subject
  * matches any of the configured subject patterns.
  *
+ * Self-skip check runs first: if the subject matches SELF_SKIP_SUBJECTS,
+ * the email is silently skipped regardless of sender to prevent alert loops.
+ *
  * @param {{ from: string, subject: string }} email
- * @returns {{ senderConfig: object, matched: boolean }}
+ * @returns {{ senderConfig: object|null, matched: boolean }}
  */
-function classifyEmail(email) {
+export function classifyEmail(email) {
+  const subject = email.subject || '';
+
+  // Self-skip: suppress alerts about the Gmail Monitor workflow itself
+  if (SELF_SKIP_SUBJECTS.some(re => re.test(subject))) {
+    console.log('[GmailMonitor] Self-skip: subject "%s" matches SELF_SKIP_SUBJECTS', subject);
+    return { senderConfig: null, matched: false };
+  }
+
   for (const config of KNOWN_SENDERS) {
     if (!matchesSender(email.from, config)) continue;
 
@@ -446,7 +462,10 @@ async function main() {
   process.exit(0);
 }
 
-main().catch(err => {
-  console.error('[GmailMonitor] Unhandled error:', err.message, err.stack);
-  process.exit(1);
-});
+// Only run main() when executed directly — not when imported by tests.
+if (process.argv[1]?.endsWith('gmail-monitor.js')) {
+  main().catch(err => {
+    console.error('[GmailMonitor] Unhandled error:', err.message, err.stack);
+    process.exit(1);
+  });
+}
