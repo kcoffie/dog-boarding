@@ -1,28 +1,55 @@
-# Dog Boarding App — Session Handoff (v4.4.1 live, ready for v5)
-**Last updated:** March 19, 2026
+# Dog Boarding App — Session Handoff (v4.4.2 live, v4.5 planned)
+**Last updated:** March 20, 2026
 
 ---
 
 ## Current State
 
-- **v4.4.1 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
-- **756 tests, 46 files, 0 failures**
-- **Main branch clean** — all PRs merged (latest: #83)
-- **Integration check LIVE** — runs 3×/day, consistently green, dog names in alerts, 7-day DB window
-- **v4 complete** — all tickets done including v4.4.1 session self-healing hotfix
-- **`cron_health_log` verified** — table live, first row written (manual trigger March 19); tonight's midnight cron will confirm unconditional re-auth end-to-end
+- **v4.4.2 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
+- **758 tests, 46 files, 0 failures**
+- **Main branch clean** — latest merged: #85
+- **PR #86 open** (`fix/stable-sort-hash`) — fix for false UPDATED! resends; more changes coming before merge
+- **Integration check LIVE** — runs 3×/day; known false positive pattern: new bookings made after midnight cron but before the 8am check will appear as "Missing from DB" (confirmed with Corky Ortiz on 3/20 — booking added at ~9:17pm PDT, after midnight UTC sync ran)
+- **v4 complete** — all tickets done; v4.5 planned (integration check sync-before-compare)
+- **`cron_health_log` verified** — table live, first row written (manual trigger March 19)
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-1. **Start v5.0** — see `docs/SPRINT_PLAN.md`. First ticket: Gmail monitoring agent
-2. **Optional: code review v4** — large sprint; good to audit before v5 adds more surface area
-3. **Tomorrow: confirm tonight's cron** — `cron_health.auth.result.action` should be `refreshed` (not `skipped`) and new rows in `cron_health_log`
+1. **Merge PR #86** (`fix/stable-sort-hash`) — after adding any remaining changes; tag v4.4.3
+2. **Plan + build v4.5** — integration check sync-before-compare (see TODO below)
+3. **Start v5.0** — see `docs/SPRINT_PLAN.md`. First ticket: Gmail monitoring agent (ticket #1)
 
 ---
 
-## What Was Done This Session (March 19, session self-healing fix + docs)
+## TODO: v4.5 — Integration Check Sync-Before-Compare
+
+**Problem:** The integration check runs at 1am, 9am, 5pm PDT. The midnight cron syncs at 00:00–00:15 UTC. A booking made after midnight UTC but before the 1am check appears as "Missing from DB" — it's a real booking, not a bug. The integration check has no way to sync before comparing.
+
+**Prior attempt (removed):** `api/run-sync.js` used `DOMParser` (browser-only) and hit Vercel's 10s HTTP timeout. Removed entirely; `SKIP_SYNC` env var and workflow comment are now dead code.
+
+**Why not call Vercel cron endpoints via HTTP (Option A):** Vercel Hobby plan caps external HTTP calls at 10s. `cron-schedule` scrapes 3 pages (~5–8s) — at the limit. `cron-detail` would timeout for any non-trivial queue. Fragile.
+
+**Chosen approach (Option B):** Extract the core sync logic from the Vercel handler wrappers into importable Node.js functions. The integration check calls them directly — no Vercel HTTP layer, no timeout risk, no new secrets.
+
+**What needs to happen:**
+- `api/cron-schedule.js` — extract inner logic (fetch schedule pages, parse, enqueue) into `src/lib/scraper/syncRunner.js` (or similar). The Vercel handler becomes a thin wrapper.
+- `api/cron-detail.js` — same: extract dequeue+fetch+map loop into the shared module.
+- `scripts/integration-check.js` — import and call the sync runner functions as Step 0, before Playwright scrape. Session is already loaded in Step 1; pass it through.
+- Remove dead `SKIP_SYNC` env var from workflow + workflow comment.
+- Update `docs/job_docs/integration-check.md` with new Step 0 description.
+
+**Key constraints:**
+- `cron-schedule.js` is already Node.js safe (regex-based, no DOMParser) ✓
+- `cron-detail.js` is already Node.js safe ✓
+- Do NOT import from `src/lib/scraper/` for the Playwright/Claude signal path — signal isolation must be preserved. The sync runner is a separate step that runs BEFORE the independent check, not part of it.
+- `SKIP_SYNC` env var + workflow input should be cleaned up (dead code since Step 0 was removed)
+- `APP_URL` + `VITE_SYNC_PROXY_TOKEN` secrets are no longer needed in the integration check workflow once this is done (they were for the old HTTP approach)
+
+---
+
+## What Was Done This Session (March 19–20)
 
 **Triaged 8:30am WhatsApp refresh alert** (`No cached session — cron-auth may not have run`). Root cause confirmed from DB: `cron-auth` ran at 00:12 UTC on March 19, saw session as "still valid", skipped re-auth. Session expired at 00:27 UTC (stored ~00:27 the prior day — 15-min race). All three notify windows (4am/7am/8:30am PST = 12:00/15:00/16:30 UTC) ran with no valid session.
 
@@ -42,9 +69,24 @@
 - Manual `curl /api/cron-auth` → `{"ok":true,"action":"refreshed"}` ✅
 - `cron_health.auth.result.action = 'refreshed'` (was `skipped` pre-fix) ✅
 - `cron_health_log` table live, first row (id=1) written ✅
-- Tonight's midnight cron will confirm unconditional re-auth in production
 
-### Prior session PRs (all squash-merged to main)
+**PR #85 (fix/v4-polish) — merged March 19, tagged v4.4.2:**
+- Fix Monday UTC date bug in `notify.js` — Pacific timezone via `Intl.DateTimeFormat` (Vercel runs UTC; Sunday 4pm+ Pacific = Monday UTC would incorrectly trigger Monday skip gate)
+- Improve logging: boarders list by name in `pictureOfDay.js`; category breakdown + date span in `daytimeSchedule.js` parse summary
+- Rename `window` → `sendWindow` in `shouldSendNotification` (was shadowing browser global)
+- `npm audit fix` — 7 dev-only vulns resolved (1 remaining: `serialize-javascript` via `vite-plugin-pwa`, requires `--force` breaking change — deferred)
+- `@requirements` annotations added to 5 test files (restores 100% pre-commit hook coverage after REQ-600–642 added)
+- Delete `CHANGELOG.md` (GitHub Releases serve this role); add `REVIEW.md`
+- Full doc sweep: REQUIREMENTS.md (v4 REQ-600–642), SESSION_HANDOFF, README, all job_docs
+
+**Triaged integration check alert (March 20 1:50am):**
+- Corky Ortiz (C63QgYsH) — confirmed real booking, not a bug. Booked at ~9:17pm PDT (04:17 UTC) after midnight cron ran. Will sync at next midnight. Added as known false positive pattern to SESSION_HANDOFF.
+- Tula + Lucy (4 entries) — amended appointment IDs; DB has boardings for both in the window. Likely false positives.
+
+**PR #86 (fix/stable-sort-hash) — open:**
+- Fix false UPDATED! resends: `refreshDaytimeSchedule` upserts cause DB row reordering; sort was tier-only (added/removed/unchanged) with no secondary key → hash changed on reorder. Added stable alpha secondary sort within each tier. 2 new tests; 758 total, 0 failures.
+
+### All session PRs
 
 | PR | Branch | What |
 |---|---|---|
@@ -57,17 +99,17 @@
 | #79 | `chore/dev-deps-march-18` | Bump 6 dev dependencies |
 | #80 | `docs/session-handoff-v4.4` | SPRINT_PLAN + SESSION_HANDOFF session close |
 | #83 | `fix/session-self-healing` | Session self-healing, ensureSession, always re-auth, cron_health_log |
+| #85 | `fix/v4-polish` | Monday UTC fix, logging improvements, window rename, npm audit, doc sweep |
+| #86 | `fix/stable-sort-hash` | Stable alpha sort within diff tiers; prevents false UPDATED! resends *(open)* |
 
 ---
 
 ## Carry-Forward (low priority, not blocking v5)
 
 - **`cron-schedule.js` ADD filter case-sensitive** — `/\badd\b/` doesn't match uppercase `ADD`. Low priority — sync pipeline's post-filter catches these downstream anyway. (`integration-check.js` already fixed in PR #54.)
-- **Integration check Step 0 sync broken** — `api/run-sync.js` uses `DOMParser` (browser-only) and hits Vercel 10s timeout. Step 0 removed from check; missing boardings still surface in compare step. Fix options in `docs/job_docs/integration-check.md` (Option A recommended: call cron endpoints via HTTP).
 - **Claude credits for integration check name-check** — Step 3 silently skipped (no credits). Checks 1 + 2 still work (missing IDs, Unknown names). Only name mismatches missed — narrow failure mode. Add credits at console.anthropic.com if needed.
 - **Polish** (from v4.1.2, moved to v5):
   - Fix misleading "constant-time" comment in `roster-image.js` — use `crypto.timingSafeEqual` or remove claim
-  - Rename `window` param in `shouldSendNotification` → `sendWindow` (shadows browser global)
   - Pre-compile `attr()` regexes in `daytimeSchedule.js` — `new RegExp(name + ...)` inside hot loop
 
 ---
@@ -170,7 +212,7 @@ WHERE b.arrival_datetime <= NOW() + INTERVAL '7 days'
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, **v4.4.1 (latest)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, **v4.4.2 (latest)**
 
 ## Archive
 - v4.3 session: `docs/archive/SESSION_HANDOFF_v4.3_final.md`
