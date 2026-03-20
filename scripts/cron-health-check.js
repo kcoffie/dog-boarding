@@ -30,6 +30,9 @@ import twilio from 'twilio';
 // The three midnight Vercel crons we monitor.
 const MONITORED_CRONS = ['auth', 'schedule', 'detail'];
 
+// A cron stuck in 'started' beyond this threshold is considered hung.
+const HUNG_THRESHOLD_MIN = 20;
+
 // ---------------------------------------------------------------------------
 // Client factories
 // ---------------------------------------------------------------------------
@@ -114,7 +117,7 @@ async function loadRecentLog(supabase, cronName) {
  * @param {Date} midnightUtc - Start of today in UTC
  * @returns {string|null} - Alert message or null if ok
  */
-function checkDidRun(cronName, healthRow, midnightUtc) {
+export function checkDidRun(cronName, healthRow, midnightUtc) {
   if (!healthRow) {
     console.log('[CronHealthCheck] ⚠️  cron-%s: no health row in DB — never ran?', cronName);
     return `cron-${cronName}: no health record found — may have never run`;
@@ -136,7 +139,32 @@ function checkDidRun(cronName, healthRow, midnightUtc) {
 }
 
 /**
- * Check 2: If the cron's current status is 'failure', are the last 2 log
+ * Check 2: Is the cron stuck in 'started' beyond the hung threshold?
+ * A cron that wrote 'started' but never updated to 'success' or 'failure'
+ * within HUNG_THRESHOLD_MIN minutes has likely hung or crashed mid-run.
+ *
+ * @param {string} cronName
+ * @param {{ last_ran_at: string, status: string }|undefined} healthRow
+ * @param {number} nowMs - Current timestamp in ms (Date.now())
+ * @returns {string|null}
+ */
+export function checkHungCron(cronName, healthRow, nowMs) {
+  if (!healthRow || healthRow.status !== 'started') return null;
+
+  const startedAt = new Date(healthRow.last_ran_at).getTime();
+  const elapsedMin = Math.round((nowMs - startedAt) / 60000);
+
+  if (elapsedMin > HUNG_THRESHOLD_MIN) {
+    console.log('[CronHealthCheck] ⚠️  cron-%s: stuck in started for %d min', cronName, elapsedMin);
+    return `cron-${cronName}: hung in 'started' state for ${elapsedMin} min (started ${healthRow.last_ran_at})`;
+  }
+
+  console.log('[CronHealthCheck] cron-%s: status=started, elapsed %d min — still in progress', cronName, elapsedMin);
+  return null;
+}
+
+/**
+ * Check 3: If the cron's current status is 'failure', are the last 2 log
  * entries also failures? If yes → consecutive failures → alert.
  *
  * Single failures can be transient (Supabase blip, deploy race condition).
@@ -147,7 +175,7 @@ function checkDidRun(cronName, healthRow, midnightUtc) {
  * @param {Array<{ status: string, ran_at: string }>} recentLog
  * @returns {string|null}
  */
-function checkConsecutiveFailures(cronName, healthRow, recentLog) {
+export function checkConsecutiveFailures(cronName, healthRow, recentLog) {
   if (!healthRow || healthRow.status !== 'failure') return null;
 
   // cron_health shows 'failure'. Check the last 2 log entries.
@@ -156,7 +184,9 @@ function checkConsecutiveFailures(cronName, healthRow, recentLog) {
 
   if (consecutiveFails) {
     console.log('[CronHealthCheck] ⚠️  cron-%s: %d consecutive failure(s) in log', cronName, failures.length);
-    return `cron-${cronName}: ${failures.length} consecutive failure(s) — last ran ${healthRow.last_ran_at}`;
+    const rawError = failures[0]?.error_msg;
+    const errorSuffix = rawError ? `: ${String(rawError).slice(0, 100)}` : '';
+    return `cron-${cronName}: ${failures.length} consecutive failure(s)${errorSuffix}`.slice(0, 250);
   }
 
   // Single failure — transient, don't alert
@@ -261,7 +291,10 @@ async function main() {
   process.exit(0);
 }
 
-main().catch(err => {
-  console.error('[CronHealthCheck] Unhandled error:', err.message, err.stack);
-  process.exit(1);
-});
+// Only run main() when executed directly — not when imported by tests.
+if (process.argv[1]?.endsWith('cron-health-check.js')) {
+  main().catch(err => {
+    console.error('[CronHealthCheck] Unhandled error:', err.message, err.stack);
+    process.exit(1);
+  });
+}
