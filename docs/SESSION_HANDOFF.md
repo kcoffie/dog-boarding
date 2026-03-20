@@ -1,4 +1,4 @@
-# Dog Boarding App — Session Handoff (v4.4.2 live, v4.5 planned)
+# Dog Boarding App — Session Handoff (v4.4.3 pending, v5.0 next)
 **Last updated:** March 20, 2026
 
 ---
@@ -6,46 +6,31 @@
 ## Current State
 
 - **v4.4.2 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
-- **758 tests, 46 files, 0 failures**
-- **Main branch clean** — latest merged: #85
-- **PR #86 open** (`fix/stable-sort-hash`) — fix for false UPDATED! resends; more changes coming before merge
-- **Integration check LIVE** — runs 3×/day; known false positive pattern: new bookings made after midnight cron but before the 8am check will appear as "Missing from DB" (confirmed with Corky Ortiz on 3/20 — booking added at ~9:17pm PDT, after midnight UTC sync ran)
-- **v4 complete** — all tickets done; v4.5 planned (integration check sync-before-compare)
+- **775 tests, 47 files, 0 failures**
+- **PR #86 merged** — stable alpha sort fix (v4.4.3 tag pending PR merge of v4.5 branch)
+- **PR open** (`feat/v4.5-sync-runner`) — v4.5 implementation, issue #87
+- **Integration check LIVE** — v4.5 will eliminate the known false positive for post-midnight bookings
 - **`cron_health_log` verified** — table live, first row written (manual trigger March 19)
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-1. **Merge PR #86** (`fix/stable-sort-hash`) — after adding any remaining changes; tag v4.4.3
-2. **Plan + build v4.5** — integration check sync-before-compare (see TODO below)
-3. **Start v5.0** — see `docs/SPRINT_PLAN.md`. First ticket: Gmail monitoring agent (ticket #1)
+1. **Merge v4.5 PR** (`feat/v4.5-sync-runner`) — add `EXTERNAL_SITE_USERNAME` + `EXTERNAL_SITE_PASSWORD` as GH repo secrets first (see below), then merge + tag v4.4.3
+2. **Start v5.0** — see `docs/SPRINT_PLAN.md`. First ticket: Gmail monitoring agent
 
 ---
 
-## TODO: v4.5 — Integration Check Sync-Before-Compare
+## ⚠️ ACTION REQUIRED BEFORE MERGING v4.5
 
-**Problem:** The integration check runs at 1am, 9am, 5pm PDT. The midnight cron syncs at 00:00–00:15 UTC. A booking made after midnight UTC but before the 1am check appears as "Missing from DB" — it's a real booking, not a bug. The integration check has no way to sync before comparing.
+Add two new GH repo secrets (Settings → Secrets → Actions → Repository secrets):
 
-**Prior attempt (removed):** `api/run-sync.js` used `DOMParser` (browser-only) and hit Vercel's 10s HTTP timeout. Removed entirely; `SKIP_SYNC` env var and workflow comment are now dead code.
+| Secret | Value | Purpose |
+|---|---|---|
+| `EXTERNAL_SITE_USERNAME` | AGYD login email | Step 0 re-auth when session is expired |
+| `EXTERNAL_SITE_PASSWORD` | AGYD login password | Step 0 re-auth when session is expired |
 
-**Why not call Vercel cron endpoints via HTTP (Option A):** Vercel Hobby plan caps external HTTP calls at 10s. `cron-schedule` scrapes 3 pages (~5–8s) — at the limit. `cron-detail` would timeout for any non-trivial queue. Fragile.
-
-**Chosen approach (Option B):** Extract the core sync logic from the Vercel handler wrappers into importable Node.js functions. The integration check calls them directly — no Vercel HTTP layer, no timeout risk, no new secrets.
-
-**What needs to happen:**
-- `api/cron-schedule.js` — extract inner logic (fetch schedule pages, parse, enqueue) into `src/lib/scraper/syncRunner.js` (or similar). The Vercel handler becomes a thin wrapper.
-- `api/cron-detail.js` — same: extract dequeue+fetch+map loop into the shared module.
-- `scripts/integration-check.js` — import and call the sync runner functions as Step 0, before Playwright scrape. Session is already loaded in Step 1; pass it through.
-- Remove dead `SKIP_SYNC` env var from workflow + workflow comment.
-- Update `docs/job_docs/integration-check.md` with new Step 0 description.
-
-**Key constraints:**
-- `cron-schedule.js` is already Node.js safe (regex-based, no DOMParser) ✓
-- `cron-detail.js` is already Node.js safe ✓
-- Do NOT import from `src/lib/scraper/` for the Playwright/Claude signal path — signal isolation must be preserved. The sync runner is a separate step that runs BEFORE the independent check, not part of it.
-- `SKIP_SYNC` env var + workflow input should be cleaned up (dead code since Step 0 was removed)
-- `APP_URL` + `VITE_SYNC_PROXY_TOKEN` secrets are no longer needed in the integration check workflow once this is done (they were for the old HTTP approach)
+These are already Vercel env vars — copy the values from there. Without them, Step 0 still runs but can't re-authenticate if the session is stale (degrades gracefully, does not break anything).
 
 ---
 
@@ -118,13 +103,14 @@
 
 ### Integration check flow
 ```
-GitHub Actions (3×/day + on-demand, SKIP_SYNC=true)
-  → Load session cookies from sync_settings (Supabase)
-  → Playwright: render /schedule, screenshot + DOM link extraction
-  → Claude vision: screenshot → dog names[] (silently skipped — no API credits)
-  → Supabase: boardings JOIN dogs (past 7d → today+7d); daytime_appointments (today)
-  → compareResults: missing IDs, Unknown names, name mismatches (boarding); missing daytime events
-  → Twilio WhatsApp → INTEGRATION_CHECK_RECIPIENTS
+GitHub Actions (3×/day + on-demand)
+  → Step 0: runScheduleSync + drain runDetailSync (max 20 iters) — non-fatal
+  → Step 1: Load session cookies from sync_settings (Supabase)
+  → Step 2: Playwright: render /schedule, screenshot + DOM link extraction
+  → Step 3: Claude vision: screenshot → dog names[] (silently skipped — no API credits)
+  → Step 4: Supabase: boardings JOIN dogs (past 7d → today+7d); daytime_appointments (today)
+  → Step 5: compareResults: missing IDs, Unknown names, name mismatches (boarding); missing daytime events
+  → Step 6: Twilio WhatsApp → INTEGRATION_CHECK_RECIPIENTS
 ```
 
 ### Notify flow
@@ -140,8 +126,8 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 | File | Purpose |
 |---|---|
 | `scripts/integration-check.js` | Integration check script (GH Actions) |
-| `api/run-sync.js` | On-demand sync endpoint (Step 0 — currently broken) |
-| `.github/workflows/integration-check.yml` | 3×/day + on-demand, SKIP_SYNC env var |
+| `src/lib/scraper/syncRunner.js` | Extracted sync logic — `runScheduleSync`, `runDetailSync` (v4.5) |
+| `.github/workflows/integration-check.yml` | 3×/day + on-demand |
 | `docs/job_docs/integration-check.md` | Full reference doc for the integration check |
 | `src/lib/pictureOfDay.js` | getPictureOfDay, computeWorkerDiff, hashPicture |
 | `api/roster-image.js` | Token-gated PNG endpoint |
@@ -161,8 +147,10 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 | `TWILIO_FROM_NUMBER` | ✅ Set |
 | `NOTIFY_RECIPIENTS` | ✅ Set (1 number — second pending Kate) |
 | `INTEGRATION_CHECK_RECIPIENTS` | ✅ Set (Kate's number only) |
-| `APP_URL` | ✅ Set |
-| `VITE_SYNC_PROXY_TOKEN` | ✅ Set |
+| `EXTERNAL_SITE_USERNAME` | ⚠️ Needs to be added (v4.5 Step 0 re-auth) |
+| `EXTERNAL_SITE_PASSWORD` | ⚠️ Needs to be added (v4.5 Step 0 re-auth) |
+| `APP_URL` | ✅ Set (no longer used in integration-check workflow) |
+| `VITE_SYNC_PROXY_TOKEN` | ✅ Set (no longer used in integration-check workflow) |
 
 ### Workers
 | Name | External UID |
