@@ -1,4 +1,4 @@
-# Dog Boarding App — Session Handoff (v4.4.3 pending, v5.0 next)
+# Dog Boarding App — Session Handoff (v4.4.3 live, v5.0 next)
 **Last updated:** March 20, 2026
 
 ---
@@ -7,8 +7,8 @@
 
 - **v4.4.3 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
 - **775 tests, 47 files, 0 failures**
-- **Main branch clean** — latest merged: #88 (v4.5 sync-before-compare)
-- **Integration check Step 0 LIVE** — verified 3/20: drained 15 items (updated/created/form_stored), idle, PASS ✅
+- **Main branch clean** — latest merged: #89
+- **Integration check Step 0 LIVE** — sync-before-compare verified 3/20: drained 15 queue items, PASS ✅
 - **`cron_health_log` verified** — table live, first row written (manual trigger March 19)
 
 ---
@@ -19,82 +19,25 @@
 
 ---
 
-## What Was Done This Session (March 19–20)
-
-**Triaged 8:30am WhatsApp refresh alert** (`No cached session — cron-auth may not have run`). Root cause confirmed from DB: `cron-auth` ran at 00:12 UTC on March 19, saw session as "still valid", skipped re-auth. Session expired at 00:27 UTC (stored ~00:27 the prior day — 15-min race). All three notify windows (4am/7am/8:30am PST = 12:00/15:00/16:30 UTC) ran with no valid session.
-
-**Session also interrupted mid-implementation** — picked up and completed in new session.
-
-**PR #83 (fix/session-self-healing) — merged March 19, tagged v4.4.1:**
-- `cron-auth.js` — always re-auth, removed skip-if-valid logic (was the race condition)
-- `sessionCache.js` — added `ensureSession()`: fast-path cache hit or re-authenticates on miss/expiry
-- `cron-schedule.js`, `cron-detail.js` — use `ensureSession` (self-healing); cron-detail: session before dequeue (no more put-back dance)
-- `notify.js` — use `ensureSession` in refresh; `sendRefreshAlert` deduplicates (1 alert/day, not 3)
-- `api/_cronHealth.js` — also appends to new `cron_health_log` table on every write
-- Migration 021 — `cron_health_log` append-only history table
-- 10 new tests (8 `ensureSession`, 2 `writeCronHealth`); 756 total, 0 failures
-- README: fixed wrong curl command (integration check has no HTTP endpoint); added `INTEGRATION_CHECK_RECIPIENTS` to env var table
-
-**Verified post-merge (March 19):**
-- Manual `curl /api/cron-auth` → `{"ok":true,"action":"refreshed"}` ✅
-- `cron_health.auth.result.action = 'refreshed'` (was `skipped` pre-fix) ✅
-- `cron_health_log` table live, first row (id=1) written ✅
-
-**PR #85 (fix/v4-polish) — merged March 19, tagged v4.4.2:**
-- Fix Monday UTC date bug in `notify.js` — Pacific timezone via `Intl.DateTimeFormat` (Vercel runs UTC; Sunday 4pm+ Pacific = Monday UTC would incorrectly trigger Monday skip gate)
-- Improve logging: boarders list by name in `pictureOfDay.js`; category breakdown + date span in `daytimeSchedule.js` parse summary
-- Rename `window` → `sendWindow` in `shouldSendNotification` (was shadowing browser global)
-- `npm audit fix` — 7 dev-only vulns resolved (1 remaining: `serialize-javascript` via `vite-plugin-pwa`, requires `--force` breaking change — deferred)
-- `@requirements` annotations added to 5 test files (restores 100% pre-commit hook coverage after REQ-600–642 added)
-- Delete `CHANGELOG.md` (GitHub Releases serve this role); add `REVIEW.md`
-- Full doc sweep: REQUIREMENTS.md (v4 REQ-600–642), SESSION_HANDOFF, README, all job_docs
-
-**Triaged integration check alert (March 20 1:50am):**
-- Corky Ortiz (C63QgYsH) — confirmed real booking, not a bug. Booked at ~9:17pm PDT (04:17 UTC) after midnight cron ran. Will sync at next midnight. Added as known false positive pattern to SESSION_HANDOFF.
-- Tula + Lucy (4 entries) — amended appointment IDs; DB has boardings for both in the window. Likely false positives.
-
-**PR #86 (fix/stable-sort-hash) — open:**
-- Fix false UPDATED! resends: `refreshDaytimeSchedule` upserts cause DB row reordering; sort was tier-only (added/removed/unchanged) with no secondary key → hash changed on reorder. Added stable alpha secondary sort within each tier. 2 new tests; 758 total, 0 failures.
-
-### All session PRs
-
-| PR | Branch | What |
-|---|---|---|
-| #65 | `fix/request-appointment-type` | Handle request/canceled-request types; booking_status field; Layer 3b filter |
-| #67 | `fix/cron-throughput` | 3-page nightly scan + cron-detail-2.js second Vercel path |
-| #71 | `feat/friday-pm-notify` | Friday PM weekend boarding notify — workflow, endpoint, weekend image |
-| #73 | `fix/integ-check-dog-name-exit-window` | Integration check: dog name in alerts, exit 0, 7-day DB window |
-| #75 | `fix/notify-refresh-response-text` | Fix daytime refresh silent failure + WhatsApp alerts on refresh errors |
-| #76 | `docs/integ-check-canceled-false-positive` | Document canceled booking requests as known FP #6 |
-| #79 | `chore/dev-deps-march-18` | Bump 6 dev dependencies |
-| #80 | `docs/session-handoff-v4.4` | SPRINT_PLAN + SESSION_HANDOFF session close |
-| #83 | `fix/session-self-healing` | Session self-healing, ensureSession, always re-auth, cron_health_log |
-| #85 | `fix/v4-polish` | Monday UTC fix, logging improvements, window rename, npm audit, doc sweep |
-| #86 | `fix/stable-sort-hash` | Stable alpha sort within diff tiers; prevents false UPDATED! resends *(open)* |
-
----
-
-## Carry-Forward (low priority, not blocking v5)
-
-- **`cron-schedule.js` ADD filter case-sensitive** — `/\badd\b/` doesn't match uppercase `ADD`. Low priority — sync pipeline's post-filter catches these downstream anyway. (`integration-check.js` already fixed in PR #54.)
-- **Claude credits for integration check name-check** — Step 3 silently skipped (no credits). Checks 1 + 2 still work (missing IDs, Unknown names). Only name mismatches missed — narrow failure mode. Add credits at console.anthropic.com if needed.
-- **Polish** (from v4.1.2, moved to v5):
-  - Fix misleading "constant-time" comment in `roster-image.js` — use `crypto.timingSafeEqual` or remove claim
-  - Pre-compile `attr()` regexes in `daytimeSchedule.js` — `new RegExp(name + ...)` inside hot loop
-
----
-
 ## Architecture Reference
+
+### Sync pipeline
+```
+cron-auth.js (00:00 UTC)    → authenticate + store session in sync_settings
+cron-schedule.js (00:05)    → runScheduleSync() → scan 3 pages, enqueue boarding candidates
+cron-detail.js (00:10)      → runDetailSync() × 1 item → fetch detail, map + save to DB
+cron-detail-2.js (00:15)    → re-exports cron-detail (second Vercel path = double throughput)
+```
 
 ### Integration check flow
 ```
-GitHub Actions (3×/day + on-demand)
+GitHub Actions (3×/day + on-demand: 1am/9am/5pm PDT)
   → Step 0: runScheduleSync + drain runDetailSync (max 20 iters) — non-fatal
   → Step 1: Load session cookies from sync_settings (Supabase)
   → Step 2: Playwright: render /schedule, screenshot + DOM link extraction
   → Step 3: Claude vision: screenshot → dog names[] (silently skipped — no API credits)
   → Step 4: Supabase: boardings JOIN dogs (past 7d → today+7d); daytime_appointments (today)
-  → Step 5: compareResults: missing IDs, Unknown names, name mismatches (boarding); missing daytime events
+  → Step 5: compareResults: missing IDs, Unknown names, name mismatches; missing daytime events
   → Step 6: Twilio WhatsApp → INTEGRATION_CHECK_RECIPIENTS
 ```
 
@@ -110,8 +53,8 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 ### Key files
 | File | Purpose |
 |---|---|
+| `src/lib/scraper/syncRunner.js` | `runScheduleSync`, `runDetailSync` — shared sync logic (v4.5) |
 | `scripts/integration-check.js` | Integration check script (GH Actions) |
-| `src/lib/scraper/syncRunner.js` | Extracted sync logic — `runScheduleSync`, `runDetailSync` (v4.5) |
 | `.github/workflows/integration-check.yml` | 3×/day + on-demand |
 | `docs/job_docs/integration-check.md` | Full reference doc for the integration check |
 | `src/lib/pictureOfDay.js` | getPictureOfDay, computeWorkerDiff, hashPicture |
@@ -126,16 +69,16 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 |---|---|
 | `VITE_SUPABASE_URL` | ✅ Set |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ Set |
+| `EXTERNAL_SITE_USERNAME` | ✅ Set (v4.5 Step 0 re-auth) |
+| `EXTERNAL_SITE_PASSWORD` | ✅ Set (v4.5 Step 0 re-auth) |
 | `ANTHROPIC_API_KEY` | ✅ Set (no credits — Step 3 silently skipped) |
 | `TWILIO_ACCOUNT_SID` | ✅ Set |
 | `TWILIO_AUTH_TOKEN` | ✅ Set |
 | `TWILIO_FROM_NUMBER` | ✅ Set |
 | `NOTIFY_RECIPIENTS` | ✅ Set (1 number — second pending Kate) |
 | `INTEGRATION_CHECK_RECIPIENTS` | ✅ Set (Kate's number only) |
-| `EXTERNAL_SITE_USERNAME` | ✅ Set (v4.5 Step 0 re-auth) |
-| `EXTERNAL_SITE_PASSWORD` | ✅ Set (v4.5 Step 0 re-auth) |
-| `APP_URL` | ✅ Set (no longer used in integration-check workflow) |
-| `VITE_SYNC_PROXY_TOKEN` | ✅ Set (no longer used in integration-check workflow) |
+| `APP_URL` | ✅ Set (not used in integration-check workflow) |
+| `VITE_SYNC_PROXY_TOKEN` | ✅ Set (not used in integration-check workflow) |
 
 ### Workers
 | Name | External UID |
@@ -146,6 +89,17 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 | Max Posse | 174385 |
 | Sierra Tagle | 189436 |
 | Stephen Muro | 164375 |
+
+---
+
+## Carry-Forward (low priority, not blocking v5)
+
+- **`cron-schedule.js` ADD filter case-sensitive** — `/\badd\b/` doesn't match uppercase `ADD`. Low priority — sync pipeline's post-filter catches these downstream anyway.
+- **Claude credits for integration check name-check** — Step 3 silently skipped (no credits). Add at console.anthropic.com if needed.
+- **Polish** (from v4.1.2):
+  - Fix misleading "constant-time" comment in `roster-image.js` — use `crypto.timingSafeEqual` or remove claim
+  - Pre-compile `attr()` regexes in `daytimeSchedule.js` — `new RegExp(name + ...)` inside hot loop
+- **DST-flaky test** in `DateNavigator.test.jsx` — fix or remove
 
 ---
 
@@ -166,15 +120,6 @@ ORDER BY b.updated_at DESC LIMIT 20;
 -- Notify state (last image sent + hash)
 SELECT result FROM cron_health WHERE cron_name = 'notify';
 
--- If sync gets stuck
-UPDATE sync_logs SET status = 'failed', completed_at = NOW()
-WHERE status = 'running' AND started_at < NOW() - INTERVAL '5 minutes';
-
--- Null FK before deleting a boarding (handled automatically in useBoardings.js)
-UPDATE sync_appointments SET mapped_boarding_id = NULL
-WHERE mapped_boarding_id = '<boarding-uuid>';
-DELETE FROM boardings WHERE id = '<boarding-uuid>';
-
 -- Integration check window query (what the check uses)
 SELECT b.external_id, d.name, b.arrival_datetime, b.departure_datetime
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
@@ -185,9 +130,10 @@ WHERE b.arrival_datetime <= NOW() + INTERVAL '7 days'
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, **v4.4.3 (latest)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3 **(latest)**
 
 ## Archive
+- v4.5 session: `docs/archive/SESSION_HANDOFF_v4.5_final.md`
 - v4.3 session: `docs/archive/SESSION_HANDOFF_v4.3_final.md`
 - v4.2 session: `docs/archive/SESSION_HANDOFF_v4.2_final.md`
 - v4.1.1 session: `docs/archive/SESSION_HANDOFF_v4.1.1_final.md`
