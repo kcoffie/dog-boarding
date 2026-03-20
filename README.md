@@ -1,62 +1,286 @@
-# Qboard — Dog Boarding Manager
+# Qboard — Dog Boarding Operations Platform
 
-**Live app:** [qboarding.vercel.app](https://qboarding.vercel.app)
+**Live:** [qboarding.vercel.app](https://qboarding.vercel.app) &nbsp;|&nbsp; **Tests:** 835 passing (51 files) &nbsp;|&nbsp; **Version:** v5.0.0
 
-A web application for managing a dog boarding business. Track bookings, sync appointments from your external booking system, view boarding intake forms, calculate revenue, manage employee payroll, and more.
-
-## Features
-
-- **Boarding Matrix** — Daily breakdown of dogs in house, rates, and overnight revenue
-- **Visual Calendar** — See all bookings at a glance; print or export to PDF
-- **Dog Management** — Track dogs with custom day/night rates
-- **Boarding Forms** — Automatically fetch and display client intake forms; flag missing or date-mismatched forms
-- **Employee Tracking** — Assign employees to overnight shifts, calculate earnings
-- **Payroll** — Track and manage employee payments with payment history
-- **CSV Import** — Bulk import bookings from spreadsheets
-- **External Sync** — Automatically sync appointments from agirlandyourdog.com via scheduled cron jobs
-- **Daytime Activity Intelligence** — Ingest all DC/PG appointments from the schedule; track per-worker rosters with day-over-day diff (added/removed dogs)
-- **Daily Roster Image** — Generate a branded PNG of each worker's dogs; delivered via WhatsApp at 4am, 7am, and 8:30am PDT
-- **Cron Health Monitoring** — Settings page shows last run time and status of each cron job
-- **Secure Access** — Invite-only signup, all users share one organization
-
-## Tech Stack
-
-- **Frontend:** React 18, Vite, Tailwind CSS
-- **Backend:** Supabase (PostgreSQL + Auth)
-- **Hosting:** Vercel (frontend + serverless API + cron jobs)
-- **Notifications:** Twilio WhatsApp API
-- **Scheduling:** GitHub Actions (notify delivery windows)
-- **Testing:** Vitest, React Testing Library
+A production operations platform for a dog boarding business — built without a vendor API, running autonomously on a Vercel Hobby plan, and hardened against silent failures at three independent layers.
 
 ---
 
-## Quick Start
+## Why this is interesting engineering
 
-### Prerequisites
+Most of the complexity here isn't in the UI. It's in keeping a real-time data pipeline reliable when you can't control the data source.
 
-- Node.js 18+
-- npm
-- Supabase account (free tier works)
-- Vercel account (for deployment and cron jobs)
+**The constraint:** the business uses [agirlandyourdog.com](https://agirlandyourdog.com) for bookings. No API. No webhooks. No export. The only way to get appointment data is to authenticate as a user and scrape the rendered HTML — which changes without notice, uses inconsistent patterns across page types, and requires a session cookie that expires every 24 hours.
 
-### Installation
+**What was built on top of that:**
 
-```bash
-git clone https://github.com/kcoffie/dog-boarding.git
-cd dog-boarding
-npm install
-cp .env.example .env.local
-# Edit .env.local with your credentials (see Environment Variables below)
-npm run dev
+- A cron pipeline designed around Vercel Hobby plan constraints (10s timeout, 1 cron/path/day) — split into auth/schedule/detail stages with a queue in between, and a path-splitting trick that doubles throughput for free
+- A self-healing session cache: `ensureSession()` checks TTL, re-authenticates if needed, stores cookies in Supabase — zero human intervention required
+- A 6-layer sync filter that eliminates false positives (daycare, pack groups, evaluations, day-service-only pricing) before anything touches the database
+- Hash-based change detection for WhatsApp deduplication — the 7am and 8:30am notify windows only fire if roster data changed since the last send
+- Three independent monitoring layers that each catch failures the others can't: app-level cron health, schedule correctness via Playwright, and infrastructure failures via Gmail
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    subgraph "External"
+        AGYD[agirlandyourdog.com]
+        GMAIL[kcoffie@gmail.com]
+    end
+
+    subgraph "Vercel Crons — midnight UTC"
+        CA[cron-auth 00:00] -->|stores session| DB
+        CS[cron-schedule 00:05] -->|reads session| DB
+        CS -->|enqueues candidates| SQ[sync_queue]
+        CD1[cron-detail 00:10] -->|reads session| DB
+        CD2[cron-detail-2 00:15] -->|reads session| DB
+        CD1 & CD2 -->|dequeue + upsert| DB
+    end
+
+    subgraph "GitHub Actions"
+        GHA_N[notify 4am/7am/8:30am/Fri-PM]
+        GHA_IC[integration-check 1am/9am/5pm PDT]
+        GHA_CH[cron-health-check 00:30 UTC]
+        GHA_GM[gmail-monitor hourly]
+    end
+
+    subgraph "Vercel Serverless"
+        NOTIFY[api/notify.js]
+        IMG[api/roster-image.js]
+    end
+
+    subgraph "Supabase PostgreSQL"
+        DB[(boardings · dogs · daytime_appointments\nsync_queue · cron_health · gmail_processed_emails)]
+    end
+
+    AGYD -->|HTML scrape| CA & CS & CD1 & CD2
+    GHA_N -->|HTTP| NOTIFY
+    NOTIFY -->|refresh schedule| AGYD
+    NOTIFY -->|read DB| DB
+    NOTIFY -->|generate PNG| IMG
+    IMG -->|image message| META[Meta Cloud API]
+    META --> PHONE[📱 Recipient]
+
+    GHA_IC -->|Playwright DOM| AGYD
+    GHA_IC -->|query| DB
+    GHA_IC -->|text report| TWI[Twilio]
+    TWI --> PHONE
+
+    GHA_CH -->|query cron_health| DB
+    GHA_CH -->|alert| TWI
+
+    GHA_GM -->|OAuth2| GMAIL
+    GHA_GM -->|dedup check| DB
+    GHA_GM -->|alert| TWI
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+---
 
-### Supabase Setup
+## How it works
 
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Run migrations from `supabase/migrations/` in order using the Supabase SQL editor
-3. Copy your project URL and keys to `.env.local`
+### Sync pipeline (midnight UTC)
+
+The overnight sync is split into four cron stages to work within Vercel Hobby plan constraints (10s function timeout, 1 invocation/path/day):
+
+| Stage | Time | What it does |
+|---|---|---|
+| `cron-auth` | 00:00 | Re-authenticates with the external site, stores session cookies in `sync_settings` |
+| `cron-schedule` | 00:05 | Reads session from DB, scans 3 weeks of schedule pages, writes boarding candidates to `sync_queue` |
+| `cron-detail` | 00:10 | Reads session from DB, dequeues one candidate, fetches full detail page, upserts to DB |
+| `cron-detail-2` | 00:15 | Identical handler at a second Vercel path — doubles daily throughput for free |
+
+**Session caching:** authentication costs ~4.5s per call. By caching cookies in Supabase with a TTL check, `cron-schedule` and both detail crons skip re-authentication entirely — critical given the 10s limit.
+
+**Sync filter (6 layers):** before any appointment touches the database, it passes through: archived ID check → title pre-filter → title post-filter → pricing filter (day-service-only → skip) → date-overlap filter → early-stop pagination. This eliminates daycare, pack groups, evaluations, and amended appointments before they generate noise.
+
+**Multi-pet appointments:** when multiple dogs share one booking, `parseAppointmentPage` returns `all_pet_names[]` and `perPetRates[]`. The mapping layer creates a primary boarding (external ID = appointment ID) and secondary boardings (external ID = `{appt_id}_p{index}`), each with their own dog record, upserted independently.
+
+### Notify pipeline (GitHub Actions)
+
+Four workflows fire at 4am, 7am, 8:30am PDT (Mon–Fri) and Friday 3pm PDT:
+
+1. GitHub Actions calls `GET /api/notify?window=4am&token=SECRET`
+2. `notify.js` refreshes the live daytime schedule from the external site
+3. Calls `/api/roster-image` — a serverless function that renders a branded PNG using `satori` (JSX → SVG) + `resvg` (SVG → PNG), showing each worker's dogs with a day-over-day diff
+4. Sends the image to all `NOTIFY_RECIPIENTS` via Meta Cloud API
+5. Stores a hash of the roster data in `cron_health` — the 7am and 8:30am windows skip the send if nothing changed
+
+### Monitoring (3 independent layers)
+
+| Layer | Catches | Frequency |
+|---|---|---|
+| **Cron health check** | App-level failures — a cron ran but errored | Daily 00:30 UTC |
+| **Integration check** | Correctness failures — DB diverged from live schedule | 3×/day via Playwright |
+| **Gmail monitor** | Infrastructure failures — workflow never triggered, deploy failed, Supabase paused | Hourly |
+
+Each layer is independent by design. A cron can fail silently (missed by the integration check), a workflow can fail to trigger (missed by cron health), but the Gmail monitor catches what the others miss.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 18, Vite, Tailwind CSS |
+| Database | Supabase (PostgreSQL + Auth + RLS) |
+| Hosting | Vercel (frontend + serverless functions + cron jobs) |
+| Image generation | `satori` (JSX → SVG) + `resvg-js` (SVG → PNG) |
+| WhatsApp — roster images | Meta Cloud API |
+| WhatsApp — operational alerts | Twilio |
+| Automation | GitHub Actions (7 workflows) |
+| Browser automation | Playwright (integration check) |
+| Testing | Vitest, React Testing Library, jsdom |
+| Scraping | Node.js fetch + regex (no DOM parser in serverless runtime) |
+
+---
+
+## Observability & Reliability
+
+The system is designed to fail loudly. There is no mode where something breaks and nobody notices.
+
+### Logging protocol
+
+Every function follows a structured logging convention: log the input, log every branch decision with the specific data that triggered it, log state changes before and after, log full context on failure. If something breaks at 3am, the logs explain *why* a decision was made, not just that something happened.
+
+```
+[Sync 21:24:48] [SessionCache] ✅ Session valid (~3h remaining)
+[PictureOfDay] Worker Sierra Tagle (189436): +1 added, -5 removed, 5 unchanged
+[NotifyWA] Sent to ***-***-7375 — messageId: wamid.HBgL...
+```
+
+### Failure surface
+
+```
+App-level failure (cron errored internally)
+  → each cron writes 'started' status to cron_health at boot
+  → cron-health-check.js (00:30 UTC) queries for gaps or 2+ consecutive failures
+  → WhatsApp alert fires before the next morning notify
+
+Correctness failure (DB out of sync with live schedule)
+  → integration-check.js runs 3×/day
+  → Step 0: sync-before-compare (runs sync pipeline first to reduce false positives)
+  → Playwright renders live schedule, extracts appointment IDs from DOM
+  → Compares against DB query; reports specific missing IDs
+
+Infrastructure failure (workflow didn't trigger, deploy failed, Supabase paused)
+  → gmail-monitor.js polls Gmail hourly via OAuth2
+  → Matches emails from GitHub Actions, Vercel, Supabase against known failure patterns
+  → Deduplicates via gmail_processed_emails table (no repeat alerts)
+  → WhatsApp alert within 1 hour of failure email arriving
+```
+
+### Graceful degradation
+
+- **Integration check Step 3** (Claude vision name verification): silently skipped when no API credits — the rest of the check still runs and reports
+- **Notify schedule refresh**: non-fatal — if the live refresh fails, notify falls back to last-known DB state and sends a one-time warning
+- **Gmail monitor**: each email is processed independently — one parsing failure doesn't block the rest
+
+---
+
+## Testing
+
+**835 tests across 51 files** — no test is skipped or marked pending.
+
+### Strategy
+
+| Type | What's covered |
+|---|---|
+| **Unit** | All scraper modules (parsing, sync filter, form matching, session cache, queue), notify helpers, change detection, picture-of-day logic |
+| **Integration** | Sync pipeline end-to-end with real Supabase calls against isolated test data |
+| **Component** | All React components via React Testing Library (interactions, state, edge cases) |
+| **Fixture-based** | Every scraper parsing behavior has a corresponding HTML fixture captured from the real site |
+
+### Key decisions
+
+- **No DB mocks in scraper tests** — real Supabase calls against isolated test data. Mocking the DB previously masked a migration divergence that passed tests but broke production.
+- **HTML fixtures for every parsing behavior** — when the external site changes its HTML structure (it does), a failing fixture test is the first signal. No fixture = no test.
+- **Every exit path covered** — `refreshDaytimeSchedule` has 7 exit paths (session miss, fetch fail, SESSION_EXPIRED, parse-zero guard, upsert error, catch-all, success). All 7 have tests.
+
+```bash
+npm test                  # run full suite (~835 tests)
+npm run test:coverage     # with coverage report
+```
+
+---
+
+## Security Design
+
+### Database
+- **RLS on every table** — no exceptions. All tables require authentication.
+- **Service role key never in the browser bundle** — used only in Vercel serverless functions and GitHub Actions scripts. The `VITE_` prefix is intentionally absent on sensitive vars — Vite would otherwise bake them into the client bundle.
+
+### API surface
+- **Token-gated endpoints** (`/api/notify`, `/api/roster-image`, `/api/sync-proxy`) — all require `?token=SECRET` matching `VITE_SYNC_PROXY_TOKEN`
+- **Cron endpoints** — Vercel sends `Authorization: Bearer {CRON_SECRET}` with each invocation; handlers verify it
+- **No user input in external URLs** — all external site URLs are constructed from validated internal state (IDs from DB), never from raw user input
+
+### Secrets scope
+- `EXTERNAL_SITE_*` credentials: Vercel env only (never in GH Actions, never in browser)
+- `META_*` credentials: Vercel env + GH Actions (needed by both notify pipeline and server-side callers)
+- `GMAIL_*` credentials: GH Actions only (Gmail monitor runs exclusively in Actions)
+- Phone numbers masked to last 4 digits in all log output
+
+---
+
+## Project Structure
+
+```
+src/
+├── components/          # React UI components
+├── pages/               # Routed page components
+├── hooks/               # Supabase data hooks
+├── lib/
+│   ├── pictureOfDay.js      # Daily roster: DC/PG diff, boarders, workers, hash
+│   ├── notifyWhatsApp.js    # Meta Cloud API wrapper (sendRosterImage, sendTextMessage)
+│   ├── notifyHelpers.js     # refreshDaytimeSchedule (extracted for testability)
+│   └── scraper/
+│       ├── auth.js              # Login + session establishment
+│       ├── schedule.js          # Schedule page parsing, pagination, petId extraction
+│       ├── daytimeSchedule.js   # DC/PG/Boarding ingest (regex-based, Node.js-safe)
+│       ├── extraction.js        # Appointment detail page extraction
+│       ├── sync.js              # 6-layer filter orchestrator
+│       ├── syncRunner.js        # runScheduleSync / runDetailSync (shared entry points)
+│       ├── mapping.js           # Scraped data → DB schema (upsert logic, multi-pet)
+│       ├── forms.js             # Boarding form fetch, parse, 7-day match window
+│       ├── reconcile.js         # Detects and archives amended appointments
+│       ├── sessionCache.js      # TTL-aware session cookie cache in Supabase
+│       └── syncQueue.js         # Queue management (enqueue, dequeue, markDone, resetStuck)
+
+api/
+├── cron-auth.js         # Midnight auth refresh
+├── cron-schedule.js     # Schedule scan → sync_queue
+├── cron-detail.js       # Queue processor #1 (00:10 UTC)
+├── cron-detail-2.js     # Queue processor #2 (00:15 UTC) — path-split for double throughput
+├── sync-proxy.js        # CORS proxy for browser-initiated syncs
+├── roster-image.js      # Token-gated PNG generation (satori + resvg)
+├── notify.js            # Notify orchestrator (window-gated, hash dedup)
+└── _cronHealth.js       # Shared cron health write helper
+
+scripts/
+├── integration-check.js     # Playwright + DB correctness check
+├── cron-health-check.js     # Midnight cron failure detector
+└── gmail-monitor.js         # Hourly Gmail infrastructure alert monitor
+
+.github/workflows/
+├── notify-4am.yml           # 4:00 AM PDT Mon–Fri
+├── notify-7am.yml           # 7:00 AM PDT Mon–Fri
+├── notify-830am.yml         # 8:30 AM PDT Mon–Fri
+├── notify-friday-pm.yml     # 3:00 PM PDT Fri (weekend boarding preview)
+├── integration-check.yml    # 1am/9am/5pm PDT + on-demand
+├── cron-health-check.yml    # 00:30 UTC daily
+└── gmail-monitor.yml        # Hourly at :15
+
+supabase/migrations/         # 23 numbered SQL migrations (apply in order)
+
+docs/
+├── adr/                     # Architecture Decision Records
+├── job_docs/                # Deep-reference docs for each automated job
+├── RUNBOOK.md               # Operator playbook — diagnosing and recovering from failures
+└── REQUIREMENTS.md          # Canonical feature requirements (REQ-NNN)
+```
 
 ---
 
@@ -66,206 +290,88 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 | Variable | Description |
 |---|---|
-| `VITE_SUPABASE_URL` | Your Supabase project URL |
+| `VITE_SUPABASE_URL` | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key (browser-safe) |
 
-### Required for External Sync
+### Sync (server-side only)
 
 | Variable | Description |
 |---|---|
-| `EXTERNAL_SITE_USERNAME` | Login email for agirlandyourdog.com (server-side only — no `VITE_` prefix) |
-| `EXTERNAL_SITE_PASSWORD` | Login password for agirlandyourdog.com (server-side only — no `VITE_` prefix) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only — bypasses RLS) |
-| `VITE_SYNC_PROXY_TOKEN` | Bearer token for sync-proxy, roster-image, and notify authentication (set to any random string) |
-| `CRON_SECRET` | Secret header value Vercel sends with cron requests (optional but recommended in production) |
+| `EXTERNAL_SITE_USERNAME` | Login email for agirlandyourdog.com |
+| `EXTERNAL_SITE_PASSWORD` | Login password |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key — bypasses RLS, never expose to browser |
+| `VITE_SYNC_PROXY_TOKEN` | Shared bearer token for gated API endpoints |
+| `CRON_SECRET` | Vercel cron authentication header value |
 
-### Required for WhatsApp Notifications
+### WhatsApp notifications
 
-| Variable | Description |
-|---|---|
-| `TWILIO_ACCOUNT_SID` | Twilio account SID |
-| `TWILIO_AUTH_TOKEN` | Twilio auth token |
-| `TWILIO_FROM_NUMBER` | Twilio WhatsApp sender number (e.g. `whatsapp:+14155238886`) |
-| `NOTIFY_RECIPIENTS` | Comma-separated recipient numbers for roster images (e.g. `+18005551234,+18005555678`) |
-| `INTEGRATION_CHECK_RECIPIENTS` | Comma-separated recipient numbers for integration check reports (Kate only — separate from `NOTIFY_RECIPIENTS`) |
-
-Set all variables in `.env.local` for local development and in your Vercel project dashboard for production. Also set `VITE_SYNC_PROXY_TOKEN` as a GitHub Actions secret (used by the notify workflows).
-
-> **Important:** `EXTERNAL_SITE_USERNAME` and `EXTERNAL_SITE_PASSWORD` must NOT use the `VITE_` prefix — Vite bakes `VITE_*` variables into the browser bundle, which would expose credentials publicly.
-
----
-
-## External Sync
-
-Qboard automatically pulls boarding appointments from [agirlandyourdog.com](https://agirlandyourdog.com) into the database. Appointments are deduplicated by external ID, and only overnight boarding appointments are imported (daycare, pack groups, and evaluations are filtered out).
-
-### Manual Sync
-
-Go to **Settings → External Sync** in the app. Set a date range (defaults to today + 60 days) and click **Sync Now**. A **Full sync** link is also available to scan the complete schedule without a date filter.
-
-### Automated Sync (Vercel Cron Jobs)
-
-Three cron jobs run daily on the Vercel Hobby plan:
-
-| Cron | Schedule (UTC) | Purpose |
+| Variable | Where | Description |
 |---|---|---|
-| `cron-auth` | 0:00 AM | Re-authenticate and cache session in DB (always re-auths) |
-| `cron-schedule` | 0:05 AM | Scan schedule pages, queue new boarding candidates |
-| `cron-detail` | 0:10 AM | Fetch detail page for one queued appointment or boarding form |
-| `cron-detail-2` | 0:15 AM | Second detail processor — doubles throughput on Hobby plan |
+| `META_PHONE_NUMBER_ID` | Vercel + GH Actions | Sender phone number ID (Meta app dashboard) |
+| `META_WHATSAPP_TOKEN` | Vercel + GH Actions | Permanent system user access token |
+| `NOTIFY_RECIPIENTS` | GH Actions + Vercel | Comma-separated E.164 numbers for roster images |
+| `TWILIO_ACCOUNT_SID` | GH Actions | Twilio SID (operational alerts) |
+| `TWILIO_AUTH_TOKEN` | GH Actions | Twilio auth token |
+| `TWILIO_FROM_NUMBER` | GH Actions | Twilio WhatsApp sender number |
+| `INTEGRATION_CHECK_RECIPIENTS` | GH Actions | E.164 numbers for operator alerts |
 
-On the Vercel **Pro plan**, crons can run more frequently (every 5–60 min). See the JSDoc header in each `api/cron-*.js` file for the upgrade path — no code changes required, only a `SYNC_MODE=standard` env var.
+### Gmail monitor (GitHub Actions only)
 
-### Sync Architecture
-
-```
-cron-auth      → authenticates with external site, caches session cookies in DB
-cron-schedule  → reads session from DB, scans schedule pages, writes candidates to sync_queue
-cron-detail    → reads session from DB, fetches one queued appointment or boarding form
-```
-
-Session caching is key: authentication costs ~4.5s per call. By caching cookies in `sync_settings`, `cron-schedule` and `cron-detail` skip auth entirely and stay well within Vercel's 10-second function timeout.
-
-### Boarding Forms
-
-After each sync, boarding intake forms are automatically fetched from the external site for upcoming boardings. Forms are matched to boardings using a 7-day submission window (submitted within 7 days before arrival). The Boarding Matrix highlights dogs with missing or empty forms.
-
-### Amended Appointment Reconciliation
-
-When a booking is amended on the external site, the old appointment URL becomes inaccessible. Qboard detects this during manual syncs and automatically archives the old record so it doesn't appear as an active boarding.
+| Variable | Description |
+|---|---|
+| `GMAIL_CLIENT_ID` | Google Cloud OAuth2 client ID |
+| `GMAIL_CLIENT_SECRET` | Google Cloud OAuth2 client secret |
+| `GMAIL_REFRESH_TOKEN` | Long-lived refresh token (from one-time OAuth2 flow) |
 
 ---
 
-## WhatsApp Notifications
-
-Qboard sends a daily roster image to a WhatsApp number via Twilio at three delivery windows: **4am**, **7am**, and **8:30am PDT**. Each message contains a branded PNG showing every worker's dogs for the day with a day-over-day diff (green `+` for newly added dogs, red strikethrough for removed dogs).
-
-On Fridays, a fourth message is sent in the afternoon with a **weekend boarding preview** — who is arriving and departing Saturday–Sunday, with check-in/out times and night counts.
-
-### How it works
-
-1. A GitHub Actions workflow fires at each delivery window and calls `GET /api/notify?window=4am` (or `7am`/`830am`/`friday-pm`)
-2. `notify.js` refreshes the daytime schedule from the external site, then calls `/api/roster-image` to generate the PNG
-3. The image is sent to all numbers in `NOTIFY_RECIPIENTS` via the Twilio WhatsApp API
-4. A hash of the roster data is stored in the `cron_health` table — if nothing changed since the last send, the 7am and 8:30am windows skip the send to avoid duplicate messages
-5. The Friday PM workflow calls the same endpoint with `window=friday-pm`, which generates a weekend-themed image (arrivals + departures for Sat–Sun) and always sends regardless of hash
-
-### GitHub Actions schedules (PDT, UTC-7)
-
-| Workflow | UTC cron | PDT time | Days |
-|---|---|---|---|
-| `notify-4am.yml` | `0 11 * * 1-5` | 4:00 AM | Mon–Fri |
-| `notify-7am.yml` | `0 14 * * 1-5` | 7:00 AM | Mon–Fri |
-| `notify-830am.yml` | `30 15 * * 1-5` | 8:30 AM | Mon–Fri |
-| `notify-friday-pm.yml` | `0 22 * * 5` | 3:00 PM | Fri only |
-
-> Note: cron schedules shift by 1 hour when DST ends (PDT → PST, UTC-8). Update the workflows in November.
-
----
-
-## Integration Check
-
-An automated integration check runs independently of the sync pipeline to verify that what Qboard has in its database matches what's actually on the external booking site.
-
-### What it does
-
-1. Loads session cookies from the DB (same cache the crons use)
-2. Renders the schedule page in a headless Chromium browser (via Playwright), extracts all boarding and DC/PG appointment IDs from the live DOM
-3. Queries the DB for boardings overlapping the past 7 days through today+7d, and daytime appointments for today
-4. Compares: flags boarding IDs visible on the schedule but missing from DB; flags daytime events missing from DB
-5. Sends a WhatsApp text report to `INTEGRATION_CHECK_RECIPIENTS`
-
-The check uses two independent signal paths (Playwright DOM + DB query) to catch bugs the sync pipeline cannot catch about itself.
-
-### Schedule
-
-Runs 3× daily (1am, 9am, 5pm PDT) via `integration-check.yml`, and on demand via `workflow_dispatch`.
-
-### Required secrets (GitHub Actions)
-
-`VITE_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `INTEGRATION_CHECK_RECIPIENTS`, `APP_URL`, `VITE_SYNC_PROXY_TOKEN`
-
-### Manual test
-
-Trigger via GitHub Actions → **integration-check** → **Run workflow** (workflow_dispatch). No HTTP endpoint exists — the check runs as a Node.js script in GH Actions.
-
----
-
-## Development
+## Local Development
 
 ```bash
-npm run dev          # Start development server (localhost:5173)
-npm test             # Run test suite
-npm run test:coverage # Run tests with coverage report
-npm run build        # Production build
-npm run lint         # ESLint
+git clone https://github.com/kcoffie/dog-boarding.git
+cd dog-boarding
+npm install
+cp .env.example .env.local   # fill in Supabase credentials
+npm run dev                   # http://localhost:5173
 ```
 
-### Running Cron Jobs Locally
+### Supabase setup
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Run all 23 migrations from `supabase/migrations/` in order via the SQL editor
+3. Copy project URL and keys to `.env.local`
+
+### Running crons locally
 
 ```bash
-# Start the local dev server first
-npx vercel dev
+npx vercel dev        # start local Vercel runtime (separate terminal)
 
-# Then in another terminal
 curl http://localhost:3000/api/cron-auth
 curl http://localhost:3000/api/cron-schedule
 curl http://localhost:3000/api/cron-detail
 ```
 
-The `CRON_SECRET` check is skipped when the env var is not set, so local testing works without it.
+`CRON_SECRET` validation is skipped when the env var is unset.
+
+### Running the integration check locally
+
+```bash
+npx playwright install chromium
+node scripts/integration-check.js
+```
 
 ---
 
-## Project Structure
+## Architecture Decision Records
 
-```
-src/
-├── components/       # Reusable UI components
-├── pages/            # Page components (routed)
-├── hooks/            # Custom React hooks (Supabase data)
-├── utils/            # Utility functions (date, calculations, etc.)
-├── context/          # React contexts
-└── lib/
-    ├── pictureOfDay.js      # Daily roster data: DC/PG diff, boarders, workers
-    ├── notifyWhatsApp.js    # Twilio wrapper (sendRosterImage)
-    └── scraper/             # External sync modules
-        ├── auth.js              # Authentication with external site
-        ├── schedule.js          # Schedule page parsing and pagination
-        ├── daytimeSchedule.js   # DC/PG/Boarding ingest for daytime_appointments
-        ├── extraction.js        # Appointment detail extraction
-        ├── sync.js              # Main sync orchestrator
-        ├── mapping.js           # Maps scraped data to DB schema
-        ├── forms.js             # Boarding form fetch + parse pipeline
-        ├── reconcile.js         # Detects and archives amended appointments
-        ├── sessionCache.js      # Session cookie caching in DB
-        └── syncQueue.js         # Queue management for cron detail processing
+Design decisions with context, alternatives considered, and tradeoffs:
 
-api/
-├── sync-proxy.js    # Vercel Edge Function — CORS proxy for browser→external site
-├── cron-auth.js     # Cron: refresh session
-├── cron-schedule.js # Cron: scan schedule pages, enqueue candidates
-├── cron-detail.js   # Cron: process one queued appointment or boarding form (00:10 UTC)
-├── cron-detail-2.js # Cron: second detail processor, runs in parallel (00:15 UTC)
-├── roster-image.js  # Generate daily roster PNG (satori + resvg, token-gated)
-└── notify.js        # WhatsApp notification orchestrator (window-gated; 4am/7am/830am/friday-pm)
-
-.github/workflows/
-├── notify-4am.yml        # GitHub Actions: call /api/notify at 4am PDT (Mon–Fri)
-├── notify-7am.yml        # GitHub Actions: call /api/notify at 7am PDT (Mon–Fri)
-├── notify-830am.yml      # GitHub Actions: call /api/notify at 8:30am PDT (Mon–Fri)
-├── notify-friday-pm.yml  # GitHub Actions: weekend boarding preview at 3pm PDT (Fri)
-└── integration-check.yml # GitHub Actions: DB vs live schedule check 3×/day
-
-scripts/
-└── integration-check.js  # Integration check script (Playwright + Supabase + Twilio)
-
-supabase/
-└── migrations/      # Numbered SQL migrations (apply in order)
-```
+- [ADR-001: Scraping strategy](docs/adr/001-scraping-strategy.md) — why scraping over alternatives, and how to make it reliable
+- [ADR-002: Job scheduling architecture](docs/adr/002-job-scheduling-architecture.md) — Vercel crons vs. GitHub Actions; working within Hobby plan constraints
+- [ADR-003: WhatsApp provider selection](docs/adr/003-whatsapp-provider.md) — Meta Cloud API vs. Twilio; why and when we migrated
 
 ---
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT
