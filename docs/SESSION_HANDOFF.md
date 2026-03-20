@@ -1,30 +1,28 @@
-# Dog Boarding App — Session Handoff (v5.0 in progress)
+# Dog Boarding App — Session Handoff (v5.0 live)
 **Last updated:** March 20, 2026
 
 ---
 
 ## Current State
 
-- **v4.4.3 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
-- **799 tests, 49 files, 0 failures**
-- **v5.0 PR open** — M0, M1-1, M1-2, M2 all implemented (see PR for details)
+- **v5.0.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
+- **835 tests, 51 files, 0 failures**
+- PR #91 merged — M0, M1-1, M1-2, M2 all shipped
 
-### v5.0 milestones in this PR
+### v5.0 milestones — shipped
 
 - **M0 DONE** — `notifyWhatsApp.js` rewritten from Twilio to Meta Cloud API (`sendRosterImage`, `sendTextMessage`). `notify.js` updated accordingly. **Kate still needs to:** set up Meta app + register phone number + add `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN` to GH secrets + Vercel env.
 - **M1-1 DONE** — Cron failure alerting: `'started'` status added to `cron_health` (migration 022), each cron (auth/schedule/detail) writes 'started' at top of run, `scripts/cron-health-check.js` + `.github/workflows/cron-health-check.yml` run at 00:30 UTC.
-- **M1-2 DONE** — `refreshDaytimeSchedule` extracted to `src/lib/notifyHelpers.js` (testable); 14 new tests covering all 7 exit paths + new notifyWhatsApp tests = 24 new tests total.
+- **M1-2 DONE** — `refreshDaytimeSchedule` extracted to `src/lib/notifyHelpers.js` (testable); all 7 exit paths covered by unit tests.
 - **M2 DONE** — Gmail monitor implemented: `scripts/gmail-monitor.js` + `.github/workflows/gmail-monitor.yml` (hourly at :15). **Kate still needs to:** create Google Cloud project, enable Gmail API, create OAuth2 creds, run one-time auth script → GMAIL_REFRESH_TOKEN, add `GMAIL_CLIENT_ID` + `GMAIL_CLIENT_SECRET` + `GMAIL_REFRESH_TOKEN` to GH secrets.
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-1. **Merge v5.0 PR** — after CI passes
-2. **Kate actions for M0**: Create Meta app, register phone number, get `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN`
-3. **Kate actions for M2**: Google Cloud project + Gmail API + OAuth2 refresh token
-4. **Tag v5.0.0** GitHub release after merging
-5. **Deploy migration 022 + 023** via Supabase dashboard (ALTER TABLE + CREATE TABLE)
+1. **Kate actions for M0 (WhatsApp live)**: Create Meta app, register phone number, get `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN`, add to GH secrets + Vercel env
+2. **Kate actions for M2 (Gmail monitor live)**: Google Cloud project + Gmail API + OAuth2 refresh token, add `GMAIL_CLIENT_ID` + `GMAIL_CLIENT_SECRET` + `GMAIL_REFRESH_TOKEN` to GH secrets
+3. **Deploy migrations 022 + 023** via Supabase dashboard (ALTER TABLE + CREATE TABLE) — required for M1-1 and M2 to work correctly
 
 ---
 
