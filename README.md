@@ -28,7 +28,7 @@ Most of the complexity here isn't in the UI. It's in keeping a real-time data pi
 graph TD
     subgraph "External"
         AGYD[agirlandyourdog.com]
-        GMAIL[kcoffie@gmail.com]
+        GMAIL["kcoffie@gmail.com"]
     end
 
     subgraph "Vercel Crons — midnight UTC"
