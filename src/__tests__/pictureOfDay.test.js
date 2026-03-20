@@ -276,6 +276,38 @@ describe('getPictureOfDay diff logic', () => {
     expect(dogs[2].isRemoved).toBe(false);
   });
 
+  it('sorts dogs alphabetically within each tier (stable secondary sort)', async () => {
+    // Three removed dogs returned by DB in non-alpha order.
+    // After sort: tier order first (removed), then alpha within tier.
+    const zoe  = appt({ series_id: 'REM_Z', pet_names: ['Zoe'],   worker_external_id: 61023 });
+    const anna = appt({ series_id: 'REM_A', pet_names: ['Anna'],  worker_external_id: 61023 });
+    const milo = appt({ series_id: 'REM_M', pet_names: ['Milo'],  worker_external_id: 61023 });
+
+    // Pass in Z→A→M order so the test would fail without the secondary sort.
+    const supa = buildSupaMock({ todayRows: [], yestRows: [zoe, anna, milo], workerRows: [] });
+
+    const date = parseDateParam(DATE);
+    const result = await getPictureOfDay(supa, date);
+
+    const names = result.workers[0].dogs.map(d => d.pet_names[0]);
+    expect(names).toEqual(['Anna', 'Milo', 'Zoe']);
+  });
+
+  it('hash is stable when DB returns same dogs in different order (no false UPDATED!)', async () => {
+    // Simulate two DB responses returning the same removed dogs in different order.
+    const fergus = appt({ series_id: 'REM_F', pet_names: ['Fergus'], worker_external_id: 61023 });
+    const oskar  = appt({ series_id: 'REM_O', pet_names: ['Oskar'],  worker_external_id: 61023 });
+
+    const supaOrder1 = buildSupaMock({ todayRows: [], yestRows: [fergus, oskar], workerRows: [] });
+    const supaOrder2 = buildSupaMock({ todayRows: [], yestRows: [oskar, fergus], workerRows: [] });
+
+    const date = parseDateParam(DATE);
+    const result1 = await getPictureOfDay(supaOrder1, date);
+    const result2 = await getPictureOfDay(supaOrder2, date);
+
+    expect(hashPicture(result1)).toBe(hashPicture(result2));
+  });
+
   it('treats null series_id dogs as unchanged (conservative)', async () => {
     const noSeries = appt({ series_id: null, pet_names: ['Goose'] });
     const supa = buildSupaMock({ todayRows: [noSeries], yestRows: [], workerRows: [] });
