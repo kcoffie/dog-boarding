@@ -1,4 +1,4 @@
-# Dog Boarding App — Session Handoff (v4.4.3 live, v5.0 next)
+# Dog Boarding App — Session Handoff (v5.0 in progress)
 **Last updated:** March 20, 2026
 
 ---
@@ -6,16 +6,25 @@
 ## Current State
 
 - **v4.4.3 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
-- **775 tests, 47 files, 0 failures**
-- **Main branch clean** — latest merged: #89
-- **Integration check Step 0 LIVE** — sync-before-compare verified 3/20: drained 15 queue items, PASS ✅
-- **`cron_health_log` verified** — table live, first row written (manual trigger March 19)
+- **799 tests, 49 files, 0 failures**
+- **v5.0 PR open** — M0, M1-1, M1-2, M2 all implemented (see PR for details)
+
+### v5.0 milestones in this PR
+
+- **M0 DONE** — `notifyWhatsApp.js` rewritten from Twilio to Meta Cloud API (`sendRosterImage`, `sendTextMessage`). `notify.js` updated accordingly. **Kate still needs to:** set up Meta app + register phone number + add `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN` to GH secrets + Vercel env.
+- **M1-1 DONE** — Cron failure alerting: `'started'` status added to `cron_health` (migration 022), each cron (auth/schedule/detail) writes 'started' at top of run, `scripts/cron-health-check.js` + `.github/workflows/cron-health-check.yml` run at 00:30 UTC.
+- **M1-2 DONE** — `refreshDaytimeSchedule` extracted to `src/lib/notifyHelpers.js` (testable); 14 new tests covering all 7 exit paths + new notifyWhatsApp tests = 24 new tests total.
+- **M2 DONE** — Gmail monitor implemented: `scripts/gmail-monitor.js` + `.github/workflows/gmail-monitor.yml` (hourly at :15). **Kate still needs to:** create Google Cloud project, enable Gmail API, create OAuth2 creds, run one-time auth script → GMAIL_REFRESH_TOKEN, add `GMAIL_CLIENT_ID` + `GMAIL_CLIENT_SECRET` + `GMAIL_REFRESH_TOKEN` to GH secrets.
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-1. **Start v5.0** — see `docs/SPRINT_PLAN.md`. First ticket: Gmail monitoring agent
+1. **Merge v5.0 PR** — after CI passes
+2. **Kate actions for M0**: Create Meta app, register phone number, get `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN`
+3. **Kate actions for M2**: Google Cloud project + Gmail API + OAuth2 refresh token
+4. **Tag v5.0.0** GitHub release after merging
+5. **Deploy migration 022 + 023** via Supabase dashboard (ALTER TABLE + CREATE TABLE)
 
 ---
 
@@ -45,9 +54,29 @@ GitHub Actions (3×/day + on-demand: 1am/9am/5pm PDT)
 ```
 GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
   → GET /api/notify?window=4am|7am|830am|friday-pm
-  → refreshDaytimeSchedule → getPictureOfDay → computeWorkerDiff
-  → /api/roster-image → PNG → Twilio WhatsApp → NOTIFY_RECIPIENTS
+  → refreshDaytimeSchedule (src/lib/notifyHelpers.js) → getPictureOfDay → computeWorkerDiff
+  → /api/roster-image → PNG → Meta Cloud API (not Twilio) → NOTIFY_RECIPIENTS
   → hash stored in cron_health (7am/8:30am skip if no change; friday-pm always sends)
+```
+
+### Cron health check flow (M1-1, new)
+```
+GitHub Actions (daily 00:30 UTC)
+  → scripts/cron-health-check.js
+  → Supabase: check cron_health for auth/schedule/detail
+  → Alert if: any cron didn't run tonight, or 2+ consecutive failures
+  → Twilio WhatsApp → INTEGRATION_CHECK_RECIPIENTS
+```
+
+### Gmail monitor flow (M2, new)
+```
+GitHub Actions (hourly at :15)
+  → scripts/gmail-monitor.js
+  → OAuth2 refresh → Gmail REST API (unread from known senders)
+  → Subject-pattern filter (GitHub "run failed", Vercel "Failed", any Supabase)
+  → Supabase gmail_processed_emails dedup check
+  → Twilio WhatsApp alert → INTEGRATION_CHECK_RECIPIENTS
+  → Mark processed in Supabase
 ```
 
 ### Key files
@@ -60,7 +89,10 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 | `src/lib/pictureOfDay.js` | getPictureOfDay, computeWorkerDiff, hashPicture |
 | `api/roster-image.js` | Token-gated PNG endpoint |
 | `api/notify.js` | Notify orchestrator (4am/7am/830am/friday-pm windows) |
-| `src/lib/notifyWhatsApp.js` | Twilio wrapper |
+| `src/lib/notifyWhatsApp.js` | Meta Cloud API wrapper (`sendRosterImage`, `sendTextMessage`) |
+| `src/lib/notifyHelpers.js` | `refreshDaytimeSchedule` (extracted from notify.js for testability) |
+| `scripts/cron-health-check.js` | Midnight cron health checker (GH Actions 00:30 UTC) |
+| `scripts/gmail-monitor.js` | Gmail infrastructure alert monitor (GH Actions hourly) |
 | `src/lib/scraper/sync.js` | runSync, 6-layer filter |
 | `src/lib/scraper/extraction.js` | parseAppointmentPage + booking_status |
 
@@ -79,6 +111,11 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 | `INTEGRATION_CHECK_RECIPIENTS` | ✅ Set (Kate's number only) |
 | `APP_URL` | ✅ Set (not used in integration-check workflow) |
 | `VITE_SYNC_PROXY_TOKEN` | ✅ Set (not used in integration-check workflow) |
+| `META_PHONE_NUMBER_ID` | ⏳ Pending Kate — from Meta app dashboard |
+| `META_WHATSAPP_TOKEN` | ⏳ Pending Kate — system user access token from Meta app |
+| `GMAIL_CLIENT_ID` | ⏳ Pending Kate — from Google Cloud OAuth2 credentials |
+| `GMAIL_CLIENT_SECRET` | ⏳ Pending Kate — from Google Cloud OAuth2 credentials |
+| `GMAIL_REFRESH_TOKEN` | ⏳ Pending Kate — from one-time local auth flow |
 
 ### Workers
 | Name | External UID |

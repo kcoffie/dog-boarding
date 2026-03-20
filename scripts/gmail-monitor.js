@@ -1,0 +1,452 @@
+/* global process */
+/**
+ * Gmail monitor — watches kcoffie@gmail.com for infrastructure failure emails.
+ *
+ * Runs hourly via GitHub Actions. For each unread email from a known sender
+ * that matches a subject pattern:
+ *   1. Checks gmail_processed_emails to skip already-processed emails
+ *   2. Sends a WhatsApp alert to INTEGRATION_CHECK_RECIPIENTS via Twilio
+ *   3. Records the email in gmail_processed_emails to prevent duplicates
+ *
+ * Authentication: uses OAuth2 with a long-lived refresh token (GMAIL_REFRESH_TOKEN).
+ * The refresh token is exchanged for a short-lived access token on each run.
+ * No googleapis SDK — raw fetch to the Gmail REST API.
+ *
+ * Known senders and subject filters:
+ *   - notifications@github.com    + subject matches "run failed" / "jobs failed"
+ *   - notifications@vercel.com    + subject matches "Failed"
+ *   - *@supabase.com (domain)     + any subject
+ *
+ * Required env vars (GitHub Actions Repository secrets):
+ *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ *   GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN
+ *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+ *   INTEGRATION_CHECK_RECIPIENTS
+ *
+ * Optional:
+ *   ANTHROPIC_API_KEY — if set (and has credits), Claude summarizes the email body.
+ *                       Falls back to subject line if not set or API fails.
+ */
+
+import { createClient } from '@supabase/supabase-js';
+import twilio from 'twilio';
+
+// ---------------------------------------------------------------------------
+// Known sender configuration
+// ---------------------------------------------------------------------------
+
+const KNOWN_SENDERS = [
+  {
+    from: 'notifications@github.com',
+    name: 'GitHub Actions',
+    subjectPatterns: [
+      /run failed/i,
+      /some jobs were not successful/i,
+      /all jobs have failed/i,
+    ],
+  },
+  {
+    from: 'notifications@vercel.com',
+    name: 'Vercel',
+    subjectPatterns: [/failed/i],
+  },
+  {
+    fromDomain: 'supabase.com',
+    name: 'Supabase',
+    subjectPatterns: [/.*/], // any Supabase email is notable
+  },
+];
+
+// Gmail search query — cast a wide net by sender, then filter by subject in code.
+// Using 'is:unread' ensures we only process new emails each run.
+const GMAIL_QUERY = [
+  'from:(notifications@github.com OR notifications@vercel.com)',
+  'OR from:(@supabase.com)',
+  'is:unread',
+].join(' ');
+
+// ---------------------------------------------------------------------------
+// Client factories
+// ---------------------------------------------------------------------------
+
+function getSupabase() {
+  const url = process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Missing VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  return createClient(url, key);
+}
+
+function getTwilioClient() {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  if (!sid || !token) throw new Error('Missing Twilio env vars');
+  return twilio(sid, token);
+}
+
+function getRecipients() {
+  return (process.env.INTEGRATION_CHECK_RECIPIENTS || '').split(',').map(n => n.trim()).filter(Boolean);
+}
+
+function maskNumber(n) {
+  const d = n.replace(/\D/g, '');
+  return `***-***-${d.slice(-4)}`;
+}
+
+// ---------------------------------------------------------------------------
+// OAuth2 — refresh token → access token
+// ---------------------------------------------------------------------------
+
+/**
+ * Exchange the long-lived refresh token for a short-lived Gmail access token.
+ * Called once per script run.
+ *
+ * @returns {Promise<string>} access token
+ */
+async function getAccessToken() {
+  const clientId = process.env.GMAIL_CLIENT_ID;
+  const clientSecret = process.env.GMAIL_CLIENT_SECRET;
+  const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error('Missing Gmail OAuth2 env vars (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN)');
+  }
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '(no body)');
+    throw new Error(`OAuth2 token refresh failed (${response.status}): ${text}`);
+  }
+
+  const data = await response.json();
+  if (!data.access_token) {
+    throw new Error('OAuth2 response missing access_token');
+  }
+
+  console.log('[GmailMonitor] OAuth2 token obtained (expires in %ds)', data.expires_in);
+  return data.access_token;
+}
+
+// ---------------------------------------------------------------------------
+// Gmail API
+// ---------------------------------------------------------------------------
+
+/**
+ * Search Gmail for unread emails from known infrastructure senders.
+ * Returns a list of message IDs.
+ *
+ * @param {string} accessToken
+ * @returns {Promise<string[]>} - List of message IDs
+ */
+async function searchGmail(accessToken) {
+  const params = new URLSearchParams({ q: GMAIL_QUERY, maxResults: '20' });
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '(no body)');
+    throw new Error(`Gmail search failed (${response.status}): ${text}`);
+  }
+
+  const data = await response.json();
+  const ids = (data.messages || []).map(m => m.id);
+  console.log('[GmailMonitor] Gmail search returned %d message(s)', ids.length);
+  return ids;
+}
+
+/**
+ * Fetch the full message metadata (headers) for a given Gmail message ID.
+ * We only need From, Subject — no need to fetch the full body for filtering.
+ *
+ * @param {string} accessToken
+ * @param {string} messageId
+ * @returns {Promise<{ id: string, from: string, subject: string, snippet: string }>}
+ */
+async function fetchMessage(accessToken, messageId) {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '(no body)');
+    throw new Error(`Gmail fetch message ${messageId} failed (${response.status}): ${text}`);
+  }
+
+  const data = await response.json();
+  const headers = data.payload?.headers || [];
+  const from = headers.find(h => h.name === 'From')?.value || '';
+  const subject = headers.find(h => h.name === 'Subject')?.value || '(no subject)';
+
+  return {
+    id: messageId,
+    from,
+    subject,
+    snippet: data.snippet || '',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sender matching
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if an email's from address matches a known sender config entry.
+ *
+ * @param {string} from - Raw From header value (may include display name)
+ * @param {{ from?: string, fromDomain?: string }} config
+ * @returns {boolean}
+ */
+function matchesSender(from, config) {
+  const fromLower = from.toLowerCase();
+  if (config.from) {
+    return fromLower.includes(config.from.toLowerCase());
+  }
+  if (config.fromDomain) {
+    return fromLower.includes(`@${config.fromDomain.toLowerCase()}`);
+  }
+  return false;
+}
+
+/**
+ * Find the matching sender config for an email, and check if its subject
+ * matches any of the configured subject patterns.
+ *
+ * @param {{ from: string, subject: string }} email
+ * @returns {{ senderConfig: object, matched: boolean }}
+ */
+function classifyEmail(email) {
+  for (const config of KNOWN_SENDERS) {
+    if (!matchesSender(email.from, config)) continue;
+
+    const subjectMatches = config.subjectPatterns.some(re => re.test(email.subject));
+    if (subjectMatches) {
+      return { senderConfig: config, matched: true };
+    }
+
+    // Sender matched but subject didn't — skip (e.g. GitHub PR comment)
+    console.log(
+      '[GmailMonitor] Skipping %s from %s — subject "%s" did not match filters',
+      email.id,
+      config.name,
+      email.subject,
+    );
+    return { senderConfig: config, matched: false };
+  }
+
+  // No sender config matched (shouldn't happen since Gmail query filters by sender)
+  return { senderConfig: null, matched: false };
+}
+
+// ---------------------------------------------------------------------------
+// Supabase dedup
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if an email has already been processed.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} emailId
+ * @returns {Promise<boolean>}
+ */
+async function isAlreadyProcessed(supabase, emailId) {
+  const { data, error } = await supabase
+    .from('gmail_processed_emails')
+    .select('email_id')
+    .eq('email_id', emailId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[GmailMonitor] Could not check processed status for %s: %s', emailId, error.message);
+    return false; // Fail open: process it anyway to avoid missing alerts
+  }
+
+  return !!data;
+}
+
+/**
+ * Mark an email as processed in Supabase.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ id: string, from: string, subject: string }} email
+ */
+async function markProcessed(supabase, email) {
+  const { error } = await supabase
+    .from('gmail_processed_emails')
+    .insert({
+      email_id: email.id,
+      sender: email.from,
+      subject: email.subject,
+      alert_sent: true,
+    });
+
+  if (error) {
+    console.warn('[GmailMonitor] Could not mark %s as processed: %s', email.id, error.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp
+// ---------------------------------------------------------------------------
+
+async function sendWhatsApp(twilioClient, message) {
+  const recipients = getRecipients();
+  const from = process.env.TWILIO_FROM_NUMBER;
+
+  if (!from) {
+    console.error('[GmailMonitor] Missing TWILIO_FROM_NUMBER — cannot send WhatsApp');
+    return;
+  }
+  if (recipients.length === 0) {
+    console.log('[GmailMonitor] No INTEGRATION_CHECK_RECIPIENTS — skipping WhatsApp');
+    return;
+  }
+
+  for (const to of recipients) {
+    try {
+      const msg = await twilioClient.messages.create({
+        from: `whatsapp:${from}`,
+        to: `whatsapp:${to}`,
+        body: message,
+      });
+      console.log('[GmailMonitor] Sent to %s — SID: %s', maskNumber(to), msg.sid);
+    } catch (err) {
+      console.error('[GmailMonitor] Twilio error for %s — code %s: %s', maskNumber(to), err.code, err.message);
+    }
+  }
+}
+
+/**
+ * Build the WhatsApp alert message for a matched email.
+ * Optionally uses Claude for a 1-line summary if ANTHROPIC_API_KEY is set.
+ *
+ * Falls back to subject line if Claude is unavailable or has no credits.
+ *
+ * @param {{ id: string, from: string, subject: string, snippet: string }} email
+ * @param {{ name: string }} senderConfig
+ * @returns {Promise<string>}
+ */
+async function buildAlertMessage(email, senderConfig) {
+  let summary = email.subject;
+
+  // Optional: Claude summary (non-blocking)
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey && email.snippet) {
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 100,
+          messages: [{
+            role: 'user',
+            content: `Summarize this infrastructure alert in one sentence (max 15 words):\nSubject: ${email.subject}\nSnippet: ${email.snippet}`,
+          }],
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const claudeSummary = data?.content?.[0]?.text?.trim();
+        if (claudeSummary) summary = claudeSummary;
+      }
+    } catch (err) {
+      console.warn('[GmailMonitor] Claude summary failed (using subject): %s', err.message);
+    }
+  }
+
+  return [
+    `⚠️ Infrastructure Alert`,
+    `From: ${senderConfig.name}`,
+    `Subject: ${email.subject}`,
+    summary !== email.subject ? `Summary: ${summary}` : null,
+  ].filter(Boolean).join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+async function main() {
+  console.log('[GmailMonitor] === Gmail monitor starting ===');
+
+  const supabase = getSupabase();
+  const twilioClient = getTwilioClient();
+
+  // Step 1: Get Gmail access token
+  const accessToken = await getAccessToken();
+
+  // Step 2: Search for unread emails from known senders
+  const messageIds = await searchGmail(accessToken);
+
+  if (messageIds.length === 0) {
+    console.log('[GmailMonitor] No unread emails from known senders — done');
+    process.exit(0);
+  }
+
+  // Step 3: Process each message
+  let alertsSent = 0;
+  let skipped = 0;
+
+  for (const id of messageIds) {
+    let email;
+    try {
+      email = await fetchMessage(accessToken, id);
+    } catch (err) {
+      console.error('[GmailMonitor] Could not fetch message %s: %s', id, err.message);
+      continue;
+    }
+
+    console.log('[GmailMonitor] Processing: %s | From: %s | Subject: %s', id, email.from, email.subject);
+
+    // Classify — check sender + subject patterns
+    const { senderConfig, matched } = classifyEmail(email);
+    if (!matched) {
+      skipped++;
+      continue;
+    }
+
+    // Dedup check
+    const alreadyDone = await isAlreadyProcessed(supabase, id);
+    if (alreadyDone) {
+      console.log('[GmailMonitor] Already processed %s — skipping', id);
+      skipped++;
+      continue;
+    }
+
+    // Build and send alert
+    const message = await buildAlertMessage(email, senderConfig);
+    console.log('[GmailMonitor] Sending alert for %s:\n%s', id, message);
+    await sendWhatsApp(twilioClient, message);
+
+    // Mark processed
+    await markProcessed(supabase, email);
+    alertsSent++;
+  }
+
+  console.log('[GmailMonitor] === Done === (%d alert(s) sent, %d skipped)', alertsSent, skipped);
+  process.exit(0);
+}
+
+main().catch(err => {
+  console.error('[GmailMonitor] Unhandled error:', err.message, err.stack);
+  process.exit(1);
+});
