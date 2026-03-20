@@ -380,10 +380,18 @@ export async function getPictureOfDay(supabase, date) {
     const dogs = computeWorkerDiff(todayAppts, yestAppts, isMonday);
 
     // Sort within worker: added first → removed → unchanged.
+    // Secondary: alphabetical by first pet name within each tier so the order
+    // is deterministic regardless of DB query order (which can vary after a
+    // refreshDaytimeSchedule upsert changes updated_at on existing rows).
+    // A stable, deterministic sort here also stabilises hashPicture — identical
+    // data must always produce the same hash regardless of which window ran.
     dogs.sort((a, b) => {
       const scoreA = a.isAdded ? 0 : a.isRemoved ? 1 : 2;
       const scoreB = b.isAdded ? 0 : b.isRemoved ? 1 : 2;
-      return scoreA - scoreB;
+      if (scoreA !== scoreB) return scoreA - scoreB;
+      const nameA = (a.pet_names[0] || a.series_id || '').toLowerCase();
+      const nameB = (b.pet_names[0] || b.series_id || '').toLowerCase();
+      return nameA < nameB ? -1 : nameA > nameB ? 1 : 0;
     });
 
     const addedCount = dogs.filter(d => d.isAdded).length;
