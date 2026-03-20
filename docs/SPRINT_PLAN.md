@@ -1,0 +1,176 @@
+# Q Boarding — Sprint Plan (v5.0)
+
+_Last updated: March 20, 2026 — M0/M1/M2 all live_
+
+---
+
+## Product Goal — v5.0
+
+**Theme:** Fully autonomous. Production-hardened. Interview-ready.
+
+This app serves two simultaneous audiences:
+
+1. **A real client** — a dog boarding operator who receives WhatsApp notifications, relies on the system to run autonomously, and needs to trust that failures surface before they cause problems.
+2. **A portfolio audience** — a technical interviewer or potential client who should be able to understand what this is, how it works, and why the architecture decisions were made, within 10 minutes of landing on the repo.
+
+Both bars must be cleared for v5.0 to be done. They are not in conflict — a system hardened enough for a real client is impressive in an interview.
+
+---
+
+## UAT Definition — "Done" Criteria
+
+Every milestone must clear both gates before it's complete:
+
+| | Real Client Gate | Portfolio Gate |
+|---|---|---|
+| **Notifications** | Lands on their actual phone (not sandbox) | Live demo works for anyone in the room |
+| **Autonomy** | Runs 7 days untouched without silent failure | README explains how without narration |
+| **Failure handling** | Someone is alerted before the client notices | Code + docs show failure modes were considered |
+| **Onboarding** | Client can verify the system is healthy | Stranger understands the system in 10 minutes |
+
+---
+
+## Architecture Decision (Closed)
+
+Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct for this scale.
+
+- **Vercel Pro upgrade:** Not needed. `cron-detail-2.js` path-splitting achieves double throughput for free.
+- **Gmail monitoring:** Adds one lightweight GH Actions hourly poller — same architecture, no new infrastructure.
+- **Gmail OAuth:** Personal Gmail account (not a dedicated system account). Read-only scope. Queries by known sender only — never scans arbitrary inbox content. This is a deliberate privacy constraint, not a limitation.
+
+---
+
+## The Critical Path Risk (Resolved)
+
+**Twilio sandbox was the single biggest credibility gap.** The entire notification pipeline — WhatsApp roster images, integration check alerts, Gmail failure alerts — was undeliverable to anyone except pre-approved sandbox numbers. A real client couldn't receive a message. A live portfolio demo would fail for anyone in the room whose number wasn't pre-approved.
+
+Twilio sandbox → production is Milestone 0. Everything else unblocks after it.
+
+---
+
+## Feature Build Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Overnight boarding sync | ✅ LIVE | 3-page scan + cron-detail-2 |
+| Overnight daytime ingest | ✅ LIVE | cron-schedule.js handles this |
+| Weekday morning notify (M-F 4am/7am/8:30am) | ✅ LIVE | |
+| Friday PM notify (weekend boardings) | ✅ LIVE | PR #71 |
+| Integration check — boarding + daytime | ✅ LIVE | Step 0 sync-before-compare (v4.5, PR #88) |
+| Meta Cloud API (WhatsApp sender) | ✅ LIVE | M0 — confirmed working March 20, 2026 |
+| Direct cron failure alerting | ✅ LIVE | M1-1 — cron-health-check.yml at 00:30 UTC |
+| Gmail monitoring agent | ✅ LIVE | M2 — hourly, first run confirmed March 20, 2026 |
+| README overhaul | 0% | M3 — portfolio front door |
+
+---
+
+## v4 — Complete ✅
+
+All v4 work is done. See `docs/archive/SESSION_HANDOFF_v4.5_final.md` for full history.
+
+---
+
+## v5.0 Milestone Plan
+
+### Milestone 0 — Unblock (do first, non-negotiable)
+
+**Gate:** A person who has never touched this codebase receives a real WhatsApp message.
+
+| # | Ticket | Status |
+|---|--------|--------|
+| M0-1 | Twilio sandbox → Meta Cloud API WhatsApp sender | ✅ LIVE |
+| M0-2 | Second WhatsApp recipient (Kate provides number) | ⏳ Pending Kate |
+| M0-3 | Verify all 4 notify workflows + integration check alerts land on both numbers end-to-end | ⏳ Blocked on M0-2 |
+
+**Why first:** Every other milestone depends on this. You can't demo notifications, hand off to a client, or verify Gmail alerting end-to-end while in sandbox mode.
+
+---
+
+### Milestone 1 — Operational Maturity
+
+**Gate:** System runs 7 days autonomously with no silent failures.
+
+| # | Ticket | Status |
+|---|--------|--------|
+| M1-1 | Direct cron failure alerting — when a cron errors 2+ consecutive times, WhatsApp alert fires immediately | ✅ LIVE |
+| M1-2 | `refreshDaytimeSchedule` unit tests — 7+ exit paths (session miss, fetch fail, SESSION_EXPIRED, parse-zero guard, upsert error, catch-all) | ✅ LIVE |
+| M1-3 | Anthropic API credits → activate Claude vision name-check (Step 3) in integration check | ⏳ Pending credits |
+
+**Why before the headline feature:** You don't add more autonomous agents to a system that has silent failure modes. The Gmail monitor will fail sometimes — the scaffolding to catch that needs to exist first.
+
+**Note on M1-1:** This covers *application-level* failures (cron ran, something went wrong internally). This is distinct from the Gmail monitor, which catches *infrastructure-level* failures (workflow didn't run, deploy failed). Both are needed for complete coverage.
+
+---
+
+### Milestone 2 — Headline Feature: Gmail Monitor
+
+**Gate:** Infrastructure-level failures surface as a WhatsApp alert within 1 hour.
+
+| # | Ticket | Status |
+|---|--------|--------|
+| M2-1 | Gmail monitoring agent — GH Actions hourly cron + Gmail API (read-only) + known-sender filter + WhatsApp alert | ✅ LIVE |
+
+**Design decisions (locked):**
+
+- **Source:** Kate's personal Gmail. OAuth read-only scope. Never scans arbitrary inbox content.
+- **Classifier:** Sender-based filtering only (closed list). Not LLM-based routing — the sender filter *is* the classifier.
+- **Known senders to watch:** `noreply@github.com` (GH Actions failures), Vercel failure notifications, Supabase alerts, Twilio account alerts.
+- **Claude's role:** Optional — extract a clean one-line summary from the email body for the WhatsApp message. Not required for routing.
+- **Dedup:** Processed email IDs stored in Supabase so the same alert doesn't fire twice.
+- **WhatsApp message answers:** "What broke, and where do I go to look?"
+
+**What this covers (vs. M1-1):**
+
+| Failure type | Caught by |
+|---|---|
+| Cron ran, got an internal error | M1-1 direct alerting |
+| GH Actions workflow never triggered | M2-1 Gmail monitor |
+| Vercel deployment failed | M2-1 Gmail monitor |
+| Supabase quota warning | M2-1 Gmail monitor |
+
+**OAuth note:** Gmail OAuth on a personal account in "testing" mode works indefinitely for a single authorized user. No Google app verification required for personal use. If this ever needs to be shared with another developer or transferred, Google's verification process for Gmail read scope applies.
+
+---
+
+### Milestone 3 — Portfolio Polish
+
+**Gate:** A technical stranger understands the system in 10 minutes from the GitHub repo alone.
+
+| # | Ticket | Status |
+|---|--------|--------|
+| M3-1 | README overhaul — architecture diagram, tech stack, "how it works," screenshots of WhatsApp output | — |
+| M3-2 | Operator runbook — one doc: "something broke, here's how to diagnose it" | — |
+| M3-3 | ADRs — document the 3 biggest architectural decisions (scraper strategy, GH Actions vs. Vercel crons, Twilio vs. alternatives) | — |
+| M3-4 | "As of" timestamp in roster image — e.g. `as of 6:04 PM, Mon 3/16` | — |
+| M3-5 | DST-aware scheduling + code polish (timing-safe equal in `roster-image.js`, regex precompile in `daytimeSchedule.js`) | — |
+| M3-6 | Doc staleness CI check — non-blocking: detects when `api/` or `src/lib/scraper/` changed but `docs/job_docs/` wasn't touched | — |
+
+---
+
+## Per-Ticket Execution Process
+
+1. **Definition of Done** — define upfront: what tests pass, what DB state proves it. Agreed before any code.
+2. **Architect review** — read every file being touched, trace data flow, identify gotchas. Implementation plan approved before coding.
+3. **Build + targeted test** — write a specific test proving THIS feature works. Run locally. Debug against structured logs.
+4. **General test coverage** — add regression test to permanent suite. Retire targeted test (or keep as fixture).
+5. **PR → CI → merge** — CI must be green. Once merged, verify DB state directly (Supabase query).
+6. **Verify Vercel deployment** — confirm deploy succeeded via GH Actions run list.
+
+**Process improvements in effect:**
+- HTML fixture added for every new scraper behavior
+- GH Issue created per ticket (commit messages reference issue number)
+- SESSION_HANDOFF.md updated in each PR, not saved for session end
+- If the PR changes a job's behavior, update the relevant `docs/job_docs/` file in the same PR
+- Post-merge deploy verification before calling ticket done
+- `.env.local` available locally for direct DB verification
+- Senior Staff Engineer design review required before implementation on complex tickets
+
+---
+
+## Key Constraints
+
+- Vercel Hobby plan: 1 cron/path/day, 10s timeout. Solved via path-splitting (new Vercel route = new slot).
+- DOMParser unavailable in Node.js runtime — all cron scrapers use regex-based parsing.
+- AGYD session TTL: 24h. cron-auth refreshes once at midnight UTC.
+- `sync_queue` has no `created_at` — order by `id`.
+- Always `new Date(year, month, day)` for local dates — never `new Date('YYYY-MM-DD')` (UTC trap).
