@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.0 live)
-**Last updated:** March 20, 2026
+**Last updated:** March 20, 2026 (evening)
 
 ---
 
@@ -9,6 +9,7 @@
 - **835 tests, 51 files, 0 failures**
 - PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live
 - PR #93 merged — M3-1/2/3 done (README overhaul, runbook, ADRs); test files committed; SPRINT_PLAN.md now in git
+- PR #95 merged — `docs/job_docs/gmail-monitor.md` added; README mermaid diagram fixed (`@` in node label)
 
 ### v5.0 milestones — all live ✅
 
@@ -22,6 +23,9 @@
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 
+### Known monitoring gap — WhatsApp delivery receipts
+Friday PM notify ran at 22:37 UTC (3:37 PM PDT) on March 20. Job returned HTTP 200, `sentCount:1`, and a real `wamid` from Meta — meaning Meta accepted the message. Kate did not receive it. The failure was at the Meta → phone delivery layer, which is invisible to the current monitoring stack. The cron health check only catches job-level failures (non-zero exit), not post-acceptance delivery failures. **To close this gap:** implement Meta Webhooks delivery receipt handling. Meta will POST to a webhook URL when a message is delivered or fails; the app could alert if a sent `wamid` doesn't receive a delivered status within N minutes.
+
 ---
 
 ## IMMEDIATE NEXT (next session)
@@ -34,6 +38,8 @@
 4. **M3-7** — Screen recording of WhatsApp roster image arriving on phone (most impactful portfolio artifact; embed in README)
 5. **M3-8** — App screenshots in README (boarding matrix, roster image — currently no visuals)
 6. **M3-9** — CHANGELOG.md documenting v1.0 → v5.0.0 release history
+
+**Potential new ticket — WhatsApp delivery receipts (Meta Webhooks):** Friday PM job ran and returned a valid wamid but message was not received. Monitoring gap: post-acceptance delivery failures are invisible. Fix requires Meta Webhooks integration.
 
 ---
 
