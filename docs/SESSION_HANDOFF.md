@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.0 live)
-**Last updated:** March 20, 2026 (evening)
+**Last updated:** March 20, 2026 (end of day)
 
 ---
 
@@ -10,6 +10,7 @@
 - PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live
 - PR #93 merged — M3-1/2/3 done (README overhaul, runbook, ADRs); test files committed; SPRINT_PLAN.md now in git
 - PR #95 merged — `docs/job_docs/gmail-monitor.md` added; README mermaid diagram fixed (`@` in node label)
+- PR #99 merged — `docs/job_docs/notify-jobs.md` corrected: Twilio refs replaced with Meta Cloud API (stale since M0)
 
 ### v5.0 milestones — all live ✅
 
@@ -38,8 +39,8 @@ Friday PM notify ran at 22:37 UTC (3:37 PM PDT) on March 20. Job returned HTTP 2
 4. **M3-7** — Screen recording of WhatsApp roster image arriving on phone (most impactful portfolio artifact; embed in README)
 5. **M3-8** — App screenshots in README (boarding matrix, roster image — currently no visuals)
 6. **M3-9** — CHANGELOG.md documenting v1.0 → v5.0.0 release history
-
-**Potential new ticket — WhatsApp delivery receipts (Meta Webhooks):** Friday PM job ran and returned a valid wamid but message was not received. Monitoring gap: post-acceptance delivery failures are invisible. Fix requires Meta Webhooks integration.
+7. **M3-10** — WhatsApp delivery receipts (Meta Webhooks) — Friday PM wamid returned but message not received March 20; post-acceptance delivery failures are currently invisible
+8. **M3-11** — Consolidate WhatsApp sender — migrate alerting jobs from Twilio to Meta Cloud API, remove `twilio` package + `TWILIO_*` secrets (#101)
 
 ---
 
