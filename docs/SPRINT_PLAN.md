@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan (v5.0)
 
-_Last updated: March 20, 2026 — M0/M1/M2/M3-1/2/3 all live_
+_Last updated: March 20, 2026 (evening) — M0/M1/M2/M3-1/2/3 all live; job docs complete_
 
 ---
 
@@ -149,6 +149,7 @@ All v4 work is done. See `docs/archive/SESSION_HANDOFF_v4.5_final.md` for full h
 | M3-7 | Screen recording of WhatsApp roster image arriving on phone — most impactful portfolio artifact; embed in README | — |
 | M3-8 | App screenshots in README — boarding matrix, roster image — currently no visuals | — |
 | M3-9 | CHANGELOG.md — document iterative release history from v1.0 → v5.0.0; shows production-minded development discipline | — |
+| M3-10 | WhatsApp delivery receipts (Meta Webhooks) — detect post-acceptance delivery failures; Friday PM wamid returned but message not received March 20 | — |
 
 ---
 
