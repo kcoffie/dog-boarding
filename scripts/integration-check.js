@@ -38,14 +38,14 @@
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   EXTERNAL_SITE_USERNAME, EXTERNAL_SITE_PASSWORD  (for Step 0 re-auth on session expiry)
  *   ANTHROPIC_API_KEY
- *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+ *   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
  *   INTEGRATION_CHECK_RECIPIENTS  (separate from NOTIFY_RECIPIENTS)
  */
 
 import { chromium } from 'playwright';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
-import twilio from 'twilio';
+import { sendTextMessage } from '../src/lib/notifyWhatsApp.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 
@@ -84,28 +84,16 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-function getTwilioClient() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) throw new Error('Missing Twilio env vars');
-  return twilio(sid, token);
-}
-
 function getAnthropicClient() {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('Missing ANTHROPIC_API_KEY');
   return new Anthropic({ apiKey: key });
 }
 
-function getRecipients() {
+function getAlertRecipients() {
   // Intentionally separate from NOTIFY_RECIPIENTS (roster → whole team).
   // Integration check results are technical; they go to Kate only.
   return (process.env.INTEGRATION_CHECK_RECIPIENTS || '').split(',').map(n => n.trim()).filter(Boolean);
-}
-
-function maskNumber(n) {
-  const d = n.replace(/\D/g, '');
-  return `***-***-${d.slice(-4)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -482,32 +470,16 @@ function compareDaytimeResults(domDaytime, dbDaytime) {
 // Step 6: WhatsApp
 // ---------------------------------------------------------------------------
 
-async function sendWhatsApp(twilioClient, message) {
-  const recipients = getRecipients();
-  const from = process.env.TWILIO_FROM_NUMBER;
-
-  if (!from) {
-    console.error('[IntegCheck] Missing TWILIO_FROM_NUMBER — cannot send WhatsApp');
-    return;
-  }
+async function sendAlertMessage(message) {
+  const recipients = getAlertRecipients();
   if (recipients.length === 0) {
     console.log('[IntegCheck] No INTEGRATION_CHECK_RECIPIENTS configured — skipping WhatsApp send');
     return;
   }
-
   console.log('[IntegCheck] Sending WhatsApp to %d recipient(s)...', recipients.length);
-  for (const to of recipients) {
-    try {
-      const msg = await twilioClient.messages.create({
-        from: `whatsapp:${from}`,
-        to: `whatsapp:${to}`,
-        body: message,
-      });
-      console.log('[IntegCheck] Sent to %s — SID: %s', maskNumber(to), msg.sid);
-    } catch (err) {
-      console.error('[IntegCheck] Twilio error for %s — code %s: %s', maskNumber(to), err.code, err.message);
-    }
-  }
+  const results = await sendTextMessage(message, recipients);
+  const sent = results.filter(r => r.status === 'sent').length;
+  console.log('[IntegCheck] WhatsApp: %d/%d sent', sent, recipients.length);
 }
 
 // ---------------------------------------------------------------------------
@@ -519,10 +491,6 @@ async function main() {
 
   const today = new Date().toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
 
-  // Twilio is initialized first so that any subsequent startup failure can be
-  // reported via WhatsApp rather than dying silently in the GH Actions log.
-  const twilioClient = getTwilioClient();
-
   let supabase, anthropic;
   try {
     supabase = getSupabase();
@@ -530,7 +498,7 @@ async function main() {
   } catch (err) {
     const msg = `⚠️ Integration check crashed at startup (${today}): ${err.message}`;
     console.error('[IntegCheck]', msg);
-    await sendWhatsApp(twilioClient, msg);
+    await sendAlertMessage(msg);
     process.exit(1);
   }
 
@@ -587,7 +555,7 @@ async function main() {
   if (!cookieString) {
     const msg = `⚠️ Integration check skipped (${today})\nNo valid session cached. Run cron-auth first.`;
     console.log('[IntegCheck]', msg);
-    await sendWhatsApp(twilioClient, msg);
+    await sendAlertMessage(msg);
     process.exit(0);
   }
 
@@ -598,7 +566,7 @@ async function main() {
   } catch (err) {
     const msg = `⚠️ Integration check failed (${today})\nPlaywright error: ${err.message}`;
     console.error('[IntegCheck]', msg);
-    await sendWhatsApp(twilioClient, msg);
+    await sendAlertMessage(msg);
     process.exit(1);
   }
 
@@ -643,7 +611,7 @@ async function main() {
   }
 
   console.log('[IntegCheck] === Final report ===\n%s', message);
-  await sendWhatsApp(twilioClient, message);
+  await sendAlertMessage(message);
 
   console.log('[IntegCheck] === Done === (%d issue(s))', allIssues.length);
   process.exit(0); // job succeeded — data issues are content of the report, not a job failure
