@@ -6,7 +6,8 @@
 ## Current State
 
 - **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
-- **835 tests, 51 files, 0 failures**
+- **838 tests, 51 files, 0 failures**
+- PR #112 open — M3-12: Meta message templates (fix 24h window); **awaiting template approval before merge**
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
 - PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live
 - PR #93 merged — M3-1/2/3 done (README overhaul, runbook, ADRs); test files committed; SPRINT_PLAN.md now in git
@@ -21,12 +22,16 @@
 - **M3-1/2/3 DONE** — README rewritten (mermaid diagram, architecture, testing, security, ADR links). `docs/RUNBOOK.md` created. Three ADRs created in `docs/adr/`.
 
 ### Pending (Kate)
+- **Meta message templates — CREATE BEFORE MERGING #112** — go to business.facebook.com → WhatsApp Manager → Message Templates → Create Template:
+  - `dog_boarding_alert`: Category=Utility, Language=English (en_US), Body=`Dog boarding alert:\n\n{{1}}`
+  - `dog_boarding_roster`: Category=Utility, Language=English (en_US), Header=Image (dynamic), Body=`Boarding roster`
+  - Once both reach **Approved** status: merge PR #112 and create v5.2.0 release
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 - ~~**Delete old Twilio GH secrets**~~ ✅ Done March 24, 2026 — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` removed
 
 ### Known monitoring gap — WhatsApp delivery receipts
-Friday PM notify ran at 22:37 UTC (3:37 PM PDT) on March 20. Job returned HTTP 200, `sentCount:1`, and a real `wamid` from Meta — meaning Meta accepted the message. Kate did not receive it. The failure was at the Meta → phone delivery layer, which is invisible to the current monitoring stack. The cron health check only catches job-level failures (non-zero exit), not post-acceptance delivery failures. **To close this gap:** implement Meta Webhooks delivery receipt handling. Meta will POST to a webhook URL when a message is delivered or fails; the app could alert if a sent `wamid` doesn't receive a delivered status within N minutes.
+~~Friday PM notify ran at 22:37 UTC (3:37 PM PDT) on March 20. Job returned HTTP 200, `sentCount:1`, and a real `wamid` from Meta — meaning Meta accepted the message. Kate did not receive it.~~ Root cause identified: Meta 24-hour customer service window was closed. **Fix in PR #112** — switches all sends to Meta approved message templates, which bypass the 24h window. Once #112 is merged and templates are approved, this gap is closed. M3-10 (Meta Webhooks delivery receipts) would close the remaining gap of post-acceptance delivery failures invisible to the stack.
 
 ---
 
@@ -40,8 +45,9 @@ Friday PM notify ran at 22:37 UTC (3:37 PM PDT) on March 20. Job returned HTTP 2
 4. **M3-7** — Screen recording of WhatsApp roster image arriving on phone (most impactful portfolio artifact; embed in README)
 5. **M3-8** — App screenshots in README (boarding matrix, roster image — currently no visuals)
 6. **M3-9** — CHANGELOG.md documenting v1.0 → v5.0.0 release history
-7. **M3-10** — WhatsApp delivery receipts (Meta Webhooks) — Friday PM wamid returned but message not received March 20; post-acceptance delivery failures are currently invisible
-8. ~~**M3-11** — Consolidate WhatsApp sender~~ ✅ DONE (#101) — all 3 alerting scripts now use Meta Cloud API; `twilio` package removed; `TWILIO_*` GH secrets can be deleted
+7. **M3-10** — WhatsApp delivery receipts (Meta Webhooks) — post-acceptance delivery failures still invisible; templates (M3-12) close the 24h window gap but not the delivery-receipt gap
+8. ~~**M3-11** — Consolidate WhatsApp sender~~ ✅ DONE (#108) — all 3 alerting scripts now use Meta Cloud API; `twilio` package removed; `TWILIO_*` GH secrets deleted
+9. **M3-12** — Meta message templates (PR #112 open, awaiting template approval) — fix 24h customer service window; also deduplicates `getAlertRecipients()` across scripts
 
 ---
 
@@ -140,6 +146,13 @@ GitHub Actions (hourly at :15)
 | Max Posse | 174385 |
 | Sierra Tagle | 189436 |
 | Stephen Muro | 164375 |
+
+---
+
+## Future Backlog (post-M3)
+
+- **F-1: Message delivery observability** — verify a message was actually received. Meta Webhooks POST a delivery status for each wamid. Store wamids at send time, alert if no delivered status within N minutes. See SPRINT_PLAN.md F-1.
+- **F-2: Message log page** — store every outbound message (recipient, content, timestamp, type) to a `message_log` table at send time. New app page: last 5 days of messages, latest first. Decouples "did the job run and compile the message" from "did the delivery work" — Kate can check the app to see what *should* have been sent. See SPRINT_PLAN.md F-2.
 
 ---
 

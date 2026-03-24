@@ -5,7 +5,7 @@
  * Runs hourly via GitHub Actions. For each unread email from a known sender
  * that matches a subject pattern:
  *   1. Checks gmail_processed_emails to skip already-processed emails
- *   2. Sends a WhatsApp alert to INTEGRATION_CHECK_RECIPIENTS via Twilio
+ *   2. Sends a WhatsApp alert to INTEGRATION_CHECK_RECIPIENTS via Meta Cloud API
  *   3. Records the email in gmail_processed_emails to prevent duplicates
  *
  * Authentication: uses OAuth2 with a long-lived refresh token (GMAIL_REFRESH_TOKEN).
@@ -29,7 +29,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { sendTextMessage } from '../src/lib/notifyWhatsApp.js';
+import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
 
 // ---------------------------------------------------------------------------
 // Known sender configuration
@@ -79,10 +79,6 @@ function getSupabase() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('Missing VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
   return createClient(url, key);
-}
-
-function getAlertRecipients() {
-  return (process.env.INTEGRATION_CHECK_RECIPIENTS || '').split(',').map(n => n.trim()).filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,10 +304,6 @@ async function markProcessed(supabase, email) {
 
 async function sendAlertMessage(message) {
   const recipients = getAlertRecipients();
-  if (recipients.length === 0) {
-    console.log('[GmailMonitor] No INTEGRATION_CHECK_RECIPIENTS — skipping WhatsApp');
-    return;
-  }
   const results = await sendTextMessage(message, recipients);
   const sent = results.filter(r => r.status === 'sent').length;
   console.log('[GmailMonitor] WhatsApp: %d/%d sent', sent, recipients.length);
