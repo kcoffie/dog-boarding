@@ -37,6 +37,7 @@ export function useBoardings() {
         billedAmount: b.billed_amount != null ? parseFloat(b.billed_amount) : null,
         source: b.source ?? null,
         bookingStatus: b.booking_status ?? 'confirmed',
+        cancelledAt: b.cancelled_at ?? null,
       })));
     } catch (err) {
       console.error('Error fetching boardings:', err);
