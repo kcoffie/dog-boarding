@@ -8,6 +8,7 @@ import {
   isAccessDeniedPage,
   findReconciliationCandidates,
   archiveSyncAppointment,
+  cancelBoardingForArchivedAppointment,
   reconcileArchivedAppointments,
 } from '../../lib/scraper/reconcile.js';
 
@@ -225,6 +226,26 @@ describe('REQ-108: archiveSyncAppointment()', () => {
   });
 });
 
+// ─── cancelBoardingForArchivedAppointment() ───────────────────────────────────
+
+describe('REQ-108: cancelBoardingForArchivedAppointment()', () => {
+  it('sets cancelled_at and cancellation_reason on the boarding record', async () => {
+    const records = [{ id: 'boarding-uuid-1' }];
+    const supabase = createMockSupabase(records);
+
+    await cancelBoardingForArchivedAppointment(supabase, 'boarding-uuid-1');
+
+    expect(supabase._records[0].cancelled_at).toBeTruthy();
+    expect(supabase._records[0].cancellation_reason).toBe('appointment_archived');
+  });
+
+  it('throws when update fails', async () => {
+    const supabase = createMockSupabase([], { failUpdate: true });
+
+    await expect(cancelBoardingForArchivedAppointment(supabase, 'boarding-uuid-1')).rejects.toThrow();
+  });
+});
+
 // ─── reconcileArchivedAppointments() ─────────────────────────────────────────
 
 describe('REQ-108: reconcileArchivedAppointments()', () => {
@@ -341,5 +362,81 @@ describe('REQ-108: reconcileArchivedAppointments()', () => {
 
     expect(authenticatedFetch).toHaveBeenCalledTimes(2);
     expect(counts.archived).toBe(2);
+  });
+
+  it('cascades cancelled_at to mapped boarding when mapped_boarding_id is present', async () => {
+    const records = [
+      makeRecord({ external_id: 'AAA', mapped_boarding_id: 'boarding-uuid-1' }),
+      { id: 'boarding-uuid-1' },
+    ];
+    const supabase = createMockSupabase(records);
+    authenticatedFetch.mockResolvedValue(okResponse(SCHEDULE_PAGE_HTML));
+
+    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    expect(counts.archived).toBe(1);
+    expect(counts.errors).toBe(0);
+    const boarding = supabase._records.find(r => r.id === 'boarding-uuid-1');
+    expect(boarding.cancelled_at).toBeTruthy();
+    expect(boarding.cancellation_reason).toBe('appointment_archived');
+  });
+
+  it('skips boarding cascade when mapped_boarding_id is null', async () => {
+    const records = [makeRecord({ external_id: 'AAA', mapped_boarding_id: null })];
+    const supabase = createMockSupabase(records);
+    authenticatedFetch.mockResolvedValue(okResponse(SCHEDULE_PAGE_HTML));
+
+    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    expect(counts.archived).toBe(1);
+    expect(counts.errors).toBe(0);
+  });
+
+  it('counts cascade error in errors but still increments archived', async () => {
+    const record = makeRecord({ external_id: 'AAA', mapped_boarding_id: 'boarding-uuid-1' });
+    // Custom mock: sync_appointment update (by external_id) succeeds; boarding update (by id) fails
+    const mockRecords = [{ ...record }];
+    const supabase = {
+      _records: mockRecords,
+      from: () => {
+        const state = { filters: {}, lt: null, gte: null };
+        const computeQueryResult = () => {
+          const data = mockRecords.filter(r => {
+            for (const [f, v] of Object.entries(state.filters)) {
+              if (r[f] !== v) return false;
+            }
+            if (state.lt && r[state.lt.f] >= state.lt.v) return false;
+            if (state.gte && r[state.gte.f] < state.gte.v) return false;
+            return true;
+          });
+          return { data, error: null };
+        };
+        const builder = {
+          select: () => builder,
+          eq: (f, v) => { state.filters[f] = v; return builder; },
+          lt: (f, v) => { state.lt = { f, v }; return builder; },
+          gte: (f, v) => { state.gte = { f, v }; return builder; },
+          update: (data) => ({
+            eq: (f, v) => {
+              if (f === 'id') return Promise.resolve({ error: { message: 'Boarding update failed' } });
+              const idx = mockRecords.findIndex(r => r[f] === v);
+              if (idx >= 0) mockRecords[idx] = { ...mockRecords[idx], ...data };
+              return Promise.resolve({ error: null });
+            },
+          }),
+          then: (onFulfilled, onRejected) =>
+            Promise.resolve(computeQueryResult()).then(onFulfilled, onRejected),
+          catch: (onRejected) =>
+            Promise.resolve(computeQueryResult()).catch(onRejected),
+        };
+        return builder;
+      },
+    };
+    authenticatedFetch.mockResolvedValue(okResponse(SCHEDULE_PAGE_HTML));
+
+    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    expect(counts.archived).toBe(1);
+    expect(counts.errors).toBe(1);
   });
 });
