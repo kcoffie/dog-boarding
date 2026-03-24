@@ -49,7 +49,7 @@ export function isAccessDeniedPage(html, response) {
 export async function findReconciliationCandidates(supabase, seenExternalIds, startDate, endDate) {
   let query = supabase
     .from('sync_appointments')
-    .select('id, external_id, source_url, check_in_datetime, check_out_datetime')
+    .select('id, external_id, source_url, check_in_datetime, check_out_datetime, mapped_boarding_id')
     .eq('sync_status', 'active');
 
   // Filter to records that overlap the fetch window. Apply each bound independently
@@ -86,6 +86,24 @@ export async function archiveSyncAppointment(supabase, externalId) {
       last_changed_at: new Date().toISOString(),
     })
     .eq('external_id', externalId);
+
+  if (error) throw error;
+}
+
+/**
+ * Mark a boarding as cancelled when its sync_appointment is archived.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} boardingId
+ */
+export async function cancelBoardingForArchivedAppointment(supabase, boardingId) {
+  const { error } = await supabase
+    .from('boardings')
+    .update({
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: 'appointment_archived',
+    })
+    .eq('id', boardingId);
 
   if (error) throw error;
 }
@@ -140,6 +158,16 @@ export async function reconcileArchivedAppointments(supabase, seenExternalIds, s
         try {
           await archiveSyncAppointment(supabase, candidate.external_id);
           counts.archived++;
+
+          if (candidate.mapped_boarding_id) {
+            try {
+              await cancelBoardingForArchivedAppointment(supabase, candidate.mapped_boarding_id);
+              syncLog(`[Reconcile] ✅ Marked boarding ${candidate.mapped_boarding_id} as cancelled`);
+            } catch (cancelErr) {
+              syncError(`[Reconcile] ❌ Failed to cancel boarding ${candidate.mapped_boarding_id}:`, cancelErr.message);
+              counts.errors++;
+            }
+          }
         } catch (archiveErr) {
           syncError(`[Reconcile] ❌ Failed to archive ${candidate.external_id}:`, archiveErr.message);
           counts.errors++;
@@ -162,5 +190,6 @@ export default {
   isAccessDeniedPage,
   findReconciliationCandidates,
   archiveSyncAppointment,
+  cancelBoardingForArchivedAppointment,
   reconcileArchivedAppointments,
 };
