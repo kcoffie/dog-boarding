@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.2.0 pending template approval)
-**Last updated:** March 24, 2026
+**Last updated:** March 24, 2026 (evening)
 
 ---
 
@@ -7,6 +7,8 @@
 
 - **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release; v5.2.0 ready to tag once Meta templates approved
 - **838 tests, 51 files, 0 failures**
+- PR #115 merged — fix: PG boarding filter (#114) — `\bpg\b` removed from sync.js + integration-check.js; PG boarding appointments (e.g., Kailin "PG 3/23-30") now sync correctly
+- PR #113 merged — docs: SESSION_HANDOFF + SPRINT_PLAN post-M3-12
 - PR #112 merged — M3-12: Meta message templates deployed; **awaiting template approval to verify end-to-end**
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
 - PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live
@@ -27,6 +29,8 @@
 
 ### Pending (Kate)
 - **Meta templates pending approval** — `dog_boarding_alert` and `dog_boarding_roster` submitted, in review. Once both reach **Approved** status: manually trigger `integration-check` workflow to verify delivery, then tag v5.2.0 release.
+- **Trigger manual sync for Kailin** — After PR #115 deployed to Vercel, go to app SyncSettings and trigger a sync to pick up Kailin (C63QgJQ9, "PG 3/23-30", Mar 23-30, $570). The PG filter was blocking her; it is now fixed.
+- **Maverick cancelled boarding** — Maverick (C63QgVl9, Mar 20-22) still shows as active in app. Boarding needs `is_cancelled` flag + reconcile cascade + UI strikethrough. Tracked as separate work item.
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 - ~~**Delete old Twilio GH secrets**~~ ✅ Done March 24, 2026 — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` removed
@@ -37,6 +41,10 @@ Root cause of March 20 non-delivery identified and fixed: Meta 24-hour customer 
 ---
 
 ## IMMEDIATE NEXT (next session)
+
+**Unfinished bug fixes:**
+
+1. **Maverick cancelled boarding display** — Maverick (C63QgVl9, Mar 20-22) was cancelled but still shows as active in the app. Design: add `is_cancelled` boolean to `boardings` table (migration), update `reconcile.js` to cascade `is_cancelled = true` when archiving a sync_appointment, update `BoardingMatrix.jsx` to render cancelled boardings greyed out / strikethrough. Needs plan mode.
 
 **M3 remaining tickets** — operational system is complete and portfolio docs are live. These are enhancements:
 
@@ -195,7 +203,7 @@ WHERE b.arrival_datetime <= NOW() + INTERVAL '7 days'
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0 **(latest)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0 **(latest)**
 
 ## Archive
 - v4.5 session: `docs/archive/SESSION_HANDOFF_v4.5_final.md`
