@@ -23,7 +23,7 @@
 ### Pending (Kate)
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
-- **Delete old Twilio GH secrets** — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` no longer used by any workflow → remove from GitHub repo secrets (Settings → Secrets → Actions)
+- ~~**Delete old Twilio GH secrets**~~ ✅ Done March 24, 2026 — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` removed
 
 ### Known monitoring gap — WhatsApp delivery receipts
 Friday PM notify ran at 22:37 UTC (3:37 PM PDT) on March 20. Job returned HTTP 200, `sentCount:1`, and a real `wamid` from Meta — meaning Meta accepted the message. Kate did not receive it. The failure was at the Meta → phone delivery layer, which is invisible to the current monitoring stack. The cron health check only catches job-level failures (non-zero exit), not post-acceptance delivery failures. **To close this gap:** implement Meta Webhooks delivery receipt handling. Meta will POST to a webhook URL when a message is delivered or fails; the app could alert if a sent `wamid` doesn't receive a delivered status within N minutes.
