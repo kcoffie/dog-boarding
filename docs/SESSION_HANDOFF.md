@@ -6,9 +6,9 @@
 ## Current State
 
 - **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release; v5.2.0 ready to tag once Meta templates approved
-- **843 tests, 51 files, 0 failures**
-- PR #118 open — fix: cascade `cancelled_at` to boarding on reconcile archive; BoardingMatrix shows grey ✕ + strikethrough for cancelled dogs (#117)
-- PR #115 merged — fix: PG boarding filter (#114) — `\bpg\b` removed from sync.js + integration-check.js; PG boarding appointments (e.g., Kailin "PG 3/23-30") now sync correctly
+- **844 tests, 51 files, 0 failures**
+- PR #118 open — fix: cascade `cancelled_at` to boarding on reconcile archive; BoardingMatrix shows grey ✕ + strikethrough for cancelled dogs (#117) + syncRunner.js PG filter fix + single-source nonBoardingPatterns
+- PR #115 merged — fix: PG boarding filter (#114) — `\bpg\b` removed from sync.js + integration-check.js; **cron path (syncRunner.js) fixed in PR #118**
 - PR #113 merged — docs: SESSION_HANDOFF + SPRINT_PLAN post-M3-12
 - PR #112 merged — M3-12: Meta message templates deployed; **awaiting template approval to verify end-to-end**
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
@@ -30,7 +30,7 @@
 
 ### Pending (Kate)
 - **Meta templates pending approval** — `dog_boarding_alert` and `dog_boarding_roster` submitted, in review. Once both reach **Approved** status: manually trigger `integration-check` workflow to verify delivery, then tag v5.2.0 release.
-- **Trigger manual sync for Kailin** — After PR #115 deployed to Vercel, go to app SyncSettings and trigger a sync to pick up Kailin (C63QgJQ9, "PG 3/23-30", Mar 23-30, $570). The PG filter was blocking her; it is now fixed.
+- ~~**Trigger manual sync for Kailin**~~ ✅ Done — Kailin `C63QgJQ9` ("PG 3/23-30", Mar 23-30, $570, night_rate $60) synced and verified in DB. Root cause: PR #115 fixed `sync.js` (browser path) but missed `syncRunner.js` (cron path). Fixed in PR #118 — `nonBoardingPatterns` is now canonical in `config.js`, imported by all execution paths.
 - ~~**Maverick cancelled boarding**~~ — PR #118 open. After merging, run in Supabase SQL editor to backfill existing row: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped

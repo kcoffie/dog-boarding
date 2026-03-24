@@ -13,9 +13,9 @@
  *   - Neither runner calls writeCronHealth. Health tracking is the Vercel
  *     handler's responsibility. Calling it from integration-check would
  *     overwrite the midnight cron's health record.
- *   - NON_BOARDING_RE is NOT exported for use by integration-check.js.
- *     integration-check.js defines its own copy independently to preserve
- *     signal isolation. See integration-check.js comment for rationale.
+ *   - Non-boarding title patterns come from SCRAPER_CONFIG.nonBoardingPatterns
+ *     (config.js). integration-check.js imports the same constant so all
+ *     execution paths use a single definition.
  *
  * SIDE EFFECT — setSession:
  *   runScheduleSync calls setSession(cookies) on the auth module, which sets
@@ -42,6 +42,7 @@
 import { setSession } from './auth.js';
 import { authenticatedFetch } from './auth.js';
 import { ensureSession, clearSession } from './sessionCache.js';
+import { SCRAPER_CONFIG } from './config.js';
 import { enqueue, dequeueOne, markDone, markFailed, resetStuck as resetStuckItems, getQueueDepth } from './syncQueue.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from './daytimeSchedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
@@ -50,18 +51,6 @@ import { fetchAndStoreBoardingForm } from './forms.js';
 
 const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com';
 const CURSOR_WINDOW_WEEKS = 8;
-
-// Known non-boarding title patterns — mirrors sync.js pre-filter.
-// NOT exported — integration-check.js defines its own copy for signal isolation.
-const NON_BOARDING_RE = [
-  /(d\/c|\bdc\b)/i,
-  /(p\/g|g\/p|\bpg\b)/i,
-  /\badd\b/i,
-  /switch\s+day/i,
-  /back\s+to\s+\d+/i,
-  /initial\s+eval/i,
-  /^busy$/i,
-];
 
 // ---------------------------------------------------------------------------
 // Schedule helpers (previously private in cron-schedule.js)
@@ -322,10 +311,10 @@ export async function runScheduleSync(supabase) {
 
   for (const appt of appointments) {
     const titleLower = (appt.title || '').toLowerCase().trim();
-    const matchedPattern = NON_BOARDING_RE.find(re => re.test(titleLower));
+    const matchedPattern = SCRAPER_CONFIG.nonBoardingPatterns.find(re => re.test(titleLower));
 
     if (matchedPattern) {
-      console.log(`[SyncRunner:Schedule] ⏭️ SKIP ${appt.id} — matched NON_BOARDING_RE ${matchedPattern}`);
+      console.log(`[SyncRunner:Schedule] ⏭️ SKIP ${appt.id} — matched nonBoardingPatterns ${matchedPattern}`);
       stats.skipped++;
       continue;
     }

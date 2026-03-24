@@ -220,6 +220,48 @@ describe('runScheduleSync', () => {
     expect(result.found).toBe(0);
     expect(result.queued).toBe(0);
   });
+
+  it('enqueues a "PG 3/23-30" title appointment — PG boarding must NOT be filtered', async () => {
+    // Regression test for #114/#115: \bpg\b was incorrectly blocking PG boarding appointments.
+    // "PG 3/23-30" is a pack group BOARDING (Boarding Nights pricing), not daycare.
+    ensureSession.mockResolvedValue('session=abc');
+    setSession.mockReturnValue(undefined);
+    const pgHtml = `
+      <a href="/schedule/a/C63QgJQ9/1742342400" class="day-event">
+        <span class="day-event-title">PG 3/23-30</span>
+        <span class="event-pet" data-pet="90043">Kailin</span>
+      </a>
+    `;
+    authenticatedFetch.mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(pgHtml),
+    });
+    const { enqueue } = await import('../../lib/scraper/syncQueue.js');
+    enqueue.mockResolvedValue(undefined);
+    const supabase = {
+      from: (table) => {
+        if (table === 'sync_settings') {
+          return {
+            select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }) }) }),
+            update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+            insert: () => Promise.resolve({ error: null }),
+          };
+        }
+        return {
+          select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+          update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+          insert: () => Promise.resolve({ error: null }),
+        };
+      },
+    };
+    getQueueDepth.mockResolvedValue(0);
+    const result = await runScheduleSync(supabase);
+    expect(result.action).toBe('ok');
+    expect(result.found).toBe(1);
+    // Must be queued, not skipped
+    expect(enqueue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ external_id: 'C63QgJQ9' }));
+    expect(result.skipped).toBe(0);
+  });
 });
 
 // ─── runDetailSync — key branches ─────────────────────────────────────────────
