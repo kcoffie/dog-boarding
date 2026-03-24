@@ -151,7 +151,7 @@ All v4 work is done. See `docs/archive/SESSION_HANDOFF_v4.5_final.md` for full h
 | M3-9 | CHANGELOG.md — document iterative release history from v1.0 → v5.0.0; shows production-minded development discipline | — |
 | M3-10 | WhatsApp delivery receipts (Meta Webhooks) — detect post-acceptance delivery failures; Friday PM wamid returned but message not received March 20 | — |
 | M3-11 | Consolidate WhatsApp sender — migrate alerting jobs (integration check, cron health, Gmail monitor) from Twilio to Meta Cloud API; remove `twilio` package and all `TWILIO_*` secrets (#101) | ✅ DONE |
-| M3-12 | Meta message templates — switch all WhatsApp sends to approved templates; fixes 24h customer service window; deduplicates getAlertRecipients() (#112) | ⏳ PR open |
+| M3-12 | Meta message templates — switch all WhatsApp sends to approved templates; fixes 24h customer service window; deduplicates getAlertRecipients() (#112) | ✅ DONE |
 
 ---
 
