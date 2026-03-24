@@ -81,6 +81,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
     let isNight = false;
 
     for (const boarding of dogBoardings) {
+      if (boarding.cancelledAt) continue;
       if (isDayPresent(boarding, dateStr)) isDay = true;
       if (isOvernight(boarding, dateStr)) isNight = true;
     }
@@ -135,12 +136,14 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
 
   const getPresenceIndicator = (dog, dateStr) => {
     const dogBoardings = boardings.filter(b => b.dogId === dog.id);
+    const active = dogBoardings.filter(b => !b.cancelledAt);
+    const cancelled = dogBoardings.filter(b => b.cancelledAt);
 
     let isDay = false;
     let isNight = false;
     let isPending = false;
 
-    for (const boarding of dogBoardings) {
+    for (const boarding of active) {
       if (isDayPresent(boarding, dateStr)) {
         isDay = true;
         if (boarding.bookingStatus === 'pending') isPending = true;
@@ -160,6 +163,18 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
         ? <div className="w-7 h-7 mx-auto rounded-lg border-2 border-amber-400 bg-amber-50" title="Pending day request" />
         : <div className="w-7 h-7 mx-auto rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 shadow-sm" title="Day only" />;
     }
+
+    const hasCancelledPresence = cancelled.some(b =>
+      isDayPresent(b, dateStr) || isOvernight(b, dateStr)
+    );
+    if (hasCancelledPresence) {
+      return (
+        <div className="w-7 h-7 mx-auto rounded-lg border border-slate-300 bg-slate-100 flex items-center justify-center" title="Cancelled">
+          <span className="text-slate-400 text-xs leading-none">✕</span>
+        </div>
+      );
+    }
+
     return <span className="text-slate-300">—</span>;
   };
 
@@ -272,6 +287,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
       let isDay = false;
 
       for (const boarding of dogBoardings) {
+        if (boarding.cancelledAt) continue;
         if (isOvernight(boarding, dateStr)) isNight = true;
         if (isDayPresent(boarding, dateStr)) isDay = true;
       }
@@ -514,19 +530,23 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
             {dogsWithBoardings.map((dog) => {
               const relevantBoarding = getRelevantBoarding(dog);
               const formData = relevantBoarding ? formsByBoardingId[relevantBoarding.id] : null;
+              const dogBoardingsInRange = boardings.filter(b =>
+                b.dogId === dog.id && dates.some(d => isDayPresent(b, d) || isOvernight(b, d))
+              );
+              const isCancelledOnly = dogBoardingsInRange.length > 0 && dogBoardingsInRange.every(b => b.cancelledAt);
               return (
               <tr key={dog.id} className="group hover:bg-indigo-50/50 transition-colors">
                 <td className="px-5 py-4 text-sm font-medium text-slate-900 sticky left-0 bg-white group-hover:bg-indigo-50/50 transition-colors">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-semibold text-indigo-600">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${isCancelledOnly ? 'bg-slate-100' : 'bg-indigo-100'}`}>
+                      <span className={`text-xs font-semibold ${isCancelledOnly ? 'text-slate-400' : 'text-indigo-600'}`}>
                         {formatName(dog.name).charAt(0).toUpperCase()}
                       </span>
                     </div>
                     <button
                       onClick={() => openFormModal(dog, relevantBoarding, formData)}
-                      className={`text-left hover:underline ${getFormLinkColor(relevantBoarding, formData)}`}
-                      title={getFormLinkTitle(relevantBoarding, formData)}
+                      className={`text-left hover:underline ${isCancelledOnly ? 'line-through text-slate-400' : getFormLinkColor(relevantBoarding, formData)}`}
+                      title={isCancelledOnly ? 'Boarding cancelled' : getFormLinkTitle(relevantBoarding, formData)}
                     >
                       {formatName(dog.name)}
                     </button>
