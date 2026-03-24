@@ -25,7 +25,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { sendTextMessage } from '../src/lib/notifyWhatsApp.js';
+import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
 
 // The three midnight Vercel crons we monitor.
 const MONITORED_CRONS = ['auth', 'schedule', 'detail'];
@@ -42,10 +42,6 @@ function getSupabase() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('Missing VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
   return createClient(url, key);
-}
-
-function getAlertRecipients() {
-  return (process.env.INTEGRATION_CHECK_RECIPIENTS || '').split(',').map(n => n.trim()).filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -188,10 +184,6 @@ export function checkConsecutiveFailures(cronName, healthRow, recentLog) {
 
 async function sendAlertMessage(message) {
   const recipients = getAlertRecipients();
-  if (recipients.length === 0) {
-    console.log('[CronHealthCheck] No INTEGRATION_CHECK_RECIPIENTS — skipping WhatsApp send');
-    return;
-  }
   console.log('[CronHealthCheck] Sending WhatsApp to %d recipient(s)...', recipients.length);
   const results = await sendTextMessage(message, recipients);
   const sent = results.filter(r => r.status === 'sent').length;

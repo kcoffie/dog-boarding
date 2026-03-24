@@ -151,6 +151,16 @@ All v4 work is done. See `docs/archive/SESSION_HANDOFF_v4.5_final.md` for full h
 | M3-9 | CHANGELOG.md — document iterative release history from v1.0 → v5.0.0; shows production-minded development discipline | — |
 | M3-10 | WhatsApp delivery receipts (Meta Webhooks) — detect post-acceptance delivery failures; Friday PM wamid returned but message not received March 20 | — |
 | M3-11 | Consolidate WhatsApp sender — migrate alerting jobs (integration check, cron health, Gmail monitor) from Twilio to Meta Cloud API; remove `twilio` package and all `TWILIO_*` secrets (#101) | ✅ DONE |
+| M3-12 | Meta message templates — switch all WhatsApp sends to approved templates; fixes 24h customer service window; deduplicates getAlertRecipients() (#112) | ⏳ PR open |
+
+---
+
+## Future / Post-M3 Backlog
+
+| # | Ticket | Notes |
+|---|--------|-------|
+| F-1 | **Message delivery observability** — can we verify a message was actually delivered? Investigate Meta Webhooks delivery receipts: Meta POSTs a status update when a `wamid` is delivered or fails. Surface this in the app or an alert. Relates to M3-10. | Medium complexity — needs webhook endpoint + wamid storage |
+| F-2 | **Message log page** — decouple message _compilation_ from message _delivery_. Store every outbound message (recipient, content, timestamp, type: roster/alert/integration-check) to a `message_log` table at send time. New app page: last 5 days of messages, latest first — so if Kate doesn't receive something she can go to the app and see exactly what _should_ have been sent and when. Design considerations: table schema, which jobs write to it (all 4 notify windows + 3 alert scripts), page layout (group by day, collapsible content). | High value — independent of delivery receipts; useful even without F-1 |
 
 ---
 

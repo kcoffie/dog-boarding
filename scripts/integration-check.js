@@ -45,7 +45,7 @@
 import { chromium } from 'playwright';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
-import { sendTextMessage } from '../src/lib/notifyWhatsApp.js';
+import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 
@@ -88,12 +88,6 @@ function getAnthropicClient() {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('Missing ANTHROPIC_API_KEY');
   return new Anthropic({ apiKey: key });
-}
-
-function getAlertRecipients() {
-  // Intentionally separate from NOTIFY_RECIPIENTS (roster → whole team).
-  // Integration check results are technical; they go to Kate only.
-  return (process.env.INTEGRATION_CHECK_RECIPIENTS || '').split(',').map(n => n.trim()).filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
@@ -472,10 +466,6 @@ function compareDaytimeResults(domDaytime, dbDaytime) {
 
 async function sendAlertMessage(message) {
   const recipients = getAlertRecipients();
-  if (recipients.length === 0) {
-    console.log('[IntegCheck] No INTEGRATION_CHECK_RECIPIENTS configured — skipping WhatsApp send');
-    return;
-  }
   console.log('[IntegCheck] Sending WhatsApp to %d recipient(s)...', recipients.length);
   const results = await sendTextMessage(message, recipients);
   const sent = results.filter(r => r.status === 'sent').length;

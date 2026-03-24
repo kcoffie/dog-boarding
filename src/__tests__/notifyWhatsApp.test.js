@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getRecipients, sendRosterImage, sendTextMessage } from '../lib/notifyWhatsApp.js';
+import { getRecipients, getAlertRecipients, sendRosterImage, sendTextMessage } from '../lib/notifyWhatsApp.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -129,8 +129,13 @@ describe('sendRosterImage', () => {
     const body = JSON.parse(options.body);
     expect(body.messaging_product).toBe('whatsapp');
     expect(body.to).toBe('+18312477375');
-    expect(body.type).toBe('image');
-    expect(body.image.link).toBe('https://example.com/api/roster-image?token=secret');
+    expect(body.type).toBe('template');
+    expect(body.template.name).toBe('dog_boarding_roster');
+    expect(body.template.language.code).toBe('en_US');
+    const header = body.template.components[0];
+    expect(header.type).toBe('header');
+    expect(header.parameters[0].type).toBe('image');
+    expect(header.parameters[0].image.link).toBe('https://example.com/api/roster-image?token=secret');
 
     expect(options.headers.Authorization).toBe('Bearer token-abc');
     expect(results).toHaveLength(1);
@@ -221,9 +226,14 @@ describe('sendTextMessage', () => {
 
     expect(mc()).toHaveLength(1);
     const body = JSON.parse(mc()[0][1].body);
-    expect(body.type).toBe('text');
-    expect(body.text.body).toBe('⚠️ Alert message');
     expect(body.to).toBe('+18312477375');
+    expect(body.type).toBe('template');
+    expect(body.template.name).toBe('dog_boarding_alert');
+    expect(body.template.language.code).toBe('en_US');
+    const bodyComp = body.template.components[0];
+    expect(bodyComp.type).toBe('body');
+    expect(bodyComp.parameters[0].type).toBe('text');
+    expect(bodyComp.parameters[0].text).toBe('⚠️ Alert message');
 
     expect(results[0].status).toBe('sent');
     expect(results[0].messageId).toBe('wamid.txt001');
@@ -246,5 +256,31 @@ describe('sendTextMessage', () => {
     const results = await sendTextMessage('test', []);
     expect(mc()).toHaveLength(0);
     expect(results).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getAlertRecipients
+// ---------------------------------------------------------------------------
+
+describe('getAlertRecipients', () => {
+  afterEach(() => {
+    if (ORIG_ENV.INTEGRATION_CHECK_RECIPIENTS === undefined) delete process.env.INTEGRATION_CHECK_RECIPIENTS;
+    else process.env.INTEGRATION_CHECK_RECIPIENTS = ORIG_ENV.INTEGRATION_CHECK_RECIPIENTS;
+  });
+
+  it('parses comma-separated E.164 numbers from INTEGRATION_CHECK_RECIPIENTS', () => {
+    process.env.INTEGRATION_CHECK_RECIPIENTS = '+18312477375,+14085551234';
+    expect(getAlertRecipients()).toEqual(['+18312477375', '+14085551234']);
+  });
+
+  it('returns empty array when env var is unset', () => {
+    delete process.env.INTEGRATION_CHECK_RECIPIENTS;
+    expect(getAlertRecipients()).toEqual([]);
+  });
+
+  it('trims whitespace and filters blank entries', () => {
+    process.env.INTEGRATION_CHECK_RECIPIENTS = '  +18312477375  ,  ,+14085551234  ';
+    expect(getAlertRecipients()).toEqual(['+18312477375', '+14085551234']);
   });
 });
