@@ -13,19 +13,19 @@
  *      2 entries. If both are failures → alert (consecutive = real problem).
  *      A single failure in a sea of successes is likely transient noise.
  *
- * Sends alerts to INTEGRATION_CHECK_RECIPIENTS via Twilio (same as the
+ * Sends alerts to INTEGRATION_CHECK_RECIPIENTS via Meta Cloud API (same as the
  * integration-check.js path — Kate only, not the roster recipients).
  *
  * Exit codes: 0 on success or alerts-sent (job succeeded), 1 on startup crash.
  *
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+ *   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
  *   INTEGRATION_CHECK_RECIPIENTS
  */
 
 import { createClient } from '@supabase/supabase-js';
-import twilio from 'twilio';
+import { sendTextMessage } from '../src/lib/notifyWhatsApp.js';
 
 // The three midnight Vercel crons we monitor.
 const MONITORED_CRONS = ['auth', 'schedule', 'detail'];
@@ -44,20 +44,8 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-function getTwilioClient() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) throw new Error('Missing Twilio env vars');
-  return twilio(sid, token);
-}
-
-function getRecipients() {
+function getAlertRecipients() {
   return (process.env.INTEGRATION_CHECK_RECIPIENTS || '').split(',').map(n => n.trim()).filter(Boolean);
-}
-
-function maskNumber(n) {
-  const d = n.replace(/\D/g, '');
-  return `***-***-${d.slice(-4)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,32 +186,16 @@ export function checkConsecutiveFailures(cronName, healthRow, recentLog) {
 // WhatsApp
 // ---------------------------------------------------------------------------
 
-async function sendWhatsApp(twilioClient, message) {
-  const recipients = getRecipients();
-  const from = process.env.TWILIO_FROM_NUMBER;
-
-  if (!from) {
-    console.error('[CronHealthCheck] Missing TWILIO_FROM_NUMBER — cannot send WhatsApp');
-    return;
-  }
+async function sendAlertMessage(message) {
+  const recipients = getAlertRecipients();
   if (recipients.length === 0) {
     console.log('[CronHealthCheck] No INTEGRATION_CHECK_RECIPIENTS — skipping WhatsApp send');
     return;
   }
-
   console.log('[CronHealthCheck] Sending WhatsApp to %d recipient(s)...', recipients.length);
-  for (const to of recipients) {
-    try {
-      const msg = await twilioClient.messages.create({
-        from: `whatsapp:${from}`,
-        to: `whatsapp:${to}`,
-        body: message,
-      });
-      console.log('[CronHealthCheck] Sent to %s — SID: %s', maskNumber(to), msg.sid);
-    } catch (err) {
-      console.error('[CronHealthCheck] Twilio error for %s — code %s: %s', maskNumber(to), err.code, err.message);
-    }
-  }
+  const results = await sendTextMessage(message, recipients);
+  const sent = results.filter(r => r.status === 'sent').length;
+  console.log('[CronHealthCheck] WhatsApp: %d/%d sent', sent, recipients.length);
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +212,6 @@ async function main() {
 
   const todayStr = midnightUtc.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', timeZone: 'UTC' });
 
-  const twilioClient = getTwilioClient();
   const supabase = getSupabase();
 
   const healthMap = await loadCronHealth(supabase);
@@ -282,7 +253,7 @@ async function main() {
     ];
     const message = lines.join('\n');
     console.log('[CronHealthCheck] Sending alert:\n%s', message);
-    await sendWhatsApp(twilioClient, message);
+    await sendAlertMessage(message);
   } else {
     console.log('[CronHealthCheck] All crons healthy — no alert needed');
   }
