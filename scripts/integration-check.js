@@ -15,10 +15,11 @@
  *   Both signals are compared against the DB to catch bugs the sync pipeline
  *   cannot catch about itself.
  *
- * WHY NON_BOARDING_PATTERNS is defined here instead of imported from syncRunner:
- *   Signal isolation. If syncRunner's parser had a bug that misclassified a
- *   non-boarding event as boarding, importing its filter would propagate the
- *   same bug into the check. This copy is intentionally independent.
+ * WHY NON_BOARDING_PATTERNS uses the shared SCRAPER_CONFIG.nonBoardingPatterns:
+ *   Single source of truth — all sync paths (browser UI via sync.js, Vercel
+ *   crons via syncRunner.js, and this check) share one definition in config.js.
+ *   The independent verification signal is Playwright rendering the live DOM,
+ *   not a duplicate copy of the filter logic.
  *
  * Flow:
  *   0. Sync-before-compare: run schedule sync + drain detail queue so any
@@ -48,28 +49,17 @@ import { createClient } from '@supabase/supabase-js';
 import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
+import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
 
 const BASE_URL = 'https://agirlandyourdog.com';
 const WINDOW_DAYS = 7;
 const PLAYWRIGHT_TIMEOUT_MS = 30_000;
 
-// Mirrors NON_BOARDING_RE from cron-schedule.js and sync.js.
-// Defined here independently — do not import from src/ to preserve signal isolation.
-// NOTE: PG is intentionally excluded. "PG 3/23-30" style titles are pack group
-// BOARDING appointments — Boarding (Nights) pricing passes the pricing filter.
-// PG daycare-only events are rare in the integration check window and would
-// be caught by service category (cat-7431 = PG, not a boarding category).
-const NON_BOARDING_PATTERNS = [
-  /(d\/c|\bdc\b)/i,
-  /\badd\b/i,
-  /switch\s+day/i,
-  /back\s+to\s+\d+/i,
-  /initial\s+eval/i,
-  /^busy$/i,
-];
-
+// Non-boarding title filter — uses the canonical definition from config.js so
+// all sync execution paths (browser UI, Vercel crons, integration check) behave
+// identically. See SCRAPER_CONFIG.nonBoardingPatterns for the full rationale.
 function isBoardingTitle(title) {
-  return !NON_BOARDING_PATTERNS.some(re => re.test(title));
+  return !SCRAPER_CONFIG.nonBoardingPatterns.some(re => re.test(title));
 }
 
 // Daytime service category IDs — mirrors SERVICE_CATS in daytimeSchedule.js.

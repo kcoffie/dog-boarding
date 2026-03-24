@@ -61,7 +61,7 @@ Since this cron runs once a day, the cost of an unconditional re-auth is one HTT
 ## Job 2: `cron-schedule` (`api/cron-schedule.js`)
 
 ### What it does
-Fetches schedule pages from the AGYD site, extracts all appointment links, filters out non-boarding appointments (DC, PG, ADD, etc.), and enqueues boarding candidates into `sync_queue`. Also ingests all daytime activity (DC + PG appointments) into `daytime_appointments` using `parseDaytimeSchedulePage`.
+Fetches schedule pages from the AGYD site, extracts all appointment links, filters out non-boarding appointments (DC, ADD, etc.), and enqueues boarding candidates into `sync_queue`. Also ingests all daytime activity (DC + PG appointments) into `daytime_appointments` using `parseDaytimeSchedulePage`.
 
 ### How it works
 
@@ -80,14 +80,15 @@ Unlike `schedule.js` (the browser scraper), this cron uses a regex-based `parseS
 - `petName`, `clientName`, `time`, `title` (from class-named spans)
 - `petIds` from `data-pet` attributes (forwarded to queue `meta` for cron-detail)
 
-#### Pre-filter (NON_BOARDING_RE)
-Applied before enqueue to skip obvious non-boardings:
+#### Pre-filter (`SCRAPER_CONFIG.nonBoardingPatterns`)
+Applied before enqueue to skip obvious non-boardings. The canonical list lives in `src/lib/scraper/config.js` (`SCRAPER_CONFIG.nonBoardingPatterns`) and is imported by every execution path — browser UI (`sync.js`), Vercel crons (`syncRunner.js`), and the integration check (`integration-check.js`) — so behavior is identical regardless of how a sync is triggered.
+
+Current patterns:
 - `d/c`, `dc` — Daycare
-- `p/g`, `g/p`, `pg` — Pack Group
-- `\badd\b` — ADD appointments (note: needs `i` flag — see Known Issues)
+- `\badd\b` — ADD appointments
 - `switch day`, `back to N`, `initial eval`, `busy`
 
-These are **defined inline** in `cron-schedule.js`, not imported from `src/`. The sync pipeline (`sync.js`) has its own independent copy — this is intentional, so a scraper bug doesn't corrupt the cron's filter.
+**NOTE: `pg` is intentionally excluded.** `"PG 3/23-30"` style titles are pack group **boarding** appointments with Boarding (Nights) pricing. They pass the pricing filter correctly. PG daycare-only events are caught by the pricing filter (all line items match `/pack/i` in `dayServicePatterns`).
 
 #### Daytime ingestion (bonus pass)
 On the same HTML already fetched, calls `parseDaytimeSchedulePage()` and `upsertDaytimeAppointments()` to keep `daytime_appointments` fresh. No extra HTTP requests.

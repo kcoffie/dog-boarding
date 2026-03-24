@@ -11,6 +11,24 @@ export const SCRAPER_CONFIG = {
   delayBetweenRequests: 1500, // 1.5 seconds between requests
   maxRequestsPerMinute: 30,
 
+  // Non-boarding title patterns for pre-filtering schedule appointments (REQ-104).
+  // A title matching ANY of these is daycare, pack group daycare, or an operational
+  // note — not an overnight boarding appointment. Applied before fetching detail pages
+  // (schedule scan) and again after (post-filter on service_type).
+  //
+  // NOTE: PG (\bpg\b) is intentionally excluded. "PG 3/23-30" style titles are
+  // pack group BOARDING appointments with Boarding (Nights) pricing — they pass
+  // the pricing filter correctly. PG daycare-only events are caught by the pricing
+  // filter (all line items match /pack/i dayServicePatterns).
+  nonBoardingPatterns: [
+    /(d\/c|\bdc\b)/i,
+    /\badd\b/i,
+    /switch\s+day/i,
+    /back\s+to\s+\d+/i,
+    /initial\s+eval/i,
+    /^busy$/i,
+  ],
+
   // Day-service name patterns used to classify pricing line items (REQ-200).
   // A line item whose service name matches ANY of these is treated as a day-boarding
   // or daycare charge, not a night-boarding charge.
