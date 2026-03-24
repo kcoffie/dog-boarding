@@ -23,6 +23,12 @@ const logWarn = logger.warn;
 
 const META_API_VERSION = 'v18.0';
 
+// Template names — must match approved templates in Meta Business Manager.
+// Override via env vars if template names differ from defaults.
+const ALERT_TEMPLATE = process.env.META_ALERT_TEMPLATE || 'dog_boarding_alert';
+const ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog_boarding_roster';
+const TEMPLATE_LANG = 'en_US';
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -53,9 +59,40 @@ export function getRecipients() {
   return raw.split(',').map(n => n.trim()).filter(Boolean);
 }
 
+/**
+ * Parse the INTEGRATION_CHECK_RECIPIENTS env var into an array of E.164 phone numbers.
+ * Used by alert scripts (integration-check, cron-health-check, gmail-monitor).
+ *
+ * @returns {string[]}
+ */
+export function getAlertRecipients() {
+  const raw = process.env.INTEGRATION_CHECK_RECIPIENTS || '';
+  return raw.split(',').map(n => n.trim()).filter(Boolean);
+}
+
 // ---------------------------------------------------------------------------
 // Meta Cloud API
 // ---------------------------------------------------------------------------
+
+/**
+ * Build a Meta template message payload.
+ * Components describe the variable parts of the template (header, body, etc.).
+ *
+ * @param {string} templateName
+ * @param {object[]} components
+ * @returns {{ type: 'template', template: object }}
+ */
+function buildTemplatePayload(templateName, components) {
+  return {
+    type: 'template',
+    template: {
+      name: templateName,
+      language: { code: TEMPLATE_LANG },
+      components,
+    },
+  };
+}
+
 
 /**
  * Read Meta credentials from environment.
@@ -147,10 +184,11 @@ export async function sendRosterImage(imageUrl, recipients) {
     log(`Sending image to ${masked}...`);
 
     try {
-      const { messageId } = await metaApiSend(creds.phoneNumberId, creds.token, to, {
-        type: 'image',
-        image: { link: imageUrl },
-      });
+      const { messageId } = await metaApiSend(creds.phoneNumberId, creds.token, to,
+        buildTemplatePayload(ROSTER_TEMPLATE, [
+          { type: 'header', parameters: [{ type: 'image', image: { link: imageUrl } }] },
+        ]),
+      );
       log(`Sent to ${masked} — messageId: ${messageId}`);
       results.push({ to: masked, status: 'sent', messageId });
     } catch (err) {
@@ -201,10 +239,11 @@ export async function sendTextMessage(text, recipients) {
     log(`Sending text to ${masked}...`);
 
     try {
-      const { messageId } = await metaApiSend(creds.phoneNumberId, creds.token, to, {
-        type: 'text',
-        text: { body: text },
-      });
+      const { messageId } = await metaApiSend(creds.phoneNumberId, creds.token, to,
+        buildTemplatePayload(ALERT_TEMPLATE, [
+          { type: 'body', parameters: [{ type: 'text', text }] },
+        ]),
+      );
       log(`Sent to ${masked} — messageId: ${messageId}`);
       results.push({ to: masked, status: 'sent', messageId });
     } catch (err) {
