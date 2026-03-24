@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.0 live)
-**Last updated:** March 20, 2026 (end of day)
+**Last updated:** March 24, 2026
 
 ---
 
@@ -23,6 +23,7 @@
 ### Pending (Kate)
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
+- **Delete old Twilio GH secrets** — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` no longer used by any workflow → remove from GitHub repo secrets (Settings → Secrets → Actions)
 
 ### Known monitoring gap — WhatsApp delivery receipts
 Friday PM notify ran at 22:37 UTC (3:37 PM PDT) on March 20. Job returned HTTP 200, `sentCount:1`, and a real `wamid` from Meta — meaning Meta accepted the message. Kate did not receive it. The failure was at the Meta → phone delivery layer, which is invisible to the current monitoring stack. The cron health check only catches job-level failures (non-zero exit), not post-acceptance delivery failures. **To close this gap:** implement Meta Webhooks delivery receipt handling. Meta will POST to a webhook URL when a message is delivered or fails; the app could alert if a sent `wamid` doesn't receive a delivered status within N minutes.
@@ -40,7 +41,7 @@ Friday PM notify ran at 22:37 UTC (3:37 PM PDT) on March 20. Job returned HTTP 2
 5. **M3-8** — App screenshots in README (boarding matrix, roster image — currently no visuals)
 6. **M3-9** — CHANGELOG.md documenting v1.0 → v5.0.0 release history
 7. **M3-10** — WhatsApp delivery receipts (Meta Webhooks) — Friday PM wamid returned but message not received March 20; post-acceptance delivery failures are currently invisible
-8. **M3-11** — Consolidate WhatsApp sender — migrate alerting jobs from Twilio to Meta Cloud API, remove `twilio` package + `TWILIO_*` secrets (#101)
+8. ~~**M3-11** — Consolidate WhatsApp sender~~ ✅ DONE (#101) — all 3 alerting scripts now use Meta Cloud API; `twilio` package removed; `TWILIO_*` GH secrets can be deleted
 
 ---
 
@@ -63,7 +64,7 @@ GitHub Actions (3×/day + on-demand: 1am/9am/5pm PDT)
   → Step 3: Claude vision: screenshot → dog names[] (silently skipped — no API credits)
   → Step 4: Supabase: boardings JOIN dogs (past 7d → today+7d); daytime_appointments (today)
   → Step 5: compareResults: missing IDs, Unknown names, name mismatches; missing daytime events
-  → Step 6: Twilio WhatsApp → INTEGRATION_CHECK_RECIPIENTS
+  → Step 6: Meta Cloud API WhatsApp → INTEGRATION_CHECK_RECIPIENTS
 ```
 
 ### Notify flow
@@ -71,7 +72,7 @@ GitHub Actions (3×/day + on-demand: 1am/9am/5pm PDT)
 GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
   → GET /api/notify?window=4am|7am|830am|friday-pm
   → refreshDaytimeSchedule (src/lib/notifyHelpers.js) → getPictureOfDay → computeWorkerDiff
-  → /api/roster-image → PNG → Meta Cloud API (not Twilio) → NOTIFY_RECIPIENTS
+  → /api/roster-image → PNG → Meta Cloud API → NOTIFY_RECIPIENTS
   → hash stored in cron_health (7am/8:30am skip if no change; friday-pm always sends)
 ```
 
@@ -81,7 +82,7 @@ GitHub Actions (daily 00:30 UTC)
   → scripts/cron-health-check.js
   → Supabase: check cron_health for auth/schedule/detail
   → Alert if: any cron didn't run tonight, or 2+ consecutive failures
-  → Twilio WhatsApp → INTEGRATION_CHECK_RECIPIENTS
+  → Meta Cloud API WhatsApp → INTEGRATION_CHECK_RECIPIENTS
 ```
 
 ### Gmail monitor flow (M2, new)
@@ -91,7 +92,7 @@ GitHub Actions (hourly at :15)
   → OAuth2 refresh → Gmail REST API (unread from known senders)
   → Subject-pattern filter (GitHub "run failed", Vercel "Failed", any Supabase)
   → Supabase gmail_processed_emails dedup check
-  → Twilio WhatsApp alert → INTEGRATION_CHECK_RECIPIENTS
+  → Meta Cloud API WhatsApp alert → INTEGRATION_CHECK_RECIPIENTS
   → Mark processed in Supabase
 ```
 
@@ -120,9 +121,6 @@ GitHub Actions (hourly at :15)
 | `EXTERNAL_SITE_USERNAME` | ✅ Set (v4.5 Step 0 re-auth) |
 | `EXTERNAL_SITE_PASSWORD` | ✅ Set (v4.5 Step 0 re-auth) |
 | `ANTHROPIC_API_KEY` | ✅ Set (no credits — Step 3 silently skipped) |
-| `TWILIO_ACCOUNT_SID` | ✅ Set |
-| `TWILIO_AUTH_TOKEN` | ✅ Set |
-| `TWILIO_FROM_NUMBER` | ✅ Set |
 | `NOTIFY_RECIPIENTS` | ✅ Set (1 number — second pending Kate) |
 | `INTEGRATION_CHECK_RECIPIENTS` | ✅ Set (Kate's number only) |
 | `APP_URL` | ✅ Set (not used in integration-check workflow) |

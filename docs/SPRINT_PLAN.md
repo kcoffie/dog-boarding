@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan (v5.0)
 
-_Last updated: March 20, 2026 (end of day) — M0/M1/M2/M3-1/2/3 all live; job docs complete; Twilio consolidation backlogged_
+_Last updated: March 24, 2026 — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; twilio package removed_
 
 ---
 
@@ -150,7 +150,7 @@ All v4 work is done. See `docs/archive/SESSION_HANDOFF_v4.5_final.md` for full h
 | M3-8 | App screenshots in README — boarding matrix, roster image — currently no visuals | — |
 | M3-9 | CHANGELOG.md — document iterative release history from v1.0 → v5.0.0; shows production-minded development discipline | — |
 | M3-10 | WhatsApp delivery receipts (Meta Webhooks) — detect post-acceptance delivery failures; Friday PM wamid returned but message not received March 20 | — |
-| M3-11 | Consolidate WhatsApp sender — migrate alerting jobs (integration check, cron health, Gmail monitor) from Twilio to Meta Cloud API; remove `twilio` package and all `TWILIO_*` secrets (#101) | — |
+| M3-11 | Consolidate WhatsApp sender — migrate alerting jobs (integration check, cron health, Gmail monitor) from Twilio to Meta Cloud API; remove `twilio` package and all `TWILIO_*` secrets (#101) | ✅ DONE |
 
 ---
 

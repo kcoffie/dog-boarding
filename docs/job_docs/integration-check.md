@@ -139,12 +139,11 @@ All must be **Repository secrets** in GitHub (Settings → Secrets → Actions �
 | `EXTERNAL_SITE_USERNAME` | AGYD login email — Step 0 re-auth | Copy from Vercel env vars |
 | `EXTERNAL_SITE_PASSWORD` | AGYD login password — Step 0 re-auth | Copy from Vercel env vars |
 | `ANTHROPIC_API_KEY` | Claude API key | console.anthropic.com → API Keys |
-| `TWILIO_ACCOUNT_SID` | Twilio account | Copy from Vercel env vars |
-| `TWILIO_AUTH_TOKEN` | Twilio auth token | Copy from Vercel env vars |
-| `TWILIO_FROM_NUMBER` | Twilio sandbox number | Copy from Vercel env vars |
+| `META_PHONE_NUMBER_ID` | Meta sender phone number ID | Meta app dashboard |
+| `META_WHATSAPP_TOKEN` | Meta system user access token | Meta app dashboard |
 | `INTEGRATION_CHECK_RECIPIENTS` | Kate's phone number only (E.164) | Manually set — NOT from Vercel |
 
-Note: `TWILIO_*`, `SUPABASE_SERVICE_ROLE_KEY`, `EXTERNAL_SITE_USERNAME`, and `EXTERNAL_SITE_PASSWORD` are also Vercel env vars. They must be separately added as GH repo secrets — Vercel and GitHub Actions do not share env vars.
+Note: `META_PHONE_NUMBER_ID`, `META_WHATSAPP_TOKEN`, `SUPABASE_SERVICE_ROLE_KEY`, `EXTERNAL_SITE_USERNAME`, and `EXTERNAL_SITE_PASSWORD` are also Vercel env vars. They must be separately added as GH repo secrets — Vercel and GitHub Actions do not share env vars.
 
 `APP_URL` and `VITE_SYNC_PROXY_TOKEN` were removed in v4.5 (Step 0 no longer uses an HTTP endpoint).
 

@@ -20,7 +20,7 @@
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN
- *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER
+ *   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
  *   INTEGRATION_CHECK_RECIPIENTS
  *
  * Optional:
@@ -29,7 +29,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import twilio from 'twilio';
+import { sendTextMessage } from '../src/lib/notifyWhatsApp.js';
 
 // ---------------------------------------------------------------------------
 // Known sender configuration
@@ -81,20 +81,8 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-function getTwilioClient() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  if (!sid || !token) throw new Error('Missing Twilio env vars');
-  return twilio(sid, token);
-}
-
-function getRecipients() {
+function getAlertRecipients() {
   return (process.env.INTEGRATION_CHECK_RECIPIENTS || '').split(',').map(n => n.trim()).filter(Boolean);
-}
-
-function maskNumber(n) {
-  const d = n.replace(/\D/g, '');
-  return `***-***-${d.slice(-4)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,31 +306,15 @@ async function markProcessed(supabase, email) {
 // WhatsApp
 // ---------------------------------------------------------------------------
 
-async function sendWhatsApp(twilioClient, message) {
-  const recipients = getRecipients();
-  const from = process.env.TWILIO_FROM_NUMBER;
-
-  if (!from) {
-    console.error('[GmailMonitor] Missing TWILIO_FROM_NUMBER — cannot send WhatsApp');
-    return;
-  }
+async function sendAlertMessage(message) {
+  const recipients = getAlertRecipients();
   if (recipients.length === 0) {
     console.log('[GmailMonitor] No INTEGRATION_CHECK_RECIPIENTS — skipping WhatsApp');
     return;
   }
-
-  for (const to of recipients) {
-    try {
-      const msg = await twilioClient.messages.create({
-        from: `whatsapp:${from}`,
-        to: `whatsapp:${to}`,
-        body: message,
-      });
-      console.log('[GmailMonitor] Sent to %s — SID: %s', maskNumber(to), msg.sid);
-    } catch (err) {
-      console.error('[GmailMonitor] Twilio error for %s — code %s: %s', maskNumber(to), err.code, err.message);
-    }
-  }
+  const results = await sendTextMessage(message, recipients);
+  const sent = results.filter(r => r.status === 'sent').length;
+  console.log('[GmailMonitor] WhatsApp: %d/%d sent', sent, recipients.length);
 }
 
 /**
@@ -405,7 +377,6 @@ async function main() {
   console.log('[GmailMonitor] === Gmail monitor starting ===');
 
   const supabase = getSupabase();
-  const twilioClient = getTwilioClient();
 
   // Step 1: Get Gmail access token
   const accessToken = await getAccessToken();
@@ -451,7 +422,7 @@ async function main() {
     // Build and send alert
     const message = await buildAlertMessage(email, senderConfig);
     console.log('[GmailMonitor] Sending alert for %s:\n%s', id, message);
-    await sendWhatsApp(twilioClient, message);
+    await sendAlertMessage(message);
 
     // Mark processed
     await markProcessed(supabase, email);
