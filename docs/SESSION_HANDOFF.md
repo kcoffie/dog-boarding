@@ -149,6 +149,13 @@ GitHub Actions (hourly at :15)
 
 ---
 
+## Future Backlog (post-M3)
+
+- **F-1: Message delivery observability** — verify a message was actually received. Meta Webhooks POST a delivery status for each wamid. Store wamids at send time, alert if no delivered status within N minutes. See SPRINT_PLAN.md F-1.
+- **F-2: Message log page** — store every outbound message (recipient, content, timestamp, type) to a `message_log` table at send time. New app page: last 5 days of messages, latest first. Decouples "did the job run and compile the message" from "did the delivery work" — Kate can check the app to see what *should* have been sent. See SPRINT_PLAN.md F-2.
+
+---
+
 ## Carry-Forward (low priority, not blocking v5)
 
 - **`cron-schedule.js` ADD filter case-sensitive** — `/\badd\b/` doesn't match uppercase `ADD`. Low priority — sync pipeline's post-filter catches these downstream anyway.
