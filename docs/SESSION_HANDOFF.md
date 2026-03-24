@@ -1,16 +1,20 @@
-# Dog Boarding App — Session Handoff (v5.1.0 live)
+# Dog Boarding App — Session Handoff (v5.2.0 pending template approval)
 **Last updated:** March 24, 2026
 
 ---
 
 ## Current State
 
-- **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
+- **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release; v5.2.0 ready to tag once Meta templates approved
 - **838 tests, 51 files, 0 failures**
-- PR #112 open — M3-12: Meta message templates (fix 24h window); **awaiting template approval before merge**
+- PR #112 merged — M3-12: Meta message templates deployed; **awaiting template approval to verify end-to-end**
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
 - PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live
 - PR #93 merged — M3-1/2/3 done (README overhaul, runbook, ADRs); test files committed; SPRINT_PLAN.md now in git
+
+### v5.2 milestones
+
+- **M3-12 MERGED** (#112) — All WhatsApp sends switched to Meta approved message templates. Fixes 24h customer service window. `getAlertRecipients()` deduplicated into `notifyWhatsApp.js`. **Awaiting template approval to verify end-to-end delivery.**
 
 ### v5.1 milestones — all live ✅
 
@@ -22,16 +26,13 @@
 - **M3-1/2/3 DONE** — README rewritten (mermaid diagram, architecture, testing, security, ADR links). `docs/RUNBOOK.md` created. Three ADRs created in `docs/adr/`.
 
 ### Pending (Kate)
-- **Meta message templates — CREATE BEFORE MERGING #112** — go to business.facebook.com → WhatsApp Manager → Message Templates → Create Template:
-  - `dog_boarding_alert`: Category=Utility, Language=English (en_US), Body=`Dog boarding alert:\n\n{{1}}`
-  - `dog_boarding_roster`: Category=Utility, Language=English (en_US), Header=Image (dynamic), Body=`Boarding roster`
-  - Once both reach **Approved** status: merge PR #112 and create v5.2.0 release
+- **Meta templates pending approval** — `dog_boarding_alert` and `dog_boarding_roster` submitted, in review. Once both reach **Approved** status: manually trigger `integration-check` workflow to verify delivery, then tag v5.2.0 release.
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 - ~~**Delete old Twilio GH secrets**~~ ✅ Done March 24, 2026 — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` removed
 
 ### Known monitoring gap — WhatsApp delivery receipts
-~~Friday PM notify ran at 22:37 UTC (3:37 PM PDT) on March 20. Job returned HTTP 200, `sentCount:1`, and a real `wamid` from Meta — meaning Meta accepted the message. Kate did not receive it.~~ Root cause identified: Meta 24-hour customer service window was closed. **Fix in PR #112** — switches all sends to Meta approved message templates, which bypass the 24h window. Once #112 is merged and templates are approved, this gap is closed. M3-10 (Meta Webhooks delivery receipts) would close the remaining gap of post-acceptance delivery failures invisible to the stack.
+Root cause of March 20 non-delivery identified and fixed: Meta 24-hour customer service window. PR #112 merged — all sends now use approved message templates which bypass the window. Once templates reach Approved status and delivery is verified, this gap is closed. M3-10 (Meta Webhooks delivery receipts) would close the remaining gap of post-acceptance delivery failures.
 
 ---
 
@@ -47,7 +48,7 @@
 6. **M3-9** — CHANGELOG.md documenting v1.0 → v5.0.0 release history
 7. **M3-10** — WhatsApp delivery receipts (Meta Webhooks) — post-acceptance delivery failures still invisible; templates (M3-12) close the 24h window gap but not the delivery-receipt gap
 8. ~~**M3-11** — Consolidate WhatsApp sender~~ ✅ DONE (#108) — all 3 alerting scripts now use Meta Cloud API; `twilio` package removed; `TWILIO_*` GH secrets deleted
-9. **M3-12** — Meta message templates (PR #112 open, awaiting template approval) — fix 24h customer service window; also deduplicates `getAlertRecipients()` across scripts
+9. ~~**M3-12** — Meta message templates~~ ✅ DONE (#112) — all sends use approved templates; fixes 24h window; templates in review
 
 ---
 
