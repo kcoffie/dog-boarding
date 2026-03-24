@@ -1,23 +1,23 @@
-# Dog Boarding App — Session Handoff (v5.0 live)
+# Dog Boarding App — Session Handoff (v5.1.0 live)
 **Last updated:** March 24, 2026
 
 ---
 
 ## Current State
 
-- **v5.0.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
+- **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — tagged, latest release
 - **835 tests, 51 files, 0 failures**
+- PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
 - PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live
 - PR #93 merged — M3-1/2/3 done (README overhaul, runbook, ADRs); test files committed; SPRINT_PLAN.md now in git
-- PR #95 merged — `docs/job_docs/gmail-monitor.md` added; README mermaid diagram fixed (`@` in node label)
-- PR #99 merged — `docs/job_docs/notify-jobs.md` corrected: Twilio refs replaced with Meta Cloud API (stale since M0)
 
-### v5.0 milestones — all live ✅
+### v5.1 milestones — all live ✅
 
-- **M0 LIVE** — Meta Cloud API wired up end-to-end. WhatsApp roster image delivery confirmed working to Kate's number. `META_PHONE_NUMBER_ID` + `META_WHATSAPP_TOKEN` set in GH secrets + Vercel env.
-- **M1-1 LIVE** — Cron failure alerting running. Migrations 022 + 023 applied. `cron-health-check.yml` running at 00:30 UTC. `checkHungCron` added (detects crons stuck in 'started' >20 min).
+- **M3-11 LIVE** — All alerting scripts (integration-check, cron-health-check, gmail-monitor) migrated from Twilio to Meta Cloud API. `twilio` package removed. Verified March 24, 2026: integration check sent `wamid.HBgLMTg...` via Meta, 1/1 sent. Cron health check: PASS. Gmail monitor: PASS.
+- **M0 LIVE** — Meta Cloud API wired up end-to-end. WhatsApp roster image delivery confirmed working to Kate's number.
+- **M1-1 LIVE** — Cron failure alerting running. Migrations 022 + 023 applied. `cron-health-check.yml` running at 00:30 UTC.
 - **M1-2 LIVE** — `refreshDaytimeSchedule` in `src/lib/notifyHelpers.js`, all 7 exit paths covered.
-- **M2 LIVE** — Gmail monitor running hourly. OAuth2 confirmed working. GH secrets set. First run sent 16 historical alerts (all now deduped in `gmail_processed_emails`). Self-skip guard added (`SELF_SKIP_SUBJECTS`) to prevent alert loops on own GH Actions failures.
+- **M2 LIVE** — Gmail monitor running hourly. OAuth2 confirmed working.
 - **M3-1/2/3 DONE** — README rewritten (mermaid diagram, architecture, testing, security, ADR links). `docs/RUNBOOK.md` created. Three ADRs created in `docs/adr/`.
 
 ### Pending (Kate)
