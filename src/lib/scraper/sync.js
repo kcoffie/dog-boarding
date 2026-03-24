@@ -357,15 +357,19 @@ export async function runSync(options = {}) {
         //
         // Confirmed non-boarding patterns (business owner verified):
         //   DC:FT / D/C M/T/W/TH  — daycare
-        //   PG FT / P/G MTWTH     — pack group (group daycare)
         //   ADD Leo T/TH           — dog added to recurring daycare schedule
         //   Brinkley switch day    — daycare day swap (not overnight)
         //   mav back to 4 days    — daycare schedule change note
+        //
+        // NOTE: PG (pack group) is intentionally NOT pre-filtered here.
+        // "PG 3/23-30" style titles are pack group BOARDING appointments with
+        // Boarding (Nights) pricing — they pass the pricing filter correctly.
+        // PG daycare-only events are caught by the pricing filter (all line
+        // items match /pack/i dayServicePatterns).
         if (boardingOnly) {
           const titleLower = (appt.title || '').toLowerCase();
           const isKnownNonBoarding =
             /(d\/c|\bdc\b)/i.test(titleLower) ||
-            /(p\/g|g\/p|\bpg\b)/i.test(titleLower) ||
             /\badd\b/i.test(titleLower) ||
             /switch\s+day/i.test(titleLower) ||
             /back\s+to\s+\d+/i.test(titleLower) ||
@@ -406,11 +410,11 @@ export async function runSync(options = {}) {
 
         // Post-fetch filter: catch any non-boarding that slipped past the pre-filter.
         // The service_type from the detail page uses the same shorthand titles.
+        // PG is excluded here for the same reason as the pre-filter — see note above.
         if (boardingOnly) {
           const checkLower = (details.service_type || appt.title || '').toLowerCase();
           const isKnownNonBoarding =
             /(d\/c|\bdc\b)/i.test(checkLower) ||
-            /(p\/g|g\/p|\bpg\b)/i.test(checkLower) ||
             /\badd\b/i.test(checkLower) ||
             /switch\s+day/i.test(checkLower) ||
             /back\s+to\s+\d+/i.test(checkLower) ||

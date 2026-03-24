@@ -55,9 +55,12 @@ const PLAYWRIGHT_TIMEOUT_MS = 30_000;
 
 // Mirrors NON_BOARDING_RE from cron-schedule.js and sync.js.
 // Defined here independently — do not import from src/ to preserve signal isolation.
+// NOTE: PG is intentionally excluded. "PG 3/23-30" style titles are pack group
+// BOARDING appointments — Boarding (Nights) pricing passes the pricing filter.
+// PG daycare-only events are rare in the integration check window and would
+// be caught by service category (cat-7431 = PG, not a boarding category).
 const NON_BOARDING_PATTERNS = [
   /(d\/c|\bdc\b)/i,
-  /(p\/g|g\/p|\bpg\b)/i,
   /\badd\b/i,
   /switch\s+day/i,
   /back\s+to\s+\d+/i,
