@@ -368,13 +368,7 @@ export async function runSync(options = {}) {
         // items match /pack/i dayServicePatterns).
         if (boardingOnly) {
           const titleLower = (appt.title || '').toLowerCase();
-          const isKnownNonBoarding =
-            /(d\/c|\bdc\b)/i.test(titleLower) ||
-            /\badd\b/i.test(titleLower) ||
-            /switch\s+day/i.test(titleLower) ||
-            /back\s+to\s+\d+/i.test(titleLower) ||
-            /initial\s+eval/i.test(titleLower) ||
-            /^busy$/i.test(titleLower.trim());
+          const isKnownNonBoarding = SCRAPER_CONFIG.nonBoardingPatterns.some(re => re.test(titleLower));
           if (isKnownNonBoarding) {
             syncLog(`[Sync] ⏭️ Skipping non-boarding appointment ${appt.id} (title: "${appt.title}")`);
             result.appointmentsSkipped++;
@@ -413,13 +407,7 @@ export async function runSync(options = {}) {
         // PG is excluded here for the same reason as the pre-filter — see note above.
         if (boardingOnly) {
           const checkLower = (details.service_type || appt.title || '').toLowerCase();
-          const isKnownNonBoarding =
-            /(d\/c|\bdc\b)/i.test(checkLower) ||
-            /\badd\b/i.test(checkLower) ||
-            /switch\s+day/i.test(checkLower) ||
-            /back\s+to\s+\d+/i.test(checkLower) ||
-            /initial\s+eval/i.test(checkLower) ||
-            /\bbusy\b/i.test(checkLower);
+          const isKnownNonBoarding = SCRAPER_CONFIG.nonBoardingPatterns.some(re => re.test(checkLower));
           if (isKnownNonBoarding) {
             syncLog(`[Sync] ⏭️ Skipping non-boarding appointment ${appt.id} (service_type: "${details.service_type || appt.title}")`);
             result.appointmentsSkipped++;

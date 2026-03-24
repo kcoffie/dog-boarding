@@ -6,9 +6,10 @@
 ## Current State
 
 - **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release; v5.2.0 ready to tag once Meta templates approved
-- **843 tests, 51 files, 0 failures**
-- PR #118 open — fix: cascade `cancelled_at` to boarding on reconcile archive; BoardingMatrix shows grey ✕ + strikethrough for cancelled dogs (#117)
-- PR #115 merged — fix: PG boarding filter (#114) — `\bpg\b` removed from sync.js + integration-check.js; PG boarding appointments (e.g., Kailin "PG 3/23-30") now sync correctly
+- **844 tests, 51 files, 0 failures**
+- PR #119 open — fix: single-source `nonBoardingPatterns` in `config.js`; fix `syncRunner.js` cron PG filter (#117) — **CI green, ready to merge**
+- PR #118 merged — fix: cascade `cancelled_at` to boarding on reconcile archive; BoardingMatrix shows grey ✕ + strikethrough for cancelled dogs (#117)
+- PR #115 merged — fix: PG boarding filter (#114) — `\bpg\b` removed from sync.js + integration-check.js; **cron path (syncRunner.js) fixed in PR #119**
 - PR #113 merged — docs: SESSION_HANDOFF + SPRINT_PLAN post-M3-12
 - PR #112 merged — M3-12: Meta message templates deployed; **awaiting template approval to verify end-to-end**
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
@@ -29,9 +30,11 @@
 - **M3-1/2/3 DONE** — README rewritten (mermaid diagram, architecture, testing, security, ADR links). `docs/RUNBOOK.md` created. Three ADRs created in `docs/adr/`.
 
 ### Pending (Kate)
+- **Merge PR #119** — CI green. Fixes cron PG filter gap from #115; consolidates `nonBoardingPatterns` to single definition in `config.js`. After merging: reset local main (`git reset --hard origin/main`), then tag v5.2.0 (or wait for Meta template approval and tag both together).
+- **Backfill Maverick cancelled boarding** — PR #118 merged but the existing DB row predates the cascade. Run in Supabase SQL editor: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
 - **Meta templates pending approval** — `dog_boarding_alert` and `dog_boarding_roster` submitted, in review. Once both reach **Approved** status: manually trigger `integration-check` workflow to verify delivery, then tag v5.2.0 release.
-- **Trigger manual sync for Kailin** — After PR #115 deployed to Vercel, go to app SyncSettings and trigger a sync to pick up Kailin (C63QgJQ9, "PG 3/23-30", Mar 23-30, $570). The PG filter was blocking her; it is now fixed.
-- ~~**Maverick cancelled boarding**~~ — PR #118 open. After merging, run in Supabase SQL editor to backfill existing row: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
+- ~~**Trigger manual sync for Kailin**~~ ✅ Done — Kailin `C63QgJQ9` ("PG 3/23-30", Mar 23-30, $570, night_rate $60) synced and verified in DB.
+- ~~**Maverick cancelled boarding (cascade)**~~ ✅ Done via PR #118 — future cancellations cascade automatically on reconcile archive.
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 - ~~**Delete old Twilio GH secrets**~~ ✅ Done March 24, 2026 — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` removed
