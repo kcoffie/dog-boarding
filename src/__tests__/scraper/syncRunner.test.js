@@ -350,4 +350,35 @@ describe('runDetailSync', () => {
     expect(result.action).toBe('session_cleared');
     expect(clearSession).toHaveBeenCalledTimes(1);
   });
+
+  it('returns action=skipped and marks done when applyDetailFilters rejects the appointment', async () => {
+    // Regression test: cron path must apply the same post-detail filters as sync.js.
+    // A same-day PG daycare appointment (1-hour, no pricing) must be skipped, not saved.
+    dequeueOne.mockResolvedValue({
+      id: 'queue-pg-daycare',
+      external_id: 'C63QgZoi',
+      source_url: 'https://agirlandyourdog.com/schedule/a/C63QgZoi/1742860800',
+      title: 'PG FT',
+      type: 'appointment',
+      meta: { external_pet_id: '90043' },
+      retry_count: 0,
+    });
+    fetchAppointmentDetails.mockResolvedValue({
+      external_id: 'C63QgZoi',
+      pet_name: 'Maverick',
+      service_type: 'PG FT',
+      booking_status: 'confirmed',
+      pricing: null,
+      check_in_datetime:  '2026-03-24T10:00:00Z',
+      check_out_datetime: '2026-03-24T11:00:00Z', // 1 hour — same-day daycare
+    });
+    markDone.mockResolvedValue(undefined);
+    getQueueDepth.mockResolvedValue(0);
+
+    const result = await runDetailSync(makeMockSupabase());
+    expect(result.action).toBe('skipped');
+    expect(result.reason).toMatch(/same_day/);
+    expect(markDone).toHaveBeenCalledWith(expect.anything(), 'queue-pg-daycare');
+    expect(mapAndSaveAppointment).not.toHaveBeenCalled();
+  });
 });
