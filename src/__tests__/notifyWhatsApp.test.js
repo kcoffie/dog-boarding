@@ -257,6 +257,43 @@ describe('sendTextMessage', () => {
     expect(mc()).toHaveLength(0);
     expect(results).toEqual([]);
   });
+
+  it('sanitizes newlines — multi-line message is collapsed to single line with " | " separator', async () => {
+    const { fetchMock: fm, metaCalls: mc } = makeFetchMock([metaOk()]);
+    vi.stubGlobal('fetch', fm);
+
+    const multiLine = '⚠️ Integration check found issues (3/25/26)\nBoarding:\n• Missing from DB: Tula\n• Missing from DB: Fergus';
+    await sendTextMessage(multiLine, ['+18312477375']);
+
+    const body = JSON.parse(mc()[0][1].body);
+    const paramText = body.template.components[0].parameters[0].text;
+    expect(paramText).not.toContain('\n');
+    expect(paramText).toBe('⚠️ Integration check found issues (3/25/26) | Boarding: | • Missing from DB: Tula | • Missing from DB: Fergus');
+  });
+
+  it('sanitizes newlines — trims whitespace per line and drops empty lines', async () => {
+    const { fetchMock: fm, metaCalls: mc } = makeFetchMock([metaOk()]);
+    vi.stubGlobal('fetch', fm);
+
+    // Leading/trailing spaces on lines, empty lines in between
+    const messy = '  First line  \n\n  Second line  \n\n';
+    await sendTextMessage(messy, ['+18312477375']);
+
+    const body = JSON.parse(mc()[0][1].body);
+    const paramText = body.template.components[0].parameters[0].text;
+    expect(paramText).toBe('First line | Second line');
+  });
+
+  it('sanitizes newlines — plain single-line message is unchanged', async () => {
+    const { fetchMock: fm, metaCalls: mc } = makeFetchMock([metaOk()]);
+    vi.stubGlobal('fetch', fm);
+
+    await sendTextMessage('✅ All good', ['+18312477375']);
+
+    const body = JSON.parse(mc()[0][1].body);
+    const paramText = body.template.components[0].parameters[0].text;
+    expect(paramText).toBe('✅ All good');
+  });
 });
 
 // ---------------------------------------------------------------------------
