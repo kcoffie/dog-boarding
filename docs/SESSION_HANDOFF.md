@@ -1,13 +1,14 @@
-# Dog Boarding App — Session Handoff (v5.2.0 pending PR #121 merge)
+# Dog Boarding App — Session Handoff (v5.3.0 LIVE)
 **Last updated:** March 25, 2026
 
 ---
 
 ## Current State
 
-- **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release; v5.2.0 ready to tag once PR #121 merged + integration-check verified
-- **870 tests, 52 files, 0 failures**
-- **PR #121 open** — fix: `'en'` locale for Meta message templates — **merge when CI green, then trigger integration-check, then tag v5.2.0**
+- **v5.3.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release
+- **873 tests, 52 files, 0 failures**
+- PR #125 merged — fix: sanitize newlines in `sendTextMessage` template parameter (#124)
+- PR #121 merged — fix: `'en'` locale for Meta message templates
 - PR #120 merged — fix: shared appointment filter pipeline (#117)
 - PR #119 merged — fix: single-source `nonBoardingPatterns` in `config.js`; fix `syncRunner.js` cron PG filter (#117)
 - PR #118 merged — fix: cascade `cancelled_at` to boarding on reconcile archive; BoardingMatrix shows grey ✕ + strikethrough for cancelled dogs (#117)
@@ -15,77 +16,20 @@
 - PR #112 merged — M3-12: Meta message templates deployed
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
 
-### v5.2 milestones
+### v5.3 — WhatsApp fully verified ✅
 
-- **M3-12 MERGED** (#112) — All WhatsApp sends switched to Meta approved message templates. Fixes 24h customer service window. `getAlertRecipients()` deduplicated into `notifyWhatsApp.js`.
-- **Template locale bug found + fixed** (#121) — Templates were approved under language "English" (`en`), but code was sending `en_US` → error 132001 on every send. PR #121 fixes this. **Pending merge.**
-
-### v5.1 milestones — all live ✅
-
-- **M3-11 LIVE** — All alerting scripts (integration-check, cron-health-check, gmail-monitor) migrated from Twilio to Meta Cloud API. `twilio` package removed. Verified March 24, 2026: integration check sent `wamid.HBgLMTg...` via Meta, 1/1 sent. Cron health check: PASS. Gmail monitor: PASS.
-- **M0 LIVE** — Meta Cloud API wired up end-to-end. WhatsApp roster image delivery confirmed working to Kate's number.
-- **M1-1 LIVE** — Cron failure alerting running. Migrations 022 + 023 applied. `cron-health-check.yml` running at 00:30 UTC.
-- **M1-2 LIVE** — `refreshDaytimeSchedule` in `src/lib/notifyHelpers.js`, all 7 exit paths covered.
-- **M2 LIVE** — Gmail monitor running hourly. OAuth2 confirmed working.
-- **M3-1/2/3 DONE** — README rewritten (mermaid diagram, architecture, testing, security, ADR links). `docs/RUNBOOK.md` created. Three ADRs created in `docs/adr/`.
+- **Locale fix** (PR #121) — `en_US` → `en`; resolved error 132001
+- **Newline fix** (PR #125) — sanitize `\n` → ` | ` in `sendTextMessage`; resolved error 132018
+- **Verified live** (run 23567958341, March 25, 2026): `wamid.HBgLMTgz...` — 1/1 sent. WhatsApp alert delivered to Kate's phone.
 
 ### Pending (Kate)
-- **Merge PR #121** — CI running. After merge: `git reset --hard origin/main`, trigger `integration-check` workflow, confirm WhatsApp message delivered, then tag v5.2.0.
-- ~~**Merge PR #120**~~ ✅ Done March 25, 2026
-- ~~**DB cleanup after PR #120**~~ — Run this in Supabase SQL editor if not done yet:
-  ```sql
-  BEGIN;
-  UPDATE sync_appointments
-  SET mapped_boarding_id = NULL, sync_status = 'archived'
-  WHERE mapped_boarding_id IN (
-    SELECT id FROM boardings
-    WHERE billed_amount = 0
-      AND EXTRACT(EPOCH FROM (departure_datetime - arrival_datetime))/3600 < 12
-  );
-  DELETE FROM boardings
-  WHERE billed_amount = 0
-    AND EXTRACT(EPOCH FROM (departure_datetime - arrival_datetime))/3600 < 12;
-  COMMIT;
-  ```
 - **Backfill Maverick cancelled boarding** — existing DB row predates the cascade fix (PR #118). Run: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
-- ~~**Meta templates pending approval**~~ ✅ Both `dog_boarding_alert` and `dog_boarding_roster` approved (confirmed March 25). Locale was `en` not `en_US` — fixed in PR #121.
-- ~~**Trigger manual sync for Kailin**~~ ✅ Done — Kailin `C63QgJQ9` ("PG 3/23-30", Mar 23-30, $570, night_rate $60) synced and verified in DB.
-- ~~**Maverick cancelled boarding (cascade)**~~ ✅ Done via PR #118 — future cancellations cascade automatically on reconcile archive.
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
-- ~~**Delete old Twilio GH secrets**~~ ✅ Done March 24, 2026 — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` removed
+- **Tula — N/C Tula 3/23-26 (C63Qga3r)** — appeared as "Missing from DB" in integration check. Unclear if it's a real boarding that should sync or a no-charge visit that should be filtered. Kate to investigate.
 
 ### Known integration-check false positives
 PG daycare-only appointments (e.g. "Fergus Stevens — P/G TWTH") show as "Missing from DB" in every integration-check run. This is expected: they pass the title filter (PG is not title-filtered because "PG 3/23-30" style are real boardings) but are correctly excluded by the pricing filter in the sync pipeline. The check can't run the pricing filter without fetching detail pages. Not a bug — ignore these in the report.
-
-### PR #120 — post-deployment verification checklist
-After merging PR #120 and running the DB cleanup SQL:
-
-1. **Trigger integration-check** (`gh workflow run integration-check.yml`)
-2. **In the run logs, confirm:**
-   - PG daycare appointments show `⏭️ SKIP {id} — same_day: duration 1.0h < 12h` (not saved)
-   - PG boarding `C63QgJQ9` (Kailin) shows `unchanged` or `updated` (still in DB, not skipped)
-   - Integration check result: `PASS ✅ (0 issue(s))`
-3. **Query DB — confirm 0 phantom boardings remain:**
-   ```sql
-   SELECT COUNT(*) FROM boardings
-   WHERE billed_amount = 0
-     AND EXTRACT(EPOCH FROM (departure_datetime - arrival_datetime))/3600 < 12;
-   -- expect: 0
-   ```
-4. **After midnight cron runs (00:05–00:15 UTC):**
-   - Check `cron_health` for `schedule` and `detail` — both `status = success`
-   - Query recent boardings — no new `$0 / 1h` entries after the cron ran
-   ```sql
-   SELECT external_id, arrival_datetime, departure_datetime, billed_amount, updated_at
-   FROM boardings
-   WHERE updated_at > NOW() - INTERVAL '2 hours'
-   ORDER BY updated_at DESC;
-   ```
-5. **Verify Kailin still correct** — `updated_at` recent, `billed_amount = 570`, dates Mar 23-30, `sync_appointments.sync_status = active`
-
-### Known monitoring gap — WhatsApp delivery receipts
-Root cause of March 20 non-delivery identified and fixed: Meta 24-hour customer service window. PR #112 merged — all sends now use approved message templates which bypass the window. Once templates reach Approved status and delivery is verified, this gap is closed. M3-10 (Meta Webhooks delivery receipts) would close the remaining gap of post-acceptance delivery failures.
 
 ---
 
@@ -100,8 +44,8 @@ Root cause of March 20 non-delivery identified and fixed: Meta 24-hour customer 
 5. **M3-8** — App screenshots in README (boarding matrix, roster image — currently no visuals)
 6. **M3-9** — CHANGELOG.md documenting v1.0 → v5.0.0 release history
 7. **M3-10** — WhatsApp delivery receipts (Meta Webhooks) — post-acceptance delivery failures still invisible; templates (M3-12) close the 24h window gap but not the delivery-receipt gap
-8. ~~**M3-11** — Consolidate WhatsApp sender~~ ✅ DONE (#108) — all 3 alerting scripts now use Meta Cloud API; `twilio` package removed; `TWILIO_*` GH secrets deleted
-9. ~~**M3-12** — Meta message templates~~ ✅ DONE (#112) — all sends use approved templates; fixes 24h window; templates in review
+8. ~~**M3-11** — Consolidate WhatsApp sender~~ ✅ DONE (#108)
+9. ~~**M3-12** — Meta message templates~~ ✅ DONE (#112)
 
 ---
 
@@ -248,7 +192,7 @@ WHERE b.arrival_datetime <= NOW() + INTERVAL '7 days'
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0 **(latest)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0, v5.2.0, v5.3.0 **(latest)**
 
 ## Archive
 - v4.5 session: `docs/archive/SESSION_HANDOFF_v4.5_final.md`
