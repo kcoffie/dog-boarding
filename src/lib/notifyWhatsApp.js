@@ -232,6 +232,11 @@ export async function sendTextMessage(text, recipients) {
     }));
   }
 
+  // Meta template body parameters cannot contain newline or tab characters (error 132018).
+  // Collapse multi-line messages to a single line with ' | ' as the separator.
+  const sanitized = text.split('\n').map(l => l.trim()).filter(Boolean).join(' | ');
+  log(`sendTextMessage body (${sanitized.length} chars): ${sanitized.slice(0, 120)}${sanitized.length > 120 ? '…' : ''}`);
+
   const results = [];
 
   for (const to of recipients) {
@@ -241,7 +246,7 @@ export async function sendTextMessage(text, recipients) {
     try {
       const { messageId } = await metaApiSend(creds.phoneNumberId, creds.token, to,
         buildTemplatePayload(ALERT_TEMPLATE, [
-          { type: 'body', parameters: [{ type: 'text', text }] },
+          { type: 'body', parameters: [{ type: 'text', text: sanitized }] },
         ]),
       );
       log(`Sent to ${masked} — messageId: ${messageId}`);
