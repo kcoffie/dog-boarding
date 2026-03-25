@@ -5,6 +5,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { SCRAPER_CONFIG } from './config.js';
+import { applyDetailFilters } from './appointmentFilter.js';
 import { authenticate, isAuthenticated } from './auth.js';
 import { fetchAllSchedulePages } from './schedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
@@ -402,61 +403,18 @@ export async function runSync(options = {}) {
         );
         const fetchDuration = Date.now() - fetchStart;
 
-        // Post-fetch filter: catch any non-boarding that slipped past the pre-filter.
-        // The service_type from the detail page uses the same shorthand titles.
-        // PG is excluded here for the same reason as the pre-filter — see note above.
-        if (boardingOnly) {
-          const checkLower = (details.service_type || appt.title || '').toLowerCase();
-          const isKnownNonBoarding = SCRAPER_CONFIG.nonBoardingPatterns.some(re => re.test(checkLower));
-          if (isKnownNonBoarding) {
-            syncLog(`[Sync] ⏭️ Skipping non-boarding appointment ${appt.id} (service_type: "${details.service_type || appt.title}")`);
-            result.appointmentsSkipped++;
-            continue;
-          }
-        }
-
-        // Layer 3b: Filter canceled booking requests.
-        // "Request canceled" appointments have booking_status='canceled' — the client
-        // submitted a request that was never confirmed. Skip silently; do not save as boardings.
-        if (details.booking_status === 'canceled') {
-          syncLog(`[Sync] ⏭️ Skipping canceled-request appointment ${appt.id} (status: "${details.booking_status}")`);
+        // Post-fetch filters — title, booking_status, pricing, same-day duration,
+        // date-overlap. All logic lives in appointmentFilter.js so the cron path
+        // uses the same checks.
+        const { skip: shouldSkip, reason: skipReason } = applyDetailFilters(
+          details,
+          appt.title,
+          { boardingOnly, startDate, endDate },
+        );
+        if (shouldSkip) {
+          syncLog(`[Sync] ⏭️ Skipping ${appt.id} — ${skipReason}`);
           result.appointmentsSkipped++;
           continue;
-        }
-
-        // Post-fetch pricing filter: catch appointments that passed title filters but whose
-        // pricing reveals they are not client boardings:
-        //   - All day services (e.g. "Daycare Add-On Day") → title looked like a date range
-        // Note: "Staff Boarding (nights)" appointments (staff dogs boarding for free) are
-        // intentionally NOT filtered — they are real boardings that need to be tracked.
-        if (boardingOnly && details.pricing?.lineItems?.length > 0) {
-          const { dayServicePatterns } = SCRAPER_CONFIG;
-          const allDayServices = details.pricing.lineItems.every(item =>
-            dayServicePatterns.some(dp => dp.test(item.serviceName))
-          );
-          const services = details.pricing.lineItems.map(i => i.serviceName).join(', ');
-          if (allDayServices) {
-            syncLog(`[Sync] ⏭️ Skipping non-client appointment ${appt.id} (services: ${services})`);
-            result.appointmentsSkipped++;
-            continue;
-          }
-          console.log(`[Sync] ✅ Pricing check passed for ${appt.id} (services: ${services})`);
-        }
-
-        // Date-range overlap filter: skip boardings that don't overlap [startDate, endDate].
-        // We check AFTER fetching details so we have the real check_in/check_out timestamps.
-        // Active long-stay boardings (e.g. Feb 13–23 stay) pass because they overlap the window.
-        if ((startDate || endDate) && details.check_in_datetime && details.check_out_datetime) {
-          const checkIn  = new Date(details.check_in_datetime);
-          const checkOut = new Date(details.check_out_datetime);
-          // Use >= for checkOut so that a boarding ending exactly on startDate
-          // (midnight, from title-parsed dates) is still counted as overlapping.
-          const overlaps = (!endDate || checkIn < endDate) && (!startDate || checkOut >= startDate);
-          if (!overlaps) {
-            syncLog(`[Sync] ⏭️ Skipping out-of-range boarding ${appt.id} (${details.check_in_datetime} → ${details.check_out_datetime})`);
-            result.appointmentsSkipped++;
-            continue;
-          }
         }
 
         // Use schedule-page data as fallback for fields the detail-page selectors

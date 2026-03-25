@@ -6,10 +6,11 @@
 ## Current State
 
 - **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release; v5.2.0 ready to tag once Meta templates approved
-- **844 tests, 51 files, 0 failures**
-- PR #119 open — fix: single-source `nonBoardingPatterns` in `config.js`; fix `syncRunner.js` cron PG filter (#117) — **CI green, ready to merge**
+- **870 tests, 52 files, 0 failures**
+- PR #120 open — fix: shared appointment filter pipeline (#117) — **CI running, merge when green**
+- PR #119 merged — fix: single-source `nonBoardingPatterns` in `config.js`; fix `syncRunner.js` cron PG filter (#117)
 - PR #118 merged — fix: cascade `cancelled_at` to boarding on reconcile archive; BoardingMatrix shows grey ✕ + strikethrough for cancelled dogs (#117)
-- PR #115 merged — fix: PG boarding filter (#114) — `\bpg\b` removed from sync.js + integration-check.js; **cron path (syncRunner.js) fixed in PR #119**
+- PR #115 merged — fix: PG boarding filter (#114) — `\bpg\b` removed from sync.js + integration-check.js
 - PR #113 merged — docs: SESSION_HANDOFF + SPRINT_PLAN post-M3-12
 - PR #112 merged — M3-12: Meta message templates deployed; **awaiting template approval to verify end-to-end**
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
@@ -30,14 +31,55 @@
 - **M3-1/2/3 DONE** — README rewritten (mermaid diagram, architecture, testing, security, ADR links). `docs/RUNBOOK.md` created. Three ADRs created in `docs/adr/`.
 
 ### Pending (Kate)
-- **Merge PR #119** — CI green. Fixes cron PG filter gap from #115; consolidates `nonBoardingPatterns` to single definition in `config.js`. After merging: reset local main (`git reset --hard origin/main`), then tag v5.2.0 (or wait for Meta template approval and tag both together).
-- **Backfill Maverick cancelled boarding** — PR #118 merged but the existing DB row predates the cascade. Run in Supabase SQL editor: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
+- **Merge PR #120** — CI running. After merge: reset local main (`git reset --hard origin/main`), then run DB cleanup SQL (see below), then trigger integration-check to verify.
+- **DB cleanup after PR #120** — 95 phantom boardings (all `$0`, all `< 12h` duration) in the DB from before the filter fix. Run in Supabase SQL editor after merge:
+  ```sql
+  BEGIN;
+  UPDATE sync_appointments
+  SET mapped_boarding_id = NULL, sync_status = 'archived'
+  WHERE mapped_boarding_id IN (
+    SELECT id FROM boardings
+    WHERE billed_amount = 0
+      AND EXTRACT(EPOCH FROM (departure_datetime - arrival_datetime))/3600 < 12
+  );
+  DELETE FROM boardings
+  WHERE billed_amount = 0
+    AND EXTRACT(EPOCH FROM (departure_datetime - arrival_datetime))/3600 < 12;
+  COMMIT;
+  ```
+- **Backfill Maverick cancelled boarding** — existing DB row predates the cascade fix (PR #118). Run: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
 - **Meta templates pending approval** — `dog_boarding_alert` and `dog_boarding_roster` submitted, in review. Once both reach **Approved** status: manually trigger `integration-check` workflow to verify delivery, then tag v5.2.0 release.
 - ~~**Trigger manual sync for Kailin**~~ ✅ Done — Kailin `C63QgJQ9` ("PG 3/23-30", Mar 23-30, $570, night_rate $60) synced and verified in DB.
 - ~~**Maverick cancelled boarding (cascade)**~~ ✅ Done via PR #118 — future cancellations cascade automatically on reconcile archive.
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 - ~~**Delete old Twilio GH secrets**~~ ✅ Done March 24, 2026 — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` removed
+
+### PR #120 — post-deployment verification checklist
+After merging PR #120 and running the DB cleanup SQL:
+
+1. **Trigger integration-check** (`gh workflow run integration-check.yml`)
+2. **In the run logs, confirm:**
+   - PG daycare appointments show `⏭️ SKIP {id} — same_day: duration 1.0h < 12h` (not saved)
+   - PG boarding `C63QgJQ9` (Kailin) shows `unchanged` or `updated` (still in DB, not skipped)
+   - Integration check result: `PASS ✅ (0 issue(s))`
+3. **Query DB — confirm 0 phantom boardings remain:**
+   ```sql
+   SELECT COUNT(*) FROM boardings
+   WHERE billed_amount = 0
+     AND EXTRACT(EPOCH FROM (departure_datetime - arrival_datetime))/3600 < 12;
+   -- expect: 0
+   ```
+4. **After midnight cron runs (00:05–00:15 UTC):**
+   - Check `cron_health` for `schedule` and `detail` — both `status = success`
+   - Query recent boardings — no new `$0 / 1h` entries after the cron ran
+   ```sql
+   SELECT external_id, arrival_datetime, departure_datetime, billed_amount, updated_at
+   FROM boardings
+   WHERE updated_at > NOW() - INTERVAL '2 hours'
+   ORDER BY updated_at DESC;
+   ```
+5. **Verify Kailin still correct** — `updated_at` recent, `billed_amount = 570`, dates Mar 23-30, `sync_appointments.sync_status = active`
 
 ### Known monitoring gap — WhatsApp delivery receipts
 Root cause of March 20 non-delivery identified and fixed: Meta 24-hour customer service window. PR #112 merged — all sends now use approved message templates which bypass the window. Once templates reach Approved status and delivery is verified, this gap is closed. M3-10 (Meta Webhooks delivery receipts) would close the remaining gap of post-acceptance delivery failures.
