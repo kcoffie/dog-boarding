@@ -43,6 +43,7 @@ import { setSession } from './auth.js';
 import { authenticatedFetch } from './auth.js';
 import { ensureSession, clearSession } from './sessionCache.js';
 import { SCRAPER_CONFIG } from './config.js';
+import { applyDetailFilters } from './appointmentFilter.js';
 import { enqueue, dequeueOne, markDone, markFailed, resetStuck as resetStuckItems, getQueueDepth } from './syncQueue.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from './daytimeSchedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
@@ -480,6 +481,16 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   }
 
   if (!details.pet_name && item.title) details.pet_name = item.title;
+
+  // Post-detail filters — same logic as the browser sync path (sync.js).
+  // Cron path is always boardingOnly; no date-range window (cursor handles scope).
+  const { skip: shouldSkip, reason: skipReason } = applyDetailFilters(details, item.title);
+  if (shouldSkip) {
+    console.log(`[SyncRunner:Detail] ⏭️ SKIP ${item.external_id} — ${skipReason}`);
+    await markDone(supabase, item.id);
+    const remaining = await getQueueDepth(supabase);
+    return { action: 'skipped', reason: skipReason, externalId: item.external_id, queueDepth: remaining };
+  }
 
   try {
     const saveResult = await mapAndSaveAppointment(details, { supabase, externalPetId });
