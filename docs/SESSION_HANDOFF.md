@@ -1,13 +1,13 @@
-# Dog Boarding App — Session Handoff (v5.2.0 pending PR #121 merge)
+# Dog Boarding App — Session Handoff (v5.2.0 LIVE)
 **Last updated:** March 25, 2026
 
 ---
 
 ## Current State
 
-- **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release; v5.2.0 ready to tag once PR #121 merged + integration-check verified
+- **v5.2.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release
 - **870 tests, 52 files, 0 failures**
-- **PR #121 open** — fix: `'en'` locale for Meta message templates — **merge when CI green, then trigger integration-check, then tag v5.2.0**
+- PR #121 merged — fix: `'en'` locale for Meta message templates
 - PR #120 merged — fix: shared appointment filter pipeline (#117)
 - PR #119 merged — fix: single-source `nonBoardingPatterns` in `config.js`; fix `syncRunner.js` cron PG filter (#117)
 - PR #118 merged — fix: cascade `cancelled_at` to boarding on reconcile archive; BoardingMatrix shows grey ✕ + strikethrough for cancelled dogs (#117)
@@ -30,30 +30,9 @@
 - **M3-1/2/3 DONE** — README rewritten (mermaid diagram, architecture, testing, security, ADR links). `docs/RUNBOOK.md` created. Three ADRs created in `docs/adr/`.
 
 ### Pending (Kate)
-- **Merge PR #121** — CI running. After merge: `git reset --hard origin/main`, trigger `integration-check` workflow, confirm WhatsApp message delivered, then tag v5.2.0.
-- ~~**Merge PR #120**~~ ✅ Done March 25, 2026
-- ~~**DB cleanup after PR #120**~~ — Run this in Supabase SQL editor if not done yet:
-  ```sql
-  BEGIN;
-  UPDATE sync_appointments
-  SET mapped_boarding_id = NULL, sync_status = 'archived'
-  WHERE mapped_boarding_id IN (
-    SELECT id FROM boardings
-    WHERE billed_amount = 0
-      AND EXTRACT(EPOCH FROM (departure_datetime - arrival_datetime))/3600 < 12
-  );
-  DELETE FROM boardings
-  WHERE billed_amount = 0
-    AND EXTRACT(EPOCH FROM (departure_datetime - arrival_datetime))/3600 < 12;
-  COMMIT;
-  ```
 - **Backfill Maverick cancelled boarding** — existing DB row predates the cascade fix (PR #118). Run: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
-- ~~**Meta templates pending approval**~~ ✅ Both `dog_boarding_alert` and `dog_boarding_roster` approved (confirmed March 25). Locale was `en` not `en_US` — fixed in PR #121.
-- ~~**Trigger manual sync for Kailin**~~ ✅ Done — Kailin `C63QgJQ9` ("PG 3/23-30", Mar 23-30, $570, night_rate $60) synced and verified in DB.
-- ~~**Maverick cancelled boarding (cascade)**~~ ✅ Done via PR #118 — future cancellations cascade automatically on reconcile archive.
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
-- ~~**Delete old Twilio GH secrets**~~ ✅ Done March 24, 2026 — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` removed
 
 ### Known integration-check false positives
 PG daycare-only appointments (e.g. "Fergus Stevens — P/G TWTH") show as "Missing from DB" in every integration-check run. This is expected: they pass the title filter (PG is not title-filtered because "PG 3/23-30" style are real boardings) but are correctly excluded by the pricing filter in the sync pipeline. The check can't run the pricing filter without fetching detail pages. Not a bug — ignore these in the report.
@@ -248,7 +227,7 @@ WHERE b.arrival_datetime <= NOW() + INTERVAL '7 days'
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0 **(latest)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0, v5.2.0 **(latest)**
 
 ## Archive
 - v4.5 session: `docs/archive/SESSION_HANDOFF_v4.5_final.md`
