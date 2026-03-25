@@ -1,7 +1,7 @@
 # Sync Cron Jobs
 
 **Status:** Live (Hobby plan — once per day, midnight UTC; cron-detail runs twice via cron-detail-2)
-**Last reviewed:** March 19, 2026
+**Last reviewed:** March 24, 2026
 
 ---
 
@@ -88,7 +88,7 @@ Current patterns:
 - `\badd\b` — ADD appointments
 - `switch day`, `back to N`, `initial eval`, `busy`
 
-**NOTE: `pg` is intentionally excluded.** `"PG 3/23-30"` style titles are pack group **boarding** appointments with Boarding (Nights) pricing. They pass the pricing filter correctly. PG daycare-only events are caught by the pricing filter (all line items match `/pack/i` in `dayServicePatterns`).
+**NOTE: `pg` is intentionally excluded.** `"PG 3/23-30"` style titles are pack group **boarding** appointments with Boarding (Nights) pricing. PG daycare events are caught downstream by the post-detail filter in `appointmentFilter.js` (see cron-detail section below).
 
 #### Daytime ingestion (bonus pass)
 On the same HTML already fetched, calls `parseDaytimeSchedulePage()` and `upsertDaytimeAppointments()` to keep `daytime_appointments` fresh. No extra HTTP requests.
@@ -128,9 +128,17 @@ Loads cached session from `sessionCache.js`. If missing, resets the dequeued ite
 **`appointment` (default):**
 1. Calls `fetchAppointmentDetails(appointmentId, timestamp)` from `extraction.js`
 2. Falls back to the queue item's `title` for `pet_name` if extraction returned empty (prevents "Unknown" dog collapse)
-3. Calls `mapAndSaveAppointment(details, { supabase, externalPetId })` from `mapping.js`
-4. `externalPetId` comes from `item.meta.external_pet_id` — forwarded from the schedule page's `data-pet` attribute. **Critical:** without this, no form jobs get enqueued and dog external IDs are null.
-5. Marks item `done`
+3. **Calls `applyDetailFilters(details, item.title)` from `appointmentFilter.js`** — applies the same post-detail gates as the browser sync path. If the filter rejects the appointment, marks the queue item `done` and returns `action='skipped'`. The five gates in order:
+   - Title/service_type — `nonBoardingPatterns` (catches DC, ADD, etc. that slipped past the schedule pre-filter)
+   - `booking_status: canceled` — client submitted a request that was never confirmed
+   - Pricing — skip when all line items are day services (`dayServicePatterns`)
+   - **Same-day duration (`< 12h`)** — catches PG/DC daycare with no line items yet (uninvoiced same-day events); overnight boardings are always ≥ 12h
+   - Date-overlap — not applied here (cron uses a cursor, not a date range; only the browser sync passes this)
+4. Calls `mapAndSaveAppointment(details, { supabase, externalPetId })` from `mapping.js`
+5. `externalPetId` comes from `item.meta.external_pet_id` — forwarded from the schedule page's `data-pet` attribute. **Critical:** without this, no form jobs get enqueued and dog external IDs are null.
+6. Marks item `done`
+
+> **Why this matters:** Prior to PR #120, the cron path had no post-detail filters — it went straight from `fetchAppointmentDetails` to `mapAndSaveAppointment`. The browser sync (`sync.js`) had these filters inline, but the cron path never shared them. The `appointmentFilter.js` module is the single source of truth for both paths; updating it affects all execution paths equally.
 
 **`form`:**
 1. Reads `boarding_id` and `external_pet_id` from `item.meta`
@@ -201,6 +209,7 @@ Security: all three handlers check `Authorization: Bearer {CRON_SECRET}` before 
 | `src/lib/scraper/auth.js` | `authenticate()`, `authenticatedFetch()`, `setSession()` |
 | `src/lib/scraper/sessionCache.js` | `getSession()`, `storeSession()`, `clearSession()`, `ensureSession()` (self-healing: returns cached session or re-authenticates) |
 | `src/lib/scraper/syncQueue.js` | `enqueue()`, `dequeueOne()`, `markDone()`, `markFailed()`, `resetStuck()`, `getQueueDepth()` |
+| `src/lib/scraper/appointmentFilter.js` | `applyDetailFilters()` — shared post-detail filter gates (title, pricing, duration, date-overlap) |
 | `src/lib/scraper/extraction.js` | `fetchAppointmentDetails()` — detail page parser |
 | `src/lib/scraper/mapping.js` | `mapAndSaveAppointment()` — DB upsert orchestrator |
 | `src/lib/scraper/forms.js` | `fetchAndStoreBoardingForm()` — boarding form fetcher |
