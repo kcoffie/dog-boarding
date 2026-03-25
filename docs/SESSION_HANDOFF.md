@@ -1,25 +1,24 @@
-# Dog Boarding App — Session Handoff (v5.2.0 pending template approval)
-**Last updated:** March 24, 2026 (evening)
+# Dog Boarding App — Session Handoff (v5.2.0 pending PR #121 merge)
+**Last updated:** March 25, 2026
 
 ---
 
 ## Current State
 
-- **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release; v5.2.0 ready to tag once Meta templates approved
+- **v5.1.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release; v5.2.0 ready to tag once PR #121 merged + integration-check verified
 - **870 tests, 52 files, 0 failures**
-- PR #120 open — fix: shared appointment filter pipeline (#117) — **CI running, merge when green**
+- **PR #121 open** — fix: `'en'` locale for Meta message templates — **merge when CI green, then trigger integration-check, then tag v5.2.0**
+- PR #120 merged — fix: shared appointment filter pipeline (#117)
 - PR #119 merged — fix: single-source `nonBoardingPatterns` in `config.js`; fix `syncRunner.js` cron PG filter (#117)
 - PR #118 merged — fix: cascade `cancelled_at` to boarding on reconcile archive; BoardingMatrix shows grey ✕ + strikethrough for cancelled dogs (#117)
 - PR #115 merged — fix: PG boarding filter (#114) — `\bpg\b` removed from sync.js + integration-check.js
-- PR #113 merged — docs: SESSION_HANDOFF + SPRINT_PLAN post-M3-12
-- PR #112 merged — M3-12: Meta message templates deployed; **awaiting template approval to verify end-to-end**
+- PR #112 merged — M3-12: Meta message templates deployed
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
-- PR #91 merged — M0, M1-1, M1-2, M2 all shipped and verified live
-- PR #93 merged — M3-1/2/3 done (README overhaul, runbook, ADRs); test files committed; SPRINT_PLAN.md now in git
 
 ### v5.2 milestones
 
-- **M3-12 MERGED** (#112) — All WhatsApp sends switched to Meta approved message templates. Fixes 24h customer service window. `getAlertRecipients()` deduplicated into `notifyWhatsApp.js`. **Awaiting template approval to verify end-to-end delivery.**
+- **M3-12 MERGED** (#112) — All WhatsApp sends switched to Meta approved message templates. Fixes 24h customer service window. `getAlertRecipients()` deduplicated into `notifyWhatsApp.js`.
+- **Template locale bug found + fixed** (#121) — Templates were approved under language "English" (`en`), but code was sending `en_US` → error 132001 on every send. PR #121 fixes this. **Pending merge.**
 
 ### v5.1 milestones — all live ✅
 
@@ -31,8 +30,9 @@
 - **M3-1/2/3 DONE** — README rewritten (mermaid diagram, architecture, testing, security, ADR links). `docs/RUNBOOK.md` created. Three ADRs created in `docs/adr/`.
 
 ### Pending (Kate)
-- **Merge PR #120** — CI running. After merge: reset local main (`git reset --hard origin/main`), then run DB cleanup SQL (see below), then trigger integration-check to verify.
-- **DB cleanup after PR #120** — 95 phantom boardings (all `$0`, all `< 12h` duration) in the DB from before the filter fix. Run in Supabase SQL editor after merge:
+- **Merge PR #121** — CI running. After merge: `git reset --hard origin/main`, trigger `integration-check` workflow, confirm WhatsApp message delivered, then tag v5.2.0.
+- ~~**Merge PR #120**~~ ✅ Done March 25, 2026
+- ~~**DB cleanup after PR #120**~~ — Run this in Supabase SQL editor if not done yet:
   ```sql
   BEGIN;
   UPDATE sync_appointments
@@ -48,12 +48,15 @@
   COMMIT;
   ```
 - **Backfill Maverick cancelled boarding** — existing DB row predates the cascade fix (PR #118). Run: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
-- **Meta templates pending approval** — `dog_boarding_alert` and `dog_boarding_roster` submitted, in review. Once both reach **Approved** status: manually trigger `integration-check` workflow to verify delivery, then tag v5.2.0 release.
+- ~~**Meta templates pending approval**~~ ✅ Both `dog_boarding_alert` and `dog_boarding_roster` approved (confirmed March 25). Locale was `en` not `en_US` — fixed in PR #121.
 - ~~**Trigger manual sync for Kailin**~~ ✅ Done — Kailin `C63QgJQ9` ("PG 3/23-30", Mar 23-30, $570, night_rate $60) synced and verified in DB.
 - ~~**Maverick cancelled boarding (cascade)**~~ ✅ Done via PR #118 — future cancellations cascade automatically on reconcile archive.
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 - ~~**Delete old Twilio GH secrets**~~ ✅ Done March 24, 2026 — `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` removed
+
+### Known integration-check false positives
+PG daycare-only appointments (e.g. "Fergus Stevens — P/G TWTH") show as "Missing from DB" in every integration-check run. This is expected: they pass the title filter (PG is not title-filtered because "PG 3/23-30" style are real boardings) but are correctly excluded by the pricing filter in the sync pipeline. The check can't run the pricing filter without fetching detail pages. Not a bug — ignore these in the report.
 
 ### PR #120 — post-deployment verification checklist
 After merging PR #120 and running the DB cleanup SQL:
