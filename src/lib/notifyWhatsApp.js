@@ -27,7 +27,7 @@ const META_API_VERSION = 'v18.0';
 // Override via env vars if template names differ from defaults.
 const ALERT_TEMPLATE = process.env.META_ALERT_TEMPLATE || 'dog_boarding_alert';
 const ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog_boarding_roster';
-const TEMPLATE_LANG = 'en_US';
+const TEMPLATE_LANG = 'en';
 
 // ---------------------------------------------------------------------------
 // Helpers

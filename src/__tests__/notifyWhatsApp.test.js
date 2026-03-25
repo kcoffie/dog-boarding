@@ -131,7 +131,7 @@ describe('sendRosterImage', () => {
     expect(body.to).toBe('+18312477375');
     expect(body.type).toBe('template');
     expect(body.template.name).toBe('dog_boarding_roster');
-    expect(body.template.language.code).toBe('en_US');
+    expect(body.template.language.code).toBe('en');
     const header = body.template.components[0];
     expect(header.type).toBe('header');
     expect(header.parameters[0].type).toBe('image');
@@ -229,7 +229,7 @@ describe('sendTextMessage', () => {
     expect(body.to).toBe('+18312477375');
     expect(body.type).toBe('template');
     expect(body.template.name).toBe('dog_boarding_alert');
-    expect(body.template.language.code).toBe('en_US');
+    expect(body.template.language.code).toBe('en');
     const bodyComp = body.template.components[0];
     expect(bodyComp.type).toBe('body');
     expect(bodyComp.parameters[0].type).toBe('text');
