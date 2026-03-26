@@ -16,17 +16,37 @@
 - PR #112 merged — M3-12: Meta message templates deployed
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
 
-### v5.3 — WhatsApp fully verified ✅
+### v5.3 — WhatsApp alert sends verified ✅ / roster image send BROKEN ❌
 
-- **Locale fix** (PR #121) — `en_US` → `en`; resolved error 132001
-- **Newline fix** (PR #125) — sanitize `\n` → ` | ` in `sendTextMessage`; resolved error 132018
-- **Verified live** (run 23567958341, March 25, 2026): `wamid.HBgLMTgz...` — 1/1 sent. WhatsApp alert delivered to Kate's phone.
+**Two Meta template bugs found and fixed this session:**
+- **Error 132001** (PR #121) — `en_US` → `en` locale fix
+- **Error 132018** (PR #125) — newlines in template parameters; `sendTextMessage` now sanitizes `\n` → ` | `
+
+**WhatsApp job verification (March 25, 2026):**
+
+| Job | Send function | Result |
+|---|---|---|
+| integration-check | `sendTextMessage` | ✅ `wamid.HBgLMTgz...` — 1/1 sent, delivered to Kate's phone |
+| cron-health-check | `sendTextMessage` | ✅ Same code path, fix applied — only fires on cron failure (not independently testable) |
+| gmail-monitor | `sendTextMessage` | ✅ Same code path, fix applied — only fires when matching emails exist |
+| notify 4am/7am/830am | `sendRosterImage` | ⏭️ 7am triggered manually → `no_change` (hash matched today's run) — image path not yet end-to-end verified |
+| notify friday-pm | `sendRosterImage` | ❌ **Error 132012** — `dog_boarding_roster` template has wrong header type (TEXT, needs IMAGE) |
+
+**❌ BROKEN: `dog_boarding_roster` template has wrong header type.**
+Error 132012: `header: Format mismatch, expected TEXT, received IMAGE`. The template was approved with a TEXT header; sending an image via template requires an IMAGE/MEDIA header. Code is correct — template needs to be fixed in Meta Business Manager.
+
+**Fix required (Kate — Meta Business Manager action):**
+1. Go to Meta Business Manager → WhatsApp → Message Templates → `dog_boarding_roster`
+2. Edit to use IMAGE/MEDIA header type instead of TEXT
+3. Re-submit for approval (typically fast for accounts with approved templates)
+4. Once approved: trigger `notify-friday-pm` manually and confirm `wamid` in logs + message on phone
 
 ### Pending (Kate)
+- **🔴 Fix `dog_boarding_roster` Meta template** — change header type to IMAGE/MEDIA and re-submit for approval (see above)
 - **Backfill Maverick cancelled boarding** — existing DB row predates the cascade fix (PR #118). Run: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
+- **Tula — N/C Tula 3/23-26 (C63Qga3r)** — appeared as "Missing from DB" in integration check. Kate to investigate: real boarding that should sync, or no-charge non-boarding visit that should be filtered?
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
-- **Tula — N/C Tula 3/23-26 (C63Qga3r)** — appeared as "Missing from DB" in integration check. Unclear if it's a real boarding that should sync or a no-charge visit that should be filtered. Kate to investigate.
 
 ### Known integration-check false positives
 PG daycare-only appointments (e.g. "Fergus Stevens — P/G TWTH") show as "Missing from DB" in every integration-check run. This is expected: they pass the title filter (PG is not title-filtered because "PG 3/23-30" style are real boardings) but are correctly excluded by the pricing filter in the sync pipeline. The check can't run the pricing filter without fetching detail pages. Not a bug — ignore these in the report.
@@ -34,6 +54,8 @@ PG daycare-only appointments (e.g. "Fergus Stevens — P/G TWTH") show as "Missi
 ---
 
 ## IMMEDIATE NEXT (next session)
+
+**🔴 First: verify roster image send** — after Kate fixes the `dog_boarding_roster` template in Meta BM and it's re-approved, trigger `notify-friday-pm` and confirm `wamid` in logs + message delivered to phone. Only then is the roster image path actually proven end-to-end.
 
 **M3 remaining tickets** — operational system is complete and portfolio docs are live. These are enhancements:
 
