@@ -52,7 +52,7 @@ From: GitHub Actions
 Subject: [deploy-dog-boarding] Run failed
 Summary: <1-line Claude summary if available>
 ```
-The `Summary:` line is only included when Claude returns a different value than the subject. Falls back to subject if Claude is unavailable or has no credits. Sends to all numbers in `INTEGRATION_CHECK_RECIPIENTS` via Twilio.
+The `Summary:` line is only included when Claude returns a different value than the subject. Falls back to subject if Claude is unavailable or has no credits. Sends to all numbers in `INTEGRATION_CHECK_RECIPIENTS` via Meta Cloud API.
 
 ### Step 6 — Mark processed
 Inserts `{ email_id, sender, subject, alert_sent: true }` into `gmail_processed_emails`. Mark-processed failure is non-fatal (logged as warning) — the alert was already sent.
@@ -117,10 +117,9 @@ All must be **Repository secrets** in GitHub (Settings → Secrets and variables
 | `SUPABASE_SERVICE_ROLE_KEY` | Bypasses RLS — for dedup read/write |
 | `GMAIL_CLIENT_ID` | OAuth2 client ID from Google Cloud Console |
 | `GMAIL_CLIENT_SECRET` | OAuth2 client secret |
-| `GMAIL_REFRESH_TOKEN` | Long-lived token — obtained via one-time local auth flow |
-| `TWILIO_ACCOUNT_SID` | Twilio account SID |
-| `TWILIO_AUTH_TOKEN` | Twilio auth token |
-| `TWILIO_FROM_NUMBER` | Twilio WhatsApp-enabled number |
+| `GMAIL_REFRESH_TOKEN` | Long-lived token — obtained via one-time local auth flow (`npm run reauth-gmail`) |
+| `META_PHONE_NUMBER_ID` | Meta Cloud API phone number ID |
+| `META_WHATSAPP_TOKEN` | Meta Cloud API system user token |
 | `INTEGRATION_CHECK_RECIPIENTS` | Kate's number only (E.164 format, comma-separated for multiple) |
 | `ANTHROPIC_API_KEY` | Optional — Claude 1-line summary. Falls back to subject if absent or no credits |
 
@@ -145,11 +144,25 @@ All must be **Repository secrets** in GitHub (Settings → Secrets and variables
 - The email may have been marked as read before the monitor ran
 - The email may already be in `gmail_processed_emails` — check with: `SELECT * FROM gmail_processed_emails ORDER BY created_at DESC LIMIT 20;`
 
-### OAuth2 error
-The refresh token may be expired or revoked. To re-generate:
-1. Go to Google Cloud Console → the OAuth2 credentials you created
-2. Run the one-time local auth script again to get a new refresh token
-3. Update `GMAIL_REFRESH_TOKEN` in GH repo secrets
+### OAuth2 error — `invalid_grant` (token revoked)
+
+Google returns `invalid_grant` when the refresh token is revoked or expired. This happens when:
+- Kate logs in from a new country (Google treats this as a security event and revokes tokens)
+- The Google account password changes
+- Access is manually revoked in Google Account → Security → Third-party access
+
+**How the monitor handles it:** The script detects `invalid_grant` specifically and exits 0 with a clear message — it does NOT fail the workflow (which would generate its own GH Actions failure email). Monitoring is paused until the token is refreshed.
+
+**How to fix:** run the one-time re-auth flow locally:
+```bash
+GMAIL_CLIENT_ID=<value from GH secrets> GMAIL_CLIENT_SECRET=<value from GH secrets> npm run reauth-gmail
+```
+The script opens a browser, captures the new refresh token, and prints the exact `gh secret set` command to update it. After updating the secret, trigger the Gmail Monitor workflow manually to confirm it works:
+```bash
+/usr/local/bin/gh workflow run gmail-monitor.yml --repo kcoffie/dog-boarding
+```
+
+**Other OAuth errors** (wrong credentials, network failure, etc.) are not `invalid_grant` and will still cause the workflow to exit 1 — those are unexpected failures, not a known state.
 
 ### Alert fired but it was a false positive
 Check `gmail_processed_emails` to confirm the email was recorded. The self-skip guard only suppresses alerts about the Gmail Monitor workflow itself. If a different GH Actions workflow you don't care about is sending alerts, you have two options:
