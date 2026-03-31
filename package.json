@@ -17,6 +17,7 @@
     "seed:staging": "VITE_ENVIRONMENT=staging node scripts/seed-test-data.js",
     "test:smoke": "node scripts/smoke-test.js",
     "predeploy": "npm run test:run && npm run test:smoke",
+    "reauth-gmail": "node scripts/get-gmail-refresh-token.js",
     "prepare": "husky"
   },
   "dependencies": {

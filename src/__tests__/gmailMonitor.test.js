@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { classifyEmail, SELF_SKIP_SUBJECTS } from '../../scripts/gmail-monitor.js';
+import { classifyEmail, SELF_SKIP_SUBJECTS, detectOAuthError } from '../../scripts/gmail-monitor.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -195,6 +195,56 @@ describe('classifyEmail — unknown sender', () => {
     const { senderConfig, matched } = classifyEmail(email);
     expect(matched).toBe(false);
     expect(senderConfig).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectOAuthError
+// ---------------------------------------------------------------------------
+
+describe('detectOAuthError', () => {
+  it('detects invalid_grant from a 400 response', () => {
+    const result = detectOAuthError(400, { error: 'invalid_grant' });
+    expect(result.type).toBe('invalid_grant');
+  });
+
+  it('includes error_description when present', () => {
+    const result = detectOAuthError(400, {
+      error: 'invalid_grant',
+      error_description: 'Token has been expired or revoked.',
+    });
+    expect(result.type).toBe('invalid_grant');
+    expect(result.description).toContain('Token has been expired or revoked.');
+  });
+
+  it('falls back to generic description when error_description is absent', () => {
+    const result = detectOAuthError(400, { error: 'invalid_grant' });
+    expect(result.type).toBe('invalid_grant');
+    expect(result.description).toMatch(/revoked or expired/);
+  });
+
+  it('returns generic for invalid_client (wrong credentials — not the revoked-token case)', () => {
+    const result = detectOAuthError(400, { error: 'invalid_client' });
+    expect(result.type).toBe('generic');
+    expect(result.description).toContain('invalid_client');
+  });
+
+  it('returns generic for a 500 error', () => {
+    const result = detectOAuthError(500, { error: 'server_error' });
+    expect(result.type).toBe('generic');
+    expect(result.description).toContain('500');
+  });
+
+  it('returns generic when body is null (JSON parse failed)', () => {
+    const result = detectOAuthError(400, null);
+    expect(result.type).toBe('generic');
+    expect(result.description).toContain('400');
+  });
+
+  it('returns generic for a non-400 invalid_grant (unexpected shape — treat as generic)', () => {
+    // Google always returns 400 for invalid_grant, but guard against an edge case
+    const result = detectOAuthError(401, { error: 'invalid_grant' });
+    expect(result.type).toBe('generic');
   });
 });
 
