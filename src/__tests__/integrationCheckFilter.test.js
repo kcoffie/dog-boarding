@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 // Mirror of DAYCARE_ONLY_PATTERNS in scripts/integration-check.js
 const DAYCARE_ONLY_PATTERNS = [
   /\bP\/?G\b.*\b(M|T|W|Th|F|FT|OFF)\b/i,
+  /\bP\/?G[: .]?\s*(?:TH|[MTWF])+\b/i,
   /make.?up days/i,
   /no charge/i,
 ];
@@ -50,6 +51,10 @@ const FALSE_POSITIVES = [
   'PG F',
   'PG OFF OFF M/T/W',
   'PG Th/F',
+  // PG daycare with concatenated day codes (no delimiters — new March 2026)
+  'Millie McSpadden — P/G MTWTH',
+  'Fergus Stevens — P/G TWTH',
+  'Hank Yip — PG:WTH',
   // Make-up days
   'Moonbeam — Make up days T.F',
   'Maple — make up days',

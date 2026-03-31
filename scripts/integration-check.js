@@ -68,12 +68,19 @@ function isBoardingTitle(title) {
 // check context where the pricing filter (which correctly excludes daycares)
 // cannot run without fetching detail pages.
 //
-// Confirmed false positives (27 total, March 2026):
-//   - PG daycare: "P/G M/T/W/Th", "PG:FT", "PG: MWTH OFF OFF", etc.
+// Confirmed false positives (31 total, March 2026):
+//   - PG daycare with delimiters: "P/G M/T/W/Th", "PG:FT", "PG: MWTH OFF OFF", etc.
+//   - PG daycare with concatenated days: "P/G MTWTH", "P/G TWTH", "PG:WTH"
 //   - Make up days: "Moonbeam — Make up days T.F"
 //   - No charge: "Peanut — No charge"
+//
+// Two PG patterns are needed:
+//   1. Delimited days — uses \b word boundaries (catches M/T/W/Th, PG FT, etc.)
+//   2. Concatenated days — TH must come before single letters in the alternation
+//      so "MTWTH" parses as M+T+W+TH rather than M+T+W+T with a leftover H.
 const DAYCARE_ONLY_PATTERNS = [
   /\bP\/?G\b.*\b(M|T|W|Th|F|FT|OFF)\b/i,
+  /\bP\/?G[: .]?\s*(?:TH|[MTWF])+\b/i,
   /make.?up days/i,
   /no charge/i,
 ];
