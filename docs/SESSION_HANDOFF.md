@@ -1,12 +1,15 @@
 # Dog Boarding App — Session Handoff (v5.3.0 LIVE)
-**Last updated:** March 25, 2026
+**Last updated:** March 31, 2026
 
 ---
 
 ## Current State
 
 - **v5.3.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release
-- **873 tests, 52 files, 0 failures**
+- **918 tests, 53 files, 0 failures**
+- PR #133 merged — fix: catch concatenated PG day codes (MTWTH, TWTH, WTH) in daycare filter (#132)
+- PR #131 merged — feat: graceful `invalid_grant` detection in `gmail-monitor.js` + `npm run reauth-gmail` (#130)
+- PR #129 merged — fix: suppress 27 daycare false positives in integration check (#128)
 - PR #125 merged — fix: sanitize newlines in `sendTextMessage` template parameter (#124)
 - PR #121 merged — fix: `'en'` locale for Meta message templates
 - PR #120 merged — fix: shared appointment filter pipeline (#117)
@@ -49,13 +52,37 @@ Error 132012: `header: Format mismatch, expected TEXT, received IMAGE`. The temp
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 
 ### Known integration-check false positives
-PG daycare-only appointments (e.g. "Fergus Stevens — P/G TWTH") show as "Missing from DB" in every integration-check run. This is expected: they pass the title filter (PG is not title-filtered because "PG 3/23-30" style are real boardings) but are correctly excluded by the pricing filter in the sync pipeline. The check can't run the pricing filter without fetching detail pages. Not a bug — ignore these in the report.
+Suppressed by `DAYCARE_ONLY_PATTERNS` in `integration-check.js` (31 confirmed as of March 2026). Two regex patterns cover all known formats:
+1. Delimited day codes: `P/G M/T/W/Th`, `PG FT`, `PG: MWTH OFF OFF`, etc.
+2. Concatenated day codes: `P/G MTWTH`, `P/G TWTH`, `PG:WTH` — requires `(?:TH|[MTWF])+` with TH-first alternation to avoid consuming `T` before `TH` can match.
+
+---
+
+## Session summary (March 31, 2026)
+
+- **PR #129** — suppress 27 daycare false positives in integration check (#128)
+  - `DAYCARE_ONLY_PATTERNS` + `isDaycareOnlyTitle()` added to `integration-check.js`
+  - Applied as second filter after `isBoardingTitle()`; 27 confirmed false positives caught in unit tests
+- **PR #131** — graceful `invalid_grant` detection in `gmail-monitor.js` (#130)
+  - `detectOAuthError(status, body)` — pure exported function; 7 new unit tests
+  - `invalid_grant` → exit 0 + clear `npm run reauth-gmail` instructions; no workflow failure, no alert loop
+  - All other OAuth errors still exit 1 (unexpected failures)
+  - `npm run reauth-gmail` added to `package.json`
+  - `docs/job_docs/gmail-monitor.md` updated; stale Twilio refs cleaned up
+- **PR #133 merged** — fix: concatenated PG day codes (#132)
+  - First live run after #129 deploy exposed 4 more false positives: `P/G MTWTH`, `P/G TWTH`, `PG:WTH`
+  - Root cause: `\b` word boundaries don't exist inside concatenated strings; TH must precede single letters in alternation
+  - New pattern: `/\bP\/?G[: .]?\s*(?:TH|[MTWF])+\b/i`; 3 new tests; 918 total
+- **Live verification (March 31, 2026)**
+  - Gmail Monitor: OAuth valid, processed 20 messages, 0 alerts — full happy path confirmed
+  - Integration Check: 140 DOM links → 14 candidates — filter working; 4 remaining false positives closed by #133
+- **Process improvement** — `gh pr create` / `gh issue create` now use `--body-file` (not inline `--body`) to avoid Claude Code permission prompts on quoted newlines
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-**🔴 First: verify roster image send** — after Kate fixes the `dog_boarding_roster` template in Meta BM and it's re-approved, trigger `notify-friday-pm` and confirm `wamid` in logs + message delivered to phone. Only then is the roster image path actually proven end-to-end.
+**🔴 Fix `dog_boarding_roster` Meta template** — after Kate fixes in Meta BM and it's re-approved, trigger `notify-friday-pm` and confirm `wamid` in logs + message delivered to phone. Only then is the roster image path actually proven end-to-end.
 
 **M3 remaining tickets** — operational system is complete and portfolio docs are live. These are enhancements:
 
