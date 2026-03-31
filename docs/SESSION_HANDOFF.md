@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.3.0 LIVE)
-**Last updated:** March 25, 2026
+**Last updated:** March 31, 2026
 
 ---
 
@@ -16,11 +16,44 @@
 - PR #112 merged — M3-12: Meta message templates deployed
 - PR #108 merged — M3-11 done: all alerting jobs migrated from Twilio to Meta Cloud API; `twilio` package removed
 
-### v5.3 — WhatsApp alert sends verified ✅ / roster image send BROKEN ❌
+### Session 3/31/2026 — Gmail Monitor fixed ✅ / Integration check false positives identified
 
-**Two Meta template bugs found and fixed this session:**
-- **Error 132001** (PR #121) — `en_US` → `en` locale fix
-- **Error 132018** (PR #125) — newlines in template parameters; `sendTextMessage` now sanitizes `\n` → ` | `
+#### Gmail Monitor — OAuth token revoked (FIXED)
+Google revoked the OAuth2 refresh token on March 27, 2026 when Kate traveled from the US to Mexico (new country login triggers revocation). Workflow failed with `invalid_grant` for 4 days before being caught.
+
+**Fix applied (March 31, 2026):**
+1. Generated new client secret in Google Cloud Console (QApp Gmail — Desktop credential)
+2. Ran `scripts/get-gmail-refresh-token.js` locally to get a new refresh token
+3. Updated `GMAIL_CLIENT_SECRET` and `GMAIL_REFRESH_TOKEN` in GH Secrets via GitHub UI
+4. Verified: two consecutive green runs (schedule + workflow_dispatch)
+
+**⚠️ SECURITY: `GMAIL_CLIENT_SECRET` was exposed in chat on 3/31/2026.** Rotate it: generate a new secret in Google Cloud Console → update GH secret → re-run `get-gmail-refresh-token.js` → update `GMAIL_REFRESH_TOKEN` too.
+
+**Kate travels US↔Mexico regularly** — Google will revoke the token again on each country change. See Todo #3 below for the durable fix plan.
+
+**Re-auth runbook (when Gmail Monitor starts failing with `invalid_grant`):**
+```bash
+# 1. Get GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET from Google Cloud Console
+#    (QApp project → APIs & Services → Credentials → QApp Gmail)
+# 2. Run the auth script:
+GMAIL_CLIENT_ID=xxx GMAIL_CLIENT_SECRET=yyy node scripts/get-gmail-refresh-token.js
+# 3. Browser opens → approve → terminal prints new token + gh secret set command
+# 4. Update GMAIL_CLIENT_SECRET in GH secrets (GitHub UI is safest to avoid shell quoting)
+# 5. Update GMAIL_REFRESH_TOKEN via the printed command
+# 6. Trigger workflow to verify: /usr/local/bin/gh workflow run gmail-monitor.yml --repo kcoffie/dog-boarding
+```
+
+#### Integration check — 27 false positives identified and confirmed
+All 27 "Missing from DB" alerts are daycare/non-boarding appointments confirmed against the external site. They are NOT in the DB (which is correct — the sync pipeline's pricing filter excluded them). The integration check can't run the pricing filter without fetching detail pages, so it reports them as missing.
+
+**Confirmed false positives (27 total):**
+- 25 PG daycare appointments (titles with P/G or PG + day abbreviations or FT: `PG:FT`, `P/G M/T/W/Th`, `PG: MWTH OFF OFF`, etc.)
+- Moonbeam — Make up days T.F (C63QgbOr) — Daycare Add-On Day, cat 5634 ✅ confirmed
+- Peanut — No charge (C63Qgb5v) — Daycare Add-On Day, cat 5634 ✅ confirmed
+
+**Fix is planned (Todo #1)** — not yet implemented. Until then, ignore these in every report.
+
+### v5.3 — WhatsApp alert sends verified ✅ / roster image send BROKEN ❌
 
 **WhatsApp job verification (March 25, 2026):**
 
@@ -28,7 +61,7 @@
 |---|---|---|
 | integration-check | `sendTextMessage` | ✅ `wamid.HBgLMTgz...` — 1/1 sent, delivered to Kate's phone |
 | cron-health-check | `sendTextMessage` | ✅ Same code path, fix applied — only fires on cron failure (not independently testable) |
-| gmail-monitor | `sendTextMessage` | ✅ Same code path, fix applied — only fires when matching emails exist |
+| gmail-monitor | `sendTextMessage` | ✅ Verified working March 31 after OAuth fix |
 | notify 4am/7am/830am | `sendRosterImage` | ⏭️ 7am triggered manually → `no_change` (hash matched today's run) — image path not yet end-to-end verified |
 | notify friday-pm | `sendRosterImage` | ❌ **Error 132012** — `dog_boarding_roster` template has wrong header type (TEXT, needs IMAGE) |
 
@@ -43,23 +76,98 @@ Error 132012: `header: Format mismatch, expected TEXT, received IMAGE`. The temp
 
 ### Pending (Kate)
 - **🔴 Fix `dog_boarding_roster` Meta template** — change header type to IMAGE/MEDIA and re-submit for approval (see above)
+- **🔴 Rotate `GMAIL_CLIENT_SECRET`** — exposed in chat 3/31/2026. Generate new secret in Google Cloud Console → update GH secret → re-run get-gmail-refresh-token.js → update GMAIL_REFRESH_TOKEN
 - **Backfill Maverick cancelled boarding** — existing DB row predates the cascade fix (PR #118). Run: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
 - **Tula — N/C Tula 3/23-26 (C63Qga3r)** — appeared as "Missing from DB" in integration check. Kate to investigate: real boarding that should sync, or no-charge non-boarding visit that should be filtered?
 - **Second WhatsApp recipient** — Kate to provide second number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **Anthropic credits** — Step 3 of integration check (Claude vision name-check) still silently skipped
 
 ### Known integration-check false positives
-PG daycare-only appointments (e.g. "Fergus Stevens — P/G TWTH") show as "Missing from DB" in every integration-check run. This is expected: they pass the title filter (PG is not title-filtered because "PG 3/23-30" style are real boardings) but are correctly excluded by the pricing filter in the sync pipeline. The check can't run the pricing filter without fetching detail pages. Not a bug — ignore these in the report.
+All 27 confirmed daycare appointments. Fix planned in Todo #1 below. Until implemented, ignore every "Missing from DB" report that has PG/daycare-style titles, "Make up days", or "No charge" in the name.
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-**🔴 First: verify roster image send** — after Kate fixes the `dog_boarding_roster` template in Meta BM and it's re-approved, trigger `notify-friday-pm` and confirm `wamid` in logs + message delivered to phone. Only then is the roster image path actually proven end-to-end.
+**🔴 First: rotate exposed `GMAIL_CLIENT_SECRET`** — exposed in chat 3/31/2026. See Pending section above.
+
+**🔴 Second: verify roster image send** — after Kate fixes the `dog_boarding_roster` template in Meta BM and it's re-approved, trigger `notify-friday-pm` and confirm `wamid` in logs + message delivered to phone. Only then is the roster image path actually proven end-to-end.
+
+### Sync Cron Health — Verified ✅ (as of March 31, 2026)
+
+All autonomous jobs confirmed green:
+- **Cron health check**: green every morning, 9 consecutive days (March 23–31)
+- **Integration check**: green 3×/day
+- **Notify jobs**: running and correctly returning `no_change` (skipping send when daytime schedule hasn't changed — correct behavior)
+- **Silence = the system working.** No news is good news.
+
+The notify 7am job returns `{"ok":true,"action":"skipped","reason":"no_change"}` because the daytime schedule hasn't changed. When a change occurs, `sendRosterImage` will fire — and will fail until Kate fixes the Meta template (error 132012). The GH Actions layer itself is not broken.
+
+---
+
+## Sprint Plan (active)
+
+See `docs/SPRINT_PLAN.md` for full detail. Summary:
+
+### Sprint 1 — Hardening (current)
+
+| # | Ticket | Status |
+|---|--------|--------|
+| S1-1 | Fix integration check false positives (27 daycare appts) | — |
+| S1-2 | Graceful `invalid_grant` in gmail-monitor + `npm run reauth-gmail` | — |
+| S1-3 | Redesign integration check WhatsApp message | Blocked on Kate's screenshot |
+| M3-4 | "As of" timestamp in roster image | Buildable now; delivery verify after Meta template fixed |
+
+### Sprint 2 — Observability (next)
+
+| # | Ticket | Status |
+|---|--------|--------|
+| S2-1 | System Health Dashboard — cron health strip + message log page | — |
+| M3-5 | DST-aware scheduling + code polish | — |
+| M3-9 | CHANGELOG.md | — |
+| M3-6 | Doc staleness CI check | — |
+
+### Sprint 3 — Portfolio Finish (after roster image verified end-to-end)
+
+| # | Ticket | Status |
+|---|--------|--------|
+| M3-7 | Screen recording of roster image arriving on phone | Blocked: needs working send |
+| M3-8 | App screenshots in README | Manual |
+| M3-10/F-1 | WhatsApp delivery receipts (Meta Webhooks) | After S2-1 done |
+
+---
+
+### Open Todos (detail)
+
+**S1-1 — Fix integration check false positives** *(Sprint 1)*
+Add `isDaycareOnlyTitle(title)` filter in `integration-check.js` (local only — NOT in `config.js`/nonBoardingPatterns). Apply after `isBoardingTitle()` at line 222.
+Three patterns to skip:
+- PG daycare: `/\bP\/?G\b.*\b(M|T|W|Th|F|FT|OFF)\b/i`
+- Make up days: `/make.?up days/i`
+- No charge: `/no charge/i`
+Constraint: must NOT be added to sync pipeline — "PG 3/23-30" style are real boardings.
+
+**S1-2 — Handle US/Mexico OAuth revocation** *(Sprint 1)*
+Google revokes refresh tokens on new-country login. Kate travels US↔Mexico regularly. Two deliverables:
+1. `gmail-monitor.js`: catch `invalid_grant` → send WhatsApp alert "Gmail Monitor auth expired — run `npm run reauth-gmail`" instead of silent workflow failure
+2. `npm run reauth-gmail` in `package.json` → wraps `scripts/get-gmail-refresh-token.js`. Browser opens, Kate approves, terminal prints exact `gh secret set` commands. Works from either country.
+Script already exists: `scripts/get-gmail-refresh-token.js`
+
+**S1-3 — Redesign integration check WhatsApp message** *(Sprint 1)*
+Current message is hard to read on a phone. Needs professional formatting, clear hierarchy, easy to scan. WhatsApp plain text only — no markdown rendering. Blocked on Kate uploading screenshot of current message.
+
+**M3-4 — "As of" timestamp in roster image** *(Sprint 1)*
+Add timestamp to roster image PNG (e.g. `as of 6:04 PM, Mon 3/16`). Buildable and testable via `/api/roster-image` endpoint directly — no WhatsApp send needed. Delivery verification requires Meta template to be fixed first.
+
+**S2-1 — System Health Dashboard** *(Sprint 2)*
+Answers "is everything running?" from the app in 5 seconds. Two panels:
+- **Cron health strip**: auth / schedule / detail — last ran, status (green/red), last error. Reads from existing `cron_health` table.
+- **Message log**: last 5 days of outbound WhatsApp messages (what, when, to whom, which window). Requires new `message_log` table; all alert scripts + notify jobs write to it at send time.
+Kills the "it's been so silent" uncertainty permanently.
 
 **M3 remaining tickets** — operational system is complete and portfolio docs are live. These are enhancements:
 
-1. **M3-4** — "As of" timestamp in roster image (e.g. `as of 6:04 PM, Mon 3/16`)
+1. **M3-4** — see S1-4 above
 2. **M3-5** — DST-aware scheduling + code polish (timing-safe equal in `roster-image.js`, regex precompile in `daytimeSchedule.js`)
 3. **M3-6** — Doc staleness CI check (non-blocking — detects when `api/` or `src/lib/scraper/` changed but `docs/job_docs/` wasn't touched)
 4. **M3-7** — Screen recording of WhatsApp roster image arriving on phone (most impactful portfolio artifact; embed in README)

@@ -155,12 +155,58 @@ All v4 work is done. See `docs/archive/SESSION_HANDOFF_v4.5_final.md` for full h
 
 ---
 
-## Future / Post-M3 Backlog
+## Active Sprint Plan (started March 31, 2026)
+
+### Sprint 1 — Hardening
+
+**Theme:** Kill the noise. Harden resilience. Close silent failure gaps.
+
+| # | Ticket | LOE | Status |
+|---|--------|-----|--------|
+| S1-1 | Fix integration check false positives — `isDaycareOnlyTitle()` filter (27 daycare appts misflagged) | Small | — |
+| S1-2 | Graceful `invalid_grant` in `gmail-monitor.js` + `npm run reauth-gmail` script | Small | — |
+| S1-3 | Redesign integration check WhatsApp message — professional formatting, phone-readable | Small | Blocked on Kate screenshot |
+| M3-4 | "As of" timestamp in roster image | Small | Buildable now; end-to-end verify after Meta template fixed |
+
+**S1-1 detail:** Add `isDaycareOnlyTitle(title)` local to `integration-check.js` only — NOT to `config.js`/nonBoardingPatterns. Apply after `isBoardingTitle()`. Patterns: PG daycare (`/\bP\/?G\b.*\b(M|T|W|Th|F|FT|OFF)\b/i`), make-up days, no charge. "PG 3/23-30" style must still sync.
+
+**S1-2 detail:** Two deliverables: (1) `gmail-monitor.js` catches `invalid_grant` → WhatsApp alert "Gmail auth expired — run `npm run reauth-gmail`" instead of 4-day silent failure. (2) `npm run reauth-gmail` wraps existing `scripts/get-gmail-refresh-token.js` — browser opens, Kate approves, terminal prints exact `gh secret set` commands. Works from US or Mexico.
+
+---
+
+### Sprint 2 — Observability
+
+**Theme:** "Is everything running?" answered from the app in 5 seconds.
+
+| # | Ticket | LOE | Status |
+|---|--------|-----|--------|
+| S2-1 | System Health Dashboard — cron health strip + message log page | Medium | — |
+| M3-5 | DST-aware scheduling + code polish | Small | — |
+| M3-9 | CHANGELOG.md — v1.0 → v5.3.0 release history | Small | — |
+| M3-6 | Doc staleness CI check (non-blocking) | Small | — |
+
+**S2-1 detail:** One new app page. Two panels:
+- **Cron health strip:** auth / schedule / detail — last ran, status (green/red), last error. Reads existing `cron_health` table. No new infra.
+- **Message log:** Last 5 days of outbound WhatsApp messages (type, recipient, content, timestamp). Requires new `message_log` table; all alert scripts + notify jobs write a row at send time.
+Kills the "it's been so silent, is anything working?" uncertainty permanently.
+
+---
+
+### Sprint 3 — Portfolio Finish (after roster image verified end-to-end)
+
+| # | Ticket | LOE | Status |
+|---|--------|-----|--------|
+| M3-7 | Screen recording: roster image arriving on phone — embed in README | Kate's time | Blocked: needs working send |
+| M3-8 | App screenshots in README — boarding matrix + roster image | Kate's time | — |
+| M3-10/F-1 | WhatsApp delivery receipts (Meta Webhooks) | Large | After S2-1 done |
+
+---
+
+## Post-Sprint Backlog
 
 | # | Ticket | Notes |
 |---|--------|-------|
-| F-1 | **Message delivery observability** — can we verify a message was actually delivered? Investigate Meta Webhooks delivery receipts: Meta POSTs a status update when a `wamid` is delivered or fails. Surface this in the app or an alert. Relates to M3-10. | Medium complexity — needs webhook endpoint + wamid storage |
-| F-2 | **Message log page** — decouple message _compilation_ from message _delivery_. Store every outbound message (recipient, content, timestamp, type: roster/alert/integration-check) to a `message_log` table at send time. New app page: last 5 days of messages, latest first — so if Kate doesn't receive something she can go to the app and see exactly what _should_ have been sent and when. Design considerations: table schema, which jobs write to it (all 4 notify windows + 3 alert scripts), page layout (group by day, collapsible content). | High value — independent of delivery receipts; useful even without F-1 |
+| F-1 | **WhatsApp delivery receipts** — Meta POSTs delivery status per `wamid`. Store wamids at send time; alert if no delivered status within N minutes. Pairs with S2-1 message log. | Medium — needs webhook endpoint |
 
 ---
 
