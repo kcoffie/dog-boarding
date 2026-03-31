@@ -7,7 +7,7 @@
 
 - **v5.3.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release
 - **918 tests, 53 files, 0 failures**
-- PR #133 open — fix: catch concatenated PG day codes (MTWTH, TWTH, WTH) in daycare filter (#132)
+- PR #133 merged — fix: catch concatenated PG day codes (MTWTH, TWTH, WTH) in daycare filter (#132)
 - PR #131 merged — feat: graceful `invalid_grant` detection in `gmail-monitor.js` + `npm run reauth-gmail` (#130)
 - PR #129 merged — fix: suppress 27 daycare false positives in integration check (#128)
 - PR #125 merged — fix: sanitize newlines in `sendTextMessage` template parameter (#124)
@@ -69,20 +69,18 @@ Suppressed by `DAYCARE_ONLY_PATTERNS` in `integration-check.js` (31 confirmed as
   - All other OAuth errors still exit 1 (unexpected failures)
   - `npm run reauth-gmail` added to `package.json`
   - `docs/job_docs/gmail-monitor.md` updated; stale Twilio refs cleaned up
-- **PR #133 (open)** — fix: concatenated PG day codes (#132)
+- **PR #133 merged** — fix: concatenated PG day codes (#132)
   - First live run after #129 deploy exposed 4 more false positives: `P/G MTWTH`, `P/G TWTH`, `PG:WTH`
   - Root cause: `\b` word boundaries don't exist inside concatenated strings; TH must precede single letters in alternation
   - New pattern: `/\bP\/?G[: .]?\s*(?:TH|[MTWF])+\b/i`; 3 new tests; 918 total
 - **Live verification (March 31, 2026)**
   - Gmail Monitor: OAuth valid, processed 20 messages, 0 alerts — full happy path confirmed
-  - Integration Check: 140 DOM links → 14 candidates — filter working; #133 will close the remaining 4
+  - Integration Check: 140 DOM links → 14 candidates — filter working; 4 remaining false positives closed by #133
 - **Process improvement** — `gh pr create` / `gh issue create` now use `--body-file` (not inline `--body`) to avoid Claude Code permission prompts on quoted newlines
 
 ---
 
 ## IMMEDIATE NEXT (next session)
-
-**🔴 Merge PR #133** — concatenated day code fix; 918 tests green, ready to merge and deploy.
 
 **🔴 Fix `dog_boarding_roster` Meta template** — after Kate fixes in Meta BM and it's re-approved, trigger `notify-friday-pm` and confirm `wamid` in logs + message delivered to phone. Only then is the roster image path actually proven end-to-end.
 
