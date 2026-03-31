@@ -62,6 +62,25 @@ function isBoardingTitle(title) {
   return !SCRAPER_CONFIG.nonBoardingPatterns.some(re => re.test(title));
 }
 
+// Daycare-only filter — local to integration-check only. NOT added to
+// config.js/nonBoardingPatterns because "PG 3/23-30" style titles ARE real
+// boardings that must sync. These patterns only appear in the integration
+// check context where the pricing filter (which correctly excludes daycares)
+// cannot run without fetching detail pages.
+//
+// Confirmed false positives (27 total, March 2026):
+//   - PG daycare: "P/G M/T/W/Th", "PG:FT", "PG: MWTH OFF OFF", etc.
+//   - Make up days: "Moonbeam — Make up days T.F"
+//   - No charge: "Peanut — No charge"
+const DAYCARE_ONLY_PATTERNS = [
+  /\bP\/?G\b.*\b(M|T|W|Th|F|FT|OFF)\b/i,
+  /make.?up days/i,
+  /no charge/i,
+];
+function isDaycareOnlyTitle(title) {
+  return DAYCARE_ONLY_PATTERNS.some(re => re.test(title));
+}
+
 // Daytime service category IDs — mirrors SERVICE_CATS in daytimeSchedule.js.
 // Defined here independently to preserve signal isolation from src/.
 const DAYTIME_CAT_IDS = [5634, 7431]; // DC, PG
@@ -219,9 +238,11 @@ async function scrapeWithPlaywright(cookieString) {
       return { allBoardingAppts, daytimeAppointments };
     }, DAYTIME_CAT_IDS);
 
-    const boardingAppointments = allBoardingAppts.filter(a => isBoardingTitle(a.title));
+    const boardingAppointments = allBoardingAppts
+      .filter(a => isBoardingTitle(a.title))
+      .filter(a => !isDaycareOnlyTitle(a.title));
     console.log(
-      '[IntegCheck] DOM boarding links: %d total, %d candidates after non-boarding filter',
+      '[IntegCheck] DOM boarding links: %d total, %d candidates after non-boarding + daycare-only filter',
       allBoardingAppts.length,
       boardingAppointments.length,
     );
