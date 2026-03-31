@@ -86,8 +86,43 @@ function getSupabase() {
 // ---------------------------------------------------------------------------
 
 /**
+ * Parse a Google OAuth2 error response and classify it.
+ *
+ * Returns `{ type: 'invalid_grant', description }` when Google reports the
+ * refresh token is revoked or expired — a known, recoverable state that
+ * should NOT cause a workflow failure alert.
+ *
+ * Returns `{ type: 'generic', description }` for all other error shapes
+ * (bad credentials, network errors, unexpected status codes, etc.).
+ *
+ * Pure function — exported for testing without fetch mocks.
+ *
+ * @param {number} status - HTTP status code from the token endpoint
+ * @param {object|null} body - Parsed JSON response body, or null if parsing failed
+ * @returns {{ type: 'invalid_grant'|'generic', description: string }}
+ */
+export function detectOAuthError(status, body) {
+  if (status === 400 && body?.error === 'invalid_grant') {
+    const description = body.error_description
+      ? `${body.error_description}`
+      : 'refresh token revoked or expired';
+    return { type: 'invalid_grant', description };
+  }
+
+  const errorLabel = body?.error ? ` (${body.error})` : '';
+  return {
+    type: 'generic',
+    description: `OAuth2 token refresh failed (${status})${errorLabel}`,
+  };
+}
+
+/**
  * Exchange the long-lived refresh token for a short-lived Gmail access token.
  * Called once per script run.
+ *
+ * Throws an error tagged with `err.code = 'GMAIL_INVALID_GRANT'` if Google
+ * reports the refresh token is revoked — so the caller can exit gracefully
+ * rather than treating this as an unexpected infrastructure failure.
  *
  * @returns {Promise<string>} access token
  */
@@ -112,8 +147,18 @@ async function getAccessToken() {
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '(no body)');
-    throw new Error(`OAuth2 token refresh failed (${response.status}): ${text}`);
+    const body = await response.json().catch(() => null);
+    const { type, description } = detectOAuthError(response.status, body);
+
+    if (type === 'invalid_grant') {
+      const err = new Error(`Gmail OAuth token revoked (invalid_grant): ${description}`);
+      err.code = 'GMAIL_INVALID_GRANT';
+      throw err;
+    }
+
+    // Generic OAuth failure — log raw body for debugging
+    const rawBody = body ? JSON.stringify(body) : '(unparseable response)';
+    throw new Error(`${description}: ${rawBody}`);
   }
 
   const data = await response.json();
@@ -428,6 +473,15 @@ async function main() {
 // Only run main() when executed directly — not when imported by tests.
 if (process.argv[1]?.endsWith('gmail-monitor.js')) {
   main().catch(err => {
+    if (err.code === 'GMAIL_INVALID_GRANT') {
+      // Known recoverable state — token revoked (e.g. new country login, password change).
+      // Exit 0 so the workflow does not fail and generate its own "run failed" alert email.
+      console.log('[GmailMonitor] Gmail OAuth token is revoked — monitoring paused until re-authenticated.');
+      console.log('[GmailMonitor] To fix: GMAIL_CLIENT_ID=... GMAIL_CLIENT_SECRET=... npm run reauth-gmail');
+      console.log('[GmailMonitor] Then update GMAIL_REFRESH_TOKEN in GitHub repo secrets.');
+      console.log('[GmailMonitor] Details:', err.message);
+      process.exit(0);
+    }
     console.error('[GmailMonitor] Unhandled error:', err.message, err.stack);
     process.exit(1);
   });
