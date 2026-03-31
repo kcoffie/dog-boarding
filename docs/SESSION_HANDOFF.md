@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.3.0 LIVE)
-**Last updated:** March 31, 2026
+**Last updated:** March 31, 2026 (end of session)
 
 ---
 
@@ -82,11 +82,13 @@ Suppressed by `DAYCARE_ONLY_PATTERNS` in `integration-check.js` (31 confirmed as
 
 ## IMMEDIATE NEXT (next session)
 
-**🔴 Fix `dog_boarding_roster` Meta template** — after Kate fixes in Meta BM and it's re-approved, trigger `notify-friday-pm` and confirm `wamid` in logs + message delivered to phone. Only then is the roster image path actually proven end-to-end.
+**Start here: M3-4** — "As of" timestamp in roster image. This is the first unstarted in-code M3 ticket. See `docs/SPRINT_PLAN.md` for full per-ticket DoD and execution process.
+
+**🔴 Pending Kate (non-code):** Fix `dog_boarding_roster` Meta template in Meta Business Manager — change header type to IMAGE/MEDIA, re-submit for approval, then trigger `notify-friday-pm` manually and confirm `wamid` in logs + message on phone.
 
 **M3 remaining tickets** — operational system is complete and portfolio docs are live. These are enhancements:
 
-1. **M3-4** — "As of" timestamp in roster image (e.g. `as of 6:04 PM, Mon 3/16`)
+1. **M3-4** — "As of" timestamp in roster image (e.g. `as of 6:04 PM, Mon 3/16`) ← **START HERE**
 2. **M3-5** — DST-aware scheduling + code polish (timing-safe equal in `roster-image.js`, regex precompile in `daytimeSchedule.js`)
 3. **M3-6** — Doc staleness CI check (non-blocking — detects when `api/` or `src/lib/scraper/` changed but `docs/job_docs/` wasn't touched)
 4. **M3-7** — Screen recording of WhatsApp roster image arriving on phone (most impactful portfolio artifact; embed in README)
