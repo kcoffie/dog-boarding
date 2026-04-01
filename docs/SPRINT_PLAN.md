@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 1, 2026 — v5.3.0 LIVE. M3-5 complete (in PR). Next: M3-8._
+_Last updated: April 1, 2026 — v5.3.0 LIVE. M3-4, M3-5, M3-9 done. K-1 in progress (Meta template approval pending). Next: M3-8, M3-6._
 
 ---
 
@@ -63,7 +63,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Doc staleness CI check | — | M3-6 |
 | Screen recording (portfolio artifact) | — | M3-7 — blocked on Kate's Meta template fix |
 | README screenshots | — | M3-8 |
-| CHANGELOG.md | — | M3-9 |
+| CHANGELOG.md | ✅ DONE | M3-9 — merged PR #143 |
 | WhatsApp delivery receipts | — | M3-10 / F-1 |
 | Message log page | — | F-2 |
 
@@ -194,7 +194,7 @@ These are the three tickets that move the Professional Quality needle most right
 
 ### M3-9 — CHANGELOG.md
 
-**Status:** Not started.
+**Status:** ✅ DONE — PR #143 merged April 1, 2026.
 
 **What:** Add a `CHANGELOG.md` documenting the release history from v1.0 → v5.3.0. This signals production-minded development discipline to any interviewer reading the repo.
 
@@ -236,6 +236,7 @@ This is distinct from:
 
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
+| #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6. Dependabot PRs #106/#107 closed (CI failed — breaking changes). Needs intentional upgrade. | Low | Dev tooling only, no prod impact |
 | F-1 | **Message delivery observability** — lighter version of M3-10. Implement the webhook + wamid storage but without the alerting layer. Kate can check delivery status in the app instead of getting an automatic alert. Lower complexity, high value. | Medium | Can be done before M3-10 if alerting feels like too much scope |
 | F-2 | **Message log page** — store every outbound message (recipient, content, timestamp, type) to a `message_log` table at send time. New app page: last 5 days, latest first. Decouples "did the job run?" from "did the delivery work?". | High | Table schema + 7 write sites + new app route + page UI |
 
