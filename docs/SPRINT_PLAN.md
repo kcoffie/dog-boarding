@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: March 31, 2026 — v5.3.0 LIVE. M3 execution phase. Next: M3-4._
+_Last updated: April 1, 2026 — v5.3.0 LIVE. M3-5 complete (in PR). Next: M3-8._
 
 ---
 
@@ -59,7 +59,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | WhatsApp sender consolidation | ✅ DONE | M3-11 — twilio removed (#108) |
 | Meta message templates | ✅ DONE | M3-12 — all sends use approved templates (#112) |
 | Roster image "As of" timestamp | ✅ DONE | M3-4 — `formatAsOf`, ts param (#137) |
-| DST-aware scheduling + code polish | — | M3-5 ← **NEXT** |
+| DST-aware scheduling + code polish | ✅ DONE | M3-5 — timingSafeEqual, regex cache, flaky test fix (#140) |
 | Doc staleness CI check | — | M3-6 |
 | Screen recording (portfolio artifact) | — | M3-7 — blocked on Kate's Meta template fix |
 | README screenshots | — | M3-8 |
@@ -89,8 +89,8 @@ These are the three tickets that move the Professional Quality needle most right
 
 **Why this order:**
 
-1. **M3-4** is the easiest remaining code ticket and makes the roster image genuinely more useful. It also needs to land *before* the M3-7 screen recording, so the recording shows the timestamp.
-2. **M3-5** cleans up real timing bugs and removes misleading code comments. Hardening before visuals.
+1. **M3-4** ✅ makes the roster image genuinely more useful. Needed before M3-7 screen recording.
+2. **M3-5** ✅ cleans up real hardening issues (misleading auth comment, hot-loop regex, flaky test).
 3. **M3-8** puts the roster image and boarding matrix in front of every person who visits the repo. Currently the README has zero screenshots — this is the most glaring portfolio gap after K-1 is resolved.
 
 > **Note:** M3-7 (screen recording) is the single most impactful portfolio artifact but is gated on K-1 (Kate's Meta template fix). Unblock K-1 first, then M3-7 can be done at any time after M3-4 and M3-8 are complete.
