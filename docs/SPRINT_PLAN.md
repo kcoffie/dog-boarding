@@ -58,8 +58,8 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Architecture Decision Records | ✅ DONE | M3-3 — docs/adr/001/002/003 |
 | WhatsApp sender consolidation | ✅ DONE | M3-11 — twilio removed (#108) |
 | Meta message templates | ✅ DONE | M3-12 — all sends use approved templates (#112) |
-| Roster image "As of" timestamp | PR #137 | M3-4 ← **IN REVIEW** |
-| DST-aware scheduling + code polish | — | M3-5 |
+| Roster image "As of" timestamp | ✅ DONE | M3-4 — `formatAsOf`, ts param (#137) |
+| DST-aware scheduling + code polish | — | M3-5 ← **NEXT** |
 | Doc staleness CI check | — | M3-6 |
 | Screen recording (portfolio artifact) | — | M3-7 — blocked on Kate's Meta template fix |
 | README screenshots | — | M3-8 |
@@ -105,24 +105,17 @@ These are the three tickets that move the Professional Quality needle most right
 
 ### M3-4 — "As of" timestamp in roster image
 
-**Status:** Not started. **Start here.**
-
-**What:** Add a human-readable "as of" line to the roster image PNG, e.g. `as of 6:04 PM, Mon 3/16`. Confirms to the recipient that the image reflects current boarding state at time of send, not stale data.
+**Status:** ✅ DONE — PR #137 merged April 1, 2026.
 
 **Definition of Done:**
-- [ ] Roster image PNG includes "as of [time], [day abbr] [M/D]" line, formatted in PST
-- [ ] `as of` uses the timestamp from when the notify job ran (not a hardcoded or UTC value)
-- [ ] Unit test: given a known timestamp input, rendered "as of" line matches expected string
-- [ ] Integration test: roster image renders without error end-to-end
-- [ ] All 918 existing tests still pass (no regressions)
-- [ ] Deployed to Vercel + 7am notify triggered manually to confirm live image on phone
+- [x] Roster image PNG includes "as of [time], [day abbr] [M/D]" line, formatted in PST
+- [x] `as of` uses the timestamp from when the notify job ran (not a hardcoded or UTC value)
+- [x] Unit test: given a known timestamp input, rendered "as of" line matches expected string
+- [ ] Integration test: roster image renders without error end-to-end ← **Kate: trigger 7am notify manually**
+- [x] All 923 tests pass (0 regressions)
+- [ ] Deployed to Vercel + 7am notify triggered manually to confirm live image on phone ← **Kate pending**
 
-**Files to read before coding:**
-- `api/roster-image.js` — PNG rendering pipeline
-- `api/notify.js` — orchestrator; where timestamps originate
-- `src/lib/notifyHelpers.js` — `refreshDaytimeSchedule`, `getPictureOfDay`
-
-**Architect note:** Trace how the current timestamp flows from `notify.js` → `roster-image.js`. The timestamp must be in PST (not UTC). Verify the DST offset handling before rendering — this connects to M3-5.
+**Implementation:** `notify.js` captures `jobRunAt` at start, appends `&ts=<iso>` to image URL. `roster-image.js` new `formatAsOf()` formats as `"6:04 PM, Mon 3/16"` PST/PDT; reads `req.query.ts` (falls back to `lastSyncedAt`). `buildLayout(data, asOfStr)` receives pre-formatted string.
 
 ---
 
