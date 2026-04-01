@@ -159,19 +159,35 @@ function formatDate(dateStr) {
 }
 
 /**
- * Format an ISO timestamp as a short local time string: "7:03 AM".
- * Returns null if isoStr is null/undefined, so callers can gate display.
- * Error-handling: invalid date input returns null rather than "Invalid Date".
+ * Format an ISO timestamp as "6:04 PM, Mon 3/16" in PST/PDT (America/Los_Angeles).
+ * Used for the "as of" line in the roster image header. Exported for unit testing.
  *
- * @param {string|null} isoStr - ISO 8601 timestamp from Supabase updated_at
+ * Returns null if isoStr is null/undefined or resolves to an invalid Date so
+ * callers can gate display (no "as of" line rendered when timestamp is absent).
+ *
+ * @param {string|null|undefined} isoStr - ISO 8601 timestamp
  * @returns {string|null}
  */
-function formatTime(isoStr) {
+export function formatAsOf(isoStr) {
   if (!isoStr) return null;
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return null;
-  // Explicit timezone required — Vercel Lambdas run in UTC; the user is in PST/PDT.
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' });
+  const time = d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'America/Los_Angeles',
+  });
+  const weekday = d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    timeZone: 'America/Los_Angeles',
+  });
+  const monthDay = d.toLocaleDateString('en-US', {
+    month: 'numeric',
+    day: 'numeric',
+    timeZone: 'America/Los_Angeles',
+  });
+  return `${time}, ${weekday} ${monthDay}`; // "6:04 PM, Mon 3/16"
 }
 
 // ---------------------------------------------------------------------------
@@ -324,16 +340,18 @@ function computeImageHeight(data) {
  * Build the full satori element tree for the roster image.
  *
  * Structure:
- *   [Header: "Thursday, March 5 (as of 7:03 AM)"  ·  Daily Roster  ·  UPDATED!]
+ *   [Header: "Thursday, March 5 (as of 6:04 PM, Mon 3/16)"  ·  Daily Roster  ·  UPDATED!]
  *   [Worker grid: N columns, each worker gets a card]
  *
  * Boarders section removed in v4.1.1 — data.boarders still exists in the
  * data struct for easy restoration, but is not rendered here.
  *
- * @param {object} data - getPictureOfDay result (includes lastSyncedAt)
+ * @param {object} data       - getPictureOfDay result
+ * @param {string|null} asOfStr - Pre-formatted "as of" string (e.g. "6:04 PM, Mon 3/16"),
+ *   or null if no timestamp is available. Caller is responsible for formatting via formatAsOf().
  * @returns {object} Satori element tree
  */
-function buildLayout(data) {
+function buildLayout(data, asOfStr) {
   const cols = columnsPerRow(data.workers.length);
   const availableWidth = IMAGE_WIDTH - OUTER_PAD * 2;
   const colWidth = Math.floor((availableWidth - COL_GAP * (cols - 1)) / cols);
@@ -379,12 +397,11 @@ function buildLayout(data) {
       }, 'UPDATED!')
     : null;
 
-  // "as of HH:MM AM" suffix — present when live refresh ran before this render.
-  // Decision: null lastSyncedAt means we're rendering from midnight cron data;
-  // omit the suffix rather than show a stale time.
-  const asOfTime = formatTime(data.lastSyncedAt);
-  const dateLabel = asOfTime
-    ? `${formatDate(data.date)} (as of ${asOfTime})`
+  // "as of [time], [day] [M/D]" suffix — present when a timestamp was supplied by
+  // the caller (e.g. notify.js job run time or lastSyncedAt fallback).
+  // null asOfStr means no timestamp was available; omit rather than show stale/wrong time.
+  const dateLabel = asOfStr
+    ? `${formatDate(data.date)} (as of ${asOfStr})`
     : formatDate(data.date);
 
   return h('div', {
@@ -763,12 +780,20 @@ export default async function handler(req, res) {
     const data = await getPictureOfDay(supabase, date);
     console.log(`[RosterImage] Data: ${data.workers.length} workers, hasUpdates: ${data.hasUpdates}, lastSyncedAt: ${data.lastSyncedAt ?? 'none'}`);
 
-    // Build layout — log dateLabel so we can verify the "(as of HH:MM AM)" suffix
-    // was applied (or explain its absence if formatTime returned null).
-    const element = buildLayout(data);
+    // Resolve "as of" timestamp.
+    // ts param: set by notify.js at job run time — most meaningful (reflects when the
+    //   notification was dispatched, not when the DB was last written).
+    // lastSyncedAt fallback: max(updated_at) across today's daytime_appointments rows.
+    //   Used when roster-image is hit directly (e.g. manual URL visit) without notify.js.
+    // null: no "as of" line rendered (header shows date only).
+    const tsParam = req.query.ts || null;
+    const asOfIso = tsParam || data.lastSyncedAt;
+    const asOfStr = formatAsOf(asOfIso);
+    const asOfSource = tsParam ? 'ts param (notify job)' : data.lastSyncedAt ? 'lastSyncedAt (DB)' : 'none';
+    console.log(`[RosterImage] as-of: "${asOfStr ?? 'none'}" (source: ${asOfSource})`);
+
+    const element = buildLayout(data, asOfStr);
     const height = computeImageHeight(data);
-    const asOf = data.lastSyncedAt ? ` (as of ${data.lastSyncedAt})` : ' (no live refresh)';
-    console.log(`[RosterImage] Header timestamp: ${asOf.trim()}`);
     console.log(`[RosterImage] Computed dimensions: ${IMAGE_WIDTH}x${height}`);
 
     // Render SVG via satori
