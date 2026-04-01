@@ -38,6 +38,8 @@ function metaError(status = 400, body = '{"error":"Bad request"}') {
  *
  * Returns { fetchMock, metaCalls } where metaCalls is a getter for the
  * subset of fetch.mock.calls that targeted the Meta API.
+ *
+ * Used by sendTextMessage tests (no image fetch / media upload involved).
  */
 function makeFetchMock(metaResponses = []) {
   const queue = [...metaResponses];
@@ -57,6 +59,60 @@ function makeFetchMock(metaResponses = []) {
     /** Return only the Meta API calls (not logger /api/log calls). */
     metaCalls: () => fetchMock.mock.calls.filter(([url]) =>
       typeof url === 'string' && url.includes('graph.facebook.com')
+    ),
+  };
+}
+
+/**
+ * Build a URL-aware fetch mock for sendRosterImage tests.
+ *
+ * Routes three distinct call patterns:
+ *   graph.facebook.com + /media    → media upload response (single, configurable)
+ *   graph.facebook.com + /messages → message send responses (queue)
+ *   other URLs (image host, /api/log) → image fetch response (with arrayBuffer)
+ *
+ * Returns { fetchMock, mediaCalls, messageCalls } for targeted assertions.
+ */
+function makeImageFetchMock({
+  mediaResponse = null,
+  messageResponses = [],
+  imageFetchOk = true,
+} = {}) {
+  const messageQueue = [...messageResponses];
+  const defaultMessage = metaOk();
+  const defaultMedia = { ok: true, json: () => Promise.resolve({ id: 'media-default-id' }) };
+
+  const fetchMock = vi.fn().mockImplementation((url) => {
+    if (typeof url === 'string' && url.includes('graph.facebook.com')) {
+      if (url.includes('/media')) {
+        return Promise.resolve(mediaResponse ?? defaultMedia);
+      }
+      // /messages
+      const next = messageQueue.shift();
+      return Promise.resolve(next ?? defaultMessage);
+    }
+    // Image fetch (example.com) or logger (/api/log)
+    if (!imageFetchOk) {
+      return Promise.resolve({
+        ok: false,
+        status: 503,
+        text: () => Promise.resolve('Service Unavailable'),
+      });
+    }
+    return Promise.resolve({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(1024)),
+      json: () => Promise.resolve({}),
+    });
+  });
+
+  return {
+    fetchMock,
+    mediaCalls: () => fetchMock.mock.calls.filter(([url]) =>
+      typeof url === 'string' && url.includes('/media')
+    ),
+    messageCalls: () => fetchMock.mock.calls.filter(([url]) =>
+      typeof url === 'string' && url.includes('/messages')
     ),
   };
 }
@@ -112,21 +168,30 @@ describe('getRecipients', () => {
 // ---------------------------------------------------------------------------
 
 describe('sendRosterImage', () => {
-  it('calls Meta API with image type and correct payload', async () => {
-    const { fetchMock: fm, metaCalls: mc } = makeFetchMock([metaOk('wamid.img001')]);
-    vi.stubGlobal('fetch', fm);
+  it('sends template with { image: { id } } using media_id from upload — not { link }', async () => {
+    const { fetchMock, mediaCalls, messageCalls } = makeImageFetchMock({
+      mediaResponse: { ok: true, json: () => Promise.resolve({ id: 'media-upload-001' }) },
+      messageResponses: [metaOk('wamid.img001')],
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     const results = await sendRosterImage(
       'https://example.com/api/roster-image?token=secret',
       ['+18312477375'],
     );
 
-    expect(mc()).toHaveLength(1);
-    const [url, options] = mc()[0];
-    expect(url).toContain('phone-id-123/messages');
-    expect(url).toContain('graph.facebook.com');
+    // One media upload call
+    expect(mediaCalls()).toHaveLength(1);
+    const [uploadUrl, uploadOpts] = mediaCalls()[0];
+    expect(uploadUrl).toContain('phone-id-123/media');
+    expect(uploadUrl).toContain('graph.facebook.com');
+    expect(uploadOpts.headers.Authorization).toBe('Bearer token-abc');
 
-    const body = JSON.parse(options.body);
+    // One message send call
+    expect(messageCalls()).toHaveLength(1);
+    const [msgUrl, msgOpts] = messageCalls()[0];
+    expect(msgUrl).toContain('phone-id-123/messages');
+    const body = JSON.parse(msgOpts.body);
     expect(body.messaging_product).toBe('whatsapp');
     expect(body.to).toBe('+18312477375');
     expect(body.type).toBe('template');
@@ -135,67 +200,101 @@ describe('sendRosterImage', () => {
     const header = body.template.components[0];
     expect(header.type).toBe('header');
     expect(header.parameters[0].type).toBe('image');
-    expect(header.parameters[0].image.link).toBe('https://example.com/api/roster-image?token=secret');
+    // Must use media_id — NOT the original URL
+    expect(header.parameters[0].image.id).toBe('media-upload-001');
+    expect(header.parameters[0].image.link).toBeUndefined();
 
-    expect(options.headers.Authorization).toBe('Bearer token-abc');
     expect(results).toHaveLength(1);
     expect(results[0].status).toBe('sent');
     expect(results[0].messageId).toBe('wamid.img001');
   });
 
   it('masks phone numbers in result to field', async () => {
+    const { fetchMock } = makeImageFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+
     const results = await sendRosterImage('https://example.com/img.png', ['+18312477375']);
     expect(results[0].to).toBe('***-***-7375');
   });
 
-  it('returns failed result when Meta API returns non-2xx', async () => {
-    const { fetchMock: fm } = makeFetchMock([metaError(400, '{"error":"invalid number"}')]);
-    vi.stubGlobal('fetch', fm);
+  it('throws when media upload returns non-2xx', async () => {
+    const { fetchMock } = makeImageFetchMock({
+      mediaResponse: { ok: false, status: 500, text: () => Promise.resolve('Internal Server Error') },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      sendRosterImage('https://example.com/img.png', ['+18312477375'])
+    ).rejects.toThrow(/Upload failed.*500/);
+  });
+
+  it('throws when image fetch fails', async () => {
+    const { fetchMock } = makeImageFetchMock({ imageFetchOk: false });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      sendRosterImage('https://example.com/img.png', ['+18312477375'])
+    ).rejects.toThrow(/Image fetch failed/);
+  });
+
+  it('returns failed result when message send returns non-2xx', async () => {
+    const { fetchMock } = makeImageFetchMock({
+      messageResponses: [metaError(400, '{"error":"invalid number"}')],
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     const results = await sendRosterImage('https://example.com/img.png', ['+18312477375']);
     expect(results[0].status).toBe('failed');
     expect(results[0].error).toMatch(/Meta API error 400/);
   });
 
-  it('sends to multiple recipients sequentially and collects results', async () => {
-    const { fetchMock: fm, metaCalls: mc } = makeFetchMock([metaOk('wamid.001'), metaOk('wamid.002')]);
-    vi.stubGlobal('fetch', fm);
+  it('uploads image once and sends to multiple recipients', async () => {
+    const { fetchMock, mediaCalls, messageCalls } = makeImageFetchMock({
+      messageResponses: [metaOk('wamid.001'), metaOk('wamid.002')],
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     const results = await sendRosterImage('https://example.com/img.png', [
       '+18312477375',
       '+14085551234',
     ]);
 
-    expect(mc()).toHaveLength(2);
+    // Only 1 media upload regardless of recipient count
+    expect(mediaCalls()).toHaveLength(1);
+    expect(messageCalls()).toHaveLength(2);
     expect(results).toHaveLength(2);
     expect(results[0].status).toBe('sent');
     expect(results[1].status).toBe('sent');
   });
 
-  it('continues to next recipient if one fails', async () => {
-    const { fetchMock: fm } = makeFetchMock([metaError(400), metaOk('wamid.002')]);
-    vi.stubGlobal('fetch', fm);
+  it('continues to next recipient if one message send fails', async () => {
+    const { fetchMock, messageCalls } = makeImageFetchMock({
+      messageResponses: [metaError(400), metaOk('wamid.002')],
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     const results = await sendRosterImage('https://example.com/img.png', [
       '+18312477375',
       '+14085551234',
     ]);
 
+    expect(messageCalls()).toHaveLength(2);
     expect(results[0].status).toBe('failed');
     expect(results[1].status).toBe('sent');
   });
 
   it('returns failed results for all recipients when credentials missing', async () => {
     delete process.env.META_PHONE_NUMBER_ID;
-    const { fetchMock: fm, metaCalls: mc } = makeFetchMock();
-    vi.stubGlobal('fetch', fm);
+    const { fetchMock, mediaCalls } = makeImageFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
 
     const results = await sendRosterImage('https://example.com/img.png', [
       '+18312477375',
       '+14085551234',
     ]);
 
-    expect(mc()).toHaveLength(0);
+    // Short-circuits before any fetch — no upload, no send
+    expect(mediaCalls()).toHaveLength(0);
     expect(results).toHaveLength(2);
     results.forEach(r => {
       expect(r.status).toBe('failed');
@@ -204,11 +303,13 @@ describe('sendRosterImage', () => {
   });
 
   it('returns empty array when recipients list is empty', async () => {
-    const { fetchMock: fm, metaCalls: mc } = makeFetchMock();
-    vi.stubGlobal('fetch', fm);
+    const { fetchMock, mediaCalls, messageCalls } = makeImageFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
 
     const results = await sendRosterImage('https://example.com/img.png', []);
-    expect(mc()).toHaveLength(0);
+    // Short-circuits before any fetch
+    expect(mediaCalls()).toHaveLength(0);
+    expect(messageCalls()).toHaveLength(0);
     expect(results).toEqual([]);
   });
 });

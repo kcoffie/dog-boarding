@@ -149,15 +149,73 @@ async function metaApiSend(phoneNumberId, token, to, messagePayload) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Upload a PNG image to the Meta media API and return the media ID.
+ *
+ * Meta silently fails to deliver when it cannot fetch an image URL from an
+ * external host (known behavior with Vercel endpoints). Uploading directly
+ * gives us a stable media_id served from Meta's own CDN, eliminating that
+ * dependency entirely.
+ *
+ * @param {string} phoneNumberId - Sender phone number ID
+ * @param {string} token         - System user access token
+ * @param {string} imageUrl      - URL to fetch the PNG from
+ * @returns {Promise<string>}    - Meta media ID
+ * @throws if image fetch or media upload fails
+ */
+async function metaMediaUpload(phoneNumberId, token, imageUrl) {
+  // Step 1: Fetch the PNG buffer
+  log(`[metaMediaUpload] Fetching image from ${new URL(imageUrl).hostname}...`);
+  const imageRes = await fetch(imageUrl);
+  if (!imageRes.ok) {
+    throw new Error(`[metaMediaUpload] Image fetch failed: HTTP ${imageRes.status} from ${imageUrl}`);
+  }
+  const buffer = await imageRes.arrayBuffer();
+  log(`[metaMediaUpload] Image fetched — ${buffer.byteLength} bytes`);
+
+  // Step 2: Upload to Meta media API as multipart/form-data
+  // Do not set Content-Type manually — fetch sets it automatically with the correct boundary.
+  const uploadUrl = `https://graph.facebook.com/${META_API_VERSION}/${phoneNumberId}/media`;
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  form.append('type', 'image/png');
+  form.append('file', new Blob([buffer], { type: 'image/png' }), 'roster.png');
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+
+  if (!uploadRes.ok) {
+    const text = await uploadRes.text().catch(() => '(no body)');
+    throw new Error(`[metaMediaUpload] Upload failed: HTTP ${uploadRes.status}: ${text}`);
+  }
+
+  const data = await uploadRes.json();
+  const mediaId = data?.id;
+  if (!mediaId) {
+    throw new Error(`[metaMediaUpload] Upload response missing id: ${JSON.stringify(data)}`);
+  }
+
+  log(`[metaMediaUpload] Upload complete — media_id: ${mediaId}`);
+  return mediaId;
+}
+
+/**
  * Send the roster image to one or more WhatsApp numbers via Meta Cloud API.
+ *
+ * Uploads the PNG to Meta's media API first (one upload for all recipients),
+ * then sends the template with { image: { id } } instead of { image: { link } }.
+ * This avoids Meta's silent URL-fetch failures against Vercel endpoints.
  *
  * Iterates recipients sequentially (not parallel) to stay within Meta's rate
  * limits. Each recipient gets its own try/catch so a single bad number doesn't
  * block the rest of the list.
  *
- * @param {string} imageUrl     - Publicly accessible URL to the roster PNG
+ * @param {string} imageUrl     - URL to fetch the roster PNG from
  * @param {string[]} recipients - E.164 phone numbers
  * @returns {Promise<Array<{to, status, messageId?, error?}>>}
+ * @throws if the media upload step fails (pre-send; affects all recipients)
  */
 export async function sendRosterImage(imageUrl, recipients) {
   log(`sendRosterImage — ${recipients.length} recipients, imageUrl host: ${new URL(imageUrl).hostname}`);
@@ -177,6 +235,11 @@ export async function sendRosterImage(imageUrl, recipients) {
     }));
   }
 
+  // Upload once — reuse the same media_id for every recipient.
+  // Throws on failure so the caller knows the send did not proceed.
+  const mediaId = await metaMediaUpload(creds.phoneNumberId, creds.token, imageUrl);
+  log(`sendRosterImage — using media_id: ${mediaId} for ${recipients.length} recipient(s)`);
+
   const results = [];
 
   for (const to of recipients) {
@@ -186,7 +249,7 @@ export async function sendRosterImage(imageUrl, recipients) {
     try {
       const { messageId } = await metaApiSend(creds.phoneNumberId, creds.token, to,
         buildTemplatePayload(ROSTER_TEMPLATE, [
-          { type: 'header', parameters: [{ type: 'image', image: { link: imageUrl } }] },
+          { type: 'header', parameters: [{ type: 'image', image: { id: mediaId } }] },
         ]),
       );
       log(`Sent to ${masked} — messageId: ${messageId}`);
