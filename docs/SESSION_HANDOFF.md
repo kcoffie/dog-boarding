@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.3.0 LIVE)
-**Last updated:** April 1, 2026 (end of session — M3-5 in PR)
+**Last updated:** April 1, 2026 (end of session — M3-5 merged)
 
 ---
 
@@ -7,11 +7,10 @@
 
 - **v5.3.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release
 - **923 tests, 54 files, 0 failures**
-- PR #140 open — feat: DST-aware scheduling + code polish (M3-5) (#139) ← pending merge
+- PR #140 merged — feat: DST-aware scheduling + code polish (M3-5) (#139)
 - PR #137 merged — feat: add "as of" timestamp to roster image header (M3-4) (#136)
 - PR #133 merged — fix: catch concatenated PG day codes (MTWTH, TWTH, WTH) in daycare filter (#132)
 - PR #131 merged — feat: graceful `invalid_grant` detection in `gmail-monitor.js` + `npm run reauth-gmail` (#130)
-- PR #129 merged — fix: suppress 27 daycare false positives in integration check (#128)
 
 ### v5.3 — WhatsApp alert sends verified ✅ / roster image send BROKEN ❌
 
@@ -30,40 +29,20 @@ Code is correct — template needs fixing in Meta Business Manager (Kate action 
 
 ### Pending (Kate)
 - **🔴 K-1: Fix `dog_boarding_roster` Meta template** — change header type to IMAGE/MEDIA, re-submit for approval. Triggers M3-7.
-- **🔴 Verify M3-4 deploy** — trigger 7am notify manually after PR #137 deploys; confirm `as of [time], [day] [M/D]` visible in image on phone.
+- **🔴 Verify M3-4 deploy** — notify job currently broken (investigate first). When fixed, trigger 7am notify manually: `curl -s "https://qboarding.vercel.app/api/notify?window=7am&token=$VITE_SYNC_PROXY_TOKEN"`. Confirm `as of [time], [day] [M/D]` visible in image on phone.
 - **K-2: Backfill Maverick** — `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
 - **K-3: Investigate Tula N/C 3/23-26 (C63Qga3r)** — real boarding or no-charge non-boarding?
 - **K-4: Second WhatsApp recipient** → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
 - **K-5: Anthropic credits** at console.anthropic.com (Step 3 vision in integration check)
-
-### Known integration-check false positives
-Suppressed by `DAYCARE_ONLY_PATTERNS` in `integration-check.js` (31 confirmed as of March 2026).
-
----
-
-## Session summary (April 1, 2026) — M3-5
-
-- **PR #140** — feat: DST-aware scheduling + code polish (#139)
-  - `api/roster-image.js`: added `crypto.timingSafeEqual` for token auth; removed misleading "constant-time" comment on `!==`
-  - `src/lib/scraper/daytimeSchedule.js`: `attr()` now uses a module-level `_attrRegexCache` Map — regexes compiled once per attribute name, not on every call in the hot parse loop
-  - `src/components/DateNavigator.test.jsx`: "clicking Today" tests pinned with `vi.useFakeTimers()` + `vi.setSystemTime(2025-03-09T20:00Z)` (spring-forward day noon PDT) — eliminates midnight race + DST boundary flakiness
-  - DST cron documentation: already present in all 4 notify workflows — no change needed
-  - 923 tests, all green
-
-## Session summary (April 1, 2026) — M3-4
-
-- **PR #137** — feat: "as of" timestamp in roster image header (#136)
-  - `api/notify.js`: capture `jobRunAt = new Date().toISOString()` at job start; append `&ts=<iso>` to daily + friday-pm image URLs
-  - `api/roster-image.js`: new exported `formatAsOf(isoStr)` → `"6:04 PM, Mon 3/16"` in PST/PDT; reads `req.query.ts` (falls back to `data.lastSyncedAt` for direct hits); `buildLayout(data, asOfStr)` now receives pre-formatted string; `formatTime` removed (superseded, caught by lint hook)
-  - `src/__tests__/rosterImage.test.js` (new): 5 tests for `formatAsOf` — PST, PDT, null, undefined, invalid date
-  - 923 tests, all green
+- **K-6: Branch protection** — Settings → Branches → main rule → "Allow specified actors to bypass required pull requests" → add `kcoffie` (so doc commits don't need a PR)
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-**Verify M3-4 deploy** — trigger 7am notify manually after notify job is fixed; confirm "as of [time], [day] [M/D]" in image on phone. Use:
-`curl -s "https://qboarding.vercel.app/api/notify?window=7am&token=$VITE_SYNC_PROXY_TOKEN"`
+1. **Investigate notify job** — jobs are not running correctly (Kate flagged this session). Diagnose before M3-4 verification.
+2. **Verify M3-4** — after notify job is fixed, trigger 7am manually and confirm "as of" timestamp in roster image on phone.
+3. **M3-8** — README screenshots (boarding matrix + roster image with M3-4 timestamp). Start after M3-4 verified.
 
 **M3 remaining (ordered):**
 
@@ -115,7 +94,7 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 | `src/lib/scraper/syncRunner.js` | `runScheduleSync`, `runDetailSync` — shared sync logic (v4.5) |
 | `scripts/integration-check.js` | Integration check script (GH Actions) |
 | `src/lib/pictureOfDay.js` | getPictureOfDay, computeWorkerDiff, hashPicture |
-| `api/roster-image.js` | Token-gated PNG endpoint; `formatAsOf` (M3-4) |
+| `api/roster-image.js` | Token-gated PNG endpoint; `formatAsOf` (M3-4); `timingSafeEqual` auth (M3-5) |
 | `api/notify.js` | Notify orchestrator (4am/7am/830am/friday-pm windows) |
 | `src/lib/notifyWhatsApp.js` | Meta Cloud API wrapper (`sendRosterImage`, `sendTextMessage`) |
 | `src/lib/notifyHelpers.js` | `refreshDaytimeSchedule` (extracted from notify.js for testability) |
@@ -123,6 +102,7 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 | `scripts/gmail-monitor.js` | Gmail infrastructure alert monitor (GH Actions hourly) |
 | `src/lib/scraper/sync.js` | runSync, 6-layer filter |
 | `src/lib/scraper/extraction.js` | parseAppointmentPage + booking_status |
+| `src/lib/scraper/daytimeSchedule.js` | parseDaytimeSchedulePage; attr() regex cache (M3-5) |
 
 ### GitHub Actions repo secrets (all must be Repository secrets, NOT environment secrets)
 | Secret | Status |
@@ -163,7 +143,8 @@ GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
 
 - **`cron-schedule.js` ADD filter case-sensitive** — `/\badd\b/` doesn't match uppercase `ADD`. Low priority — sync pipeline post-filter catches downstream.
 - **Claude credits for integration check name-check** — Step 3 silently skipped (no credits).
-- **DST-flaky test** in `DateNavigator.test.jsx` — address in M3-5.
+- **Store datetimes in PST instead of UTC** — tech debt, no user impact yet.
+- **Branch protection bypass** — K-6: add Kate as bypass actor so doc commits don't need a PR.
 
 ---
 
