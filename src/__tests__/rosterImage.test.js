@@ -24,7 +24,14 @@ vi.mock('../lib/pictureOfDay.js', () => ({
 }));
 vi.mock('../lib/htmlUtils.js', () => ({ decodeEntities: (s) => s }));
 
-import { formatAsOf } from '../../api/roster-image.js';
+import {
+  formatAsOf,
+  formatWeekendDatetime,
+  formatWeekendHeaderDates,
+  getWeekendWindowISO,
+  getWeekendBoardings,
+  computeWeekendImageHeight,
+} from '../../api/roster-image.js';
 
 // ---------------------------------------------------------------------------
 // formatAsOf
@@ -53,5 +60,218 @@ describe('formatAsOf', () => {
 
   it('returns null for an invalid date string', () => {
     expect(formatAsOf('not-a-date')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatWeekendDatetime
+// ---------------------------------------------------------------------------
+
+describe('formatWeekendDatetime', () => {
+  it('formats a known UTC ISO string as weekday + time in LA timezone (PST, Jan)', () => {
+    // 2026-01-17T23:00:00Z = Sat Jan 17 3:00 PM PST (UTC-8, standard time)
+    expect(formatWeekendDatetime('2026-01-17T23:00:00.000Z')).toBe('Sat 3:00 PM');
+  });
+
+  it('formats a Friday morning time correctly (PDT, May)', () => {
+    // 2026-05-22T18:00:00Z = Fri May 22 11:00 AM PDT (UTC-7, daylight time)
+    expect(formatWeekendDatetime('2026-05-22T18:00:00.000Z')).toBe('Fri 11:00 AM');
+  });
+
+  it('returns "—" for null input', () => {
+    expect(formatWeekendDatetime(null)).toBe('—');
+  });
+
+  it('returns "—" for undefined input', () => {
+    expect(formatWeekendDatetime(undefined)).toBe('—');
+  });
+
+  it('returns "—" for an invalid date string', () => {
+    expect(formatWeekendDatetime('not-a-date')).toBe('—');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatWeekendHeaderDates
+// ---------------------------------------------------------------------------
+
+describe('formatWeekendHeaderDates', () => {
+  it('formats a Fri–Sun range correctly', () => {
+    // 2026-03-20 = Friday, 2026-03-22 = Sunday
+    const fri = new Date('2026-03-20T12:00:00Z');
+    const sun = new Date('2026-03-22T12:00:00Z');
+    expect(formatWeekendHeaderDates(fri, sun)).toBe('Fri Mar 20 – Sun Mar 22');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getWeekendWindowISO
+// ---------------------------------------------------------------------------
+
+describe('getWeekendWindowISO', () => {
+  it('Friday UTC: daysToMonday = 3 (end is Monday)', () => {
+    // 2026-04-03 is a Friday UTC (day 5)
+    const fri = new Date('2026-04-03T20:00:00Z');
+    const { start, end } = getWeekendWindowISO(fri);
+    const endDate = new Date(end);
+    expect(endDate.getUTCDay()).toBe(1); // Monday
+    expect(endDate.getUTCHours()).toBe(12); // noon UTC
+    expect(new Date(start).toISOString()).toBe(fri.toISOString());
+  });
+
+  it('Saturday UTC: daysToMonday = 2 (end is Monday)', () => {
+    // 2026-04-04 is a Saturday UTC (day 6)
+    const sat = new Date('2026-04-04T10:00:00Z');
+    const { end } = getWeekendWindowISO(sat);
+    const endDate = new Date(end);
+    expect(endDate.getUTCDay()).toBe(1); // Monday
+  });
+
+  it('Sunday UTC: daysToMonday = 1 (end is Monday)', () => {
+    // 2026-04-05 is a Sunday UTC (day 0)
+    const sun = new Date('2026-04-05T10:00:00Z');
+    const { end } = getWeekendWindowISO(sun);
+    const endDate = new Date(end);
+    expect(endDate.getUTCDay()).toBe(1); // Monday
+  });
+
+  it('non-weekend day falls back to +3 days', () => {
+    // 2026-04-01 is a Wednesday UTC (day 3) — manual trigger scenario
+    const wed = new Date('2026-04-01T15:00:00Z');
+    const { end } = getWeekendWindowISO(wed);
+    const endDate = new Date(end);
+    // Wed + 3 = Sat (not Monday) — fallback is intentional for manual triggers
+    expect(endDate.getUTCDate()).toBe(4); // Apr 4
+  });
+
+  it('start equals the injected now', () => {
+    const now = new Date('2026-04-03T20:00:00Z');
+    const { start } = getWeekendWindowISO(now);
+    expect(start).toBe(now.toISOString());
+  });
+
+  it('returns displayFri and displaySun dates', () => {
+    const fri = new Date('2026-04-03T20:00:00Z');
+    const { displayFri, displaySun } = getWeekendWindowISO(fri);
+    expect(displayFri).toBe(fri);
+    // displaySun = end - 1 day
+    const endDate = new Date(getWeekendWindowISO(fri).end);
+    expect(displaySun.getUTCDate()).toBe(endDate.getUTCDate() - 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getWeekendBoardings — DB query shape
+// ---------------------------------------------------------------------------
+
+describe('getWeekendBoardings', () => {
+  it('does NOT select client_name from boardings (column does not exist)', async () => {
+    let capturedSelect = null;
+    const mockChain = {
+      select: vi.fn((s) => { capturedSelect = s; return mockChain; }),
+      or: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+    const mockSupabase = { from: vi.fn().mockReturnValue(mockChain) };
+
+    await getWeekendBoardings(mockSupabase, '2026-04-03T00:00:00Z', '2026-04-06T12:00:00Z');
+
+    expect(capturedSelect).not.toContain('client_name');
+    expect(capturedSelect).toContain('dogs(name)');
+    expect(capturedSelect).toContain('booking_status');
+    expect(capturedSelect).toContain('arrival_datetime');
+    expect(capturedSelect).toContain('departure_datetime');
+  });
+
+  it('maps rows correctly: dog_name from dogs join, no client_name', async () => {
+    const mockRows = [
+      {
+        external_id: 'ABC123',
+        arrival_datetime: '2026-04-03T20:00:00Z',
+        departure_datetime: '2026-04-05T15:00:00Z',
+        booking_status: 'confirmed',
+        dogs: { name: 'Buddy' },
+      },
+      {
+        external_id: 'DEF456',
+        arrival_datetime: '2026-04-04T10:00:00Z',
+        departure_datetime: '2026-04-06T11:00:00Z',
+        booking_status: null, // should default to 'confirmed'
+        dogs: null,           // should default dog_name to 'Unknown'
+      },
+    ];
+    const mockChain = {
+      select: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: mockRows, error: null }),
+    };
+    const mockSupabase = { from: vi.fn().mockReturnValue(mockChain) };
+
+    const { arriving, departing } = await getWeekendBoardings(
+      mockSupabase,
+      '2026-04-03T00:00:00Z',
+      '2026-04-06T12:00:00Z',
+    );
+
+    // Both rows arrive within window
+    expect(arriving).toHaveLength(2);
+    expect(arriving[0].dog_name).toBe('Buddy');
+    expect(arriving[0]).not.toHaveProperty('client_name');
+    expect(arriving[1].dog_name).toBe('Unknown');
+    expect(arriving[1].booking_status).toBe('confirmed'); // null defaulted
+
+    // Both rows depart within window
+    expect(departing).toHaveLength(2);
+  });
+
+  it('throws when supabase returns an error', async () => {
+    const mockChain = {
+      select: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: null, error: new Error('DB connection failed') }),
+    };
+    const mockSupabase = { from: vi.fn().mockReturnValue(mockChain) };
+
+    await expect(
+      getWeekendBoardings(mockSupabase, '2026-04-03T00:00:00Z', '2026-04-06T12:00:00Z')
+    ).rejects.toThrow('DB connection failed');
+  });
+
+  it('returns empty arriving/departing when no boardings in window', async () => {
+    const mockChain = {
+      select: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: [], error: null }),
+    };
+    const mockSupabase = { from: vi.fn().mockReturnValue(mockChain) };
+
+    const { arriving, departing } = await getWeekendBoardings(
+      mockSupabase,
+      '2026-04-03T00:00:00Z',
+      '2026-04-06T12:00:00Z',
+    );
+    expect(arriving).toHaveLength(0);
+    expect(departing).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeWeekendImageHeight
+// ---------------------------------------------------------------------------
+
+describe('computeWeekendImageHeight', () => {
+  it('returns a positive height for empty arriving and departing', () => {
+    const height = computeWeekendImageHeight([], []);
+    expect(height).toBeGreaterThan(0);
+  });
+
+  it('grows with more boardings (min 1 row per section due to placeholder)', () => {
+    // computeWeekendImageHeight uses Math.max(count, 1) so 0 and 1 boarding
+    // produce the same height (the "(none this weekend)" placeholder takes 1 row).
+    const h0 = computeWeekendImageHeight([], []);
+    const h1 = computeWeekendImageHeight([{}], [{}]);
+    const h4 = computeWeekendImageHeight([{},{},{}], [{},{}]);
+    expect(h0).toBe(h1); // both render 1 placeholder row per section
+    expect(h4).toBeGreaterThan(h0);
   });
 });

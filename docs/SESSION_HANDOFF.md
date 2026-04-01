@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.3.0 LIVE)
-**Last updated:** April 1, 2026 (end of session — PR queue cleared, K-1 in progress)
+**Last updated:** April 1, 2026 (K-1 template approved; roster-image 500 bug found + fixed; #148)
 
 ---
 
@@ -12,9 +12,9 @@
 - PR #140 merged — feat: DST-aware scheduling + code polish (M3-5)
 - PR #137 merged — feat: add "as of" timestamp to roster image (M3-4)
 
-### v5.3 — WhatsApp alert sends verified ✅ / roster image send BROKEN ❌ (template fix in progress)
+### v5.3 — WhatsApp alert sends verified ✅ / roster image end-to-end verification in progress
 
-**WhatsApp job verification (March 25, 2026):**
+**WhatsApp job verification (March 25 – April 1, 2026):**
 
 | Job | Send function | Result |
 |---|---|---|
@@ -22,17 +22,18 @@
 | cron-health-check | `sendTextMessage` | ✅ Same code path |
 | gmail-monitor | `sendTextMessage` | ✅ Same code path |
 | notify 4am/7am/830am | `sendRosterImage` | ⏭️ `no_change` — image path not yet end-to-end verified |
-| notify friday-pm | `sendRosterImage` | ❌ **Error 132012** — template fix in progress (see K-1) |
+| notify friday-pm | `sendRosterImage` | ⏳ **wamid confirmed April 1** — image 500 bug fixed in #148; verify after deploy |
 
-**❌ BROKEN: `dog_boarding_roster` template has wrong header type.**
-- Old TEXT-header template deleted from Meta Business Manager.
-- New template `dog_boarding_roster_2` created with IMAGE header — **pending Meta approval**.
-- Code already supports override via `META_ROSTER_TEMPLATE` env var (`notifyWhatsApp.js:29`).
-- `META_ROSTER_TEMPLATE=dog_boarding_roster_2` already set in Vercel environment variables.
-- No code changes needed — once Meta approves, all notify windows will work.
+**K-1 status (April 1, 2026):**
+- `dog_boarding_roster_2` template approved by Meta ✅
+- `META_ROSTER_TEMPLATE=dog_boarding_roster_2` set in Vercel ✅
+- friday-pm triggered manually → wamid returned → Meta accepted message ✅
+- Image NOT received on phone — root cause: `api/roster-image?type=weekend` returning 500
+- Root cause: `getWeekendBoardings` selected `client_name` from `boardings` — column does not exist
+- Fix: PR #147 (`api/roster-image.js` + 18 new tests) — pending deploy
 
 ### Pending (Kate)
-- **🔴 K-1: Await Meta approval of `dog_boarding_roster_2` template** — once approved, trigger friday-pm manually: `curl -s "https://qboarding.vercel.app/api/notify?window=friday-pm&token=$VITE_SYNC_PROXY_TOKEN"`. Confirm `wamid` in logs + roster image on phone.
+- **🔴 K-1 final verification** — after PR #147 merges + Vercel deploys, re-trigger friday-pm: `curl -s "https://qboarding.vercel.app/api/notify?window=friday-pm&token=$VITE_SYNC_PROXY_TOKEN"`. Confirm roster image arrives on phone.
 - **🔴 Verify M3-4** — after K-1 approved, trigger 7am manually: `curl -s "https://qboarding.vercel.app/api/notify?window=7am&token=$VITE_SYNC_PROXY_TOKEN"`. Confirm `as of [time], [day] [M/D]` visible in roster image on phone.
 - **K-2: Backfill Maverick** — `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
 - **K-3: Investigate Tula N/C 3/23-26 (C63Qga3r)** — real boarding or no-charge non-boarding?
@@ -44,7 +45,7 @@
 
 ## IMMEDIATE NEXT (next session)
 
-1. **K-1** — Await Meta approval of `dog_boarding_roster_2`. Once approved, trigger friday-pm manually and confirm wamid + image on phone. `META_ROSTER_TEMPLATE` is already set in Vercel.
+1. **K-1 final** — Merge PR #147 → confirm Vercel deploy → re-trigger friday-pm → confirm roster image arrives on phone.
 2. **Verify M3-4** — after K-1 confirmed, trigger 7am manually and confirm "as of" timestamp in roster image on phone.
 3. **M3-8** — README screenshots (boarding matrix + roster image with M3-4 timestamp). Unblocked — can start now.
 4. **M3-6** — Doc staleness CI check. Unblocked — can start any time.
@@ -65,10 +66,11 @@
 ## This Session — What Was Done
 
 - **PR queue cleared:** Closed stale handoff PRs (#135, #126, #123). Closed broken major-version Dependabot PRs (#106 eslint 10, #107 plugin-react 6) — tracked as kcoffie/dog-boarding#145 for future upgrade. Merged safe Dependabot PRs (#127 codecov, #104 prod deps, #105 jsdom, #146 dev deps).
-- **K-1 progress:** Old `dog_boarding_roster` template deleted. New `dog_boarding_roster_2` template created with IMAGE header — pending Meta approval (Meta's 4-week delete lockout prevented reusing the same name).
-- **Template name config confirmed:** `META_ROSTER_TEMPLATE` env var already supported in `notifyWhatsApp.js:29`. Set to `dog_boarding_roster_2` in Vercel. No code changes needed.
+- **K-1 unblocked:** `dog_boarding_roster_2` template approved by Meta. `META_ROSTER_TEMPLATE=dog_boarding_roster_2` set in Vercel. friday-pm triggered manually → wamid confirmed.
+- **Bug #148 found + fixed:** `api/roster-image?type=weekend` was returning 500 — `getWeekendBoardings` selected `client_name` from `boardings` (column does not exist; lives on `sync_appointments`). Fixed in PR #147: removed invalid column, added 18 new tests covering the entire untested weekend path (`formatWeekendDatetime`, `formatWeekendHeaderDates`, `getWeekendWindowISO`, `getWeekendBoardings`, `computeWeekendImageHeight`). This was the reason the roster image was never arriving on phone despite a valid wamid.
 - **Vercel cleanup:** Removed stale `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` env vars.
 - **GH issue #145 created:** Tooling upgrade backlog — eslint 9→10 + plugin-react 5→6.
+- **Docs-to-main workflow:** Kate authorized direct push to main for docs-only changes (no PR needed).
 
 ---
 

@@ -75,7 +75,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 
 | # | Action | Blocks | Priority |
 |---|--------|--------|----------|
-| K-1 | Fix `dog_boarding_roster` Meta template in Business Manager: change header type TEXT → IMAGE/MEDIA, re-submit for approval. Then trigger `notify-friday-pm` manually and confirm `wamid` in logs + message on phone. | M3-7 screen recording; Friday PM roster image | 🔴 High |
+| K-1 | ~~Fix `dog_boarding_roster` Meta template~~ → `dog_boarding_roster_2` approved ✅. Bug #148 fixed (roster-image 500). After PR #147 deploys: re-trigger friday-pm, confirm image on phone. | M3-7 screen recording; Friday PM roster image | 🔴 High (final verify pending) |
 | K-2 | Backfill Maverick cancelled boarding (predates PR #118 cascade fix): `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';` | Data integrity | 🟡 Medium |
 | K-3 | Investigate Tula N/C 3/23-26 (C63Qga3r) — appeared as "Missing from DB" in integration check. Real boarding that should sync, or no-charge non-boarding visit to filter? | Integration check accuracy | 🟡 Medium |
 | K-4 | Provide second WhatsApp recipient number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164) | M0-3 full end-to-end verification | 🟡 Medium |
