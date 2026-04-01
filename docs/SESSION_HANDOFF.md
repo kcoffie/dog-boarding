@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.3.0 LIVE)
-**Last updated:** March 31, 2026
+**Last updated:** March 31, 2026 (end of session — sprint planning update)
 
 ---
 
@@ -58,6 +58,13 @@ Suppressed by `DAYCARE_ONLY_PATTERNS` in `integration-check.js` (31 confirmed as
 
 ---
 
+## Session summary (March 31, 2026) — Part 2: Sprint planning
+
+- **`docs/SPRINT_PLAN.md` overhauled** — full rewrite; all completed work moved to archive section at bottom; remaining M3 tickets each have concrete Definition of Done checklists; Kate's 5 non-code pending actions tracked in a dedicated table with priorities and blockers; explicit ticket sequencing documented with rationale; F-1/F-2 future backlog clarified; key constraints section updated.
+- **No code changes this part-2 session** — planning only.
+
+---
+
 ## Session summary (March 31, 2026)
 
 - **PR #129** — suppress 27 daycare false positives in integration check (#128)
@@ -82,19 +89,23 @@ Suppressed by `DAYCARE_ONLY_PATTERNS` in `integration-check.js` (31 confirmed as
 
 ## IMMEDIATE NEXT (next session)
 
-**🔴 Fix `dog_boarding_roster` Meta template** — after Kate fixes in Meta BM and it's re-approved, trigger `notify-friday-pm` and confirm `wamid` in logs + message delivered to phone. Only then is the roster image path actually proven end-to-end.
+**M3-4 in review — PR #137.** After merge: deploy to Vercel, trigger 7am notify manually, confirm `as of [time], [day] [M/D]` visible in image on phone.
 
-**M3 remaining tickets** — operational system is complete and portfolio docs are live. These are enhancements:
+**Start here after M3-4 merges: M3-5** — DST-aware scheduling + code polish. Full DoD in `docs/SPRINT_PLAN.md`.
 
-1. **M3-4** — "As of" timestamp in roster image (e.g. `as of 6:04 PM, Mon 3/16`)
-2. **M3-5** — DST-aware scheduling + code polish (timing-safe equal in `roster-image.js`, regex precompile in `daytimeSchedule.js`)
-3. **M3-6** — Doc staleness CI check (non-blocking — detects when `api/` or `src/lib/scraper/` changed but `docs/job_docs/` wasn't touched)
-4. **M3-7** — Screen recording of WhatsApp roster image arriving on phone (most impactful portfolio artifact; embed in README)
-5. **M3-8** — App screenshots in README (boarding matrix, roster image — currently no visuals)
-6. **M3-9** — CHANGELOG.md documenting v1.0 → v5.0.0 release history
-7. **M3-10** — WhatsApp delivery receipts (Meta Webhooks) — post-acceptance delivery failures still invisible; templates (M3-12) close the 24h window gap but not the delivery-receipt gap
-8. ~~**M3-11** — Consolidate WhatsApp sender~~ ✅ DONE (#108)
-9. ~~**M3-12** — Meta message templates~~ ✅ DONE (#112)
+**🔴 Pending Kate (non-code, do in parallel):** Fix `dog_boarding_roster` Meta template in Meta Business Manager — change header type TEXT → IMAGE/MEDIA, re-submit for approval. Triggers M3-7 (screen recording).
+
+**M3 remaining (ordered):**
+
+| # | Ticket | Gate |
+|---|--------|------|
+| M3-4 | "As of" timestamp in roster image | ← **IN REVIEW (PR #137)** |
+| M3-5 | DST-aware scheduling + code polish (timingSafeEqual, regex precompile, flaky test) | After M3-4 |
+| M3-8 | README screenshots (boarding matrix + roster image with M3-4 timestamp) | After M3-4 deployed |
+| M3-9 | CHANGELOG.md (v1.0 → v5.3.0) | Any time |
+| M3-6 | Doc staleness CI check (non-blocking PR warning) | Any time |
+| M3-7 | Screen recording — WhatsApp roster image arriving on phone | After K-1 + M3-4 |
+| M3-10 | WhatsApp delivery receipts (Meta Webhooks) | Last — highest complexity |
 
 ---
 
