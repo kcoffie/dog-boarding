@@ -182,13 +182,17 @@ export default async function handler(req, res) {
     });
   }
 
+  // Capture job run time now — passed to roster-image.js via ts param so the image
+  // can display "as of [time], [day] [M/D]" reflecting when this notify job executed.
+  const jobRunAt = new Date().toISOString();
+
   // --- friday-pm: distinct path — no hash gate, no getPictureOfDay ---
   if (window === 'friday-pm') {
     try {
       const protocol = req.headers['x-forwarded-proto'] || 'https';
       const host = req.headers['x-forwarded-host'] || req.headers.host;
-      const imageUrl = `${protocol}://${host}/api/roster-image?type=weekend&token=${expectedToken}`;
-      console.log(`[Notify] friday-pm — image URL: ${protocol}://${host}/api/roster-image?type=weekend&token=***`);
+      const imageUrl = `${protocol}://${host}/api/roster-image?type=weekend&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}`;
+      console.log(`[Notify] friday-pm — image URL: ${protocol}://${host}/api/roster-image?type=weekend&token=***&ts=${encodeURIComponent(jobRunAt)}`);
 
       const recipients = getRecipients();
       if (recipients.length === 0) {
@@ -307,10 +311,11 @@ export default async function handler(req, res) {
 
     // --- Construct image URL ---
     // Use the request's own host so this works for any deployment (prod, preview, local).
+    // ts param passes the job run time to roster-image.js for the "as of" header line.
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const imageUrl = `${protocol}://${host}/api/roster-image?date=${dateStr}&token=${expectedToken}`;
-    console.log(`[Notify] Image URL: ${protocol}://${host}/api/roster-image?date=${dateStr}&token=***`);
+    const imageUrl = `${protocol}://${host}/api/roster-image?date=${dateStr}&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}`;
+    console.log(`[Notify] Image URL: ${protocol}://${host}/api/roster-image?date=${dateStr}&token=***&ts=${encodeURIComponent(jobRunAt)}`);
 
     // --- Get recipients ---
     const recipients = getRecipients();
