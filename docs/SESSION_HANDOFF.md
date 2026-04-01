@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.3.0 LIVE)
-**Last updated:** April 1, 2026 (M3-9 CHANGELOG.md in PR)
+**Last updated:** April 1, 2026 (end of session — M3-9 merged)
 
 ---
 
@@ -7,11 +7,9 @@
 
 - **v5.3.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release
 - **923 tests, 54 files, 0 failures**
+- PR #143 merged — docs: add CHANGELOG.md — v1.0 → v5.3.0 release history (M3-9)
 - PR #140 merged — feat: DST-aware scheduling + code polish (M3-5) (#139)
-- M3-9 CHANGELOG.md in PR — pending merge
 - PR #137 merged — feat: add "as of" timestamp to roster image header (M3-4) (#136)
-- PR #133 merged — fix: catch concatenated PG day codes (MTWTH, TWTH, WTH) in daycare filter (#132)
-- PR #131 merged — feat: graceful `invalid_grant` detection in `gmail-monitor.js` + `npm run reauth-gmail` (#130)
 
 ### v5.3 — WhatsApp alert sends verified ✅ / roster image send BROKEN ❌
 
@@ -29,8 +27,8 @@
 Code is correct — template needs fixing in Meta Business Manager (Kate action K-1).
 
 ### Pending (Kate)
-- **🔴 K-1: Fix `dog_boarding_roster` Meta template** — change header type to IMAGE/MEDIA, re-submit for approval. Triggers M3-7.
-- **🔴 Verify M3-4 deploy** — notify job currently broken (investigate first). When fixed, trigger 7am notify manually: `curl -s "https://qboarding.vercel.app/api/notify?window=7am&token=$VITE_SYNC_PROXY_TOKEN"`. Confirm `as of [time], [day] [M/D]` visible in image on phone.
+- **🔴 K-1: Fix `dog_boarding_roster` Meta template** — old TEXT-header template deleted. New template created in Meta Business Manager with IMAGE header, pending approval. Once approved, ALL notify windows (4am/7am/8:30am/friday-pm) will deliver — no code changes needed.
+- **🔴 Verify M3-4** — after K-1 approved, trigger 7am manually: `curl -s "https://qboarding.vercel.app/api/notify?window=7am&token=$VITE_SYNC_PROXY_TOKEN"`. Confirm `as of [time], [day] [M/D]` visible in roster image on phone.
 - **K-2: Backfill Maverick** — `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
 - **K-3: Investigate Tula N/C 3/23-26 (C63Qga3r)** — real boarding or no-charge non-boarding?
 - **K-4: Second WhatsApp recipient** → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)
@@ -50,7 +48,7 @@ Code is correct — template needs fixing in Meta Business Manager (Kate action 
 | # | Ticket | Gate |
 |---|--------|------|
 | M3-8 | README screenshots (boarding matrix + roster image with M3-4 timestamp) | After M3-4 verified on phone |
-| M3-9 | CHANGELOG.md (v1.0 → v5.3.0) | ✅ DONE — PR in review |
+| M3-9 | CHANGELOG.md (v1.0 → v5.3.0) | ✅ DONE — merged PR #143 |
 | M3-6 | Doc staleness CI check (non-blocking PR warning) | Any time |
 | M3-7 | Screen recording — WhatsApp roster image arriving on phone | After K-1 + M3-4 verified |
 | M3-10 | WhatsApp delivery receipts (Meta Webhooks) | Last — highest complexity |
