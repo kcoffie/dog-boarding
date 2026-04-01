@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.3.0 LIVE)
-**Last updated:** April 1, 2026 (end of session — M3-4 complete)
+**Last updated:** April 1, 2026 (end of session — M3-5 in PR)
 
 ---
 
@@ -7,6 +7,7 @@
 
 - **v5.3.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app) — latest release
 - **923 tests, 54 files, 0 failures**
+- PR #140 open — feat: DST-aware scheduling + code polish (M3-5) (#139) ← pending merge
 - PR #137 merged — feat: add "as of" timestamp to roster image header (M3-4) (#136)
 - PR #133 merged — fix: catch concatenated PG day codes (MTWTH, TWTH, WTH) in daycare filter (#132)
 - PR #131 merged — feat: graceful `invalid_grant` detection in `gmail-monitor.js` + `npm run reauth-gmail` (#130)
@@ -40,6 +41,15 @@ Suppressed by `DAYCARE_ONLY_PATTERNS` in `integration-check.js` (31 confirmed as
 
 ---
 
+## Session summary (April 1, 2026) — M3-5
+
+- **PR #140** — feat: DST-aware scheduling + code polish (#139)
+  - `api/roster-image.js`: added `crypto.timingSafeEqual` for token auth; removed misleading "constant-time" comment on `!==`
+  - `src/lib/scraper/daytimeSchedule.js`: `attr()` now uses a module-level `_attrRegexCache` Map — regexes compiled once per attribute name, not on every call in the hot parse loop
+  - `src/components/DateNavigator.test.jsx`: "clicking Today" tests pinned with `vi.useFakeTimers()` + `vi.setSystemTime(2025-03-09T20:00Z)` (spring-forward day noon PDT) — eliminates midnight race + DST boundary flakiness
+  - DST cron documentation: already present in all 4 notify workflows — no change needed
+  - 923 tests, all green
+
 ## Session summary (April 1, 2026) — M3-4
 
 - **PR #137** — feat: "as of" timestamp in roster image header (#136)
@@ -52,15 +62,13 @@ Suppressed by `DAYCARE_ONLY_PATTERNS` in `integration-check.js` (31 confirmed as
 
 ## IMMEDIATE NEXT (next session)
 
-**Verify M3-4 deploy first** — trigger 7am notify manually and confirm "as of" timestamp appears in image on phone.
-
-**Then start: M3-5** — DST-aware scheduling + code polish. Files to read and full DoD in `docs/SPRINT_PLAN.md`.
+**Verify M3-4 deploy** — trigger 7am notify manually after notify job is fixed; confirm "as of [time], [day] [M/D]" in image on phone. Use:
+`curl -s "https://qboarding.vercel.app/api/notify?window=7am&token=$VITE_SYNC_PROXY_TOKEN"`
 
 **M3 remaining (ordered):**
 
 | # | Ticket | Gate |
 |---|--------|------|
-| M3-5 | DST-aware scheduling + code polish (timingSafeEqual, regex precompile, flaky test) | ← **START HERE** |
 | M3-8 | README screenshots (boarding matrix + roster image with M3-4 timestamp) | After M3-4 verified on phone |
 | M3-9 | CHANGELOG.md (v1.0 → v5.3.0) | Any time |
 | M3-6 | Doc staleness CI check (non-blocking PR warning) | Any time |

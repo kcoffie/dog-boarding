@@ -19,6 +19,7 @@
  * @requirements REQ-v4.1
  */
 
+import { timingSafeEqual } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
@@ -727,10 +728,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // --- Auth: constant-time token comparison to prevent timing attacks ---
-  const providedToken = req.query.token || '';
-  const expectedToken = process.env.VITE_SYNC_PROXY_TOKEN || '';
-  if (!expectedToken || providedToken !== expectedToken) {
+  // Token auth — timingSafeEqual prevents timing attacks on the token value.
+  // Different lengths → reject immediately (token length is not secret).
+  const providedToken = req.query.token ?? '';
+  const expectedToken = process.env.VITE_SYNC_PROXY_TOKEN ?? '';
+  const tokenValid =
+    expectedToken.length > 0 &&
+    providedToken.length === expectedToken.length &&
+    timingSafeEqual(Buffer.from(providedToken), Buffer.from(expectedToken));
+  if (!tokenValid) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
