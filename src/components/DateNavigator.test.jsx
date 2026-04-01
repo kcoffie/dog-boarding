@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import DateNavigator from './DateNavigator';
 
@@ -15,6 +15,10 @@ describe('REQ-031: DateNavigator', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders navigation buttons', () => {
@@ -95,22 +99,31 @@ describe('REQ-031: DateNavigator', () => {
   });
 
   it('clicking Today moves range to today', () => {
-    render(<DateNavigator {...defaultProps} />);
+    // Pin clock to noon on 2025 spring-forward day (hardest DST case) so
+    // new Date() inside the component and in the assertion are identical.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-03-09T20:00:00.000Z')); // noon PDT (UTC-8→UTC-7 day)
 
+    render(<DateNavigator {...defaultProps} />);
     fireEvent.click(screen.getByText('Today'));
 
     expect(defaultProps.onStartDateChange).toHaveBeenCalled();
     expect(defaultProps.onEndDateChange).toHaveBeenCalled();
 
     const newStart = defaultProps.onStartDateChange.mock.calls[0][0];
-    const today = new Date();
-    expect(newStart.getDate()).toBe(today.getDate());
-    expect(newStart.getMonth()).toBe(today.getMonth());
+    const pinnedToday = new Date();
+    expect(newStart.getDate()).toBe(pinnedToday.getDate());
+    expect(newStart.getMonth()).toBe(pinnedToday.getMonth());
   });
 
   it('preserves range length when clicking Today', () => {
-    render(<DateNavigator {...defaultProps} />);
+    // Pin clock to noon on 2025 spring-forward day. The 13-day range
+    // end (Mar 22) is well past the DST boundary — without fake timers
+    // the ms-based diff could round incorrectly on DST transition days.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-03-09T20:00:00.000Z')); // noon PDT
 
+    render(<DateNavigator {...defaultProps} />);
     fireEvent.click(screen.getByText('Today'));
 
     const newStart = defaultProps.onStartDateChange.mock.calls[0][0];

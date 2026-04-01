@@ -51,14 +51,23 @@ const PICKUP_RE = /pick-?up/i;
  * The attrStr is the captured attrs portion of a single <a> tag, so
  * false-positive matches on unrelated attributes are not a concern.
  *
+ * Regexes are compiled once per attribute name and cached — `attr()` is
+ * called 7+ times per appointment block across hundreds of blocks per parse.
+ *
  * Error-handling: returns null (not throws) if the attribute is absent.
  *
  * @param {string} attrStr - The attribute portion of an <a> tag
  * @param {string} name    - Exact attribute name, e.g. "data-id"
  * @returns {string|null}
  */
+const _attrRegexCache = new Map();
 function attr(attrStr, name) {
-  const m = attrStr.match(new RegExp(`${name}="([^"]*)"`));
+  let re = _attrRegexCache.get(name);
+  if (!re) {
+    re = new RegExp(`${name}="([^"]*)"`);
+    _attrRegexCache.set(name, re);
+  }
+  const m = attrStr.match(re);
   return m ? m[1] : null;
 }
 
