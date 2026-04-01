@@ -464,9 +464,10 @@ const WEEKEND_SECTION_MARGIN = 20;
  *
  * On Fri UTC: +3 days to Monday. On Sat: +2. On Sun: +1.
  * Falls back to +3 for any other day (manual trigger on non-weekend day).
+ *
+ * @param {Date} [now] - Injectable for testing; defaults to current time.
  */
-function getWeekendWindowISO() {
-  const now = new Date();
+export function getWeekendWindowISO(now = new Date()) {
   const utcDay = now.getUTCDay(); // 0=Sun, 5=Fri, 6=Sat
   const daysToMonday = utcDay === 6 ? 2 : utcDay === 0 ? 1 : 3;
   const end = new Date(now);
@@ -481,12 +482,15 @@ function getWeekendWindowISO() {
  * Query boardings that arrive OR depart within the weekend window.
  * Returns { arriving, departing } — a boarding can appear in both if it
  * arrives and departs within the window (e.g. Fri arrival, Sun departure).
+ *
+ * Note: client_name is NOT on the boardings table (it lives on sync_appointments).
+ * Dog name comes from the dogs join. Client last name is not shown on the weekend image.
  */
-async function getWeekendBoardings(supabase, start, end) {
+export async function getWeekendBoardings(supabase, start, end) {
   console.log(`[RosterImage/Weekend] Querying boardings from ${start} to ${end}`);
   const { data, error } = await supabase
     .from('boardings')
-    .select('external_id, arrival_datetime, departure_datetime, client_name, booking_status, dogs(name)')
+    .select('external_id, arrival_datetime, departure_datetime, booking_status, dogs(name)')
     .or(`and(arrival_datetime.gte.${start},arrival_datetime.lte.${end}),and(departure_datetime.gte.${start},departure_datetime.lte.${end})`)
     .order('arrival_datetime', { ascending: true });
 
@@ -496,7 +500,6 @@ async function getWeekendBoardings(supabase, start, end) {
     external_id: b.external_id,
     arrival_datetime: b.arrival_datetime,
     departure_datetime: b.departure_datetime,
-    client_name: b.client_name ?? '',
     booking_status: b.booking_status ?? 'confirmed',
     dog_name: b.dogs?.name ?? 'Unknown',
   }));
@@ -516,7 +519,7 @@ async function getWeekendBoardings(supabase, start, end) {
 /**
  * Format a UTC ISO datetime as "Fri 3:00 PM" in America/Los_Angeles.
  */
-function formatWeekendDatetime(isoStr) {
+export function formatWeekendDatetime(isoStr) {
   if (!isoStr) return '—';
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return '—';
@@ -533,7 +536,7 @@ function formatWeekendDatetime(isoStr) {
 /**
  * Format the weekend header date range: "Fri Mar 17 – Sun Mar 19"
  */
-function formatWeekendHeaderDates(displayFri, displaySun) {
+export function formatWeekendHeaderDates(displayFri, displaySun) {
   const fmt = (d) => d
     .toLocaleDateString('en-US', {
       timeZone: 'America/Los_Angeles',
@@ -661,7 +664,7 @@ function buildWeekendSection(title, boardings, datetimeField) {
 /**
  * Compute total image height for the weekend layout.
  */
-function computeWeekendImageHeight(arriving, departing) {
+export function computeWeekendImageHeight(arriving, departing) {
   const sectionH = (count) =>
     WEEKEND_SECTION_HEADER_H + 4 + Math.max(count, 1) * WEEKEND_BOARDING_ROW_H + WEEKEND_SECTION_MARGIN;
   return HEADER_H + OUTER_PAD * 2 + sectionH(arriving.length) + sectionH(departing.length);
