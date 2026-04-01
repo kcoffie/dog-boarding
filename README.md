@@ -1,6 +1,6 @@
 # Qboard — Dog Boarding Operations Platform
 
-**Live:** [qboarding.vercel.app](https://qboarding.vercel.app) &nbsp;|&nbsp; **Tests:** 835 passing (51 files) &nbsp;|&nbsp; **Version:** v5.0.0
+**Live:** [qboarding.vercel.app](https://qboarding.vercel.app) &nbsp;|&nbsp; **Tests:** 923 passing (54 files) &nbsp;|&nbsp; **Version:** v5.3.0 &nbsp;|&nbsp; **[Changelog](CHANGELOG.md)**
 
 A production operations platform for a dog boarding business — built without a vendor API, running autonomously on a Vercel Hobby plan, and hardened against silent failures at three independent layers.
 
