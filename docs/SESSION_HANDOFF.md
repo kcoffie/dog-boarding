@@ -42,20 +42,40 @@
 
 ## IMMEDIATE NEXT (next session)
 
-1. **M3-4 verify** — trigger 7am notify manually, confirm "as of" timestamp visible in image on phone
-2. **M3-8** — README screenshots (boarding matrix + roster image with M3-4 timestamp). Unblocked.
-3. **M3-6** — Doc staleness CI check. Unblocked.
-4. **M3-7** — Screen recording. Unblocked now that K-1b is confirmed. Gate: M3-4 verified on phone first.
+### Step 1 — Merge open PR
+- **PR #152** (docs: v5.4.0 handoff) — merge first, then `git checkout main && git pull && git branch -d docs/v5.4.0-handoff`
 
-**⚠️ One unknown before triggering:** The body text Kate used for `dog_boarding_roster_3` is unknown to the next agent. Verify it has NO `{{1}}`-style variables — the code only sends a header component, not a body component. Static body text is fine; a variable placeholder will cause an API error on send.
+### Step 2 — Audit and update job docs
+All four `docs/job_docs/` files are stale (last reviewed March 2026). Read each doc, read the current source file(s), update anything that's changed.
+
+| Doc | Last reviewed | Key changes since |
+|---|---|---|
+| `notify-jobs.md` | March 20 | K-1b: media upload flow, `dog_boarding_roster_3`, "as of" timestamp (M3-4) |
+| `gmail-monitor.md` | March 20 | `invalid_grant` detection + `npm run reauth-gmail` added (#131) |
+| `sync-crons.md` | March 24 | Likely current — verify |
+| `integration-check.md` | March 20 | Step 0 sync-before-compare (v4.5), daycare filter fixes (#129, #133) |
+
+Each doc update needs a PR (branch protection active — K-6 not yet done).
+
+### Step 3 — Live job verification
+Trigger each job manually and confirm with Kate:
+
+1. **7am notify** → `GET /api/notify?window=7am&token=74430UUYn47RD3` against production — confirm image arrives on Kate's phone with "as of [time]" timestamp visible. This is M3-4's final DoD checkbox.
+2. **gmail-monitor** — trigger the GH Actions workflow manually from the Actions tab (or `gh workflow run`). Confirm it completes green and Kate receives a WhatsApp confirmation (or no alert = healthy, which is also fine — check the run log).
+
+### Step 4 — After verification complete
+- M3-8: README screenshots (boarding matrix + roster image with M3-4 timestamp)
+- M3-6: Doc staleness CI check
+- M3-7: Screen recording (gate: M3-4 verified on phone)
 
 **M3 remaining (ordered):**
 
 | # | Ticket | Gate |
 |---|--------|------|
 | ~~K-1b phone confirm~~ | ✅ Done April 2 | — |
-| M3-4 verify | Trigger 7am, confirm "as of" on phone | Unblocked |
-| M3-8 | README screenshots | Unblocked |
+| job_docs audit | Update all 4 docs/job_docs/ files | Step 2 |
+| M3-4 verify | Trigger 7am, confirm "as of" on phone | Step 3 |
+| M3-8 | README screenshots | After M3-4 verified |
 | M3-6 | Doc staleness CI check | Unblocked |
 | M3-7 | Screen recording | After M3-4 verified on phone |
 | M3-10 | WhatsApp delivery receipts (Meta Webhooks) | Last — highest complexity |
