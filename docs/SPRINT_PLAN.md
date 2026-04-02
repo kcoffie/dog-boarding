@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 1, 2026 — v5.3.0 LIVE. K-1b merged (PR #150) — Meta media upload implemented, friday-pm triggered with clean wamid. Awaiting Kate phone confirmation → v5.4.0 release. Next: M3-4 verify, M3-8, M3-6, M3-7._
+_Last updated: April 2, 2026 — v5.4.0 LIVE. K-1b complete: `dog_boarding_roster_3` (Utility) approved, triggered, roster image confirmed delivered to Kate's phone. Next: M3-4 verify → M3-8 screenshots → M3-6 CI check → M3-7 screen recording._
 
 ---
 
@@ -48,7 +48,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Overnight boarding sync | ✅ LIVE | 3-page scan + cron-detail-2 |
 | Overnight daytime ingest | ✅ LIVE | cron-schedule.js handles this |
 | Weekday morning notify (M-F 4am/7am/8:30am) | ✅ LIVE | |
-| Friday PM notify (weekend boardings) | ✅ LIVE | K-1b merged — media upload path; wamid clean; awaiting Kate phone confirm |
+| Friday PM notify (weekend boardings) | ✅ LIVE | K-1b complete. `dog_boarding_roster_3` (Utility) confirmed delivered April 2. |
 | Integration check — boarding + daytime | ✅ LIVE | Step 0 sync-before-compare (v4.5) |
 | Meta Cloud API (WhatsApp sender) | ✅ LIVE | M0 — confirmed March 20, 2026 |
 | Direct cron failure alerting | ✅ LIVE | M1-1 — cron-health-check.yml at 00:30 UTC |
@@ -61,7 +61,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Roster image "As of" timestamp | ✅ DONE | M3-4 — `formatAsOf`, ts param (#137) |
 | DST-aware scheduling + code polish | ✅ DONE | M3-5 — timingSafeEqual, regex cache, flaky test fix (#140) |
 | Doc staleness CI check | — | M3-6 |
-| Screen recording (portfolio artifact) | — | M3-7 — blocked on K-1b phone confirm + M3-4 verified |
+| Screen recording (portfolio artifact) | — | M3-7 — blocked on M3-4 verified on phone |
 | README screenshots | — | M3-8 |
 | CHANGELOG.md | ✅ DONE | M3-9 — merged PR #143 |
 | WhatsApp delivery receipts | — | M3-10 / F-1 |
@@ -75,7 +75,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 
 | # | Action | Blocks | Priority |
 |---|--------|--------|----------|
-| K-1b confirm | Confirm friday-pm roster image arrived on phone (already triggered — just check WhatsApp). Code is merged and deployed. | v5.4.0 release; M3-7 | 🔴 High — first thing next session |
+| ~~K-1b confirm~~ | ✅ Done April 2 — image confirmed on phone, v5.4.0 released | — | — |
 | K-2 | Backfill Maverick cancelled boarding (predates PR #118 cascade fix): `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';` | Data integrity | 🟡 Medium |
 | K-3 | Investigate Tula N/C 3/23-26 (C63Qga3r) — appeared as "Missing from DB" in integration check. Real boarding that should sync, or no-charge non-boarding visit to filter? | Integration check accuracy | 🟡 Medium |
 | K-4 | Provide second WhatsApp recipient number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164) | M0-3 full end-to-end verification | 🟡 Medium |
@@ -162,7 +162,7 @@ These are the three tickets that move the Professional Quality needle most right
 
 ### M3-7 — Screen recording (WhatsApp roster image arriving on phone)
 
-**Status:** Blocked on K-1b phone confirmation + M3-4 verified on phone. K-1b code is done (PR #150 merged) — waiting on Kate to confirm image arrived.
+**Status:** K-1b confirmed April 2, 2026 (image arrived on phone). Blocked on M3-4 verified on phone.
 
 **What:** 30–60 second screen recording showing the Friday PM roster image arriving as a WhatsApp message on Kate's phone. This is the single most impactful portfolio artifact — it shows the system working end-to-end in a way no README can.
 

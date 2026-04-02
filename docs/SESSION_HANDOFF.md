@@ -1,11 +1,11 @@
-# Dog Boarding App — Session Handoff (v5.3.0 LIVE → v5.4.0 pending)
-**Last updated:** April 1, 2026 (end of session — K-1b code merged, friday-pm triggered with clean wamid, awaiting Kate phone confirmation)
+# Dog Boarding App — Session Handoff (v5.4.0 LIVE)
+**Last updated:** April 2, 2026 — K-1b complete. `dog_boarding_roster_3` (Utility) approved by Meta, triggered manually, roster image confirmed delivered to Kate's phone. v5.4.0 released.
 
 ---
 
 ## Current State
 
-- **v5.3.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
+- **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
 - **943 tests, 54 files, 0 failures**
 - PR #150 merged — feat: Meta media upload in `sendRosterImage` (K-1b)
 - PR #147 merged — fix: roster-image weekend query + 18 new tests (#148)
@@ -17,46 +17,67 @@
 | integration-check | `sendTextMessage` | ✅ delivered to Kate's phone (March 25) |
 | cron-health-check | `sendTextMessage` | ✅ same code path |
 | gmail-monitor | `sendTextMessage` | ✅ same code path |
-| notify friday-pm | `sendRosterImage` | ⏳ wamid clean, **awaiting Kate phone confirm** |
-| notify 4am/7am/830am | `sendRosterImage` | ⏳ same fix applied — will confirm on next scheduled run |
+| notify friday-pm | `sendRosterImage` | ✅ confirmed delivered to Kate's phone (April 2) |
+| notify 4am/7am/830am | `sendRosterImage` | ⏳ same template — will confirm on next scheduled run |
 
-### K-1b status (April 1, 2026)
+### Root cause (April 2, 2026)
 
-**Code: DONE. Phone confirmation: pending Kate.**
+**Why the image never arrived:**
 
-What was done this session:
-- `metaMediaUpload(phoneNumberId, token, imageUrl)` added to `src/lib/notifyWhatsApp.js`
-  - Fetches PNG buffer from image URL
-  - POSTs `multipart/form-data` to `POST /v18.0/{PHONE_NUMBER_ID}/media`
-  - Returns `media_id`; throws on failure (not swallowed)
-- `sendRosterImage` now calls `metaMediaUpload` once before the per-recipient loop, uses `{ image: { id: mediaId } }` instead of `{ image: { link: url } }`
-- 5 new tests: `{ id }` not `{ link }` assertion, upload failure throws, image fetch failure throws, upload-once-for-N-recipients, new URL-aware `makeImageFetchMock`
-- PR #150 merged → deployed to Vercel
-- `friday-pm` triggered manually: **HTTP 200, sentCount 1, failedCount 0, wamid: `wamid.HBgLMTgzMTI0NzczNzUVAgARGBJBRTRCRTZBMDBDRTBEMTk1REUA`**
-- Kate left before confirming image on phone
+1. `dog_boarding_roster` (text-only) — deleted Apr 1
+2. `dog_boarding_roster_2` — created Apr 1 12:42 PM as **Marketing** category. Meta's phone number stats showed Marketing = 0 delivered across all of March. Meta accepted the API call (returned wamid) but never pushed Marketing messages to device — new/unrated Marketing templates are throttled until they have quality history.
+3. `dog_boarding_roster_3` — created Apr 2 as **Utility** category (body text changed to operational language to pass Meta's classifier). `META_ROSTER_TEMPLATE` updated in Vercel. **Status: Active. Confirmed delivered April 2.**
 
-**Next agent:** Do NOT re-trigger friday-pm. Wait for Kate to confirm image arrived, then proceed.
+**What "wamid clean" actually means:** Meta accepted the request. It does NOT mean the message was delivered. Marketing category + Quality pending = silent non-delivery.
+
+### K-1b status
+
+**COMPLETE. Phone confirmed April 2, 2026.**
+
+- `metaMediaUpload` + `{ image: { id: mediaId } }` — correct
+- `META_ROSTER_TEMPLATE=dog_boarding_roster_3` — active in Vercel ✓
+- v5.4.0 released ✓
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-1. **Kate confirms** friday-pm roster image arrived on phone → K-1b DoD complete
-2. **v5.4.0 release** — tag and GitHub release after phone confirmation
-3. **M3-4 verify** — trigger 7am notify manually, confirm "as of" timestamp visible in image on phone
-4. **M3-8** — README screenshots (boarding matrix + roster image with M3-4 timestamp). Unblocked now.
-5. **M3-6** — Doc staleness CI check. Unblocked now.
-6. **M3-7** — Screen recording. Blocked on K-1b phone confirm + M3-4 verified.
+### Step 1 — Merge open PR
+- **PR #152** (docs: v5.4.0 handoff) — merge first, then `git checkout main && git pull && git branch -d docs/v5.4.0-handoff`
+
+### Step 2 — Audit and update job docs
+All four `docs/job_docs/` files are stale (last reviewed March 2026). Read each doc, read the current source file(s), update anything that's changed.
+
+| Doc | Last reviewed | Key changes since |
+|---|---|---|
+| `notify-jobs.md` | March 20 | K-1b: media upload flow, `dog_boarding_roster_3`, "as of" timestamp (M3-4) |
+| `gmail-monitor.md` | March 20 | `invalid_grant` detection + `npm run reauth-gmail` added (#131) |
+| `sync-crons.md` | March 24 | Likely current — verify |
+| `integration-check.md` | March 20 | Step 0 sync-before-compare (v4.5), daycare filter fixes (#129, #133) |
+
+Each doc update needs a PR (branch protection active — K-6 not yet done).
+
+### Step 3 — Live job verification
+Trigger each job manually and confirm with Kate:
+
+1. **7am notify** → `GET /api/notify?window=7am&token=74430UUYn47RD3` against production — confirm image arrives on Kate's phone with "as of [time]" timestamp visible. This is M3-4's final DoD checkbox.
+2. **gmail-monitor** — trigger the GH Actions workflow manually from the Actions tab (or `gh workflow run`). Confirm it completes green and Kate receives a WhatsApp confirmation (or no alert = healthy, which is also fine — check the run log).
+
+### Step 4 — After verification complete
+- M3-8: README screenshots (boarding matrix + roster image with M3-4 timestamp)
+- M3-6: Doc staleness CI check
+- M3-7: Screen recording (gate: M3-4 verified on phone)
 
 **M3 remaining (ordered):**
 
 | # | Ticket | Gate |
 |---|--------|------|
-| K-1b phone confirm | Kate confirms image on phone | Blocks v5.4.0 release + M3-7 |
-| M3-4 verify | Trigger 7am, confirm "as of" on phone | After K-1b confirmed |
-| M3-8 | README screenshots | Unblocked |
+| ~~K-1b phone confirm~~ | ✅ Done April 2 | — |
+| job_docs audit | Update all 4 docs/job_docs/ files | Step 2 |
+| M3-4 verify | Trigger 7am, confirm "as of" on phone | Step 3 |
+| M3-8 | README screenshots | After M3-4 verified |
 | M3-6 | Doc staleness CI check | Unblocked |
-| M3-7 | Screen recording | After K-1b + M3-4 verified |
+| M3-7 | Screen recording | After M3-4 verified on phone |
 | M3-10 | WhatsApp delivery receipts (Meta Webhooks) | Last — highest complexity |
 
 ---
@@ -93,7 +114,7 @@ cron-detail-2.js (00:15)    → re-exports cron-detail (second Vercel path = dou
 notifyWhatsApp.js:28  ALERT_TEMPLATE  = process.env.META_ALERT_TEMPLATE  || 'dog_boarding_alert'
 notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog_boarding_roster'
 ```
-`META_ROSTER_TEMPLATE=dog_boarding_roster_2` is set in Vercel (IMAGE header template).
+`META_ROSTER_TEMPLATE=dog_boarding_roster_3` is set in Vercel (IMAGE header template, Utility category, confirmed delivered April 2).
 
 ### Key files
 | File | Purpose |
@@ -158,7 +179,6 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 
 | # | Action | Blocks | Priority |
 |---|--------|--------|----------|
-| K-1b confirm | Confirm friday-pm roster image arrived on phone (already triggered — just look at WhatsApp) | v5.4.0 release; M3-7 | 🔴 High — first thing next session |
 | K-2 | Backfill Maverick: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';` | Data integrity | 🟡 Medium |
 | K-3 | Investigate Tula N/C 3/23-26 (C63Qga3r) — real boarding or no-charge non-boarding? | Integration check accuracy | 🟡 Medium |
 | K-4 | Provide second WhatsApp recipient → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164) | M0-3 full verification | 🟡 Medium |
@@ -202,7 +222,7 @@ ORDER BY b.updated_at DESC LIMIT 20;
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0, v5.2.0, v5.3.0 **(latest — v5.4.0 pending K-1b phone confirm)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0, v5.2.0, v5.3.0, **v5.4.0 (latest)**
 
 ## Archive
 - v4.5 session: `docs/archive/SESSION_HANDOFF_v4.5_final.md`
