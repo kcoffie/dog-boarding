@@ -79,3 +79,30 @@ jobs:
           name: build
           path: dist/
           retention-days: 7
+
+  # Job 5: Doc staleness check (PR only — warning only, never fails the build)
+  doc-staleness:
+    name: Doc Staleness
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Warn if job source changed without doc update
+        continue-on-error: true
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          CODE_CHANGED=$(echo "$CHANGED" | grep -E '^(api/[^/]+\.js|src/lib/scraper/[^/]+\.js)$' || true)
+          DOCS_CHANGED=$(echo "$CHANGED" | grep -E '^docs/job_docs/' || true)
+
+          if [ -n "$CODE_CHANGED" ] && [ -z "$DOCS_CHANGED" ]; then
+            echo "::warning::Job source files changed but docs/job_docs/ was not updated. Consider updating the relevant docs/job_docs/ file."
+            echo ""
+            echo "Changed source files:"
+            echo "$CODE_CHANGED"
+          else
+            echo "✅ No doc staleness detected."
+          fi
