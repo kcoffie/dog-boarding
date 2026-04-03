@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 (session 4) — M3-8 complete: screenshots added to README; next is M3-6 doc staleness CI check.
+**Last updated:** April 3, 2026 (session 4) — M3-8 + M3-6 complete; next is M3-7 screen recording.
 
 ---
 
@@ -64,11 +64,14 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 - "What it looks like" section added to README, badge updated to 946 tests / v5.4.0
 - Pushed direct to main (`7222568`)
 
-### Step 1 — M3-6: Doc staleness CI check
-New GH Actions step (or lightweight workflow) on PRs: detects when `api/*.js` or `src/lib/scraper/*.js` changes without touching `docs/job_docs/`. Warning only, not a failure. Pure bash + `git diff --name-only`. No new dependencies.
+### ~~M3-6 — Doc staleness CI check~~ ✅ DONE (April 3, session 4)
+- New `doc-staleness` job in `.github/workflows/ci.yml` (PR #163, merged `e0ae675`)
+- PR-only; `fetch-depth: 0` + `git diff --name-only origin/<base>...HEAD`
+- Warns via `::warning::` if `api/*.js` or `src/lib/scraper/*.js` changed but `docs/job_docs/` untouched
+- Confirmed: "✅ No doc staleness detected." on PR #163 itself (no false positive on CI-only change)
 
-### Step 3 — M3-7: Screen recording
-30–60 second recording of the roster image arriving on Kate's phone. Trigger → WhatsApp message received → open → image visible with "as of" timestamp. Embed in README as GIF or hosted video link.
+### Step 1 — M3-7: Screen recording (Kate action — no code needed)
+30–60 second screen recording of the roster image arriving on Kate's phone. Trigger → WhatsApp message received → open → image visible with "as of" timestamp. Embed in README as GIF or hosted video link. **Kate supplies the recording file; agent adds it to the repo and updates README.**
 
 **M3 remaining (ordered):**
 
@@ -79,8 +82,8 @@ New GH Actions step (or lightweight workflow) on PRs: detects when `api/*.js` or
 | ~~M3-4 verify~~ | ✅ Done April 2 — "as of" confirmed on Kate's phone | — |
 | ~~K-6~~ | ✅ Done April 3 — admin bypass on ruleset; docs push direct to main | — |
 | ~~M3-8~~ | ✅ Done April 3 — screenshots added to README | — |
-| M3-6 | Doc staleness CI check | Unblocked |
-| M3-7 | Screen recording | Unblocked (M3-4 verified) |
+| ~~M3-6~~ | ✅ Done April 3 — doc staleness CI check, PR #163 merged | — |
+| M3-7 | Screen recording | Kate supplies file → agent embeds in README |
 | M3-10 | WhatsApp delivery receipts (Meta Webhooks) | Last — highest complexity |
 
 ---
