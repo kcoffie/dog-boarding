@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 2, 2026 — v5.4.0 LIVE. K-1b complete: `dog_boarding_roster_3` (Utility) approved, triggered, roster image confirmed delivered to Kate's phone. Next: M3-4 verify → M3-8 screenshots → M3-6 CI check → M3-7 screen recording._
+_Last updated: April 3, 2026 — PRs #153–158 merged. K-6 complete: admin bypass added to ruleset, docs push direct to main. Next: M3-8 screenshots → M3-6 CI check → M3-7 screen recording._
 
 ---
 
@@ -63,6 +63,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Doc staleness CI check | — | M3-6 |
 | Screen recording (portfolio artifact) | — | M3-7 — blocked on M3-4 verified on phone |
 | README screenshots | — | M3-8 |
+| K-6 — Docs direct-push to main | ✅ DONE | Admin bypass on ruleset (April 3, 2026) |
 | CHANGELOG.md | ✅ DONE | M3-9 — merged PR #143 |
 | WhatsApp delivery receipts | — | M3-10 / F-1 |
 | Message log page | — | F-2 |
