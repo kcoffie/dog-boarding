@@ -79,59 +79,35 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 
 ## IMMEDIATE NEXT (next session)
 
-### ~~F-1 — WhatsApp delivery observability~~ ✅ DONE (April 3, session 7)
+### Step 1 — M3-7: Screen recording (PARKED — Kate editing)
 
-- Migration 024 applied — `message_delivery_status` table live in Supabase
-- `META_WEBHOOK_VERIFY_TOKEN` + `META_APP_SECRET` set in Vercel
-- Webhook registered at `POST /api/webhooks/meta` (developers.facebook.com → QApp → Configuration)
-- `messages` field subscribed
-- End-to-end verified: friday-pm notify wrote `status='sent'` row (wamid real); test webhook wrote `status='delivered'` row with raw_payload
-- **Remaining gap (K-7):** app is unpublished — real Meta delivery events won't flow until app publish + business verification. Test webhooks work; production webhooks blocked.
+**Status:** Kate is trimming the recording file herself. When she drops the trimmed file, embed it in README and push direct to main (K-6 bypass).
 
-### Step 1 — K-7: Publish Meta app (unblocks real webhook delivery events)
+**Recording file:** `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4. Kate may supply a trimmed version instead.
 
-**Status:** Not started. Requires Meta business verification + app review.
+**Decision gate (ask Kate first):**
+- **Option A — Use as-is:** Copy to `docs/screenshots/roster-delivery.mp4`, embed with `<video>` tag in README.
+- **Option B — Trim via ffmpeg:** `brew install ffmpeg` first, Kate specifies start/end times, agent trims.
+- **Option C — Kate trimmed in QuickTime:** Drop trimmed file, agent embeds.
 
-**What this unblocks:** Real `delivered`/`read`/`failed` events firing to the webhook on every actual message sent. Currently only test events work.
+**Once file is ready:**
+1. Copy to `docs/screenshots/roster-delivery.mp4`
+2. Add to README under "What it looks like" section, after `![Roster image](docs/screenshots/roster-image.jpeg)`, before the `---` separator
+3. Embed as: `<video src="docs/screenshots/roster-delivery.mp4" controls width="400"></video>`
+4. Caption: "End-to-end flow: notify job fires → WhatsApp message received → image opens with 'as of' timestamp"
+5. Push direct to main (K-6 bypass — docs-only)
+6. Update SESSION_HANDOFF.md and SPRINT_PLAN.md
+
+### Step 2 — K-7: Publish Meta app (Kate action — no code required)
+
+**Status:** Not started. Requires Meta business verification + app review. No code changes needed — webhook is already wired.
+
+**What this unblocks:** Real `delivered`/`read`/`failed` events firing automatically to `POST /api/webhooks/meta` on every message sent. Currently only manual test events work (app is unpublished).
 
 **Steps (Kate does this):**
 1. developers.facebook.com → QApp → App Review → Request permissions
 2. Complete Meta Business Verification (business.facebook.com → Settings → Business info → Verification)
-3. Once published, production delivery events will flow automatically — no code changes needed
-
-### Step 2 — M3-7: Screen recording (PARKED — Kate editing)
-
-### ~~M3-8 — README screenshots~~ ✅ DONE (April 3, session 4)
-- `docs/screenshots/boarding-matrix.png` — main app UI, 7-day boarding matrix
-- `docs/screenshots/roster-image.jpeg` — roster PNG with "as of 4:35 AM, Fri 4/3" timestamp visible
-- "What it looks like" section added to README, badge updated to 946 tests / v5.4.0
-- Pushed direct to main (`7222568`)
-
-### ~~M3-6 — Doc staleness CI check~~ ✅ DONE (April 3, session 4)
-- New `doc-staleness` job in `.github/workflows/ci.yml` (PR #163, merged `e0ae675`)
-- PR-only; `fetch-depth: 0` + `git diff --name-only origin/<base>...HEAD`
-- Warns via `::warning::` if `api/*.js` or `src/lib/scraper/*.js` changed but `docs/job_docs/` untouched
-- Confirmed: "✅ No doc staleness detected." on PR #163 itself (no false positive on CI-only change)
-
-
-**Recording file:** `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4.
-
-**Status:** File exists. Kate left before deciding whether to trim/compress first. Agent must ask Kate at session start, then proceed.
-
-**Decision gate (ask Kate first):**
-- **Option A — Use as-is:** Copy to `docs/screenshots/roster-delivery.mp4`, embed with `<video>` tag in README. GitHub renders MP4 inline. Fastest path.
-- **Option B — Trim first:** `brew install ffmpeg` is not yet installed. Install it, then run ffmpeg to trim (Kate specifies start/end times). Then embed.
-- **Option C — QuickTime trim:** Kate trims manually in QuickTime (File → Trim), drops trimmed file, agent embeds.
-
-**Once file is ready:**
-1. Copy to `docs/screenshots/roster-delivery.mp4` (or `.gif` if converted)
-2. Add to README under "What it looks like" section, after the two screenshots
-3. Embed as `<video>` tag (MP4) or `![](...)` (GIF)
-4. Caption must make clear: end-to-end flow — notify job fires → WhatsApp message received on phone → image opens with "as of" timestamp visible
-5. Push direct to main (K-6 bypass — docs-only)
-6. Update SESSION_HANDOFF.md and SPRINT_PLAN.md
-
-**README embed location:** after line 17 (after `![Roster image](docs/screenshots/roster-image.jpeg)`) and before the `---` separator.
+3. Once published, production delivery events flow automatically — verify by checking `message_delivery_status` after next notify run
 
 **GitHub video embed syntax:**
 ```html
