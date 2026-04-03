@@ -1,7 +1,7 @@
 # Integration Check Job
 
 **Status:** Live — Step 0 sync-before-compare (v4.5), boarding + daytime checks, always exits 0
-**Last reviewed:** March 20, 2026
+**Last reviewed:** April 2, 2026
 
 ---
 
@@ -155,6 +155,7 @@ Note: `META_PHONE_NUMBER_ID`, `META_WHATSAPP_TOKEN`, `SUPABASE_SERVICE_ROLE_KEY`
 |---|---|
 | `scripts/integration-check.js` | The job script — runs in GH Actions |
 | `.github/workflows/integration-check.yml` | Schedule + secrets wiring |
+| `src/lib/scraper/syncRunner.js` | `runScheduleSync()`, `runDetailSync()` — shared sync logic called by Step 0 |
 
 ---
 
