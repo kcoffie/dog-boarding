@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 3, 2026 (session 5) — M3-7 in progress. Recording file on hand at `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` (22 MB MP4). Blocked on Kate's edit decision (trim vs. use as-is). Next: finish M3-7 → M3-10 webhooks (architect review required)._
+_Last updated: April 3, 2026 (session 6) — gmail-monitor confirmed working end-to-end (WhatsApp alert received). M3-7 parked (Kate editing recording). Next: M3-10 (architect review required before any code)._
 
 ---
 
