@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 2, 2026 — K-1b complete. `dog_boarding_roster_3` (Utility) approved by Meta, triggered manually, roster image confirmed delivered to Kate's phone. v5.4.0 released.
+**Last updated:** April 2, 2026 — job_docs audit complete (PRs #153–156 open); M3-4 fully verified: "as of" timestamp confirmed on Kate's phone; gmail-monitor confirmed green.
 
 ---
 
@@ -18,7 +18,7 @@
 | cron-health-check | `sendTextMessage` | ✅ same code path |
 | gmail-monitor | `sendTextMessage` | ✅ same code path |
 | notify friday-pm | `sendRosterImage` | ✅ confirmed delivered to Kate's phone (April 2) |
-| notify 4am/7am/830am | `sendRosterImage` | ⏳ same template — will confirm on next scheduled run |
+| notify 4am/7am/830am | `sendRosterImage` | ✅ 4am window triggered manually April 2, "as of" timestamp confirmed on Kate's phone |
 
 ### Root cause (April 2, 2026)
 
@@ -42,42 +42,38 @@
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 1 — Merge open PR
-- **PR #152** (docs: v5.4.0 handoff) — merge first, then `git checkout main && git pull && git branch -d docs/v5.4.0-handoff`
+### Step 1 — Merge open doc PRs
+Merge all four in any order (no code changes, safe to merge immediately):
+- **PR #153** — notify-jobs.md: K-1b upload flow, ts param, template, cleanup
+- **PR #154** — gmail-monitor.md: fix subject pattern ("all jobs have failed"), date
+- **PR #155** — integration-check.md: add syncRunner.js to files table, date
+- **PR #156** — sync-crons.md: date only
 
-### Step 2 — Audit and update job docs
-All four `docs/job_docs/` files are stale (last reviewed March 2026). Read each doc, read the current source file(s), update anything that's changed.
+Then reset: `git checkout main && git pull`
 
-| Doc | Last reviewed | Key changes since |
-|---|---|---|
-| `notify-jobs.md` | March 20 | K-1b: media upload flow, `dog_boarding_roster_3`, "as of" timestamp (M3-4) |
-| `gmail-monitor.md` | March 20 | `invalid_grant` detection + `npm run reauth-gmail` added (#131) |
-| `sync-crons.md` | March 24 | Likely current — verify |
-| `integration-check.md` | March 20 | Step 0 sync-before-compare (v4.5), daycare filter fixes (#129, #133) |
+### Step 2 — M3-8: README screenshots
+Two screenshots needed:
+1. **Boarding matrix** — capture the main app view at `https://qboarding.vercel.app` with representative data (not blank)
+2. **Roster image** — the PNG from `https://qboarding.vercel.app/api/roster-image?date=YYYY-MM-DD&token=74430UUYn47RD3` with the "as of" timestamp visible (M3-4 confirmed live April 2)
 
-Each doc update needs a PR (branch protection active — K-6 not yet done).
+Add both to README under a "Screenshots" or "What it looks like" section.
 
-### Step 3 — Live job verification
-Trigger each job manually and confirm with Kate:
+### Step 3 — M3-6: Doc staleness CI check
+New GH Actions step (or lightweight workflow) on PRs: detects when `api/*.js` or `src/lib/scraper/*.js` changes without touching `docs/job_docs/`. Warning only, not a failure. Pure bash + `git diff --name-only`. No new dependencies.
 
-1. **7am notify** → `GET /api/notify?window=7am&token=74430UUYn47RD3` against production — confirm image arrives on Kate's phone with "as of [time]" timestamp visible. This is M3-4's final DoD checkbox.
-2. **gmail-monitor** — trigger the GH Actions workflow manually from the Actions tab (or `gh workflow run`). Confirm it completes green and Kate receives a WhatsApp confirmation (or no alert = healthy, which is also fine — check the run log).
-
-### Step 4 — After verification complete
-- M3-8: README screenshots (boarding matrix + roster image with M3-4 timestamp)
-- M3-6: Doc staleness CI check
-- M3-7: Screen recording (gate: M3-4 verified on phone)
+### Step 4 — M3-7: Screen recording
+30–60 second recording of the roster image arriving on Kate's phone. Trigger → WhatsApp message received → open → image visible with "as of" timestamp. Embed in README as GIF or hosted video link.
 
 **M3 remaining (ordered):**
 
 | # | Ticket | Gate |
 |---|--------|------|
 | ~~K-1b phone confirm~~ | ✅ Done April 2 | — |
-| job_docs audit | Update all 4 docs/job_docs/ files | Step 2 |
-| M3-4 verify | Trigger 7am, confirm "as of" on phone | Step 3 |
-| M3-8 | README screenshots | After M3-4 verified |
+| ~~job_docs audit~~ | ✅ PRs #153–156 open — merge next session | — |
+| ~~M3-4 verify~~ | ✅ Done April 2 — "as of" confirmed on Kate's phone | — |
+| M3-8 | README screenshots | Unblocked |
 | M3-6 | Doc staleness CI check | Unblocked |
-| M3-7 | Screen recording | After M3-4 verified on phone |
+| M3-7 | Screen recording | Unblocked (M3-4 verified) |
 | M3-10 | WhatsApp delivery receipts (Meta Webhooks) | Last — highest complexity |
 
 ---
@@ -151,7 +147,7 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 ### Vercel env vars (production)
 | Var | Value |
 |---|---|
-| `META_ROSTER_TEMPLATE` | `dog_boarding_roster_2` |
+| `META_ROSTER_TEMPLATE` | `dog_boarding_roster_3` |
 | `META_WHATSAPP_TOKEN` | ✅ Set |
 | `META_PHONE_NUMBER_ID` | ✅ Set |
 | `NOTIFY_RECIPIENTS` | ✅ Set |
