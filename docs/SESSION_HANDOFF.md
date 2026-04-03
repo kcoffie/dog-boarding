@@ -1,12 +1,13 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 (session 2) — PR #159 merged: integration-check false positive fix + gmail refresh token script; next is M3-8 screenshots.
+**Last updated:** April 3, 2026 (session 3) — PR #161 merged: K-2 + K-3 complete; next is M3-8 screenshots.
 
 ---
 
 ## Current State
 
 - **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **943 tests, 54 files, 0 failures**
+- **946 tests, 54 files, 0 failures**
+- PR #161 merged (`cbd0838`) — fix: integration-check false positive for N/C (new client) titles; also syncs missing `/\bdaycare\b/i` in test mirror
 - PR #159 merged (`ed85338`) — fix: integration-check false positive for "Weekend Daycare" + chore: add `scripts/get-gmail-refresh-token.js`
 - PR #150 merged — feat: Meta media upload in `sendRosterImage` (K-1b)
 - PR #147 merged — fix: roster-image weekend query + 18 new tests (#148)
@@ -38,6 +39,20 @@
 - `metaMediaUpload` + `{ image: { id: mediaId } }` — correct
 - `META_ROSTER_TEMPLATE=dog_boarding_roster_3` — active in Vercel ✓
 - v5.4.0 released ✓
+
+---
+
+## Completed This Session (April 3, session 3)
+
+### K-2 — Maverick backfill
+Kate ran: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
+✅ DONE.
+
+### K-3 — Tula N/C 3/23-26 (C63Qga3r)
+Investigated: **N/C = New Client**, not "No Charge". The appointment was an Initial Evaluation daytime visit (6h22m, $60 flat fee). The sync pipeline correctly excluded it via the detail-page service_type ("Initial Evaluation" → `/initial\s+eval/i`). The integration check only sees the schedule title and had no pattern for the "N/C" abbreviation → false positive.
+
+Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-check.js`. Also synced missing `/\bdaycare\b/i` in the test mirror. PR #161 merged.
+✅ DONE.
 
 ---
 
@@ -170,8 +185,8 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 
 | # | Action | Blocks | Priority |
 |---|--------|--------|----------|
-| K-2 | Backfill Maverick: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';` | Data integrity | 🟡 Medium |
-| K-3 | Investigate Tula N/C 3/23-26 (C63Qga3r) — real boarding or no-charge non-boarding? | Integration check accuracy | 🟡 Medium |
+| ~~K-2~~ | ✅ Done April 3 — Maverick backfilled | — | — |
+| ~~K-3~~ | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged | — | — |
 | K-4 | Provide second WhatsApp recipient → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164) | M0-3 full verification | 🟡 Medium |
 | K-5 | Add Anthropic API credits at console.anthropic.com | Step 3 vision name-check | 🟢 Low |
 
