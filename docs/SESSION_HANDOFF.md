@@ -1,12 +1,13 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 (session 6) — gmail-monitor confirmed working end-to-end; M3-7 parked (Kate editing); M3-10 is next.
+**Last updated:** April 3, 2026 (session 7) — F-1 WhatsApp delivery observability built and PR'd (#165); pending deploy steps before Meta webhook registration.
 
 ---
 
 ## Current State
 
 - **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **946 tests, 54 files, 0 failures**
+- **978 tests, 56 files, 0 failures**
+- PR #165 open (`feat/f1-delivery-observability`) — F-1: Meta webhook + wamid storage + 32 new tests
 - PR #161 merged (`cbd0838`) — fix: integration-check false positive for N/C (new client) titles; also syncs missing `/\bdaycare\b/i` in test mirror
 - PR #159 merged (`ed85338`) — fix: integration-check false positive for "Weekend Daycare" + chore: add `scripts/get-gmail-refresh-token.js`
 - PR #150 merged — feat: Meta media upload in `sendRosterImage` (K-1b)
@@ -77,6 +78,24 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 ---
 
 ## IMMEDIATE NEXT (next session)
+
+### Step 1 — F-1 deploy: merge PR #165 + apply migration + register webhook
+
+**Status:** PR #165 open, awaiting CI + Kate review.
+
+**Pending steps (in order):**
+
+1. **Merge PR #165** — CI must be green
+2. **Apply migration 024** in Supabase dashboard → SQL Editor → paste `supabase/migrations/024_add_message_delivery_status.sql`
+3. **Add `META_WEBHOOK_VERIFY_TOKEN` to Vercel** — choose any string (UUID recommended), set in Vercel Production env vars
+4. **Verify Vercel deploy is live** with the new env var
+5. **Register webhook in Meta Business Manager:**
+   - WhatsApp → Configuration → Webhooks → Edit
+   - Callback URL: `https://qboarding.vercel.app/api/webhooks/meta`
+   - Verify token: same value as `META_WEBHOOK_VERIFY_TOKEN`
+   - Subscribe to the `messages` field
+   - Click Verify and Save — Meta fires the GET challenge immediately; endpoint must be deployed first
+6. **Verify end-to-end:** trigger a notify job manually → confirm `status='sent'` row in `message_delivery_status` → Meta delivers → confirm `status='delivered'` row for same wamid
 
 ### ~~M3-8 — README screenshots~~ ✅ DONE (April 3, session 4)
 - `docs/screenshots/boarding-matrix.png` — main app UI, 7-day boarding matrix
