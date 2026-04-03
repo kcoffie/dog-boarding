@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 (session 5) — M3-7 in progress; recording file on hand, blocked on edit decision.
+**Last updated:** April 3, 2026 (session 6) — gmail-monitor confirmed working end-to-end; M3-7 parked (Kate editing); M3-10 is next.
 
 ---
 
@@ -42,6 +42,20 @@
 
 ---
 
+## Completed This Session (April 3, session 6)
+
+### gmail-monitor — end-to-end test confirmed ✅
+- Triggered `gmail-monitor.yml` via `workflow_dispatch`
+- Script found 20 unread matching emails, classified correctly (PR comment notifications skipped, failure emails matched)
+- WhatsApp alert received on Kate's phone — full path confirmed: Gmail unread → dedup check → Meta Cloud API → delivered
+- Note: deleted `gmail_processed_emails` entries had been re-inserted by the scheduled cron between delete and trigger; used a fresh unread email to confirm the trigger path
+
+### M3-7 — parked
+- Kate is editing the recording file herself. Parked until she drops the trimmed file.
+- When ready: copy to `docs/screenshots/roster-delivery.mp4`, embed in README after the two screenshots, push direct to main (K-6 bypass).
+
+---
+
 ## Completed This Session (April 3, session 5)
 
 _(No code changes. Session was orientation + M3-7 setup. Kate provided the recording file and left.)_
@@ -76,7 +90,22 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 - Warns via `::warning::` if `api/*.js` or `src/lib/scraper/*.js` changed but `docs/job_docs/` untouched
 - Confirmed: "✅ No doc staleness detected." on PR #163 itself (no false positive on CI-only change)
 
-### Step 1 — M3-7: Screen recording (IN PROGRESS — recording file on hand)
+### Step 1 — M3-10: WhatsApp delivery receipts (architect review required — start here)
+
+**Status:** Not started. Highest remaining complexity.
+
+Read the M3-10 section in `docs/SPRINT_PLAN.md` carefully before proposing any implementation. An architect review step is **required** before touching any code. Do not begin building without it.
+
+Key constraints to verify before architecting:
+- Meta webhook verification challenge (`hub.verify_token`) handshake must be completed to register the endpoint
+- New DB table needed: `message_delivery_status` (`wamid`, `status`, `timestamp`, `recipient`)
+- `wamid` is currently discarded after logging in `notifyWhatsApp.js` — must be stored at send time
+- New Vercel endpoint: `POST /api/webhooks/meta`
+- Consider F-1 (observability only, no alerting) as a simpler first cut if M3-10 feels too large
+
+### Step 2 — M3-7: Screen recording (PARKED — Kate editing)
+
+_(formerly Step 1)_
 
 **Recording file:** `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4.
 
