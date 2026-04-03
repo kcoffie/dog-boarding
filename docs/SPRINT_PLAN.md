@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 3, 2026 — PRs #153–158 merged. K-6 complete: admin bypass added to ruleset, docs push direct to main. Next: M3-8 screenshots → M3-6 CI check → M3-7 screen recording._
+_Last updated: April 3, 2026 (session 2) — PR #159 merged: integration-check false positive fix + gmail refresh token script. Next: M3-8 screenshots → M3-6 CI check → M3-7 screen recording._
 
 ---
 
