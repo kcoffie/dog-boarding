@@ -79,6 +79,28 @@ graph TD
 
 ---
 
+## Automated Schedule
+
+Everything runs without human intervention. Times in **PDT (UTC−7)** — the UTC values in `.github/workflows/*.yml` must be updated each DST transition (second Sunday in March, first Sunday in November).
+
+| Time (PDT) | Days | Platform | Job | What it does / sends |
+|---|---|---|---|---|
+| 5:00 PM | Daily | Vercel Cron | `cron-auth` | Re-authenticates with AGYD; stores session cookie in Supabase |
+| 5:05 PM | Daily | Vercel Cron | `cron-schedule` | Scans 3 weeks of schedule pages; enqueues boarding candidates in `sync_queue` |
+| 5:10 PM | Daily | Vercel Cron | `cron-detail` | Processes one item from `sync_queue` → upserts to `boardings` / `dogs` |
+| 5:15 PM | Daily | Vercel Cron | `cron-detail-2` | Processes a second item (path-split trick — doubles nightly throughput for free) |
+| 5:30 PM | Daily | GitHub Actions | `cron-health-check` | Queries `cron_health` for gaps or 2+ consecutive failures → WhatsApp alert if found |
+| Every :15 | Hourly | GitHub Actions | `gmail-monitor` | Scans Gmail for GH Actions / Vercel / Supabase failure emails → WhatsApp alert if found |
+| 1:00 AM · 9:00 AM · 5:00 PM | Daily | GitHub Actions | `integration-check` | Playwright scrapes AGYD live schedule; compares against DB → WhatsApp pass/fail report |
+| 4:00 AM | Mon–Fri | GitHub Actions | `notify-4am` | Sends daily roster image to all recipients via WhatsApp (always fires) |
+| 7:00 AM | Mon–Fri | GitHub Actions | `notify-7am` | Sends roster image only if roster changed since 4am send |
+| 8:30 AM | Mon–Fri | GitHub Actions | `notify-830am` | Sends roster image only if roster changed since 7am send |
+| 3:00 PM | Fri only | GitHub Actions | `notify-friday-pm` | Sends weekend boarding preview image via WhatsApp (always fires) |
+
+All GitHub Actions workflows also support `workflow_dispatch` for on-demand manual triggering. Deep reference for each job: [`docs/job_docs/`](docs/job_docs/).
+
+---
+
 ## How it works
 
 ### Sync pipeline (midnight UTC)
