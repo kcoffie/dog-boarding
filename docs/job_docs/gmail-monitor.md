@@ -1,7 +1,7 @@
 # Gmail Monitor Job
 
 **Status:** Live — hourly at :15 past, OAuth2 confirmed working (March 20, 2026)
-**Last reviewed:** March 20, 2026
+**Last reviewed:** April 2, 2026
 
 ---
 
@@ -13,7 +13,7 @@ Scans `kcoffie@gmail.com` hourly for unread emails from known infrastructure sen
 
 | What broke | How it surfaces |
 |---|---|
-| GitHub Actions workflow failed | `notifications@github.com` + subject matching "run failed" / "jobs failed" / "some jobs were not successful" |
+| GitHub Actions workflow failed | `notifications@github.com` + subject matching "run failed" / "all jobs have failed" / "some jobs were not successful" |
 | Vercel deployment failed | `notifications@vercel.com` + subject matching "failed" |
 | Any Supabase email (quota, downtime, billing) | `*@supabase.com` domain — any subject |
 
