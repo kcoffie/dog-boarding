@@ -111,9 +111,9 @@ These are the three tickets that move the Professional Quality needle most right
 - [x] Roster image PNG includes "as of [time], [day abbr] [M/D]" line, formatted in PST
 - [x] `as of` uses the timestamp from when the notify job ran (not a hardcoded or UTC value)
 - [x] Unit test: given a known timestamp input, rendered "as of" line matches expected string
-- [ ] Integration test: roster image renders without error end-to-end ← **Kate: trigger 7am notify manually**
-- [x] All 923 tests pass (0 regressions)
-- [ ] Deployed to Vercel + 7am notify triggered manually to confirm live image on phone ← **Kate pending**
+- [x] Integration test: roster image renders without error end-to-end ← triggered April 2, 2026
+- [x] All 943 tests pass (0 regressions)
+- [x] Deployed to Vercel + notify triggered manually, "as of" timestamp confirmed on Kate's phone April 2, 2026
 
 **Implementation:** `notify.js` captures `jobRunAt` at start, appends `&ts=<iso>` to image URL. `roster-image.js` new `formatAsOf()` formats as `"6:04 PM, Mon 3/16"` PST/PDT; reads `req.query.ts` (falls back to `lastSyncedAt`). `buildLayout(data, asOfStr)` receives pre-formatted string.
 
