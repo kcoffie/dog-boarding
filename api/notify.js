@@ -33,6 +33,7 @@ import {
   sendTextMessage,
   getRecipients,
 } from '../src/lib/notifyWhatsApp.js';
+import { recordSentMessages } from '../src/lib/messageDeliveryStatus.js';
 import { writeCronHealth } from './_cronHealth.js';
 import { refreshDaytimeSchedule } from '../src/lib/notifyHelpers.js';
 
@@ -85,8 +86,12 @@ async function sendRefreshAlert(supabase, warning, dateStr, notifyWindow) {
   if (recipients.length === 0) return;
 
   const body = `⚠️ Notify refresh issue (${dateStr}, ${notifyWindow})\n${warning}`;
-  await sendTextMessage(body, recipients).catch(err =>
-    console.warn(`[Notify/RefreshAlert] sendTextMessage failed: ${err.message}`)
+  const refreshResults = await sendTextMessage(body, recipients).catch(err => {
+    console.warn(`[Notify/RefreshAlert] sendTextMessage failed: ${err.message}`);
+    return [];
+  });
+  await recordSentMessages(supabase, refreshResults, 'notify-refresh-alert').catch(err =>
+    console.warn(`[Notify/RefreshAlert] Failed to record delivery status: ${err.message}`)
   );
 
   // Record that we sent the alert for this date (non-fatal)
@@ -203,6 +208,9 @@ export default async function handler(req, res) {
       const supabase = getSupabase();
       console.log(`[Notify] Sending weekend roster to ${recipients.length} recipient(s)`);
       const sendResults = await sendRosterImage(imageUrl, recipients);
+      await recordSentMessages(supabase, sendResults, 'notify-friday-pm').catch(err =>
+        console.warn(`[Notify] Failed to record delivery status (friday-pm): ${err.message}`)
+      );
       await writeCronHealth(supabase, 'notify-friday-pm', 'success', {
         sentAt: new Date().toISOString(),
         recipients: sendResults.map(r => r.to),
@@ -327,6 +335,11 @@ export default async function handler(req, res) {
     // --- Send ---
     console.log(`[Notify] Sending to ${recipients.length} recipient(s)`);
     const sendResults = await sendRosterImage(imageUrl, recipients);
+
+    // --- Record wamids for delivery observability (non-fatal) ---
+    await recordSentMessages(supabase, sendResults, `notify-${window}`).catch(err =>
+      console.warn(`[Notify] Failed to record delivery status (${window}): ${err.message}`)
+    );
 
     // --- Persist state (non-fatal) ---
     await persistSentState(supabase, currentHash, dateStr, window, sendResults);

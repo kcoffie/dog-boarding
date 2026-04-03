@@ -30,6 +30,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
+import { recordSentMessages } from '../src/lib/messageDeliveryStatus.js';
 
 // ---------------------------------------------------------------------------
 // Known sender configuration
@@ -347,11 +348,14 @@ async function markProcessed(supabase, email) {
 // WhatsApp
 // ---------------------------------------------------------------------------
 
-async function sendAlertMessage(message) {
+async function sendAlertMessage(message, supabase = null) {
   const recipients = getAlertRecipients();
   const results = await sendTextMessage(message, recipients);
   const sent = results.filter(r => r.status === 'sent').length;
   console.log('[GmailMonitor] WhatsApp: %d/%d sent', sent, recipients.length);
+  await recordSentMessages(supabase, results, 'gmail-monitor').catch(err =>
+    console.warn('[GmailMonitor] Failed to record delivery status: %s', err.message)
+  );
 }
 
 /**
@@ -459,7 +463,7 @@ async function main() {
     // Build and send alert
     const message = await buildAlertMessage(email, senderConfig);
     console.log('[GmailMonitor] Sending alert for %s:\n%s', id, message);
-    await sendAlertMessage(message);
+    await sendAlertMessage(message, supabase);
 
     // Mark processed
     await markProcessed(supabase, email);

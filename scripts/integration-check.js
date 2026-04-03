@@ -47,6 +47,7 @@ import { chromium } from 'playwright';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
+import { recordSentMessages } from '../src/lib/messageDeliveryStatus.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
@@ -493,12 +494,16 @@ function compareDaytimeResults(domDaytime, dbDaytime) {
 // Step 6: WhatsApp
 // ---------------------------------------------------------------------------
 
-async function sendAlertMessage(message) {
+async function sendAlertMessage(message, supabase = null) {
   const recipients = getAlertRecipients();
   console.log('[IntegCheck] Sending WhatsApp to %d recipient(s)...', recipients.length);
   const results = await sendTextMessage(message, recipients);
   const sent = results.filter(r => r.status === 'sent').length;
   console.log('[IntegCheck] WhatsApp: %d/%d sent', sent, recipients.length);
+  // supabase is null at startup-crash call site — recordSentMessages handles null gracefully.
+  await recordSentMessages(supabase, results, 'integration-check').catch(err =>
+    console.warn('[IntegCheck] Failed to record delivery status: %s', err.message)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -574,7 +579,7 @@ async function main() {
   if (!cookieString) {
     const msg = `⚠️ Integration check skipped (${today})\nNo valid session cached. Run cron-auth first.`;
     console.log('[IntegCheck]', msg);
-    await sendAlertMessage(msg);
+    await sendAlertMessage(msg, supabase);
     process.exit(0);
   }
 
@@ -585,7 +590,7 @@ async function main() {
   } catch (err) {
     const msg = `⚠️ Integration check failed (${today})\nPlaywright error: ${err.message}`;
     console.error('[IntegCheck]', msg);
-    await sendAlertMessage(msg);
+    await sendAlertMessage(msg, supabase);
     process.exit(1);
   }
 
@@ -630,7 +635,7 @@ async function main() {
   }
 
   console.log('[IntegCheck] === Final report ===\n%s', message);
-  await sendAlertMessage(message);
+  await sendAlertMessage(message, supabase);
 
   console.log('[IntegCheck] === Done === (%d issue(s))', allIssues.length);
   process.exit(0); // job succeeded — data issues are content of the report, not a job failure
