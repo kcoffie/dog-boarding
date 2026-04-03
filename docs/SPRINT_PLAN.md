@@ -81,6 +81,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 | ~~K-3~~          | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged                                                                                                                                 | —                                                    | —         |
 | K-4              | Provide second WhatsApp recipient number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)                                                                                           | M0-3 full end-to-end verification                    | 🟡 Medium |
 | K-5              | Add Anthropic API credits at console.anthropic.com                                                                                                                                             | M1-3 — Step 3 vision name-check in integration check | 🟢 Low    |
+| K-7              | Publish Meta app — App Review + Business Verification at developers.facebook.com → QApp → App Review                                                                                          | Real webhook delivery events in `message_delivery_status` | 🟡 Medium |
 
 ---
 
