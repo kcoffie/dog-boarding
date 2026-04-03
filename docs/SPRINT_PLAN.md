@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 3, 2026 (session 6) — gmail-monitor confirmed working end-to-end (WhatsApp alert received). M3-7 parked (Kate editing recording). Next: M3-10 (architect review required before any code)._
+_Last updated: April 3, 2026 (session 7) — F-1 WhatsApp delivery observability built (PR #165 open). Architect review chose F-1 over M3-10 (observability without alerting layer). M3-7 still parked (Kate editing recording)._
 
 ---
 
@@ -65,7 +65,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | README screenshots | ✅ DONE | M3-8 |
 | K-6 — Docs direct-push to main | ✅ DONE | Admin bypass on ruleset (April 3, 2026) |
 | CHANGELOG.md | ✅ DONE | M3-9 — merged PR #143 |
-| WhatsApp delivery receipts | — | M3-10 / F-1 |
+| WhatsApp delivery receipts | 🔄 PR #165 open | F-1 (observability, no alert layer) |
 | Message log page | — | F-2 |
 
 ---
@@ -251,7 +251,7 @@ This is distinct from:
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
 | #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6. Dependabot PRs #106/#107 closed (CI failed — breaking changes). Needs intentional upgrade. | Low | Dev tooling only, no prod impact |
-| F-1 | **Message delivery observability** — lighter version of M3-10. Implement the webhook + wamid storage but without the alerting layer. Kate can check delivery status in the app instead of getting an automatic alert. Lower complexity, high value. | Medium | Can be done before M3-10 if alerting feels like too much scope |
+| F-1 | **Message delivery observability** — webhook + wamid storage, no alerting layer. PR #165 open. | Medium | ✅ Built April 3, 2026. Pending: migration 024 + META_WEBHOOK_VERIFY_TOKEN + Meta Business Manager webhook registration. |
 | F-2 | **Message log page** — store every outbound message (recipient, content, timestamp, type) to a `message_log` table at send time. New app page: last 5 days, latest first. Decouples "did the job run?" from "did the delivery work?". | High | Table schema + 7 write sites + new app route + page UI |
 
 **If M3-10 feels too large:** Do F-1 first (webhooks + storage, no alert), then add alerting as a follow-on. The webhook infrastructure is shared.
