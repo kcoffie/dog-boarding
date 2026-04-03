@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 3, 2026 (session 4) — M3-8 + M3-6 complete. Next: M3-7 screen recording (Kate supplies file) → M3-10 webhooks._
+_Last updated: April 3, 2026 (session 5) — M3-7 in progress. Recording file on hand at `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` (22 MB MP4). Blocked on Kate's edit decision (trim vs. use as-is). Next: finish M3-7 → M3-10 webhooks (architect review required)._
 
 ---
 
@@ -61,7 +61,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Roster image "As of" timestamp | ✅ DONE | M3-4 — `formatAsOf`, ts param (#137) |
 | DST-aware scheduling + code polish | ✅ DONE | M3-5 — timingSafeEqual, regex cache, flaky test fix (#140) |
 | Doc staleness CI check | ✅ DONE | M3-6 |
-| Screen recording (portfolio artifact) | — | M3-7 — blocked on M3-4 verified on phone |
+| Screen recording (portfolio artifact) | 🔄 IN PROGRESS | M3-7 — recording file on hand; blocked on Kate's trim/edit decision |
 | README screenshots | ✅ DONE | M3-8 |
 | K-6 — Docs direct-push to main | ✅ DONE | Admin bypass on ruleset (April 3, 2026) |
 | CHANGELOG.md | ✅ DONE | M3-9 — merged PR #143 |
@@ -163,17 +163,30 @@ These are the three tickets that move the Professional Quality needle most right
 
 ### M3-7 — Screen recording (WhatsApp roster image arriving on phone)
 
-**Status:** K-1b confirmed April 2, 2026 (image arrived on phone). Blocked on M3-4 verified on phone.
+**Status:** 🔄 IN PROGRESS — recording file on hand, blocked on Kate's edit decision.
 
-**What:** 30–60 second screen recording showing the Friday PM roster image arriving as a WhatsApp message on Kate's phone. This is the single most impactful portfolio artifact — it shows the system working end-to-end in a way no README can.
+**Recording file:** `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4. No ffmpeg installed yet.
+
+**Decision gate (ask Kate at session start):**
+- **Option A — Use as-is (fastest):** 22 MB MP4, copy to `docs/screenshots/roster-delivery.mp4`, embed with `<video>` tag. GitHub renders it inline.
+- **Option B — Trim via ffmpeg:** `brew install ffmpeg` first, then Kate specifies start/end times, agent runs trim. Smaller file.
+- **Option C — Kate trims in QuickTime:** File → Trim → Export. Drop trimmed file, agent embeds.
+
+**What:** 30–60 second screen recording showing the Friday PM roster image arriving as a WhatsApp message on Kate's phone. End-to-end flow: notify job fires → WhatsApp message received on phone → image opens with "as of" timestamp visible.
 
 **Definition of Done:**
-- [ ] K-1 resolved: `dog_boarding_roster` template has IMAGE header, approved, verified via `notify-friday-pm`
-- [ ] Screen recording: trigger → WhatsApp message received on phone → open → image visible
-- [ ] Recording embedded in README (GIF or hosted video link)
+- [x] K-1b confirmed April 2 — image arrived on phone ✅
+- [ ] Recording embedded in README after the two screenshots under "What it looks like"
+- [ ] Caption: "End-to-end flow: notify job fires → WhatsApp message received → image opens with 'as of' timestamp"
 - [ ] Recording is clean: no sensitive data visible (dog names OK; no phone number, account info)
+- [ ] Pushed direct to main (K-6 bypass)
+- [ ] SESSION_HANDOFF.md + SPRINT_PLAN.md updated
 
-**Do K-1 first.** Do not start this ticket until the template is approved and a test send is confirmed.
+**README embed (once file is ready):**
+```html
+<video src="docs/screenshots/roster-delivery.mp4" controls width="400"></video>
+```
+Insert after line 17 in README (after `![Roster image](...)`), before the `---` separator.
 
 ---
 
