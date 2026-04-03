@@ -65,7 +65,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | README screenshots | ✅ DONE | M3-8 |
 | K-6 — Docs direct-push to main | ✅ DONE | Admin bypass on ruleset (April 3, 2026) |
 | CHANGELOG.md | ✅ DONE | M3-9 — merged PR #143 |
-| WhatsApp delivery receipts | 🔄 PR #165 open | F-1 (observability, no alert layer) |
+| WhatsApp delivery receipts | ✅ DONE | F-1 — merged #165, verified Apr 3. Real events blocked on app publish (K-7). |
 | Message log page | — | F-2 |
 
 ---
