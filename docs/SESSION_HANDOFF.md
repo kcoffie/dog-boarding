@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 (session 4) — M3-8 + M3-6 complete; next is M3-7 screen recording.
+**Last updated:** April 3, 2026 (session 5) — M3-7 in progress; recording file on hand, blocked on edit decision.
 
 ---
 
@@ -42,7 +42,13 @@
 
 ---
 
-## Completed This Session (April 3, session 3)
+## Completed This Session (April 3, session 5)
+
+_(No code changes. Session was orientation + M3-7 setup. Kate provided the recording file and left.)_
+
+---
+
+## Completed This Session (April 3, session 3–4)
 
 ### K-2 — Maverick backfill
 Kate ran: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
@@ -70,8 +76,32 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 - Warns via `::warning::` if `api/*.js` or `src/lib/scraper/*.js` changed but `docs/job_docs/` untouched
 - Confirmed: "✅ No doc staleness detected." on PR #163 itself (no false positive on CI-only change)
 
-### Step 1 — M3-7: Screen recording (Kate action — no code needed)
-30–60 second screen recording of the roster image arriving on Kate's phone. Trigger → WhatsApp message received → open → image visible with "as of" timestamp. Embed in README as GIF or hosted video link. **Kate supplies the recording file; agent adds it to the repo and updates README.**
+### Step 1 — M3-7: Screen recording (IN PROGRESS — recording file on hand)
+
+**Recording file:** `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4.
+
+**Status:** File exists. Kate left before deciding whether to trim/compress first. Agent must ask Kate at session start, then proceed.
+
+**Decision gate (ask Kate first):**
+- **Option A — Use as-is:** Copy to `docs/screenshots/roster-delivery.mp4`, embed with `<video>` tag in README. GitHub renders MP4 inline. Fastest path.
+- **Option B — Trim first:** `brew install ffmpeg` is not yet installed. Install it, then run ffmpeg to trim (Kate specifies start/end times). Then embed.
+- **Option C — QuickTime trim:** Kate trims manually in QuickTime (File → Trim), drops trimmed file, agent embeds.
+
+**Once file is ready:**
+1. Copy to `docs/screenshots/roster-delivery.mp4` (or `.gif` if converted)
+2. Add to README under "What it looks like" section, after the two screenshots
+3. Embed as `<video>` tag (MP4) or `![](...)` (GIF)
+4. Caption must make clear: end-to-end flow — notify job fires → WhatsApp message received on phone → image opens with "as of" timestamp visible
+5. Push direct to main (K-6 bypass — docs-only)
+6. Update SESSION_HANDOFF.md and SPRINT_PLAN.md
+
+**README embed location:** after line 17 (after `![Roster image](docs/screenshots/roster-image.jpeg)`) and before the `---` separator.
+
+**GitHub video embed syntax:**
+```html
+<video src="docs/screenshots/roster-delivery.mp4" controls width="400"></video>
+```
+GitHub renders this inline in markdown. Caption goes above or below as plain text.
 
 **M3 remaining (ordered):**
 
