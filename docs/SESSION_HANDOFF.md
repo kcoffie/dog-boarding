@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 (session 7) — F-1 WhatsApp delivery observability built and PR'd (#165); pending deploy steps before Meta webhook registration.
+**Last updated:** April 3, 2026 (session 7) — F-1 WhatsApp delivery observability merged (`8acc52c`); pending deploy steps before Meta webhook registration.
 
 ---
 
@@ -7,7 +7,7 @@
 
 - **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
 - **978 tests, 56 files, 0 failures**
-- PR #165 open (`feat/f1-delivery-observability`) — F-1: Meta webhook + wamid storage + 32 new tests
+- PR #165 merged (`8acc52c`) — F-1: Meta webhook + wamid storage + 32 new tests
 - PR #161 merged (`cbd0838`) — fix: integration-check false positive for N/C (new client) titles; also syncs missing `/\bdaycare\b/i` in test mirror
 - PR #159 merged (`ed85338`) — fix: integration-check false positive for "Weekend Daycare" + chore: add `scripts/get-gmail-refresh-token.js`
 - PR #150 merged — feat: Meta media upload in `sendRosterImage` (K-1b)
@@ -79,14 +79,13 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 1 — F-1 deploy: merge PR #165 + apply migration + register webhook
+### Step 1 — F-1 deploy: apply migration + register webhook
 
-**Status:** PR #165 open, awaiting CI + Kate review.
+**Status:** PR #165 merged (`8acc52c`). Vercel deploy in progress.
 
 **Pending steps (in order):**
 
-1. **Merge PR #165** — CI must be green
-2. **Apply migration 024** in Supabase dashboard → SQL Editor → paste `supabase/migrations/024_add_message_delivery_status.sql`
+1. **Apply migration 024** in Supabase dashboard → SQL Editor → paste `supabase/migrations/024_add_message_delivery_status.sql`
 3. **Add `META_WEBHOOK_VERIFY_TOKEN` to Vercel** — choose any string (UUID recommended), set in Vercel Production env vars
 4. **Verify Vercel deploy is live** with the new env var
 5. **Register webhook in Meta Business Manager:**
