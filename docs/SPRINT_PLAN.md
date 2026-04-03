@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 3, 2026 (session 2) — PR #159 merged: integration-check false positive fix + gmail refresh token script. Next: M3-8 screenshots → M3-6 CI check → M3-7 screen recording._
+_Last updated: April 3, 2026 (session 3) — PR #161 merged: K-2 + K-3 complete (N/C false positive fix). Next: M3-8 screenshots → M3-6 CI check → M3-7 screen recording._
 
 ---
 
@@ -74,13 +74,13 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 
 These are not code tickets. They block specific milestones. Track them here so nothing slips.
 
-| # | Action | Blocks | Priority |
-|---|--------|--------|----------|
-| ~~K-1b confirm~~ | ✅ Done April 2 — image confirmed on phone, v5.4.0 released | — | — |
-| K-2 | Backfill Maverick cancelled boarding (predates PR #118 cascade fix): `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';` | Data integrity | 🟡 Medium |
-| K-3 | Investigate Tula N/C 3/23-26 (C63Qga3r) — appeared as "Missing from DB" in integration check. Real boarding that should sync, or no-charge non-boarding visit to filter? | Integration check accuracy | 🟡 Medium |
-| K-4 | Provide second WhatsApp recipient number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164) | M0-3 full end-to-end verification | 🟡 Medium |
-| K-5 | Add Anthropic API credits at console.anthropic.com | M1-3 — Step 3 vision name-check in integration check | 🟢 Low |
+| #                | Action                                                                                                                                                                                         | Blocks                                               | Priority  |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------- |
+| ~~K-1b confirm~~ | ✅ Done April 2 — image confirmed on phone, v5.4.0 released                                                                                                                                     | —                                                    | —         |
+| ~~K-2~~          | ✅ Done April 3 — Maverick backfilled                                                                                                                                                           | —                                                    | —         |
+| ~~K-3~~          | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged                                                                                                                                 | —                                                    | —         |
+| K-4              | Provide second WhatsApp recipient number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)                                                                                           | M0-3 full end-to-end verification                    | 🟡 Medium |
+| K-5              | Add Anthropic API credits at console.anthropic.com                                                                                                                                             | M1-3 — Step 3 vision name-check in integration check | 🟢 Low    |
 
 ---
 
