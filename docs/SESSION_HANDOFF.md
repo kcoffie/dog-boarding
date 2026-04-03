@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 — PRs #153–158 merged; K-6 complete (admin bypass on ruleset — docs push direct to main); next is M3-8 screenshots.
+**Last updated:** April 3, 2026 (session 2) — PR #159 merged: integration-check false positive fix + gmail refresh token script; next is M3-8 screenshots.
 
 ---
 
@@ -7,6 +7,7 @@
 
 - **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
 - **943 tests, 54 files, 0 failures**
+- PR #159 merged (`ed85338`) — fix: integration-check false positive for "Weekend Daycare" + chore: add `scripts/get-gmail-refresh-token.js`
 - PR #150 merged — feat: Meta media upload in `sendRosterImage` (K-1b)
 - PR #147 merged — fix: roster-image weekend query + 18 new tests (#148)
 
