@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 (session 7) — F-1 WhatsApp delivery observability merged (`8acc52c`); pending deploy steps before Meta webhook registration.
+**Last updated:** April 3, 2026 (session 7) — F-1 complete: webhook registered, migration applied, end-to-end verified (send row + delivered row in message_delivery_status). Real events blocked until app publish (K-7).
 
 ---
 
@@ -79,22 +79,27 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 1 — F-1 deploy: apply migration + register webhook
+### ~~F-1 — WhatsApp delivery observability~~ ✅ DONE (April 3, session 7)
 
-**Status:** PR #165 merged (`8acc52c`). Vercel deploy in progress.
+- Migration 024 applied — `message_delivery_status` table live in Supabase
+- `META_WEBHOOK_VERIFY_TOKEN` + `META_APP_SECRET` set in Vercel
+- Webhook registered at `POST /api/webhooks/meta` (developers.facebook.com → QApp → Configuration)
+- `messages` field subscribed
+- End-to-end verified: friday-pm notify wrote `status='sent'` row (wamid real); test webhook wrote `status='delivered'` row with raw_payload
+- **Remaining gap (K-7):** app is unpublished — real Meta delivery events won't flow until app publish + business verification. Test webhooks work; production webhooks blocked.
 
-**Pending steps (in order):**
+### Step 1 — K-7: Publish Meta app (unblocks real webhook delivery events)
 
-1. **Apply migration 024** in Supabase dashboard → SQL Editor → paste `supabase/migrations/024_add_message_delivery_status.sql`
-3. **Add `META_WEBHOOK_VERIFY_TOKEN` to Vercel** — choose any string (UUID recommended), set in Vercel Production env vars
-4. **Verify Vercel deploy is live** with the new env var
-5. **Register webhook in Meta Business Manager:**
-   - WhatsApp → Configuration → Webhooks → Edit
-   - Callback URL: `https://qboarding.vercel.app/api/webhooks/meta`
-   - Verify token: same value as `META_WEBHOOK_VERIFY_TOKEN`
-   - Subscribe to the `messages` field
-   - Click Verify and Save — Meta fires the GET challenge immediately; endpoint must be deployed first
-6. **Verify end-to-end:** trigger a notify job manually → confirm `status='sent'` row in `message_delivery_status` → Meta delivers → confirm `status='delivered'` row for same wamid
+**Status:** Not started. Requires Meta business verification + app review.
+
+**What this unblocks:** Real `delivered`/`read`/`failed` events firing to the webhook on every actual message sent. Currently only test events work.
+
+**Steps (Kate does this):**
+1. developers.facebook.com → QApp → App Review → Request permissions
+2. Complete Meta Business Verification (business.facebook.com → Settings → Business info → Verification)
+3. Once published, production delivery events will flow automatically — no code changes needed
+
+### Step 2 — M3-7: Screen recording (PARKED — Kate editing)
 
 ### ~~M3-8 — README screenshots~~ ✅ DONE (April 3, session 4)
 - `docs/screenshots/boarding-matrix.png` — main app UI, 7-day boarding matrix
@@ -108,22 +113,6 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 - Warns via `::warning::` if `api/*.js` or `src/lib/scraper/*.js` changed but `docs/job_docs/` untouched
 - Confirmed: "✅ No doc staleness detected." on PR #163 itself (no false positive on CI-only change)
 
-### Step 1 — M3-10: WhatsApp delivery receipts (architect review required — start here)
-
-**Status:** Not started. Highest remaining complexity.
-
-Read the M3-10 section in `docs/SPRINT_PLAN.md` carefully before proposing any implementation. An architect review step is **required** before touching any code. Do not begin building without it.
-
-Key constraints to verify before architecting:
-- Meta webhook verification challenge (`hub.verify_token`) handshake must be completed to register the endpoint
-- New DB table needed: `message_delivery_status` (`wamid`, `status`, `timestamp`, `recipient`)
-- `wamid` is currently discarded after logging in `notifyWhatsApp.js` — must be stored at send time
-- New Vercel endpoint: `POST /api/webhooks/meta`
-- Consider F-1 (observability only, no alerting) as a simpler first cut if M3-10 feels too large
-
-### Step 2 — M3-7: Screen recording (PARKED — Kate editing)
-
-_(formerly Step 1)_
 
 **Recording file:** `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4.
 
@@ -268,6 +257,7 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 | ~~K-3~~ | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged | — | — |
 | K-4 | Provide second WhatsApp recipient → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164) | M0-3 full verification | 🟡 Medium |
 | K-5 | Add Anthropic API credits at console.anthropic.com | Step 3 vision name-check | 🟢 Low |
+| K-7 | Publish Meta app (App Review + Business Verification at developers.facebook.com) | Real webhook delivery events flowing to `message_delivery_status` | 🟡 Medium |
 
 ---
 
@@ -276,7 +266,7 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
 | #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6 | Low | Dev tooling only |
-| F-1 | **Message delivery observability** — Meta Webhooks + wamid storage, no alert layer | Medium | Lighter version of M3-10 |
+| ~~F-1~~ | ~~Message delivery observability~~ | ✅ Done April 3 | Merged #165, verified end-to-end |
 | F-2 | **Message log page** — store every outbound message, new app page | High | Table + 7 write sites + UI |
 
 ---
