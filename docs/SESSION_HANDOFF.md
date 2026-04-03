@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 (session 3) — PR #161 merged: K-2 + K-3 complete; next is M3-8 screenshots.
+**Last updated:** April 3, 2026 (session 4) — M3-8 complete: screenshots added to README; next is M3-6 doc staleness CI check.
 
 ---
 
@@ -58,14 +58,13 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 1 — M3-8: README screenshots
-Two screenshots needed:
-1. **Boarding matrix** — capture the main app view at `https://qboarding.vercel.app` with representative data (not blank)
-2. **Roster image** — the PNG from `https://qboarding.vercel.app/api/roster-image?date=YYYY-MM-DD&token=74430UUYn47RD3` with the "as of" timestamp visible (M3-4 confirmed live April 2)
+### ~~M3-8 — README screenshots~~ ✅ DONE (April 3, session 4)
+- `docs/screenshots/boarding-matrix.png` — main app UI, 7-day boarding matrix
+- `docs/screenshots/roster-image.jpeg` — roster PNG with "as of 4:35 AM, Fri 4/3" timestamp visible
+- "What it looks like" section added to README, badge updated to 946 tests / v5.4.0
+- Pushed direct to main (`7222568`)
 
-Add both to README under a "Screenshots" or "What it looks like" section.
-
-### Step 2 — M3-6: Doc staleness CI check
+### Step 1 — M3-6: Doc staleness CI check
 New GH Actions step (or lightweight workflow) on PRs: detects when `api/*.js` or `src/lib/scraper/*.js` changes without touching `docs/job_docs/`. Warning only, not a failure. Pure bash + `git diff --name-only`. No new dependencies.
 
 ### Step 3 — M3-7: Screen recording
@@ -79,7 +78,7 @@ New GH Actions step (or lightweight workflow) on PRs: detects when `api/*.js` or
 | ~~job_docs audit~~ | ✅ PRs #153–156 merged April 3 | — |
 | ~~M3-4 verify~~ | ✅ Done April 2 — "as of" confirmed on Kate's phone | — |
 | ~~K-6~~ | ✅ Done April 3 — admin bypass on ruleset; docs push direct to main | — |
-| M3-8 | README screenshots | Unblocked |
+| ~~M3-8~~ | ✅ Done April 3 — screenshots added to README | — |
 | M3-6 | Doc staleness CI check | Unblocked |
 | M3-7 | Screen recording | Unblocked (M3-4 verified) |
 | M3-10 | WhatsApp delivery receipts (Meta Webhooks) | Last — highest complexity |
