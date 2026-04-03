@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 2, 2026 — job_docs audit complete (PRs #153–156 open); M3-4 fully verified: "as of" timestamp confirmed on Kate's phone; gmail-monitor confirmed green.
+**Last updated:** April 3, 2026 — PRs #153–158 merged; K-6 complete (admin bypass on ruleset — docs push direct to main); next is M3-8 screenshots.
 
 ---
 
@@ -42,26 +42,17 @@
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 1 — Merge open doc PRs
-Merge all four in any order (no code changes, safe to merge immediately):
-- **PR #153** — notify-jobs.md: K-1b upload flow, ts param, template, cleanup
-- **PR #154** — gmail-monitor.md: fix subject pattern ("all jobs have failed"), date
-- **PR #155** — integration-check.md: add syncRunner.js to files table, date
-- **PR #156** — sync-crons.md: date only
-
-Then reset: `git checkout main && git pull`
-
-### Step 2 — M3-8: README screenshots
+### Step 1 — M3-8: README screenshots
 Two screenshots needed:
 1. **Boarding matrix** — capture the main app view at `https://qboarding.vercel.app` with representative data (not blank)
 2. **Roster image** — the PNG from `https://qboarding.vercel.app/api/roster-image?date=YYYY-MM-DD&token=74430UUYn47RD3` with the "as of" timestamp visible (M3-4 confirmed live April 2)
 
 Add both to README under a "Screenshots" or "What it looks like" section.
 
-### Step 3 — M3-6: Doc staleness CI check
+### Step 2 — M3-6: Doc staleness CI check
 New GH Actions step (or lightweight workflow) on PRs: detects when `api/*.js` or `src/lib/scraper/*.js` changes without touching `docs/job_docs/`. Warning only, not a failure. Pure bash + `git diff --name-only`. No new dependencies.
 
-### Step 4 — M3-7: Screen recording
+### Step 3 — M3-7: Screen recording
 30–60 second recording of the roster image arriving on Kate's phone. Trigger → WhatsApp message received → open → image visible with "as of" timestamp. Embed in README as GIF or hosted video link.
 
 **M3 remaining (ordered):**
@@ -69,8 +60,9 @@ New GH Actions step (or lightweight workflow) on PRs: detects when `api/*.js` or
 | # | Ticket | Gate |
 |---|--------|------|
 | ~~K-1b phone confirm~~ | ✅ Done April 2 | — |
-| ~~job_docs audit~~ | ✅ PRs #153–156 open — merge next session | — |
+| ~~job_docs audit~~ | ✅ PRs #153–156 merged April 3 | — |
 | ~~M3-4 verify~~ | ✅ Done April 2 — "as of" confirmed on Kate's phone | — |
+| ~~K-6~~ | ✅ Done April 3 — admin bypass on ruleset; docs push direct to main | — |
 | M3-8 | README screenshots | Unblocked |
 | M3-6 | Doc staleness CI check | Unblocked |
 | M3-7 | Screen recording | Unblocked (M3-4 verified) |
@@ -80,7 +72,9 @@ New GH Actions step (or lightweight workflow) on PRs: detects when `api/*.js` or
 
 ## K-6 — Docs direct-push to main
 
-Branch protection is active via GitHub rulesets — all pushes (including docs) require a PR. K-6 is the ticket to enable docs-only direct push to main. Until K-6 is done, doc updates need a PR like any other change.
+**COMPLETE. April 3, 2026.**
+
+Added admin role (RepositoryRole, actor_id=5) as bypass actor on the `protection` ruleset (id 13512551) with `bypass_mode: always`. Kate can now push directly to main without a PR. The CI requirements still apply to PRs from any branch — bypass only affects direct pushes by the repo admin.
 
 ---
 
