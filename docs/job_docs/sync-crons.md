@@ -1,7 +1,7 @@
 # Sync Cron Jobs
 
 **Status:** Live (Hobby plan — once per day, midnight UTC; cron-detail runs twice via cron-detail-2)
-**Last reviewed:** March 24, 2026
+**Last reviewed:** April 2, 2026
 
 ---
 
