@@ -1,7 +1,7 @@
 # Notify Jobs (WhatsApp Roster)
 
 **Status:** Live (weekdays + Friday PM, PDT schedule — update UTC times each DST transition)
-**Last reviewed:** March 20, 2026
+**Last reviewed:** April 2, 2026
 
 ---
 
@@ -50,9 +50,13 @@ The endpoint orchestrates the full notify flow:
    - `window=7am` or `window=8:30am` → hashes the current roster; if hash matches stored hash in `cron_health`, skips sending
    - `window=friday-pm` → always sends; generates a weekend-themed image (arrivals + departures Sat–Sun) instead of the daily roster. Writes health record to `cron_health WHERE cron_name = 'notify-friday-pm'`
 
-5. **Generate roster image** — calls `/api/roster-image` (same Vercel deployment) with the roster data. Returns a PNG. Uses AGYD brand colors (Forest Green `#4A773C`, Sage Green `#78A354`).
+5. **Generate roster image** — constructs a URL to `/api/roster-image` (same Vercel deployment). The URL includes a `&ts=<jobRunAt ISO>` parameter — `jobRunAt` is captured at the very start of the request so the "as of [time], [day]" line in the image header reflects when the notify job ran, not when the DB was last written. Uses AGYD brand colors (Forest Green `#4A773C`, Sage Green `#78A354`).
 
-6. **Send via Meta Cloud API (WhatsApp)** — calls `sendRosterImage()` from `notifyWhatsApp.js`, which POSTs the PNG to the Meta Graph API and delivers it to all numbers in `NOTIFY_RECIPIENTS` (comma-separated E.164 numbers). Returns a `wamid` per recipient on success.
+6. **Upload + send via Meta Cloud API (WhatsApp)** — calls `sendRosterImage()` from `notifyWhatsApp.js`, which executes a two-step flow:
+   1. **Upload (K-1b):** fetches the PNG buffer from the image URL, then POSTs it to Meta's media API (`POST /v18.0/{PHONE_NUMBER_ID}/media`, `multipart/form-data`). Returns a stable `media_id` from Meta's CDN. Upload happens once regardless of recipient count.
+   2. **Send:** delivers the `dog_boarding_roster_3` template to each number in `NOTIFY_RECIPIENTS` with `{ image: { id: media_id } }` (not a URL). Returns a `wamid` per recipient on success.
+
+   **Why upload-first:** Meta silently drops template sends when it cannot fetch image URLs from Vercel endpoints — the API accepts the call and returns a wamid, but the message never reaches the phone. Uploading to Meta's CDN first (K-1b, April 2) eliminates this dependency entirely.
 
 7. **Store hash** — writes the roster hash and roster data to `cron_health` (`notify` row) so the 7am/8:30am windows can compare against it.
 
@@ -98,11 +102,10 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 |---|---|
 | `META_PHONE_NUMBER_ID` | Sender number ID from the Meta app dashboard |
 | `META_WHATSAPP_TOKEN` | Permanent system user access token — must be assigned to both the QApp and the WhatsApp Business Account in Meta Business Suite |
+| `META_ROSTER_TEMPLATE` | Approved template name for roster sends. Currently `dog_boarding_roster_3` (Utility category, IMAGE header, confirmed delivered April 2). Code default is `dog_boarding_roster` if unset. |
 | `NOTIFY_RECIPIENTS` | Comma-separated E.164 numbers (Kate + second recipient TBD) |
 | `VITE_SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key — bypasses RLS |
-
-**Note:** `TWILIO_*` vars are NOT used by the notify flow. Twilio is only used by the integration check, cron health check, and Gmail monitor (the alerting-only jobs). The roster image notifications use Meta Cloud API exclusively.
 
 ---
 
@@ -117,7 +120,8 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 | `api/notify.js` | Notify orchestrator endpoint (handles all windows incl. friday-pm) |
 | `api/roster-image.js` | PNG image generation endpoint (satori + resvg, token-gated; supports `type=weekend`) |
 | `src/lib/pictureOfDay.js` | `getPictureOfDay()`, `computeWorkerDiff()`, `hashPicture()` |
-| `src/lib/notifyWhatsApp.js` | Meta Cloud API wrapper — `sendRosterImage()`, `sendTextMessage()`, `getRecipients()` |
+| `src/lib/notifyHelpers.js` | `refreshDaytimeSchedule()` — live schedule refresh before each send |
+| `src/lib/notifyWhatsApp.js` | Meta Cloud API wrapper — `metaMediaUpload()` (K-1b upload-first), `sendRosterImage()`, `sendTextMessage()`, `getRecipients()` |
 
 ---
 
@@ -126,5 +130,4 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 - **Second recipient:** `NOTIFY_RECIPIENTS` currently has only Kate's number. Second number to be added when provided (Vercel env var change only — no code change needed).
 - **WhatsApp delivery receipts:** a `wamid` returned by Meta proves the message was accepted, not that it was delivered to the phone. Post-acceptance delivery failures are silent. Meta Webhooks can provide delivery status callbacks — not yet implemented (M3-10).
 - **DST manual update:** each March and November, the UTC times in all **four** `.yml` files need to be updated by hand. No automation exists for this.
-- **`roster-image.js` token check comment:** the comment claims "constant-time comparison" but does not use `crypto.timingSafeEqual`. Low-priority polish — fix the comment or use the API.
 - **`shouldSendNotification` `window` param shadowing:** the parameter named `window` shadows the browser global. Low-priority rename to `sendWindow`.
