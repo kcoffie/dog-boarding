@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 3, 2026 (session 7) — F-1 WhatsApp delivery observability built (PR #165 open). Architect review chose F-1 over M3-10 (observability without alerting layer). M3-7 still parked (Kate editing recording)._
+_Last updated: April 5, 2026 (session 8) — I-1 PR #167 open (integration check smart-send). K-7 elevated to HIGH (Meta account expiry risk). K-4 second notify number pending. F-2 message log page confirmed in backlog._
 
 ---
 
@@ -66,7 +66,8 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | K-6 — Docs direct-push to main | ✅ DONE | Admin bypass on ruleset (April 3, 2026) |
 | CHANGELOG.md | ✅ DONE | M3-9 — merged PR #143 |
 | WhatsApp delivery receipts | ✅ DONE | F-1 — merged #165, verified Apr 3. Real events blocked on app publish (K-7). |
-| Message log page | — | F-2 |
+| Integration check smart-send | 🔄 PR #167 open | I-1 — run 1 always sends; runs 2+3 silent when passed |
+| Message log page | — | F-2 — view message content via app; use this when delivery is in question |
 
 ---
 
@@ -79,9 +80,9 @@ These are not code tickets. They block specific milestones. Track them here so n
 | ~~K-1b confirm~~ | ✅ Done April 2 — image confirmed on phone, v5.4.0 released                                                                                                                                     | —                                                    | —         |
 | ~~K-2~~          | ✅ Done April 3 — Maverick backfilled                                                                                                                                                           | —                                                    | —         |
 | ~~K-3~~          | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged                                                                                                                                 | —                                                    | —         |
-| K-4              | Provide second WhatsApp recipient number → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164)                                                                                           | M0-3 full end-to-end verification                    | 🟡 Medium |
+| K-4              | Provide second WhatsApp recipient number → update `NOTIFY_RECIPIENTS` secret (comma-separated E.164, e.g. `+1XXX,+1YYY`). Kate wants this ASAP.                                              | Roster images go to second number                    | 🔴 High   |
 | K-5              | Add Anthropic API credits at console.anthropic.com                                                                                                                                             | M1-3 — Step 3 vision name-check in integration check | 🟢 Low    |
-| K-7              | Publish Meta app — App Review + Business Verification at developers.facebook.com → QApp → App Review                                                                                          | Real webhook delivery events in `message_delivery_status` | 🟡 Medium |
+| K-7              | **URGENT — START TODAY.** Publish Meta app: App Review + Business Verification at developers.facebook.com. Each step can take 5–10+ business days. Test account expiry = complete WhatsApp outage. Run both in parallel — do not delay. | Service continuity + real delivery events in `message_delivery_status` | 🔴 **HIGH** |
 
 ---
 
