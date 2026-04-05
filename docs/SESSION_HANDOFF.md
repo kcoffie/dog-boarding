@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 3, 2026 (session 7) — F-1 complete: webhook registered, migration applied, end-to-end verified (send row + delivered row in message_delivery_status). Real events blocked until app publish (K-7).
+**Last updated:** April 5, 2026 (session 8) — I-1 PR #167 open (integration check smart-send). K-7 elevated to HIGH urgency (Meta test account expiry risk). K-4 second notify number pending Kate. F-2 message log page confirmed in backlog.
 
 ---
 
@@ -79,6 +79,24 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 
 ## IMMEDIATE NEXT (next session)
 
+### Step 0 — K-7: Publish Meta app (🔴 HIGH PRIORITY — EXPIRY RISK)
+
+**Status:** Not started. **This must be done ASAP — Meta test accounts expire, and Business Verification + App Review together can take 5–10+ business days. Any interruption = no WhatsApp messages delivered.**
+
+**What blocks if K-7 isn't done:**
+- Real `delivered`/`read`/`failed` webhook events never fire → `message_delivery_status` stays dark
+- Once the Meta test account expires → ALL message sends fail (complete service outage)
+
+**Steps (Kate does this — start immediately):**
+1. [developers.facebook.com](https://developers.facebook.com) → QApp → App Review → Request permissions (`whatsapp_business_messaging`)
+2. [business.facebook.com](https://business.facebook.com) → Settings → Business info → Verification → submit business documents
+3. App Review and Business Verification can run in parallel — start both on the same day
+4. Once published, production delivery events flow automatically → verify by checking `message_delivery_status` after next notify run
+
+**Decision rule:** If there is ANY doubt about the expiry timeline, start this today. Do not let this slip.
+
+---
+
 ### Step 1 — M3-7: Screen recording (PARKED — Kate editing)
 
 **Status:** Kate is trimming the recording file herself. When she drops the trimmed file, embed it in README and push direct to main (K-6 bypass).
@@ -98,16 +116,11 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 5. Push direct to main (K-6 bypass — docs-only)
 6. Update SESSION_HANDOFF.md and SPRINT_PLAN.md
 
-### Step 2 — K-7: Publish Meta app (Kate action — no code required)
+### Step 2 — K-4: Second notify recipient (Kate action)
 
-**Status:** Not started. Requires Meta business verification + app review. No code changes needed — webhook is already wired.
+**Status:** Pending Kate providing the E.164 phone number. Once provided → update `NOTIFY_RECIPIENTS` GitHub secret (comma-separated, e.g. `+1XXXXXXXXXX,+1YYYYYYYYYY`). No code change.
 
-**What this unblocks:** Real `delivered`/`read`/`failed` events firing automatically to `POST /api/webhooks/meta` on every message sent. Currently only manual test events work (app is unpublished).
-
-**Steps (Kate does this):**
-1. developers.facebook.com → QApp → App Review → Request permissions
-2. Complete Meta Business Verification (business.facebook.com → Settings → Business info → Verification)
-3. Once published, production delivery events flow automatically — verify by checking `message_delivery_status` after next notify run
+**Why:** Kate wants roster image notifications delivered to a second number starting immediately.
 
 **GitHub video embed syntax:**
 ```html
@@ -231,9 +244,9 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 |---|--------|--------|----------|
 | ~~K-2~~ | ✅ Done April 3 — Maverick backfilled | — | — |
 | ~~K-3~~ | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged | — | — |
-| K-4 | Provide second WhatsApp recipient → add to `NOTIFY_RECIPIENTS` secret (comma-separated E.164) | M0-3 full verification | 🟡 Medium |
+| K-4 | Provide second WhatsApp recipient number → update `NOTIFY_RECIPIENTS` secret (comma-separated E.164) | Roster images delivered to second number | 🔴 High — Kate wants ASAP |
 | K-5 | Add Anthropic API credits at console.anthropic.com | Step 3 vision name-check | 🟢 Low |
-| K-7 | Publish Meta app (App Review + Business Verification at developers.facebook.com) | Real webhook delivery events flowing to `message_delivery_status` | 🟡 Medium |
+| K-7 | **URGENT** Publish Meta app — App Review + Business Verification at developers.facebook.com → QApp. Can take 5–10+ business days. Start immediately — test account expiry = complete WhatsApp outage. | Service continuity + real webhook delivery events | 🔴 **HIGH — start today** |
 
 ---
 
@@ -243,7 +256,8 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 |---|--------|------------|-------|
 | #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6 | Low | Dev tooling only |
 | ~~F-1~~ | ~~Message delivery observability~~ | ✅ Done April 3 | Merged #165, verified end-to-end |
-| F-2 | **Message log page** — store every outbound message, new app page | High | Table + 7 write sites + UI |
+| ~~I-1~~ | ~~Integration check smart-send~~ | ✅ PR #167 open | Run 1 always sends; runs 2+3 silent on pass |
+| F-2 | **Message log page** — store every outbound message (recipient, content, timestamp, type) to a `message_log` table at send time. New app page: last 5 days, latest first. Use this to verify what was sent if a delivery question arises. | High | Table schema + 7 write sites + new app route + page UI |
 
 ---
 
