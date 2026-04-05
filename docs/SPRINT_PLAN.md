@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 5, 2026 (session 8) — I-1 merged #167 (smart-send). K-4 done (second notify number). K-7 HIGH priority (Meta expiry risk — Kate action). M3-7 parked. F-2 next code ticket._
+_Last updated: April 5, 2026 (session 9) — STATUS_REPORT.md written. G-1 through G-5 gap tickets added (see Gap Investigation section). K-7 still URGENT. M3-7 still parked. F-2 next code ticket._
 
 ---
 
@@ -258,6 +258,20 @@ This is distinct from:
 | F-2 | **Message log page** — store every outbound message (recipient, content, timestamp, type) to a `message_log` table at send time. New app page: last 5 days, latest first. Decouples "did the job run?" from "did the delivery work?". | High | Table schema + 7 write sites + new app route + page UI |
 
 **If M3-10 feels too large:** Do F-1 first (webhooks + storage, no alert), then add alerting as a follow-on. The webhook infrastructure is shared.
+
+---
+
+## Gap Investigation — Needs Decision Before Ticketing
+
+These were surfaced in the April 5, 2026 status review. Each needs a "do it / skip it / scope it" decision before any code is written.
+
+| # | Gap | What to Investigate | Priority |
+|---|-----|---------------------|----------|
+| G-1 | **Alert on failed wamid** — F-1 stores delivery events but nothing reads the table and fires an alert when status=`failed`. A message can silently fail delivery after Meta accepts it. | Is a lightweight cron or webhook-triggered check sufficient? What N-minute threshold is right? How does this interact with F-2? | Medium |
+| G-2 | **Integration check Step 3 silent skip** — when Anthropic credits are zero, Step 3 (Claude vision name-check) is skipped entirely with no warning. A failure in Step 3 logic is invisible. | Add a `::warning::` log when Step 3 is skipped so the silence is explicit. Small change — may not need a full ticket, just a PR. | Low |
+| G-3 | **Client-facing status page** — no self-serve way for the operator to check system health. They rely entirely on WhatsApp alerts. The "client can verify health" UAT gate is partially uncleared. | What does "verify health" mean to this operator? A simple read-only page (last cron run, last notify sent, last delivery status) vs. documented manual steps in the runbook. Decide scope before building. | Medium |
+| G-4 | **UAT gate 4 — operator self-serve health check** — once M3-7 (screen recording) is done, Milestone 3 is complete and three of four UAT gates are cleared. The fourth gate ("client can verify the system is healthy") is the only one not fully resolved. | Does G-3 (status page) close this gate, or is the runbook + GitHub Actions visibility sufficient? Decide before declaring UAT done. | Medium |
+| G-5 | **No defined client acceptance criteria** — the system is live and serving a real client, but there is no documented "client sign-off" definition. What does the operator need to see, do, or confirm before the engagement is complete? | Short conversation with the operator (or internally) to write down 3–5 acceptance criteria. Not a code ticket — a process/doc item. | Low |
 
 ---
 
