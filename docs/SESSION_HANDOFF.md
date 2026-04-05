@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 5, 2026 (session 8) — I-1 merged #167 (integration check smart-send). K-4 done (second notify number live). K-7 HIGH priority (Meta test account expiry risk — Kate action needed). M3-7 parked (Kate editing recording).
+**Last updated:** April 5, 2026 (session 9) — Status report written (docs/STATUS_REPORT.md). Gap tickets G-1 through G-5 added to SPRINT_PLAN.md. No code changes. K-7 still URGENT (Kate action). M3-7 still parked. F-2 is next code ticket.
 
 ---
 
@@ -30,6 +30,23 @@
 
 ### Meta template status
 `META_ROSTER_TEMPLATE=dog_boarding_roster_3` set in Vercel — Utility category, confirmed delivered April 2.
+
+---
+
+## Completed This Session (April 5, session 9)
+
+### docs/STATUS_REPORT.md — Project status report ✅
+- Comprehensive report written for boss/client audience
+- Covers: what's been built (v5 forward), what's in progress, what's left, risks, and 5 gaps not previously in the plan
+- No code changes — docs only, push direct to main
+
+### G-1 through G-5 — Gap tickets added to SPRINT_PLAN.md ✅
+- New "Gap Investigation — Needs Decision Before Ticketing" section added
+- G-1: Alert on failed wamid (follow-on to F-1, no alerting layer exists)
+- G-2: Integration check Step 3 silent skip (no warning when Anthropic credits = 0)
+- G-3: Client-facing status page (UAT gate 4 — operator self-serve health check)
+- G-4: UAT gate 4 decision — does G-3 close it or does runbook suffice?
+- G-5: No defined client acceptance criteria (process item, not a code ticket)
 
 ---
 
