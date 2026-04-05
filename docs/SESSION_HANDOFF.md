@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 5, 2026 (session 8) — I-1 PR #167 open (integration check smart-send). K-7 elevated to HIGH urgency (Meta test account expiry risk). K-4 second notify number pending Kate. F-2 message log page confirmed in backlog.
+**Last updated:** April 5, 2026 (session 8) — I-1 merged #167 (integration check smart-send). K-4 COMPLETE (second NOTIFY_RECIPIENTS number added to Vercel). K-7 elevated to HIGH urgency (Meta test account expiry risk). F-2 message log page confirmed in backlog.
 
 ---
 
@@ -116,11 +116,9 @@ Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-chec
 5. Push direct to main (K-6 bypass — docs-only)
 6. Update SESSION_HANDOFF.md and SPRINT_PLAN.md
 
-### Step 2 — K-4: Second notify recipient (Kate action)
+### ~~Step 2 — K-4: Second notify recipient~~ ✅ Done April 5
 
-**Status:** Pending Kate providing the E.164 phone number. Once provided → update `NOTIFY_RECIPIENTS` GitHub secret (comma-separated, e.g. `+1XXXXXXXXXX,+1YYYYYYYYYY`). No code change.
-
-**Why:** Kate wants roster image notifications delivered to a second number starting immediately.
+Second number added to `NOTIFY_RECIPIENTS` Vercel env var (comma-separated). Takes effect on the next notify run.
 
 **GitHub video embed syntax:**
 ```html
@@ -244,7 +242,7 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 |---|--------|--------|----------|
 | ~~K-2~~ | ✅ Done April 3 — Maverick backfilled | — | — |
 | ~~K-3~~ | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged | — | — |
-| K-4 | Provide second WhatsApp recipient number → update `NOTIFY_RECIPIENTS` secret (comma-separated E.164) | Roster images delivered to second number | 🔴 High — Kate wants ASAP |
+| ~~K-4~~ | ✅ Done April 5 — second number added to `NOTIFY_RECIPIENTS` Vercel env var | — | — |
 | K-5 | Add Anthropic API credits at console.anthropic.com | Step 3 vision name-check | 🟢 Low |
 | K-7 | **URGENT** Publish Meta app — App Review + Business Verification at developers.facebook.com → QApp. Can take 5–10+ business days. Start immediately — test account expiry = complete WhatsApp outage. | Service continuity + real webhook delivery events | 🔴 **HIGH — start today** |
 
