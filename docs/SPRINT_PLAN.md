@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 5, 2026 (session 8) — I-1 PR #167 open (integration check smart-send). K-7 elevated to HIGH (Meta account expiry risk). K-4 second notify number pending. F-2 message log page confirmed in backlog._
+_Last updated: April 5, 2026 (session 8) — I-1 merged #167 (smart-send). K-4 done (second notify number). K-7 HIGH priority (Meta expiry risk — Kate action). M3-7 parked. F-2 next code ticket._
 
 ---
 

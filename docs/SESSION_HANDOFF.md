@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 5, 2026 (session 8) — I-1 merged #167 (integration check smart-send). K-4 COMPLETE (second NOTIFY_RECIPIENTS number added to Vercel). K-7 elevated to HIGH urgency (Meta test account expiry risk). F-2 message log page confirmed in backlog.
+**Last updated:** April 5, 2026 (session 8) — I-1 merged #167 (integration check smart-send). K-4 done (second notify number live). K-7 HIGH priority (Meta test account expiry risk — Kate action needed). M3-7 parked (Kate editing recording).
 
 ---
 
@@ -7,158 +7,150 @@
 
 - **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
 - **978 tests, 56 files, 0 failures**
-- PR #165 merged (`8acc52c`) — F-1: Meta webhook + wamid storage + 32 new tests
-- PR #161 merged (`cbd0838`) — fix: integration-check false positive for N/C (new client) titles; also syncs missing `/\bdaycare\b/i` in test mirror
-- PR #159 merged (`ed85338`) — fix: integration-check false positive for "Weekend Daycare" + chore: add `scripts/get-gmail-refresh-token.js`
-- PR #150 merged — feat: Meta media upload in `sendRosterImage` (K-1b)
-- PR #147 merged — fix: roster-image weekend query + 18 new tests (#148)
+- **main clean at `70b9132`**
 
-### WhatsApp verification status
+### Recent merges (newest first)
+| PR | What |
+|---|---|
+| #167 merged Apr 5 | I-1: integration check smart-send — run 1 always sends; runs 2+3 silent on pass |
+| #165 merged Apr 3 | F-1: Meta webhook + wamid storage + 32 new tests |
+| #163 merged Apr 3 | M3-6: doc staleness CI check |
+| #161 merged Apr 3 | fix: integration-check false positive for N/C titles |
+| #159 merged Apr 3 | fix: integration-check false positive for "Weekend Daycare" |
 
-| Job | Send function | Result |
+### WhatsApp delivery status (all confirmed live)
+
+| Job | Send function | Status |
 |---|---|---|
-| integration-check | `sendTextMessage` | ✅ delivered to Kate's phone (March 25) |
-| cron-health-check | `sendTextMessage` | ✅ same code path |
-| gmail-monitor | `sendTextMessage` | ✅ same code path |
-| notify friday-pm | `sendRosterImage` | ✅ confirmed delivered to Kate's phone (April 2) |
-| notify 4am/7am/830am | `sendRosterImage` | ✅ 4am window triggered manually April 2, "as of" timestamp confirmed on Kate's phone |
+| notify 4am/7am/830am | `sendRosterImage` | ✅ Confirmed on phone Apr 2 — 2 recipients as of Apr 5 |
+| notify friday-pm | `sendRosterImage` | ✅ Confirmed on phone Apr 2 — 2 recipients as of Apr 5 |
+| integration-check | `sendTextMessage` | ✅ Confirmed Mar 25 — smart-send live (#167): run 1 always, runs 2+3 on fail only |
+| cron-health-check | `sendTextMessage` | ✅ Same code path as integration-check |
+| gmail-monitor | `sendTextMessage` | ✅ Confirmed Mar 20 |
 
-### Root cause (April 2, 2026)
-
-**Why the image never arrived:**
-
-1. `dog_boarding_roster` (text-only) — deleted Apr 1
-2. `dog_boarding_roster_2` — created Apr 1 12:42 PM as **Marketing** category. Meta's phone number stats showed Marketing = 0 delivered across all of March. Meta accepted the API call (returned wamid) but never pushed Marketing messages to device — new/unrated Marketing templates are throttled until they have quality history.
-3. `dog_boarding_roster_3` — created Apr 2 as **Utility** category (body text changed to operational language to pass Meta's classifier). `META_ROSTER_TEMPLATE` updated in Vercel. **Status: Active. Confirmed delivered April 2.**
-
-**What "wamid clean" actually means:** Meta accepted the request. It does NOT mean the message was delivered. Marketing category + Quality pending = silent non-delivery.
-
-### K-1b status
-
-**COMPLETE. Phone confirmed April 2, 2026.**
-
-- `metaMediaUpload` + `{ image: { id: mediaId } }` — correct
-- `META_ROSTER_TEMPLATE=dog_boarding_roster_3` — active in Vercel ✓
-- v5.4.0 released ✓
+### Meta template status
+`META_ROSTER_TEMPLATE=dog_boarding_roster_3` set in Vercel — Utility category, confirmed delivered April 2.
 
 ---
 
-## Completed This Session (April 3, session 6)
+## Completed This Session (April 5, session 8)
 
-### gmail-monitor — end-to-end test confirmed ✅
-- Triggered `gmail-monitor.yml` via `workflow_dispatch`
-- Script found 20 unread matching emails, classified correctly (PR comment notifications skipped, failure emails matched)
-- WhatsApp alert received on Kate's phone — full path confirmed: Gmail unread → dedup check → Meta Cloud API → delivered
-- Note: deleted `gmail_processed_emails` entries had been re-inserted by the scheduled cron between delete and trigger; used a fresh unread email to confirm the trigger path
+### I-1 — Integration check smart-send (PR #167) ✅
+- Run 1 (1am PDT, `0 8 * * *`): always sends (daily baseline)
+- Runs 2+3 (9am, 5pm PDT): silent when passed; sends immediately on any failure
+- Manual `workflow_dispatch`: always sends
+- Mechanism: `INTEGRATION_CHECK_SCHEDULE: ${{ github.event.schedule }}` passed as env var; script checks against first-run cron string
+- **No change to failure behavior** — failures always alert regardless of run number
 
-### M3-7 — parked
-- Kate is editing the recording file herself. Parked until she drops the trimmed file.
-- When ready: copy to `docs/screenshots/roster-delivery.mp4`, embed in README after the two screenshots, push direct to main (K-6 bypass).
-
----
-
-## Completed This Session (April 3, session 5)
-
-_(No code changes. Session was orientation + M3-7 setup. Kate provided the recording file and left.)_
+### K-4 — Second notify recipient ✅
+- Kate added second E.164 number to `NOTIFY_RECIPIENTS` Vercel env var (comma-separated)
+- Takes effect on next notify run — both numbers receive roster images from 4am Apr 6 onward
 
 ---
 
-## Completed This Session (April 3, session 3–4)
+## Completed This Session (April 3, sessions 3–7)
 
-### K-2 — Maverick backfill
-Kate ran: `UPDATE boardings SET cancelled_at = NOW(), cancellation_reason = 'appointment_archived' WHERE external_id = 'C63QgVl9';`
-✅ DONE.
+### F-1 — WhatsApp delivery observability (PR #165) ✅
+- `message_delivery_status` table live (migration 024)
+- `POST /api/webhooks/meta` deployed, HMAC-SHA256 verified, `messages` field subscribed
+- End-to-end verified: real wamid row (status='sent') from friday-pm notify + delivered row from Meta test webhook
+- **Remaining gap:** Meta app is unpublished — real delivery events blocked until K-7 (Kate action)
 
-### K-3 — Tula N/C 3/23-26 (C63Qga3r)
-Investigated: **N/C = New Client**, not "No Charge". The appointment was an Initial Evaluation daytime visit (6h22m, $60 flat fee). The sync pipeline correctly excluded it via the detail-page service_type ("Initial Evaluation" → `/initial\s+eval/i`). The integration check only sees the schedule title and had no pattern for the "N/C" abbreviation → false positive.
+### M3-7 — Screen recording (PARKED)
+- Recording file: `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4
+- Kate editing the file herself. Parked until she drops the trimmed file.
 
-Fix: added `/\bN\/C\b/i` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-check.js`. Also synced missing `/\bdaycare\b/i` in the test mirror. PR #161 merged.
-✅ DONE.
+### Other Apr 3 completions
+- M3-6: doc staleness CI check (PR #163)
+- M3-8: screenshots in README (pushed direct to main)
+- K-6: admin bypass on ruleset — docs push direct to main, no PR needed
+- gmail-monitor: end-to-end confirmed on Kate's phone
 
 ---
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 0 — K-7: Publish Meta app (🔴 HIGH PRIORITY — EXPIRY RISK)
+### Step 0 — K-7: Publish Meta app (🔴 HIGH — KATE ACTION — START TODAY)
 
-**Status:** Not started. **This must be done ASAP — Meta test accounts expire, and Business Verification + App Review together can take 5–10+ business days. Any interruption = no WhatsApp messages delivered.**
+**Risk:** Meta test accounts expire. Business Verification + App Review together take 5–10+ business days. If it expires before publish → **complete WhatsApp outage** — all sends fail silently.
 
-**What blocks if K-7 isn't done:**
-- Real `delivered`/`read`/`failed` webhook events never fire → `message_delivery_status` stays dark
-- Once the Meta test account expires → ALL message sends fail (complete service outage)
-
-**Steps (Kate does this — start immediately):**
-1. [developers.facebook.com](https://developers.facebook.com) → QApp → App Review → Request permissions (`whatsapp_business_messaging`)
+**Steps (Kate does both in parallel, today):**
+1. [developers.facebook.com](https://developers.facebook.com) → QApp → App Review → Request `whatsapp_business_messaging` permission
 2. [business.facebook.com](https://business.facebook.com) → Settings → Business info → Verification → submit business documents
-3. App Review and Business Verification can run in parallel — start both on the same day
-4. Once published, production delivery events flow automatically → verify by checking `message_delivery_status` after next notify run
+3. Once published: real `delivered`/`read`/`failed` events flow to `POST /api/webhooks/meta` → verify in `message_delivery_status` after next notify run
 
-**Decision rule:** If there is ANY doubt about the expiry timeline, start this today. Do not let this slip.
+**No code needed.** Webhook is already wired and verified.
 
 ---
 
 ### Step 1 — M3-7: Screen recording (PARKED — Kate editing)
 
-**Status:** Kate is trimming the recording file herself. When she drops the trimmed file, embed it in README and push direct to main (K-6 bypass).
-
 **Recording file:** `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4. Kate may supply a trimmed version instead.
 
-**Decision gate (ask Kate first):**
-- **Option A — Use as-is:** Copy to `docs/screenshots/roster-delivery.mp4`, embed with `<video>` tag in README.
-- **Option B — Trim via ffmpeg:** `brew install ffmpeg` first, Kate specifies start/end times, agent trims.
-- **Option C — Kate trimmed in QuickTime:** Drop trimmed file, agent embeds.
+**Decision gate (ask Kate at session start):**
+- **Option A — Use as-is:** Copy to `docs/screenshots/roster-delivery.mp4`, embed with `<video>` tag
+- **Option B — Trim via ffmpeg:** `brew install ffmpeg` first, Kate specifies start/end times, agent trims
+- **Option C — Kate trimmed in QuickTime:** Drop trimmed file, agent embeds
 
 **Once file is ready:**
 1. Copy to `docs/screenshots/roster-delivery.mp4`
-2. Add to README under "What it looks like" section, after `![Roster image](docs/screenshots/roster-image.jpeg)`, before the `---` separator
-3. Embed as: `<video src="docs/screenshots/roster-delivery.mp4" controls width="400"></video>`
-4. Caption: "End-to-end flow: notify job fires → WhatsApp message received → image opens with 'as of' timestamp"
-5. Push direct to main (K-6 bypass — docs-only)
-6. Update SESSION_HANDOFF.md and SPRINT_PLAN.md
-
-### ~~Step 2 — K-4: Second notify recipient~~ ✅ Done April 5
-
-Second number added to `NOTIFY_RECIPIENTS` Vercel env var (comma-separated). Takes effect on the next notify run.
-
-**GitHub video embed syntax:**
+2. In README, after `![Roster image](docs/screenshots/roster-image.jpeg)`, before the `---` separator, add:
 ```html
 <video src="docs/screenshots/roster-delivery.mp4" controls width="400"></video>
 ```
-GitHub renders this inline in markdown. Caption goes above or below as plain text.
-
-**M3 remaining (ordered):**
-
-| # | Ticket | Gate |
-|---|--------|------|
-| ~~K-1b phone confirm~~ | ✅ Done April 2 | — |
-| ~~job_docs audit~~ | ✅ PRs #153–156 merged April 3 | — |
-| ~~M3-4 verify~~ | ✅ Done April 2 — "as of" confirmed on Kate's phone | — |
-| ~~K-6~~ | ✅ Done April 3 — admin bypass on ruleset; docs push direct to main | — |
-| ~~M3-8~~ | ✅ Done April 3 — screenshots added to README | — |
-| ~~M3-6~~ | ✅ Done April 3 — doc staleness CI check, PR #163 merged | — |
-| M3-7 | Screen recording | Kate supplies file → agent embeds in README |
-| M3-10 | WhatsApp delivery receipts (Meta Webhooks) | Last — highest complexity |
+3. Caption: "End-to-end flow: notify job fires → WhatsApp message received → image opens with 'as of' timestamp"
+4. Push direct to main (K-6 bypass — docs-only)
+5. Update SESSION_HANDOFF.md and SPRINT_PLAN.md
 
 ---
 
-## K-6 — Docs direct-push to main
+### Step 2 — F-2: Message log page (next code ticket after M3-7)
 
-**COMPLETE. April 3, 2026.**
+**What:** Store every outbound WhatsApp message (recipient, content, timestamp, type, wamid) to a `message_log` table at send time. New app page showing last 5 days of sends. Use this when delivery is in question — decouples "did the job run?" from "did the message go out?"
 
-Added admin role (RepositoryRole, actor_id=5) as bypass actor on the `protection` ruleset (id 13512551) with `bypass_mode: always`. Kate can now push directly to main without a PR. The CI requirements still apply to PRs from any branch — bypass only affects direct pushes by the repo admin.
+**Complexity:** High — table schema + 7 write sites in `notifyWhatsApp.js` + new app route + page UI. Plan carefully before building.
+
+---
+
+## Pending Kate Actions
+
+| # | Action | Blocks | Priority |
+|---|--------|--------|----------|
+| ~~K-2~~ | ✅ Done April 3 | — | — |
+| ~~K-3~~ | ✅ Done April 3 | — | — |
+| ~~K-4~~ | ✅ Done April 5 — second number in `NOTIFY_RECIPIENTS` Vercel env var | — | — |
+| K-5 | Add Anthropic API credits at console.anthropic.com | Integration check Step 3 vision name-check (currently silently skipped) | 🟢 Low |
+| K-7 | **URGENT** Publish Meta app — App Review + Business Verification at developers.facebook.com. Takes 5–10+ business days. Start immediately — expiry = complete WhatsApp outage. | Service continuity + real delivery events in `message_delivery_status` | 🔴 **HIGH — start today** |
+
+---
+
+## Future Backlog (post-M3)
+
+| # | Ticket | Complexity | Notes |
+|---|--------|------------|-------|
+| F-2 | **Message log page** — `message_log` table + 7 write sites + new app route + page UI | High | View sent messages via app; use when delivery is in question |
+| #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6 | Low | Dev tooling only, no prod impact |
+
+---
+
+## Carry-Forward (low priority)
+
+- `cron-schedule.js` ADD filter case-sensitive — `/\badd\b/` doesn't match uppercase `ADD`
+- Claude credits for integration check Step 3 vision name-check — silently skipped until K-5 done
+- Store datetimes in PST instead of UTC — tech debt, no user impact yet
 
 ---
 
 ## Architecture Reference
 
-### Notify flow (updated for K-1b)
+### Notify flow
 ```
 GitHub Actions (4 workflows: M-F 4am/7am/8:30am + Fri 3pm PDT)
   → GET /api/notify?window=4am|7am|830am|friday-pm
   → refreshDaytimeSchedule (src/lib/notifyHelpers.js) → getPictureOfDay → computeWorkerDiff
   → /api/roster-image?date=YYYY-MM-DD&token=...&ts=<jobRunAt ISO>
   → PNG buffer → POST /v18.0/{PHONE_NUMBER_ID}/media → media_id
-  → Meta Cloud API template send: { image: { id: media_id } } → NOTIFY_RECIPIENTS
+  → Meta Cloud API template send: { image: { id: media_id } } → NOTIFY_RECIPIENTS (2 numbers)
   → hash stored in cron_health (7am/8:30am skip if no change; friday-pm always sends)
 ```
 
@@ -170,30 +162,39 @@ cron-detail.js (00:10)      → runDetailSync() × 1 item → fetch detail, map 
 cron-detail-2.js (00:15)    → re-exports cron-detail (second Vercel path = double throughput)
 ```
 
+### Integration check smart-send (I-1, #167)
+```
+integration-check.yml passes: INTEGRATION_CHECK_SCHEDULE: ${{ github.event.schedule }}
+scripts/integration-check.js:
+  FIRST_RUN_SCHEDULE = '0 8 * * *'  (1am PDT)
+  alwaysSend = !INTEGRATION_CHECK_SCHEDULE || INTEGRATION_CHECK_SCHEDULE === FIRST_RUN_SCHEDULE
+  → if (alwaysSend || !passed): send WhatsApp
+  → else: log suppression, skip send
+```
+
 ### Template name config
 ```
 notifyWhatsApp.js:28  ALERT_TEMPLATE  = process.env.META_ALERT_TEMPLATE  || 'dog_boarding_alert'
 notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog_boarding_roster'
 ```
-`META_ROSTER_TEMPLATE=dog_boarding_roster_3` is set in Vercel (IMAGE header template, Utility category, confirmed delivered April 2).
+`META_ROSTER_TEMPLATE=dog_boarding_roster_3` set in Vercel (Utility category, confirmed delivered April 2).
 
 ### Key files
 | File | Purpose |
 |---|---|
-| `src/lib/notifyWhatsApp.js` | Meta Cloud API wrapper — `metaMediaUpload` (new, K-1b), `sendRosterImage`, `sendTextMessage` |
-| `src/lib/scraper/syncRunner.js` | `runScheduleSync`, `runDetailSync` — shared sync logic (v4.5) |
-| `scripts/integration-check.js` | Integration check script (GH Actions) |
-| `src/lib/pictureOfDay.js` | getPictureOfDay, computeWorkerDiff, hashPicture |
-| `api/roster-image.js` | Token-gated PNG endpoint; `formatAsOf` (M3-4); `timingSafeEqual` auth (M3-5); weekend path fixed (#148) |
+| `src/lib/notifyWhatsApp.js` | Meta Cloud API wrapper — `metaMediaUpload`, `sendRosterImage`, `sendTextMessage` |
+| `src/lib/messageDeliveryStatus.js` | `recordSentMessages` — writes wamid + status to `message_delivery_status` |
+| `api/webhooks/meta.js` | Incoming Meta webhook — HMAC-SHA256 verify, stores delivery events |
+| `scripts/integration-check.js` | Integration check — Playwright + Claude vision + DB compare; smart-send logic |
+| `src/lib/scraper/syncRunner.js` | `runScheduleSync`, `runDetailSync` — shared sync logic |
+| `src/lib/pictureOfDay.js` | `getPictureOfDay`, `computeWorkerDiff`, `hashPicture` |
+| `api/roster-image.js` | Token-gated PNG endpoint; `formatAsOf`; `timingSafeEqual` auth; weekend path |
 | `api/notify.js` | Notify orchestrator (4am/7am/830am/friday-pm windows) |
-| `src/lib/notifyHelpers.js` | `refreshDaytimeSchedule` (extracted from notify.js for testability) |
-| `scripts/cron-health-check.js` | Midnight cron health checker (GH Actions 00:30 UTC) |
+| `src/lib/notifyHelpers.js` | `refreshDaytimeSchedule` (extracted for testability) |
+| `scripts/cron-health-check.js` | Midnight cron health checker |
 | `scripts/gmail-monitor.js` | Gmail infrastructure alert monitor (GH Actions hourly) |
-| `src/lib/scraper/sync.js` | runSync, 6-layer filter |
-| `src/lib/scraper/extraction.js` | parseAppointmentPage + booking_status |
-| `src/lib/scraper/daytimeSchedule.js` | parseDaytimeSchedulePage; attr() regex cache (M3-5) |
 
-### GitHub Actions repo secrets (all must be Repository secrets, NOT environment secrets)
+### GitHub Actions repo secrets
 | Secret | Status |
 |---|---|
 | `VITE_SUPABASE_URL` | ✅ Set |
@@ -201,10 +202,10 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 | `EXTERNAL_SITE_USERNAME` | ✅ Set |
 | `EXTERNAL_SITE_PASSWORD` | ✅ Set |
 | `ANTHROPIC_API_KEY` | ✅ Set (no credits — Step 3 silently skipped) |
-| `NOTIFY_RECIPIENTS` | ✅ Set (1 number — second pending Kate) |
-| `INTEGRATION_CHECK_RECIPIENTS` | ✅ Set |
+| `INTEGRATION_CHECK_RECIPIENTS` | ✅ Set (Kate only) |
 | `META_PHONE_NUMBER_ID` | ✅ Set |
 | `META_WHATSAPP_TOKEN` | ✅ Set |
+| `META_WEBHOOK_VERIFY_TOKEN` | ✅ Set |
 | `GMAIL_CLIENT_ID` | ✅ Set |
 | `GMAIL_CLIENT_SECRET` | ✅ Set |
 | `GMAIL_REFRESH_TOKEN` | ✅ Set |
@@ -215,7 +216,8 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 | `META_ROSTER_TEMPLATE` | `dog_boarding_roster_3` |
 | `META_WHATSAPP_TOKEN` | ✅ Set |
 | `META_PHONE_NUMBER_ID` | ✅ Set |
-| `NOTIFY_RECIPIENTS` | ✅ Set |
+| `META_WEBHOOK_VERIFY_TOKEN` | ✅ Set |
+| `NOTIFY_RECIPIENTS` | ✅ Set — **2 numbers** (updated April 5) |
 | `VITE_SUPABASE_URL` | ✅ Set |
 | `VITE_SUPABASE_ANON_KEY` | ✅ Set |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ Set |
@@ -236,37 +238,6 @@ notifyWhatsApp.js:29  ROSTER_TEMPLATE = process.env.META_ROSTER_TEMPLATE || 'dog
 
 ---
 
-## Pending Kate Actions
-
-| # | Action | Blocks | Priority |
-|---|--------|--------|----------|
-| ~~K-2~~ | ✅ Done April 3 — Maverick backfilled | — | — |
-| ~~K-3~~ | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged | — | — |
-| ~~K-4~~ | ✅ Done April 5 — second number added to `NOTIFY_RECIPIENTS` Vercel env var | — | — |
-| K-5 | Add Anthropic API credits at console.anthropic.com | Step 3 vision name-check | 🟢 Low |
-| K-7 | **URGENT** Publish Meta app — App Review + Business Verification at developers.facebook.com → QApp. Can take 5–10+ business days. Start immediately — test account expiry = complete WhatsApp outage. | Service continuity + real webhook delivery events | 🔴 **HIGH — start today** |
-
----
-
-## Future Backlog (post-M3)
-
-| # | Ticket | Complexity | Notes |
-|---|--------|------------|-------|
-| #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6 | Low | Dev tooling only |
-| ~~F-1~~ | ~~Message delivery observability~~ | ✅ Done April 3 | Merged #165, verified end-to-end |
-| ~~I-1~~ | ~~Integration check smart-send~~ | ✅ PR #167 open | Run 1 always sends; runs 2+3 silent on pass |
-| F-2 | **Message log page** — store every outbound message (recipient, content, timestamp, type) to a `message_log` table at send time. New app page: last 5 days, latest first. Use this to verify what was sent if a delivery question arises. | High | Table schema + 7 write sites + new app route + page UI |
-
----
-
-## Carry-Forward (low priority)
-
-- `cron-schedule.js` ADD filter case-sensitive — `/\badd\b/` doesn't match uppercase `ADD`. Low priority.
-- Claude credits for integration check name-check — Step 3 silently skipped.
-- Store datetimes in PST instead of UTC — tech debt, no user impact yet.
-
----
-
 ## Useful SQL
 
 ```sql
@@ -280,12 +251,19 @@ SELECT status, type, COUNT(*) FROM sync_queue GROUP BY status, type ORDER BY typ
 SELECT b.external_id, d.name, b.billed_amount, b.night_rate, b.updated_at
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
 ORDER BY b.updated_at DESC LIMIT 20;
+
+-- Delivery status (F-1)
+SELECT wamid, status, recipient_masked, job_name, created_at
+FROM message_delivery_status ORDER BY created_at DESC LIMIT 20;
 ```
 
 ---
 
 ## GitHub Releases
 - v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0, v5.2.0, v5.3.0, **v5.4.0 (latest)**
+
+## K-6 — Docs direct-push to main
+Added admin role (RepositoryRole, actor_id=5) as bypass actor on the `protection` ruleset (id 13512551) with `bypass_mode: always`. Docs-only pushes go direct to main without a PR. CI requirements still apply to all PRs.
 
 ## Archive
 - v4.5 session: `docs/archive/SESSION_HANDOFF_v4.5_final.md`
