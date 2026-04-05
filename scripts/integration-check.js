@@ -56,6 +56,15 @@ const BASE_URL = 'https://agirlandyourdog.com';
 const WINDOW_DAYS = 7;
 const PLAYWRIGHT_TIMEOUT_MS = 30_000;
 
+// The 1am PDT run (08:00 UTC) is the daily baseline — always send its report.
+// Runs 2 (9am PDT, 16:00 UTC) and 3 (5pm PDT, 00:00 UTC) are suppressed when
+// the check passes — if nothing is wrong, a repeat "all good" message is noise.
+// Manual workflow_dispatch has an empty schedule string — treat as always-send.
+const FIRST_RUN_SCHEDULE = '0 8 * * *';
+const alwaysSend =
+  !process.env.INTEGRATION_CHECK_SCHEDULE ||
+  process.env.INTEGRATION_CHECK_SCHEDULE === FIRST_RUN_SCHEDULE;
+
 // Non-boarding title filter — uses the canonical definition from config.js so
 // all sync execution paths (browser UI, Vercel crons, integration check) behave
 // identically. See SCRAPER_CONFIG.nonBoardingPatterns for the full rationale.
@@ -635,7 +644,11 @@ async function main() {
   }
 
   console.log('[IntegCheck] === Final report ===\n%s', message);
-  await sendAlertMessage(message, supabase);
+  if (alwaysSend || !passed) {
+    await sendAlertMessage(message, supabase);
+  } else {
+    console.log('[IntegCheck] Run 2/3 — check passed, suppressing WhatsApp (no news is good news)');
+  }
 
   console.log('[IntegCheck] === Done === (%d issue(s))', allIssues.length);
   process.exit(0); // job succeeded — data issues are content of the report, not a job failure
