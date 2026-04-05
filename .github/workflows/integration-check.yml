@@ -57,3 +57,4 @@ jobs:
           META_PHONE_NUMBER_ID: ${{ secrets.META_PHONE_NUMBER_ID }}
           META_WHATSAPP_TOKEN: ${{ secrets.META_WHATSAPP_TOKEN }}
           INTEGRATION_CHECK_RECIPIENTS: ${{ secrets.INTEGRATION_CHECK_RECIPIENTS }}
+          INTEGRATION_CHECK_SCHEDULE: ${{ github.event.schedule }}
