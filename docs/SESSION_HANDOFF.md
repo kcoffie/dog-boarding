@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 5, 2026 (session 9) — Status report written (docs/STATUS_REPORT.md). Gap tickets G-1 through G-5 added to SPRINT_PLAN.md. No code changes. K-7 still URGENT (Kate action). M3-7 still parked. F-2 is next code ticket.
+**Last updated:** April 7, 2026 (session 10) — No code changes. Investigated morning alerts: (1) 3× "Failed preview deployments" = Dependabot PRs for eslint 10 + vite 8 (CI expected to fail, harmless); (2) cron health alert = Vercel missed cron-auth + cron-schedule on April 7 midnight UTC, cron-detail ran fine, self-healed. Reviewed 3 roster images received (4:52am, 8:05am, 9:32am) — Max Posse changes (Mabel, Oskar) explained. Ticket N-1 added: notify diff UX (suppress UPDATED! on 4am; blue intra-day diff overlay on 7am/8:30am). N-1 is next code ticket after M3-7.
 
 ---
 

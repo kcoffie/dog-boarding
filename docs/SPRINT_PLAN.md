@@ -253,11 +253,70 @@ This is distinct from:
 
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
+| N-1 | **Notify diff UX** — suppress UPDATED! on 4am; 7am/8:30am overlay blue for intra-day changes | Medium | See full ticket below |
 | #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6. Dependabot PRs #106/#107 closed (CI failed — breaking changes). Needs intentional upgrade. | Low | Dev tooling only, no prod impact |
 | F-1 | **Message delivery observability** — webhook + wamid storage, no alerting layer. PR #165 open. | Medium | ✅ Built April 3, 2026. Pending: migration 024 + META_WEBHOOK_VERIFY_TOKEN + Meta Business Manager webhook registration. |
 | F-2 | **Message log page** — store every outbound message (recipient, content, timestamp, type) to a `message_log` table at send time. New app page: last 5 days, latest first. Decouples "did the job run?" from "did the delivery work?". | High | Table schema + 7 write sites + new app route + page UI |
 
 **If M3-10 feels too large:** Do F-1 first (webhooks + storage, no alert), then add alerting as a follow-on. The webhook infrastructure is shared.
+
+---
+
+### N-1 — Notify diff UX: suppress UPDATED! on 4am; blue intra-day diff on 7am/8:30am
+
+**Status:** Not started.
+
+**What:** Three behavioral changes to the roster notify job:
+
+**1. 4am — suppress UPDATED! badge.**
+The 4am image is the day's baseline. No prior send exists to compare against, so the badge has no meaning. Suppress it unconditionally on the 4am window.
+
+**2. 7am/8:30am — keep existing today-vs-yesterday green/red diff.**
+No change to current behavior. Green `+` = new vs yesterday. Red strikethrough = removed vs yesterday. This stays.
+
+**3. 7am/8:30am — overlay blue for intra-day changes since previous send.**
+Dogs whose state changed between the previous send and the current one are shown in blue instead of green/red. Blue answers "what's new since the last image you received?"
+
+Color rules (blue takes priority over green/red):
+
+- **Blue `+`** — dog added to today's roster since the previous send (wasn't in 4am, appears in 7am)
+- **Blue strikethrough** — dog removed from today's roster since the previous send (was in 4am, gone in 7am — appointment cancelled)
+- **Blue `+` or blue strikethrough** — dog whose +/- status flipped between sends (e.g., was `– Mabel` red in 4am, now `+ Mabel` in 7am → show as blue `+`)
+- **Green/red (unchanged)** — dog whose state did not change since the previous send
+
+Example from April 7:
+
+- 7am image: Mabel was `– Mabel` (red) in 4am, flipped to `+ Mabel` (green) by 7am → renders **blue `+`**
+- 8:30am image: Mabel unchanged since 7am → renders green `+` (normal). Oskar flipped → renders **blue `+`**
+
+**4am has no previous send → no blue shown. Falls back to green/red only.**
+
+**Technical approach:**
+
+- **Badge suppression (item 1):** Pass `sendWindow` into the image renderer. When `sendWindow === '4am'`, force `hasUpdates = false`. One-liner, no schema change.
+
+- **Intra-day diff (item 3):** Requires storing the previous send's roster snapshot alongside the existing hash in notify state.
+  - Extend the notify state table/column to store `snapshot` JSON (the `workers` array: per-worker list of `{ series_id, isAdded, isRemoved }`) at each send.
+  - On 7am/8:30am: load prior snapshot → compute intra-day diff (compare current series_id+status against snapshot) → produce a `Set` of series_ids that changed.
+  - Pass the changed-set into the image renderer; renderer uses blue for any dog whose series_id is in the set.
+  - Graceful fallback: if no snapshot exists for today (4am missed or first run), render green/red only — no blue.
+
+**Files to read before coding:**
+
+- `src/lib/pictureOfDay.js` — `getPictureOfDay`, `computeWorkerDiff`
+- `api/notify.js` — orchestrator; where hash is read/written; where send window is known
+- `api/roster-image.js` — where `hasUpdates` drives UPDATED! badge and dog colors are rendered
+- DB table that stores `last_hash` (check `notify.js` for the table/column name)
+
+**Definition of Done:**
+
+- [ ] 4am image: no UPDATED! badge
+- [ ] 7am/8:30am image: UPDATED! badge present; green/red today-vs-yesterday diff unchanged; blue overlay on any dog whose state changed since the previous send
+- [ ] Blue strikethrough for dogs removed intra-day (appointment cancelled since last send)
+- [ ] Blue `+` for dogs added intra-day (new appointment since last send)
+- [ ] If no prior snapshot for today, gracefully renders green/red only (no crash, no missing dogs)
+- [ ] Unit tests: (a) 4am badge suppression, (b) blue overlay with a stored snapshot, (c) fallback when no snapshot
+- [ ] Deployed + verified on a real 3-send morning cycle
 
 ---
 
@@ -278,6 +337,7 @@ These were surfaced in the April 5, 2026 status review. Each needs a "do it / sk
 ## Completed Work
 
 ### Milestone 0 — Unblock ✅
+
 | # | Ticket | Status |
 |---|--------|--------|
 | M0-1 | Twilio sandbox → Meta Cloud API WhatsApp sender | ✅ LIVE |
@@ -285,6 +345,7 @@ These were surfaced in the April 5, 2026 status review. Each needs a "do it / sk
 | M0-3 | Verify all 4 notify + integration check alerts on both numbers | ⏳ Blocked on K-4 |
 
 ### Milestone 1 — Operational Maturity ✅
+
 | # | Ticket | Status |
 |---|--------|--------|
 | M1-1 | Direct cron failure alerting (2+ consecutive errors → WhatsApp) | ✅ LIVE |
@@ -292,11 +353,13 @@ These were surfaced in the April 5, 2026 status review. Each needs a "do it / sk
 | M1-3 | Anthropic API credits → activate Claude vision Step 3 | ⏳ Pending Kate (K-5) |
 
 ### Milestone 2 — Gmail Monitor ✅
+
 | # | Ticket | Status |
 |---|--------|--------|
 | M2-1 | Gmail monitoring agent — GH Actions hourly + Gmail API + WhatsApp alert | ✅ LIVE |
 
 ### Milestone 3 (Completed Portions) ✅
+
 | # | Ticket | Status |
 |---|--------|--------|
 | M3-1 | README overhaul — mermaid diagram, architecture, ADR links | ✅ DONE |
@@ -319,6 +382,7 @@ Every ticket follows this sequence, no shortcuts:
 6. **Verify Vercel deployment** — confirm deploy succeeded. If the ticket changes job behavior, trigger the job and confirm the output.
 
 **Standing process rules:**
+
 - HTML fixture added for every new scraper behavior
 - GH Issue created per ticket; commit messages reference issue number
 - SESSION_HANDOFF.md updated in each PR (not saved for end of session)
