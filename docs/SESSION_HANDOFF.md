@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 7, 2026 (session 10) — No code changes. Investigated morning alerts: (1) 3× "Failed preview deployments" = Dependabot PRs for eslint 10 + vite 8 (CI expected to fail, harmless); (2) cron health alert = Vercel missed cron-auth + cron-schedule on April 7 midnight UTC, cron-detail ran fine, self-healed. Reviewed 3 roster images received (4:52am, 8:05am, 9:32am) — Max Posse changes (Mabel, Oskar) explained. Ticket N-1 added: notify diff UX (suppress UPDATED! on 4am; blue intra-day diff overlay on 7am/8:30am). N-1 is next code ticket after M3-7.
+**Last updated:** April 8, 2026 (session 11) — No code changes. Investigation + planning session. (1) G-6 added: second number not receiving — DB confirmed zero wamid rows for second number, only 7375. Root cause: Meta dev-mode requires test recipient opt-in. Kate added second number to Meta API Setup test recipients April 8 — verify on next notify run (~4am Apr 9). (2) Deep dive on K-7 (Meta app publish): confirmed app is Unpublished, path is Dashboard → Test use cases → Check requirements → Publish (do NOT click "Become a Tech Provider"). Token expiry risk discussed — Kate should check token expiry in Access Token Debugger. (3) SPRINT_PLAN G-6 ticket added and updated to reflect partial fix.
 
 ---
 
@@ -30,6 +30,25 @@
 
 ### Meta template status
 `META_ROSTER_TEMPLATE=dog_boarding_roster_3` set in Vercel — Utility category, confirmed delivered April 2.
+
+---
+
+## Completed This Session (April 8, session 11)
+
+### G-6 — Second number investigation + partial fix ✅
+- Queried `message_delivery_status` — confirmed zero rows for second number; only `***-***-7375` receiving
+- Root cause: Meta app is in dev mode (K-7 unpublished) — dev-mode requires each recipient to manually opt in as a test recipient
+- Kate added second number to Meta API Setup → "To" → Add phone number on April 8
+- Second number should receive opt-in confirmation from Meta; next notify run (~4am Apr 9) will confirm delivery
+- Permanent fix is K-7 (app publish removes test-recipient restriction entirely)
+
+### K-7 — Meta publish path clarified ✅
+- Dashboard screenshot reviewed: app is Unpublished
+- Correct path: Dashboard → "Test use cases" → "Check that all requirements are met, then publish your app"
+- **Do NOT click "Become a Tech Provider"** — that is for ISVs/agencies building for other businesses, not needed here
+- Also click "Required actions" in left sidebar to surface any hidden blockers
+- Token expiry risk: Kate should check current token expiry at developers.facebook.com → Tools → Access Token Debugger. If < 2 weeks remaining, it is a fire drill.
+- Once published: generate System User access token (permanent, never expires) → replace `META_WHATSAPP_TOKEN` in Vercel
 
 ---
 
@@ -87,14 +106,31 @@
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 0 — K-7: Publish Meta app (🔴 HIGH — KATE ACTION — START TODAY)
+### Step 0 — Verify G-6: second number receiving (check after 4am Apr 9 notify run)
 
-**Risk:** Meta test accounts expire. Business Verification + App Review together take 5–10+ business days. If it expires before publish → **complete WhatsApp outage** — all sends fail silently.
+Run: `SELECT wamid, recipient_masked, status, created_at FROM message_delivery_status ORDER BY created_at DESC LIMIT 20;`
 
-**Steps (Kate does both in parallel, today):**
-1. [developers.facebook.com](https://developers.facebook.com) → QApp → App Review → Request `whatsapp_business_messaging` permission
-2. [business.facebook.com](https://business.facebook.com) → Settings → Business info → Verification → submit business documents
-3. Once published: real `delivered`/`read`/`failed` events flow to `POST /api/webhooks/meta` → verify in `message_delivery_status` after next notify run
+Look for a second masked number appearing alongside `***-***-7375`. If it's there with `status='sent'` or `status='delivered'` — G-6 is resolved. If still only one number, escalate: check GH Actions notify logs for an error on the second send.
+
+---
+
+### Step 1 — K-7: Publish Meta app (🔴 HIGH — KATE ACTION — IN PROGRESS)
+
+**Risk:** Current `META_WHATSAPP_TOKEN` is almost certainly a 60-day expiring token. Expiry = complete WhatsApp outage, silent.
+
+**Immediate:** Check token expiry → developers.facebook.com → Tools → Access Token Debugger → paste `META_WHATSAPP_TOKEN`. If < 2 weeks, this is a fire drill.
+
+**Publish path (from Dashboard):**
+1. Click "Test use cases" → confirm/complete
+2. Click "Check that all requirements are met, then publish your app"
+3. Click "Required actions" in left sidebar — address anything flagged there
+4. **Do NOT click "Become a Tech Provider"** — not needed, adds unnecessary burden
+
+**After publish:**
+- Generate System User access token: Meta Business Settings → System Users → Generate Token → select `whatsapp_business_messaging` scope → token never expires
+- Update `META_WHATSAPP_TOKEN` in Vercel with the new permanent token
+- Verify next notify run delivers to both numbers
+- Real `delivered`/`read`/`failed` webhook events will now flow to `message_delivery_status` (F-1 already wired)
 
 **No code needed.** Webhook is already wired and verified.
 
@@ -138,6 +174,7 @@
 | ~~K-4~~ | ✅ Done April 5 — second number in `NOTIFY_RECIPIENTS` Vercel env var | — | — |
 | K-5 | Add Anthropic API credits at console.anthropic.com | Integration check Step 3 vision name-check (currently silently skipped) | 🟢 Low |
 | K-7 | **URGENT** Publish Meta app — App Review + Business Verification at developers.facebook.com. Takes 5–10+ business days. Start immediately — expiry = complete WhatsApp outage. | Service continuity + real delivery events in `message_delivery_status` | 🔴 **HIGH — start today** |
+| G-6 | **Second number not receiving messages — partial fix applied April 8.** DB confirmed only 7375 received; zero rows for second number. Root cause: dev-mode app (K-7 unpublished) requires each recipient to opt in as test recipient. Kate added second number to Meta test recipients (API Setup → To → Add phone number) April 8. Second number should receive on next notify run. **Verify:** check `message_delivery_status` for second number's wamid after next notify run. Permanent fix: K-7 publish removes test-recipient restriction entirely. | Second number delivery | 🟡 Monitor — verify on next notify run |
 
 ---
 
