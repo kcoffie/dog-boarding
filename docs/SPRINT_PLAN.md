@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 5, 2026 (session 9) — STATUS_REPORT.md written. G-1 through G-5 gap tickets added (see Gap Investigation section). K-7 still URGENT. M3-7 still parked. F-2 next code ticket._
+_Last updated: April 21, 2026 (session 12) — PR #178 merged: integration check false positive fix (Daycare Add-On Day bare-date titles). 984 tests. K-7 in progress. G-6 unverified. F-2 next code ticket._
 
 ---
 
