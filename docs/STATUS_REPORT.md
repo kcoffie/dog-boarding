@@ -1,5 +1,5 @@
 # Q Boarding — Project Status Report
-**As of April 21, 2026 | v5.4.0 LIVE**
+**As of April 21, 2026 | v5.4.0 LIVE | 984 tests**
 
 ---
 
@@ -200,7 +200,7 @@ The system is serving a real client now. But there's no documented "client accep
 
 ## Test Coverage
 
-**978 tests, 56 files, 0 failures** as of v5.4.0.
+**984 tests, 56 files, 0 failures** as of v5.4.0 + PR #178.
 
 ---
 
