@@ -46,6 +46,17 @@ export default function PrivacyPage() {
         with any third party beyond what is necessary to deliver the services listed above.
       </p>
 
+      <h2 id="data-deletion" style={{ fontSize: '1.1rem', marginTop: 32 }}>Data deletion</h2>
+      <p>
+        To request deletion of any data associated with your use of this application, email{' '}
+        <a href="mailto:kcoffie@gmail.com" style={{ color: '#2563eb' }}>kcoffie@gmail.com</a>{' '}
+        with the subject line "Data Deletion Request." Requests will be fulfilled within 30 days.
+      </p>
+      <p>
+        Because this is a private internal tool with no public user accounts, data deletion requests
+        are handled manually on a case-by-case basis.
+      </p>
+
       <h2 style={{ fontSize: '1.1rem', marginTop: 32 }}>Contact</h2>
       <p>
         Questions about this privacy policy can be directed to{' '}
