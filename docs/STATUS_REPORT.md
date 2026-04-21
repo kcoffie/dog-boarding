@@ -1,5 +1,5 @@
 # Q Boarding — Project Status Report
-**As of April 5, 2026 | v5.4.0 LIVE**
+**As of April 21, 2026 | v5.4.0 LIVE**
 
 ---
 
@@ -13,7 +13,7 @@ Q Boarding is a production-deployed automation system built for a dog boarding o
 
 The system runs fully autonomously, 7 days a week, without manual intervention. It is live at [qboarding.vercel.app](https://qboarding.vercel.app).
 
-**Current status: production-hardened and serving a real client.** The main open item is a Meta platform compliance action (K-7, described below) that must be completed by Kate immediately or the WhatsApp pipeline will go offline.
+**Current status: production-hardened and serving a real client.** The system has been running autonomously since v5.4.0. The main open item is a Meta platform compliance action (K-7, described below) — App Review + Business Verification started April 8. As of April 21 (~9 business days in), this should be near completion. **Check Meta dashboard for pending actions or approvals.**
 
 ---
 
@@ -119,15 +119,18 @@ A 22MB MP4 recording exists showing the Friday PM roster image arriving as a Wha
 
 ## What's Left (Prioritized)
 
-### 🔴 K-7 — Publish Meta App (URGENT — Kate action — starts today)
+### 🔴 K-7 — Publish Meta App (URGENT — Kate action — IN PROGRESS ~9 business days)
 
 **This is the highest-priority item in the entire project.** The Meta developer account is running on test credentials. Test accounts expire. If the account expires before the app is published, **every WhatsApp send fails silently** — no notifications, no alerts. The operator goes dark.
 
-The approval process (App Review + Business Verification) takes **5–10+ business days** each and should be run in parallel.
+The approval process (App Review + Business Verification) takes **5–10+ business days** each and were started in parallel on April 8, 2026. As of April 21, both reviews are ~9 business days in — check Meta dashboard immediately for pending actions, approval/rejection status, or token expiry warnings.
 
-**Steps:**
-1. `developers.facebook.com` → QApp → App Review → Request `whatsapp_business_messaging` permission
-2. `business.facebook.com` → Settings → Business info → Verification → submit business documents
+**What to check now:**
+1. `developers.facebook.com` → QApp → App Review — any pending review decisions?
+2. `business.facebook.com` → Settings → Business info → Verification — any documents requested?
+3. Tools → Access Token Debugger → paste `META_WHATSAPP_TOKEN` — check expiry. If < 2 weeks, fire drill.
+
+**After approval:** Generate permanent System User token → update `META_WHATSAPP_TOKEN` in Vercel → real `delivered`/`read`/`failed` events will start flowing into `message_delivery_status`.
 
 **No code needed.** This is a platform compliance action. The webhook is already wired. Once published, real `delivered`/`read`/`failed` events will start flowing into `message_delivery_status`.
 
@@ -213,4 +216,5 @@ The system is serving a real client now. But there's no documented "client accep
 | Cron health check | ✅ Running |
 | Gmail monitor | ✅ Running |
 | WhatsApp delivery observability | ✅ Table live, webhook wired — real events pending K-7 |
-| Meta app (production) | ⚠️ Unpublished — K-7 required immediately |
+| Meta app (production) | ⚠️ Under review — K-7 started April 8, check dashboard for status |
+| Second notify recipient (G-6) | 🟡 Needs DB verify — fix applied April 8, not yet confirmed |
