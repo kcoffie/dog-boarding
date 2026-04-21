@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 21, 2026 (session 12) — Fixed integration check false positive on Daycare Add-On Day appointments (PR #178, merged). 984 tests. Investigated alert Kate received: Mabel C63QggUE, title "4/21" — sync correctly skipped it (all day services / Daycare Add-On Day), integration check had no filter for bare-date titles. Added `/^\d+\/\d+$/` to DAYCARE_ONLY_PATTERNS. K-7 (Meta app publish) still in progress ~9 business days. G-6 (second number) still needs DB verification. Next code ticket: F-2 (message log page).
+**Last updated:** April 21, 2026 (session 13) — G-6 RESOLVED: second number now receiving. Root cause was a typo in NOTIFY_RECIPIENTS (`4562` instead of `5462`) since April 5. Fixed in Vercel env var. DB confirmed both `***-***-7375` (read) and `***-***-5462` (delivered) on test send. K-7 re-scoped: app uses Meta test phone number (+1 555 153 3723, expires ~July 2); publishing requires registered business (Kate doesn't have one); dev mode with ≤5 test recipients is the correct long-term model. Added /privacy and /terms pages (PRs #180, direct push) for Meta app settings. Test number expiry ~July 2 is the new deadline — need a real phone number before then. Next code ticket: F-2 (message log page).
 
 ---
 
@@ -7,7 +7,7 @@
 
 - **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
 - **984 tests, 56 files, 0 failures**
-- **main clean at `64bfc02`**
+- **main clean at `2ada4c1`**
 
 ### Recent merges (newest first)
 | PR | What |
@@ -30,6 +30,25 @@
 
 ### Meta template status
 `META_ROSTER_TEMPLATE=dog_boarding_roster_3` set in Vercel — Utility category, confirmed delivered April 2.
+
+---
+
+## Completed This Session (April 21, session 13)
+
+### G-6 — Second number receiving ✅ RESOLVED
+- Root cause: typo in `NOTIFY_RECIPIENTS` Vercel env var — `+14159394562` instead of `+14159395462` (digits transposed since April 5)
+- Fix: corrected to `+18312477375,+14159395462` in Vercel
+- DB verified: `***-***-5462` shows `sent` → `delivered` on test send; `***-***-7375` shows `sent` → `delivered` → `read`
+- Nothing was wrong with Meta setup — pure typo
+
+### K-7 — Re-scoped: dev mode is the correct long-term model ✅
+- App uses Meta test phone number (+1 555 153 3723, Phone Number ID: 1073787652481572)
+- Test number expires ~July 2, 2026 (90 days from ~April 3)
+- Publishing app requires Business Verification which requires a registered business — Kate does not have one
+- Dev mode supports up to 5 test recipients — correct model for this use case (2–5 known recipients)
+- **No app publish needed.** K-7 closed as not applicable.
+- **New deadline: replace test number before ~July 2.** Requires a phone number not currently on WhatsApp (Google Voice, VoIP, secondary SIM). Kate to arrange.
+- Added `/privacy` (PR #180) and `/terms` (direct push) pages to app for Meta App Settings requirements
 
 ---
 
@@ -103,7 +122,7 @@
 - `message_delivery_status` table live (migration 024)
 - `POST /api/webhooks/meta` deployed, HMAC-SHA256 verified, `messages` field subscribed
 - End-to-end verified: real wamid row (status='sent') from friday-pm notify + delivered row from Meta test webhook
-- **Remaining gap:** Meta app is unpublished — real delivery events blocked until K-7 (Kate action)
+- **Note:** App uses Meta test phone number in dev mode. Real `delivered`/`read` events flow correctly — confirmed April 21.
 
 ### M3-7 — Screen recording (PARKED)
 - Recording file: `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4
@@ -119,46 +138,25 @@
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 0 — Verify G-6: second number receiving (overdue — should have been checked Apr 9)
+### Step 0 — F-2: Message log page (next code ticket)
 
-Kate added second number to Meta test recipients on April 8. Has not been confirmed yet.
+### Step 1 — K-8: Replace test phone number (deadline ~July 2, 2026)
 
-Run: `SELECT wamid, recipient_masked, status, created_at FROM message_delivery_status ORDER BY created_at DESC LIMIT 20;`
+**Risk:** Meta test phone number (+1 555 153 3723) expires 90 days from ~April 3 = ~July 2. After that, all WhatsApp sends stop.
 
-Look for a second masked number alongside `***-***-7375`. If present → G-6 resolved. If still only one number → check GH Actions notify logs for an error on the second send.
+**What to do:** Get a phone number not currently on WhatsApp — easiest is Google Voice (voice.google.com, free). Then:
+1. Meta API Setup → Step 5 "Add phone number" → enter the new number
+2. Verify via SMS/call
+3. Update `META_PHONE_NUMBER_ID` in Vercel to the new number's ID
+4. Verify next notify run sends from the new number
 
----
-
-### Step 1 — K-7: Publish Meta app (🔴 HIGH — KATE ACTION — IN PROGRESS ~9 business days)
-
-**Risk:** Current `META_WHATSAPP_TOKEN` is almost certainly a 60-day expiring token. Expiry = complete WhatsApp outage, silent.
-
-**Immediate:** Check token expiry → developers.facebook.com → Tools → Access Token Debugger → paste `META_WHATSAPP_TOKEN`. If < 2 weeks, this is a fire drill.
-
-**Publish path (from Dashboard):**
-1. Click "Test use cases" → confirm/complete
-2. Click "Check that all requirements are met, then publish your app"
-3. Click "Required actions" in left sidebar — address anything flagged there
-4. **Do NOT click "Become a Tech Provider"** — not needed, adds unnecessary burden
-
-**After publish:**
-- Generate System User access token: Meta Business Settings → System Users → Generate Token → select `whatsapp_business_messaging` scope → token never expires
-- Update `META_WHATSAPP_TOKEN` in Vercel with the new permanent token
-- Verify next notify run delivers to both numbers
-- Real `delivered`/`read`/`failed` webhook events will now flow to `message_delivery_status` (F-1 already wired)
-
-**No code needed.** Webhook is already wired and verified.
+**No registered business needed** — Meta only requires a verifiable phone number.
 
 ---
 
-### Step 1 — M3-7: Screen recording (PARKED — Kate editing)
+### Step 2 — M3-7: Screen recording (PARKED — Kate editing)
 
-**Recording file:** `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4. Kate may supply a trimmed version instead.
-
-**Decision gate (ask Kate at session start):**
-- **Option A — Use as-is:** Copy to `docs/screenshots/roster-delivery.mp4`, embed with `<video>` tag
-- **Option B — Trim via ffmpeg:** `brew install ffmpeg` first, Kate specifies start/end times, agent trims
-- **Option C — Kate trimmed in QuickTime:** Drop trimmed file, agent embeds
+**Recording file:** `/Users/kcoffie/Downloads/ScreenRecording_04-03-2026 11-10-42_1.MP4` — 22 MB MP4.
 
 **Once file is ready:**
 1. Copy to `docs/screenshots/roster-delivery.mp4`
@@ -168,11 +166,10 @@ Look for a second masked number alongside `***-***-7375`. If present → G-6 res
 ```
 3. Caption: "End-to-end flow: notify job fires → WhatsApp message received → image opens with 'as of' timestamp"
 4. Push direct to main (K-6 bypass — docs-only)
-5. Update SESSION_HANDOFF.md and SPRINT_PLAN.md
 
 ---
 
-### Step 2 — F-2: Message log page (next code ticket after M3-7)
+### Step 3 — F-2: Message log page detail
 
 **What:** Store every outbound WhatsApp message (recipient, content, timestamp, type, wamid) to a `message_log` table at send time. New app page showing last 5 days of sends. Use this when delivery is in question — decouples "did the job run?" from "did the message go out?"
 
@@ -188,8 +185,9 @@ Look for a second masked number alongside `***-***-7375`. If present → G-6 res
 | ~~K-3~~ | ✅ Done April 3 | — | — |
 | ~~K-4~~ | ✅ Done April 5 — second number in `NOTIFY_RECIPIENTS` Vercel env var | — | — |
 | K-5 | Add Anthropic API credits at console.anthropic.com | Integration check Step 3 vision name-check (currently silently skipped) | 🟢 Low |
-| K-7 | **URGENT** Publish Meta app — App Review + Business Verification at developers.facebook.com. Takes 5–10+ business days. Start immediately — expiry = complete WhatsApp outage. | Service continuity + real delivery events in `message_delivery_status` | 🔴 **HIGH — start today** |
-| G-6 | **Second number not receiving messages — partial fix applied April 8.** DB confirmed only 7375 received; zero rows for second number. Root cause: dev-mode app (K-7 unpublished) requires each recipient to opt in as test recipient. Kate added second number to Meta test recipients (API Setup → To → Add phone number) April 8. Second number should receive on next notify run. **Verify:** check `message_delivery_status` for second number's wamid after next notify run. Permanent fix: K-7 publish removes test-recipient restriction entirely. | Second number delivery | 🟡 Monitor — verify on next notify run |
+| ~~K-7~~ | ~~Publish Meta app~~ — **CLOSED: not applicable.** App uses Meta test phone number. Publishing requires registered business (Kate doesn't have one). Dev mode (≤5 test recipients) is the correct long-term model. | — | — |
+| ~~G-6~~ | ~~Second number not receiving~~ — **RESOLVED April 21.** Root cause was typo in `NOTIFY_RECIPIENTS` (`4562` vs `5462`). Fixed in Vercel. Both numbers confirmed in DB. | — | — |
+| K-8 | **Replace test phone number before ~July 2, 2026.** Test number (+1 555 153 3723) expires 90 days from ~April 3. Need a real phone number not currently on WhatsApp — Google Voice (voice.google.com), VoIP, or secondary SIM. Once obtained: add via Meta API Setup → Step 5 "Add phone number" → verify via SMS/call → update `META_PHONE_NUMBER_ID` in Vercel. | WhatsApp continuity after July 2 | 🟡 Medium — ~10 weeks |
 
 ---
 
