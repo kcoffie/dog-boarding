@@ -3,8 +3,8 @@
  *
  * The `isDaycareOnlyTitle` function lives in scripts/integration-check.js and
  * cannot be imported (it's a standalone script). These tests mirror the exact
- * patterns and validate the confirmed false positives (31 March 2026; +2 April 2026)
- * plus a set of real boardings that must NOT be filtered.
+ * patterns and validate the confirmed false positives (31 March 2026; +2 April 2026;
+ * +1 April 2026 Daycare Add-On Day) plus a set of real boardings that must NOT be filtered.
  *
  * If you change DAYCARE_ONLY_PATTERNS in integration-check.js, update here too.
  */
@@ -19,6 +19,7 @@ const DAYCARE_ONLY_PATTERNS = [
   /no charge/i,
   /\bdaycare\b/i,
   /\bN\/C\b/i,
+  /^\d+\/\d+$/, // bare date "4/21" — Daycare Add-On Day; real boardings show ranges like "4/21-25"
 ];
 
 function isDaycareOnlyTitle(title) {
@@ -69,6 +70,12 @@ const FALSE_POSITIVES = [
   // Sync filters this via detail-page service_type; integration check only sees schedule title.
   'N/C Tula 3/23-26',
   'N/C Buddy 4/1',
+  // Daycare Add-On Day (added April 2026 — #177)
+  // Appears as /schedule/a/ boarding link but pricing says "all day services (Daycare Add-On Day)".
+  // Title is a bare date with no range — overnight boardings always show a range like "4/21-25".
+  '4/21',
+  '3/5',
+  '12/31',
 ];
 
 // ─── Real boardings (must NOT be filtered) ────────────────────────────────────
@@ -82,6 +89,9 @@ const REAL_BOARDINGS = [
   'Daisy 4/5-10 PG',
   'Staff Boarding (nights)',
   'Charlie 3/28-31',
+  '4/21-25',             // bare date WITH range — real boarding (new; guards against over-filtering)
+  '4/21-21',             // same-day range format
+  '3/5-8',
 ];
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
