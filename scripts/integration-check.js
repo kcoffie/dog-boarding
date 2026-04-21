@@ -78,7 +78,7 @@ function isBoardingTitle(title) {
 // check context where the pricing filter (which correctly excludes daycares)
 // cannot run without fetching detail pages.
 //
-// Confirmed false positives (31 total March 2026; +2 April 2026):
+// Confirmed false positives (31 total March 2026; +2 April 2026; +1 April 2026):
 //   - PG daycare with delimiters: "P/G M/T/W/Th", "PG:FT", "PG: MWTH OFF OFF", etc.
 //   - PG daycare with concatenated days: "P/G MTWTH", "P/G TWTH", "PG:WTH"
 //   - Make up days: "Moonbeam — Make up days T.F"
@@ -89,6 +89,10 @@ function isBoardingTitle(title) {
 //     The sync filters this via the detail-page service_type ("Initial Evaluation"
 //     matches /initial\s+eval/i in nonBoardingPatterns); the integration check only
 //     sees the schedule title, so the N/C prefix must be caught here.
+//   - Daycare Add-On Day: "4/21" (bare date, no range) — April 2026. These appear as
+//     /schedule/a/ boarding-style links but the sync skips them via pricing: "all day
+//     services (Daycare Add-On Day)". Real overnight boardings always show a date range
+//     like "4/21-25"; a bare date is never an overnight stay.
 //
 // Two PG patterns are needed:
 //   1. Delimited days — uses \b word boundaries (catches M/T/W/Th, PG FT, etc.)
@@ -101,6 +105,7 @@ const DAYCARE_ONLY_PATTERNS = [
   /no charge/i,
   /\bdaycare\b/i,
   /\bN\/C\b/i,
+  /^\d+\/\d+$/, // bare date "4/21" — Daycare Add-On Day; real boardings show ranges like "4/21-25"
 ];
 function isDaycareOnlyTitle(title) {
   return DAYCARE_ONLY_PATTERNS.some(re => re.test(title));
