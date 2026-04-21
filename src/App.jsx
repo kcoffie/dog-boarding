@@ -14,6 +14,7 @@ import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+import PrivacyPage from './pages/PrivacyPage';
 
 function App() {
   return (
@@ -21,6 +22,9 @@ function App() {
     <DataProvider>
       <BrowserRouter>
         <Routes>
+          {/* Public routes */}
+          <Route path="/privacy" element={<PrivacyPage />} />
+
           {/* Auth routes (public) */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
