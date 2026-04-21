@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 21, 2026 (session 12) — PR #178 merged: integration check false positive fix (Daycare Add-On Day bare-date titles). 984 tests. K-7 in progress. G-6 unverified. F-2 next code ticket._
+_Last updated: April 21, 2026 (session 13) — G-6 resolved (NOTIFY_RECIPIENTS typo fixed, both numbers confirmed receiving). K-7 closed (dev mode is correct model, no business registration needed). K-8 added (replace test phone number before ~July 2). F-2 next code ticket._
 
 ---
 
@@ -65,9 +65,10 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | README screenshots | ✅ DONE | M3-8 |
 | K-6 — Docs direct-push to main | ✅ DONE | Admin bypass on ruleset (April 3, 2026) |
 | CHANGELOG.md | ✅ DONE | M3-9 — merged PR #143 |
-| WhatsApp delivery receipts | ✅ DONE | F-1 — merged #165, verified Apr 3. Real events blocked on app publish (K-7). |
+| WhatsApp delivery receipts | ✅ DONE | F-1 — merged #165, verified Apr 3. Delivery events confirmed flowing April 21. |
 | Integration check smart-send | ✅ DONE | I-1 — merged #167. Run 1 always sends; runs 2+3 silent when passed. |
-| Second notify recipient | ✅ DONE | K-4 — second number added to NOTIFY_RECIPIENTS Vercel env var (April 5) |
+| Second notify recipient | ✅ DONE | G-6 resolved April 21 — typo in NOTIFY_RECIPIENTS fixed (`4562`→`5462`). Both numbers confirmed in DB. |
+| Privacy + Terms pages | ✅ DONE | PR #180 + direct push — `/privacy` and `/terms` live at qboarding.vercel.app |
 | Message log page | — | F-2 — view message content via app; use this when delivery is in question |
 
 ---
@@ -82,8 +83,9 @@ These are not code tickets. They block specific milestones. Track them here so n
 | ~~K-2~~          | ✅ Done April 3 — Maverick backfilled                                                                                                                                                           | —                                                    | —         |
 | ~~K-3~~          | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged                                                                                                                                 | —                                                    | —         |
 | ~~K-4~~          | ✅ Done April 5 — second number added to `NOTIFY_RECIPIENTS` Vercel env var                                                                                                                   | —                                                    | —         |
+| ~~K-7~~          | ✅ Closed April 21 — publishing not needed. App uses Meta test phone in dev mode (≤5 recipients). Dev mode is the correct long-term model. No registered business required.                    | —                                                    | —         |
 | K-5              | Add Anthropic API credits at console.anthropic.com                                                                                                                                             | M1-3 — Step 3 vision name-check in integration check | 🟢 Low    |
-| K-7              | **URGENT — START TODAY.** Publish Meta app: App Review + Business Verification at developers.facebook.com. Each step can take 5–10+ business days. Test account expiry = complete WhatsApp outage. Run both in parallel — do not delay. | Service continuity + real delivery events in `message_delivery_status` | 🔴 **HIGH** |
+| K-8              | **Replace Meta test phone number before ~July 2, 2026.** Test number (+1 555 153 3723) expires 90 days from ~April 3. Get a number not on WhatsApp (Google Voice is easiest). Add via Meta API Setup → Step 5 → verify → update `META_PHONE_NUMBER_ID` in Vercel. | WhatsApp continuity | 🟡 Medium — ~10 weeks |
 
 ---
 
