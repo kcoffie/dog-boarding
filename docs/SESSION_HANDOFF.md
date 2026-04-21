@@ -1,22 +1,22 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 8, 2026 (session 11) — No code changes. Investigation + planning session. (1) G-6 added: second number not receiving — DB confirmed zero wamid rows for second number, only 7375. Root cause: Meta dev-mode requires test recipient opt-in. Kate added second number to Meta API Setup test recipients April 8 — verify on next notify run (~4am Apr 9). (2) Deep dive on K-7 (Meta app publish): confirmed app is Unpublished, path is Dashboard → Test use cases → Check requirements → Publish (do NOT click "Become a Tech Provider"). Token expiry risk discussed — Kate should check token expiry in Access Token Debugger. (3) SPRINT_PLAN G-6 ticket added and updated to reflect partial fix.
+**Last updated:** April 21, 2026 (session 12) — Fixed integration check false positive on Daycare Add-On Day appointments (PR #178, merged). 984 tests. Investigated alert Kate received: Mabel C63QggUE, title "4/21" — sync correctly skipped it (all day services / Daycare Add-On Day), integration check had no filter for bare-date titles. Added `/^\d+\/\d+$/` to DAYCARE_ONLY_PATTERNS. K-7 (Meta app publish) still in progress ~9 business days. G-6 (second number) still needs DB verification. Next code ticket: F-2 (message log page).
 
 ---
 
 ## Current State
 
 - **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **978 tests, 56 files, 0 failures**
-- **main clean at `70b9132`**
+- **984 tests, 56 files, 0 failures**
+- **main clean at `64bfc02`**
 
 ### Recent merges (newest first)
 | PR | What |
 |---|---|
+| #178 merged Apr 21 | fix: integration check false positive — Daycare Add-On Day bare-date titles |
 | #167 merged Apr 5 | I-1: integration check smart-send — run 1 always sends; runs 2+3 silent on pass |
 | #165 merged Apr 3 | F-1: Meta webhook + wamid storage + 32 new tests |
 | #163 merged Apr 3 | M3-6: doc staleness CI check |
 | #161 merged Apr 3 | fix: integration-check false positive for N/C titles |
-| #159 merged Apr 3 | fix: integration-check false positive for "Weekend Daycare" |
 
 ### WhatsApp delivery status (all confirmed live)
 
@@ -30,6 +30,19 @@
 
 ### Meta template status
 `META_ROSTER_TEMPLATE=dog_boarding_roster_3` set in Vercel — Utility category, confirmed delivered April 2.
+
+---
+
+## Completed This Session (April 21, session 12)
+
+### PR #178 — Fix integration check false positive: Daycare Add-On Day ✅
+- Kate received alert: `⚠️ Integration check found issues (4/21) | Boarding: | • Missing from DB: Mabel — 4/21 (C63QggUE)`
+- Pulled GH Actions logs for all 3 runs on 4/21 — identified run 24735940934 (17:09 UTC) as the source
+- Log confirmed: `⏭️ SKIP C63QggUE — pricing: all day services (Daycare Add-On Day)` — sync was correct, integration check was the false positive
+- Root cause: `DAYCARE_ONLY_PATTERNS` had no entry for bare-date titles like `"4/21"`. Real boardings always show ranges like `"4/21-25"`.
+- Fix: added `/^\d+\/\d+$/` to `DAYCARE_ONLY_PATTERNS` in `scripts/integration-check.js`
+- 6 new tests in `integrationCheckFilter.test.js` (3 false-positives + 3 real-boarding guards)
+- PR #178 merged, 984 tests passing
 
 ---
 
@@ -106,15 +119,17 @@
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 0 — Verify G-6: second number receiving (check after 4am Apr 9 notify run)
+### Step 0 — Verify G-6: second number receiving (overdue — should have been checked Apr 9)
+
+Kate added second number to Meta test recipients on April 8. Has not been confirmed yet.
 
 Run: `SELECT wamid, recipient_masked, status, created_at FROM message_delivery_status ORDER BY created_at DESC LIMIT 20;`
 
-Look for a second masked number appearing alongside `***-***-7375`. If it's there with `status='sent'` or `status='delivered'` — G-6 is resolved. If still only one number, escalate: check GH Actions notify logs for an error on the second send.
+Look for a second masked number alongside `***-***-7375`. If present → G-6 resolved. If still only one number → check GH Actions notify logs for an error on the second send.
 
 ---
 
-### Step 1 — K-7: Publish Meta app (🔴 HIGH — KATE ACTION — IN PROGRESS)
+### Step 1 — K-7: Publish Meta app (🔴 HIGH — KATE ACTION — IN PROGRESS ~9 business days)
 
 **Risk:** Current `META_WHATSAPP_TOKEN` is almost certainly a 60-day expiring token. Expiry = complete WhatsApp outage, silent.
 
