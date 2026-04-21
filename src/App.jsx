@@ -15,6 +15,7 @@ import SignupPage from './pages/auth/SignupPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import PrivacyPage from './pages/PrivacyPage';
+import TermsPage from './pages/TermsPage';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Routes>
           {/* Public routes */}
           <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
 
           {/* Auth routes (public) */}
           <Route path="/login" element={<LoginPage />} />
