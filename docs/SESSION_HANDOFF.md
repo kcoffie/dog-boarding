@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 21, 2026 (session 13) — G-6 RESOLVED: second number now receiving. Root cause was a typo in NOTIFY_RECIPIENTS (`4562` instead of `5462`) since April 5. Fixed in Vercel env var. DB confirmed both `***-***-7375` (read) and `***-***-5462` (delivered) on test send. K-7 re-scoped: app uses Meta test phone number (+1 555 153 3723, expires ~July 2); publishing requires registered business (Kate doesn't have one); dev mode with ≤5 test recipients is the correct long-term model. Added /privacy and /terms pages (PRs #180, direct push) for Meta app settings. Test number expiry ~July 2 is the new deadline — need a real phone number before then. Next code ticket: F-2 (message log page).
+**Last updated:** April 22, 2026 (session 14) — F-2 fully architected. Supabase Storage bucket `roster-images` (private) created. Full implementation plan documented below — next agent can build immediately.
 
 ---
 
@@ -138,7 +138,206 @@
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 0 — F-2: Message log page (next code ticket)
+### Step 0 — F-2: Message log page — FULLY ARCHITECTED, READY TO BUILD
+
+All design decisions are made. Do not re-architect. Read this section completely before writing a single line of code, then execute.
+
+---
+
+#### What F-2 does
+
+Every outbound WhatsApp message (text or image) gets written to a new `message_log` table at send time. A new protected app page at `/messages` shows the last 5 days of sends, with the actual roster PNG rendered inline for image messages.
+
+**Why this matters:** Decouples "did the job run?" from "did the message go out?" When delivery is in question you can open the log page and see exactly what was sent, to whom, and whether the image looked correct.
+
+---
+
+#### Infrastructure already done (session 14)
+
+- **Supabase Storage bucket `roster-images` created** — private bucket, use signed URLs to serve images. Do not make it public.
+
+---
+
+#### Database — migration `025_add_message_log.sql`
+
+```sql
+CREATE TABLE message_log (
+  id            bigserial    PRIMARY KEY,
+  sent_at       timestamptz  NOT NULL DEFAULT now(),
+  job_name      text         NOT NULL,   -- 'notify-4am', 'notify-friday-pm', 'cron-health-check', etc.
+  message_type  text         NOT NULL,   -- 'image' | 'text'
+  recipient     text         NOT NULL,   -- masked last 4 digits (***-***-7375)
+  content       text,                   -- text body for 'text' type; null for 'image' type
+  image_path    text,                   -- Supabase Storage path for 'image' type; null for 'text' type
+  wamid         text,                   -- null if send failed (no wamid assigned by Meta)
+  status        text         NOT NULL   -- 'sent' | 'failed'
+);
+
+CREATE INDEX message_log_sent_at_idx ON message_log (sent_at DESC);
+CREATE INDEX message_log_job_name_idx ON message_log (job_name, sent_at DESC);
+
+ALTER TABLE message_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service role full access" ON message_log
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+CREATE POLICY "authenticated read" ON message_log
+  FOR SELECT TO authenticated USING (true);
+```
+
+**Key design decisions (do not revisit):**
+- Separate from `message_delivery_status` — that table tracks Meta webhook events (delivered/read/failed). This table tracks what WE sent. Different concerns.
+- Records ALL sends including failed ones — unlike `recordSentMessages` which skips failures, `recordMessageLog` records every attempt (status='sent' or 'failed'). The whole point is a complete outbound audit trail.
+- `content` is null for image sends — content is the roster image itself, stored in Supabase Storage at `image_path`.
+- `wamid` is null for failed sends — Meta only assigns a wamid on success.
+
+---
+
+#### Library change — `src/lib/messageDeliveryStatus.js`
+
+Add a new exported function `recordMessageLog`. Follow the exact same pattern as `recordSentMessages` (non-fatal, logs on error, returns void). Both functions can live in the same file.
+
+```js
+/**
+ * Write one row per send result (both sent and failed) to message_log.
+ * Non-fatal — DB error is logged and swallowed so caller's flow is never blocked.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient|null} supabase
+ * @param {Array<{to: string, status: string, messageId?: string, error?: string}>} results
+ * @param {string} jobName      - e.g. 'notify-4am', 'cron-health-check'
+ * @param {'image'|'text'} messageType
+ * @param {string|null} content       - text body for 'text'; null for 'image'
+ * @param {string|null} imagePath     - Supabase Storage path for 'image'; null for 'text'
+ * @returns {Promise<void>}
+ */
+export async function recordMessageLog(supabase, results, jobName, messageType, content, imagePath) { ... }
+```
+
+**Logging required inside `recordMessageLog`:**
+```
+[MessageLog] recordMessageLog("notify-4am", type=image, 2 results)
+[MessageLog] Writing row — recipient: ***-***-7375, wamid: wamid.xxx, status: sent, image_path: roster-images/notify-4am/2026-04-22T11:00:00.000Z.png
+[MessageLog] Writing row — recipient: ***-***-5462, wamid: wamid.yyy, status: sent, image_path: roster-images/notify-4am/2026-04-22T11:00:00.000Z.png
+[MessageLog] Wrote 2 row(s) for job "notify-4am"
+
+// Failure case:
+[MessageLog] DB write failed for job "notify-4am" (type=image, 2 rows): <error.message>
+```
+
+---
+
+#### Image storage — how to get and store the PNG
+
+Image sends happen only in `api/notify.js`. After `sendRosterImage` completes successfully, fetch the image buffer from the same `imageUrl` used for the send, then upload to Supabase Storage.
+
+```js
+// After sendRosterImage — in api/notify.js
+const imagePath = await storeRosterImage(supabase, imageUrl, jobName, jobRunAt);
+// imagePath is e.g. 'roster-images/notify-4am/2026-04-22T11:00:00.000Z.png'
+// or null if fetch/upload failed (non-fatal)
+```
+
+Create a private helper `storeRosterImage(supabase, imageUrl, jobName, jobRunAt)` in `api/notify.js`:
+
+**Logging required inside `storeRosterImage`:**
+```
+[ImageStore] Fetching image for storage — host: qboarding.vercel.app, job: notify-4am
+[ImageStore] Fetched 84320 bytes
+[ImageStore] Uploading to Supabase Storage — path: roster-images/notify-4am/2026-04-22T11:00:00.000Z.png
+[ImageStore] Upload complete — roster-images/notify-4am/2026-04-22T11:00:00.000Z.png
+
+// Fetch failure:
+[ImageStore] Image fetch failed (HTTP 500) — skipping storage, message_log row will have null image_path
+// Upload failure:
+[ImageStore] Storage upload failed: <error.message> — skipping storage, message_log row will have null image_path
+```
+
+The storage path format: `roster-images/{jobName}/{jobRunAt}.png` where `jobRunAt` is the ISO timestamp already captured at the top of each notify handler.
+
+---
+
+#### Send sites — all 6 locations that call recordMessageLog
+
+The handoff previously said "7 write sites" — the correct count is **6**. Verified by grep.
+
+| # | File | Line (approx) | Current call | Job label | Type | Content arg |
+|---|------|---------------|--------------|-----------|------|-------------|
+| 1 | `api/notify.js` | ~89 | `sendTextMessage` in `sendRefreshAlert` | `'notify-refresh-alert'` | `'text'` | `body` variable (the warning text) |
+| 2 | `api/notify.js` | ~210 | `sendRosterImage` in friday-pm path | `'notify-friday-pm'` | `'image'` | `null` (content), `imagePath` from `storeRosterImage` |
+| 3 | `api/notify.js` | ~337 | `sendRosterImage` in daytime path | `` `notify-${window}` `` | `'image'` | `null` (content), `imagePath` from `storeRosterImage` |
+| 4 | `scripts/cron-health-check.js` | ~189 | `sendTextMessage` | `'cron-health-check'` | `'text'` | `message` variable |
+| 5 | `scripts/integration-check.js` | ~514 | `sendTextMessage` | `'integration-check'` | `'text'` | `message` variable |
+| 6 | `scripts/gmail-monitor.js` | ~353 | `sendTextMessage` | `'gmail-monitor'` | `'text'` | `message` variable |
+
+All 3 scripts already have `getSupabase()` — no new supabase plumbing needed. Just import `recordMessageLog` and call it after the send, same pattern as `recordSentMessages`.
+
+**Logging at each call site (before calling recordMessageLog):**
+```
+// notify.js image sites:
+[Notify] Storing roster image and recording message_log — job: notify-4am, imagePath: roster-images/notify-4am/...
+
+// script sites:
+[CronHealthCheck] Recording message_log — job: cron-health-check, content length: 42 chars
+```
+
+---
+
+#### App page
+
+- **Route:** `/messages` (protected, inside Layout — sibling of `/sync-history`)
+- **Page file:** `src/pages/MessageLogPage.jsx`
+- **Hook:** `src/hooks/useMessageLog.js`
+- **Nav label:** `"Messages"` — add to `navItems` in `src/components/Layout.jsx` (follow the "Sync" entry pattern)
+- **Query:** `message_log` where `sent_at > now() - interval '5 days'`, order by `sent_at DESC`
+- **Display:** Table with columns: Time, Job, Type, Recipient, Content/Image, Status, wamid (truncated)
+- **Image rendering:** For rows where `image_path` is set, call `supabase.storage.from('roster-images').createSignedUrl(image_path, 3600)` and render an `<img>` tag. Signed URL expires in 1 hour — generate fresh on page load.
+- **No pagination needed** — 5-day window at 2–6 recipients per job run ≈ 60–100 rows max
+
+**Logging in `useMessageLog`:**
+```
+[MessageLog] Loading — cutoff: 2026-04-17T00:00:00.000Z
+[MessageLog] Loaded 23 rows — generating signed URLs for 4 image rows
+[MessageLog] Signed URL generated for roster-images/notify-4am/...
+[MessageLog] Load failed: <error.message>   // surface to UI error state, never swallow
+```
+
+---
+
+#### Full file touch list
+
+| File | Change |
+|------|--------|
+| `supabase/migrations/025_add_message_log.sql` | New — schema above |
+| `src/lib/messageDeliveryStatus.js` | Add `recordMessageLog` export |
+| `api/notify.js` | Add `storeRosterImage` helper + 3 `recordMessageLog` calls |
+| `scripts/cron-health-check.js` | Import `recordMessageLog` + 1 call |
+| `scripts/integration-check.js` | Import `recordMessageLog` + 1 call |
+| `scripts/gmail-monitor.js` | Import `recordMessageLog` + 1 call |
+| `src/hooks/useMessageLog.js` | New hook |
+| `src/pages/MessageLogPage.jsx` | New page |
+| `src/App.jsx` | Add `/messages` route |
+| `src/components/Layout.jsx` | Add "Messages" nav item |
+| `src/__tests__/messageDeliveryStatus.test.js` | Tests for `recordMessageLog` |
+| `src/__tests__/MessageLogPage.test.jsx` | Page smoke tests |
+
+---
+
+#### Definition of Done
+
+- [ ] Migration 025 applied to Supabase (run in SQL editor)
+- [ ] `recordMessageLog` unit tests pass — cover: success, DB failure (non-fatal), null supabase, failed send result recorded with status='failed'
+- [ ] All 6 send sites write to `message_log` — verified by DB query after triggering a notify run
+- [ ] Roster image stored in Supabase Storage bucket `roster-images` — verify file appears in dashboard after notify run
+- [ ] `/messages` page renders in app — last 5 days of rows visible
+- [ ] Image rows show the actual PNG inline (signed URL renders correctly)
+- [ ] Text rows show content preview
+- [ ] Failed sends appear with status='failed' and null wamid
+- [ ] Storage upload failure is non-fatal — message is still recorded with null image_path
+- [ ] All 984 existing tests still pass (0 regressions)
+- [ ] PR opened, CI green, merged, Vercel deployment confirmed
+- [ ] Trigger a real notify run after deploy — verify row appears in `/messages` page with image
+
+---
 
 ### Step 1 — K-8: Replace test phone number (deadline ~July 2, 2026)
 
