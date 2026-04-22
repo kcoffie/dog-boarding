@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 21, 2026 (session 13) — G-6 resolved (NOTIFY_RECIPIENTS typo fixed, both numbers confirmed receiving). K-7 closed (dev mode is correct model, no business registration needed). K-8 added (replace test phone number before ~July 2). F-2 next code ticket._
+_Last updated: April 22, 2026 (session 14) — F-2 fully architected. Supabase Storage bucket `roster-images` created. Full plan in SESSION_HANDOFF.md Step 0. Next agent: read that section first, then execute._
 
 ---
 
@@ -258,7 +258,7 @@ This is distinct from:
 | N-1 | **Notify diff UX** — suppress UPDATED! on 4am; 7am/8:30am overlay blue for intra-day changes | Medium | See full ticket below |
 | #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6. Dependabot PRs #106/#107 closed (CI failed — breaking changes). Needs intentional upgrade. | Low | Dev tooling only, no prod impact |
 | F-1 | **Message delivery observability** — webhook + wamid storage, no alerting layer. PR #165 open. | Medium | ✅ Built April 3, 2026. Pending: migration 024 + META_WEBHOOK_VERIFY_TOKEN + Meta Business Manager webhook registration. |
-| F-2 | **Message log page** — store every outbound message (recipient, content, timestamp, type) to a `message_log` table at send time. New app page: last 5 days, latest first. Decouples "did the job run?" from "did the delivery work?". | High | Table schema + 7 write sites + new app route + page UI |
+| F-2 | **Message log page** — ARCHITECTED. Full plan in SESSION_HANDOFF.md Step 0. `message_log` table (migration 025) + Supabase Storage bucket `roster-images` (created) + 6 write sites + `recordMessageLog` library function + new app route `/messages` + page UI with signed-URL image rendering. | High | Ready to build — do not re-architect, execute the plan |
 
 **If M3-10 feels too large:** Do F-1 first (webhooks + storage, no alert), then add alerting as a follow-on. The webhook infrastructure is shared.
 
