@@ -30,7 +30,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages } from '../src/lib/messageDeliveryStatus.js';
+import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
 
 // ---------------------------------------------------------------------------
 // Known sender configuration
@@ -355,6 +355,10 @@ async function sendAlertMessage(message, supabase = null) {
   console.log('[GmailMonitor] WhatsApp: %d/%d sent', sent, recipients.length);
   await recordSentMessages(supabase, results, 'gmail-monitor').catch(err =>
     console.warn('[GmailMonitor] Failed to record delivery status: %s', err.message)
+  );
+  console.log('[GmailMonitor] Recording message_log — job: gmail-monitor, content length: %d chars', message.length);
+  await recordMessageLog(supabase, results, 'gmail-monitor', 'text', message, null).catch(err =>
+    console.warn('[GmailMonitor] Failed to record message_log: %s', err.message)
   );
 }
 
