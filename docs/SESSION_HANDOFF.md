@@ -1,18 +1,18 @@
-# Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 23, 2026 (session 15) — F-2 built. PR #182 open, CI running. Pending: apply migration 025 in Supabase, merge PR, verify deploy, trigger notify run.
+# Dog Boarding App — Session Handoff (v5.5.0 LIVE)
+**Last updated:** April 23, 2026 (session 16) — F-2 fully verified live. v5.5.0 released. main at `ee6bd75`.
 
 ---
 
 ## Current State
 
-- **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **999 tests, 57 files, 0 failures** (15 new F-2 tests)
-- **main clean at `54c621a`; feat/f2-message-log at `f57cc19` (PR #182 open)**
+- **v5.5.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
+- **999 tests, 57 files, 0 failures**
+- **main clean at `ee6bd75`** (migration 026 — storage RLS policy)
 
 ### Recent merges (newest first)
 | PR | What |
 |---|---|
-| #182 open Apr 23 | feat: F-2 message log — record all WhatsApp sends + /messages page |
+| #182 merged Apr 23 | feat: F-2 message log — record all WhatsApp sends + /messages page |
 | #178 merged Apr 21 | fix: integration check false positive — Daycare Add-On Day bare-date titles |
 | #167 merged Apr 5 | I-1: integration check smart-send — run 1 always sends; runs 2+3 silent on pass |
 | #165 merged Apr 3 | F-1: Meta webhook + wamid storage + 32 new tests |
@@ -31,6 +31,17 @@
 
 ### Meta template status
 `META_ROSTER_TEMPLATE=dog_boarding_roster_3` set in Vercel — Utility category, confirmed delivered April 2.
+
+---
+
+## Completed This Session (April 23, session 16)
+
+### F-2 — Message log page ✅ DONE — v5.5.0 live
+
+- Migration 025 applied, PR #182 merged, Vercel deploy confirmed
+- Triggered notify run — 2 rows in `message_log`, PNG in `roster-images` Storage, `/messages` page renders with inline image
+- Found and fixed: Storage RLS policy missing — `createSignedUrl` silently failed for authenticated users. Migration 026 adds the policy and is committed to main.
+- GitHub release v5.5.0 cut
 
 ---
 
@@ -159,20 +170,7 @@
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 0 — F-2: Message log page — PR #182 OPEN, PENDING MERGE
-
-**Status:** Built and tested (session 15). PR #182 open. CI running.
-
-**What's left to close F-2:**
-1. **Apply migration 025** in Supabase SQL editor (copy from `supabase/migrations/025_add_message_log.sql`)
-2. **Merge PR #182** once CI is green
-3. **Confirm Vercel deploy** succeeded
-4. **Trigger a real notify run** (e.g., manually hit `/api/notify?window=4am&token=...`) and verify:
-   - Row appears in the `message_log` table (Supabase Table Editor)
-   - File appears in the `roster-images` Storage bucket
-   - `/messages` page at qboarding.vercel.app shows the row with the image inline
-
-**After F-2 is verified live:** bump to v5.5.0 (GitHub release + tag).
+### Step 0 — K-8: Replace test phone number (deadline ~July 2, 2026)
 
 ---
 
@@ -564,7 +562,7 @@ FROM message_delivery_status ORDER BY created_at DESC LIMIT 20;
 ---
 
 ## GitHub Releases
-- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0, v5.2.0, v5.3.0, **v5.4.0 (latest)**
+- v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0, v5.2.0, v5.3.0, v5.4.0, **v5.5.0 (latest)**
 
 ## K-6 — Docs direct-push to main
 Added admin role (RepositoryRole, actor_id=5) as bypass actor on the `protection` ruleset (id 13512551) with `bypass_mode: always`. Docs-only pushes go direct to main without a PR. CI requirements still apply to all PRs.
