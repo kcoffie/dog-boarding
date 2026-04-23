@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 22, 2026 (session 14) — F-2 fully architected. Supabase Storage bucket `roster-images` created. Full plan in SESSION_HANDOFF.md Step 0. Next agent: read that section first, then execute._
+_Last updated: April 23, 2026 (session 15) — F-2 built, PR #182 open. Pending: apply migration 025, merge, verify live. See SESSION_HANDOFF.md Step 0 for remaining steps._
 
 ---
 
@@ -69,7 +69,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Integration check smart-send | ✅ DONE | I-1 — merged #167. Run 1 always sends; runs 2+3 silent when passed. |
 | Second notify recipient | ✅ DONE | G-6 resolved April 21 — typo in NOTIFY_RECIPIENTS fixed (`4562`→`5462`). Both numbers confirmed in DB. |
 | Privacy + Terms pages | ✅ DONE | PR #180 + direct push — `/privacy` and `/terms` live at qboarding.vercel.app |
-| Message log page | — | F-2 — view message content via app; use this when delivery is in question |
+| Message log page | 🔄 PR #182 | F-2 — built Apr 23; pending migration 025 + merge + live verify |
 
 ---
 
@@ -258,7 +258,7 @@ This is distinct from:
 | N-1 | **Notify diff UX** — suppress UPDATED! on 4am; 7am/8:30am overlay blue for intra-day changes | Medium | See full ticket below |
 | #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6. Dependabot PRs #106/#107 closed (CI failed — breaking changes). Needs intentional upgrade. | Low | Dev tooling only, no prod impact |
 | F-1 | **Message delivery observability** — webhook + wamid storage, no alerting layer. PR #165 open. | Medium | ✅ Built April 3, 2026. Pending: migration 024 + META_WEBHOOK_VERIFY_TOKEN + Meta Business Manager webhook registration. |
-| F-2 | **Message log page** — ARCHITECTED. Full plan in SESSION_HANDOFF.md Step 0. `message_log` table (migration 025) + Supabase Storage bucket `roster-images` (created) + 6 write sites + `recordMessageLog` library function + new app route `/messages` + page UI with signed-URL image rendering. | High | Ready to build — do not re-architect, execute the plan |
+| F-2 | **Message log page** — PR #182 open (built Apr 23). `message_log` table (migration 025 — apply in Supabase SQL editor) + `roster-images` Storage bucket + 6 write sites + `recordMessageLog` + `/messages` route + page UI with signed-URL image rendering. 999 tests passing. | High | Pending: apply migration 025, merge PR #182, verify live |
 
 **If M3-10 feels too large:** Do F-1 first (webhooks + storage, no alert), then add alerting as a follow-on. The webhook infrastructure is shared.
 
