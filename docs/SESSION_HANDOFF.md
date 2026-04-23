@@ -1,17 +1,18 @@
 # Dog Boarding App — Session Handoff (v5.4.0 LIVE)
-**Last updated:** April 22, 2026 (session 14) — F-2 fully architected. Supabase Storage bucket `roster-images` (private) created. Full implementation plan documented below — next agent can build immediately.
+**Last updated:** April 23, 2026 (session 15) — F-2 built. PR #182 open, CI running. Pending: apply migration 025 in Supabase, merge PR, verify deploy, trigger notify run.
 
 ---
 
 ## Current State
 
 - **v5.4.0 LIVE** at [qboarding.vercel.app](https://qboarding.vercel.app)
-- **984 tests, 56 files, 0 failures**
-- **main clean at `2ada4c1`**
+- **999 tests, 57 files, 0 failures** (15 new F-2 tests)
+- **main clean at `54c621a`; feat/f2-message-log at `f57cc19` (PR #182 open)**
 
 ### Recent merges (newest first)
 | PR | What |
 |---|---|
+| #182 open Apr 23 | feat: F-2 message log — record all WhatsApp sends + /messages page |
 | #178 merged Apr 21 | fix: integration check false positive — Daycare Add-On Day bare-date titles |
 | #167 merged Apr 5 | I-1: integration check smart-send — run 1 always sends; runs 2+3 silent on pass |
 | #165 merged Apr 3 | F-1: Meta webhook + wamid storage + 32 new tests |
@@ -30,6 +31,26 @@
 
 ### Meta template status
 `META_ROSTER_TEMPLATE=dog_boarding_roster_3` set in Vercel — Utility category, confirmed delivered April 2.
+
+---
+
+## Completed This Session (April 23, session 15)
+
+### F-2 — Message log page ✅ BUILT (PR #182 open, pending merge + live verify)
+
+**What was built:**
+- Migration `025_add_message_log.sql` — `message_log` table with RLS, two indexes
+- `recordMessageLog` export in `src/lib/messageDeliveryStatus.js` — non-fatal, records ALL sends (sent + failed); unlike `recordSentMessages` which only records successful sends
+- `storeRosterImage` private helper in `api/notify.js` — fetches PNG post-send, uploads to `roster-images` Storage bucket; non-fatal (null imagePath on failure)
+- 6 send sites wired: `api/notify.js` (3 — refresh alert, friday-pm, daytime), `cron-health-check.js`, `integration-check.js`, `gmail-monitor.js`
+- `src/hooks/useMessageLog.js` — fetches last 5 days from `message_log`, generates signed URLs for image rows
+- `src/pages/MessageLogPage.jsx` — table with Time/Job/Type/Recipient/Content/Status/WAMID columns; roster PNGs rendered inline
+- `src/App.jsx` — `/messages` route added
+- `src/components/Layout.jsx` — "Messages" nav item added
+- 15 new tests: 6 `recordMessageLog` unit tests + 9 `MessageLogPage` smoke tests
+- **999 tests, 57 files, 0 failures**
+
+**Key implementation note:** `image_path` stored as `roster-images/{jobName}/{safeTimestamp}.png` (colons replaced with dashes). Page strips the `roster-images/` prefix before calling `createSignedUrl` on the bucket.
 
 ---
 
@@ -138,7 +159,24 @@
 
 ## IMMEDIATE NEXT (next session)
 
-### Step 0 — F-2: Message log page — FULLY ARCHITECTED, READY TO BUILD
+### Step 0 — F-2: Message log page — PR #182 OPEN, PENDING MERGE
+
+**Status:** Built and tested (session 15). PR #182 open. CI running.
+
+**What's left to close F-2:**
+1. **Apply migration 025** in Supabase SQL editor (copy from `supabase/migrations/025_add_message_log.sql`)
+2. **Merge PR #182** once CI is green
+3. **Confirm Vercel deploy** succeeded
+4. **Trigger a real notify run** (e.g., manually hit `/api/notify?window=4am&token=...`) and verify:
+   - Row appears in the `message_log` table (Supabase Table Editor)
+   - File appears in the `roster-images` Storage bucket
+   - `/messages` page at qboarding.vercel.app shows the row with the image inline
+
+**After F-2 is verified live:** bump to v5.5.0 (GitHub release + tag).
+
+---
+
+### Step 0 (archived) — F-2: Message log page — FULLY ARCHITECTED, READY TO BUILD
 
 All design decisions are made. Do not re-architect. Read this section completely before writing a single line of code, then execute.
 
