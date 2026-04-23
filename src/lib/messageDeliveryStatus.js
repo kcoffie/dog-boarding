@@ -72,6 +72,63 @@ export async function recordSentMessages(supabase, results, sendJob) {
 }
 
 /**
+ * Write one row per send result (both sent and failed) to message_log.
+ *
+ * Unlike recordSentMessages, this records ALL send attempts including failures:
+ * failed rows have status='failed' and wamid=null. The whole point is a complete
+ * outbound audit trail that the /messages page can render.
+ *
+ * Non-fatal — a DB error is logged and swallowed so the caller's flow is
+ * never blocked.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient|null} supabase
+ * @param {Array<{to: string, status: string, messageId?: string, error?: string}>} results
+ * @param {string} jobName      - e.g. 'notify-4am', 'cron-health-check'
+ * @param {'image'|'text'} messageType
+ * @param {string|null} content       - text body for 'text'; null for 'image'
+ * @param {string|null} imagePath     - Supabase Storage path for 'image'; null for 'text'
+ * @returns {Promise<void>}
+ */
+export async function recordMessageLog(supabase, results, jobName, messageType, content, imagePath) {
+  if (!supabase) {
+    console.log(`[MessageLog] recordMessageLog("${jobName}") — no supabase client, skipping`);
+    return;
+  }
+
+  if (!results || results.length === 0) {
+    console.log(`[MessageLog] recordMessageLog("${jobName}") — no results to record`);
+    return;
+  }
+
+  console.log(`[MessageLog] recordMessageLog("${jobName}", type=${messageType}, ${results.length} results)`);
+
+  const rows = results.map(r => {
+    const row = {
+      job_name:     jobName,
+      message_type: messageType,
+      recipient:    r.to,
+      content:      content ?? null,
+      image_path:   imagePath ?? null,
+      wamid:        r.status === 'sent' ? (r.messageId ?? null) : null,
+      status:       r.status === 'sent' ? 'sent' : 'failed',
+    };
+    console.log(
+      `[MessageLog] Writing row — recipient: ${r.to}, wamid: ${row.wamid ?? 'null'}, status: ${row.status}` +
+      (imagePath ? `, image_path: ${imagePath}` : '')
+    );
+    return row;
+  });
+
+  const { error } = await supabase.from('message_log').insert(rows);
+
+  if (error) {
+    console.warn(`[MessageLog] DB write failed for job "${jobName}" (type=${messageType}, ${rows.length} rows): ${error.message}`);
+  } else {
+    console.log(`[MessageLog] Wrote ${rows.length} row(s) for job "${jobName}"`);
+  }
+}
+
+/**
  * Upsert a delivery status event received from a Meta webhook POST.
  * Called once per status entry in the webhook payload.
  *
