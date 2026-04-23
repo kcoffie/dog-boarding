@@ -47,7 +47,7 @@ import { chromium } from 'playwright';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages } from '../src/lib/messageDeliveryStatus.js';
+import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
@@ -514,9 +514,13 @@ async function sendAlertMessage(message, supabase = null) {
   const results = await sendTextMessage(message, recipients);
   const sent = results.filter(r => r.status === 'sent').length;
   console.log('[IntegCheck] WhatsApp: %d/%d sent', sent, recipients.length);
-  // supabase is null at startup-crash call site — recordSentMessages handles null gracefully.
+  // supabase is null at startup-crash call site — both record* functions handle null gracefully.
   await recordSentMessages(supabase, results, 'integration-check').catch(err =>
     console.warn('[IntegCheck] Failed to record delivery status: %s', err.message)
+  );
+  console.log('[IntegCheck] Recording message_log — job: integration-check, content length: %d chars', message.length);
+  await recordMessageLog(supabase, results, 'integration-check', 'text', message, null).catch(err =>
+    console.warn('[IntegCheck] Failed to record message_log: %s', err.message)
   );
 }
 
