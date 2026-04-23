@@ -26,7 +26,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages } from '../src/lib/messageDeliveryStatus.js';
+import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
 
 // The three midnight Vercel crons we monitor.
 const MONITORED_CRONS = ['auth', 'schedule', 'detail'];
@@ -191,6 +191,10 @@ async function sendAlertMessage(message, supabase = null) {
   console.log('[CronHealthCheck] WhatsApp: %d/%d sent', sent, recipients.length);
   await recordSentMessages(supabase, results, 'cron-health-check').catch(err =>
     console.warn('[CronHealthCheck] Failed to record delivery status: %s', err.message)
+  );
+  console.log('[CronHealthCheck] Recording message_log — job: cron-health-check, content length: %d chars', message.length);
+  await recordMessageLog(supabase, results, 'cron-health-check', 'text', message, null).catch(err =>
+    console.warn('[CronHealthCheck] Failed to record message_log: %s', err.message)
   );
 }
 

@@ -9,6 +9,7 @@ import PayrollPage from './pages/PayrollPage';
 import CalendarPage from './pages/CalendarPage';
 import ProfilePage from './pages/ProfilePage';
 import SyncHistoryPage from './pages/SyncHistoryPage';
+import MessageLogPage from './pages/MessageLogPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoginPage from './pages/auth/LoginPage';
 import SignupPage from './pages/auth/SignupPage';
@@ -48,6 +49,7 @@ function App() {
             <Route path="payroll" element={<PayrollPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="sync-history" element={<SyncHistoryPage />} />
+            <Route path="messages" element={<MessageLogPage />} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>
         </Routes>
