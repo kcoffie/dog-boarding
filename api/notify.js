@@ -33,7 +33,7 @@ import {
   sendTextMessage,
   getRecipients,
 } from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages } from '../src/lib/messageDeliveryStatus.js';
+import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
 import { writeCronHealth } from './_cronHealth.js';
 import { refreshDaytimeSchedule } from '../src/lib/notifyHelpers.js';
 
@@ -93,6 +93,10 @@ async function sendRefreshAlert(supabase, warning, dateStr, notifyWindow) {
   await recordSentMessages(supabase, refreshResults, 'notify-refresh-alert').catch(err =>
     console.warn(`[Notify/RefreshAlert] Failed to record delivery status: ${err.message}`)
   );
+  console.log(`[Notify] Recording message_log — job: notify-refresh-alert, content length: ${body.length} chars`);
+  await recordMessageLog(supabase, refreshResults, 'notify-refresh-alert', 'text', body, null).catch(err =>
+    console.warn(`[Notify/RefreshAlert] Failed to record message_log: ${err.message}`)
+  );
 
   // Record that we sent the alert for this date (non-fatal)
   await writeCronHealth(supabase, 'notify-refresh-alert', 'success', {
@@ -110,6 +114,61 @@ function getSupabase() {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
   if (!url || !key) throw new Error('Supabase env vars not configured');
   return createClient(url, key);
+}
+
+/**
+ * Fetch the roster image PNG from imageUrl and upload it to Supabase Storage.
+ * Returns the storage path (e.g. 'roster-images/notify-4am/2026-04-22T11:00:00.000Z.png')
+ * or null if the fetch or upload fails. Non-fatal — failures are logged and swallowed
+ * so the caller can still record the message_log row with a null image_path.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} imageUrl  - Full URL to /api/roster-image (auth token included)
+ * @param {string} jobName   - e.g. 'notify-4am', 'notify-friday-pm'
+ * @param {string} jobRunAt  - ISO timestamp captured at handler entry
+ * @returns {Promise<string|null>}
+ */
+async function storeRosterImage(supabase, imageUrl, jobName, jobRunAt) {
+  const logHost = new URL(imageUrl).host;
+  console.log(`[ImageStore] Fetching image for storage — host: ${logHost}, job: ${jobName}`);
+
+  let buffer;
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      console.warn(`[ImageStore] Image fetch failed (HTTP ${response.status}) — skipping storage, message_log row will have null image_path`);
+      return null;
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    buffer = Buffer.from(arrayBuffer);
+    console.log(`[ImageStore] Fetched ${buffer.length} bytes`);
+  } catch (err) {
+    console.warn(`[ImageStore] Image fetch error: ${err.message} — skipping storage, message_log row will have null image_path`);
+    return null;
+  }
+
+  // Safe filename: replace colons in the ISO timestamp so all storage backends accept it
+  const safeTimestamp = jobRunAt.replace(/:/g, '-');
+  const pathInBucket = `${jobName}/${safeTimestamp}.png`;
+  const fullPath = `roster-images/${pathInBucket}`;
+  console.log(`[ImageStore] Uploading to Supabase Storage — path: ${fullPath}`);
+
+  try {
+    const { error } = await supabase.storage
+      .from('roster-images')
+      .upload(pathInBucket, buffer, { contentType: 'image/png', upsert: true });
+
+    if (error) {
+      console.warn(`[ImageStore] Storage upload failed: ${error.message} — skipping storage, message_log row will have null image_path`);
+      return null;
+    }
+  } catch (err) {
+    console.warn(`[ImageStore] Storage upload error: ${err.message} — skipping storage, message_log row will have null image_path`);
+    return null;
+  }
+
+  console.log(`[ImageStore] Upload complete — ${fullPath}`);
+  return fullPath;
 }
 
 /**
@@ -210,6 +269,11 @@ export default async function handler(req, res) {
       const sendResults = await sendRosterImage(imageUrl, recipients);
       await recordSentMessages(supabase, sendResults, 'notify-friday-pm').catch(err =>
         console.warn(`[Notify] Failed to record delivery status (friday-pm): ${err.message}`)
+      );
+      const fridayImagePath = await storeRosterImage(supabase, imageUrl, 'notify-friday-pm', jobRunAt);
+      console.log(`[Notify] Storing roster image and recording message_log — job: notify-friday-pm, imagePath: ${fridayImagePath ?? 'null'}`);
+      await recordMessageLog(supabase, sendResults, 'notify-friday-pm', 'image', null, fridayImagePath).catch(err =>
+        console.warn(`[Notify] Failed to record message_log (friday-pm): ${err.message}`)
       );
       await writeCronHealth(supabase, 'notify-friday-pm', 'success', {
         sentAt: new Date().toISOString(),
@@ -339,6 +403,13 @@ export default async function handler(req, res) {
     // --- Record wamids for delivery observability (non-fatal) ---
     await recordSentMessages(supabase, sendResults, `notify-${window}`).catch(err =>
       console.warn(`[Notify] Failed to record delivery status (${window}): ${err.message}`)
+    );
+
+    // --- Store roster image + record message log (non-fatal) ---
+    const imagePath = await storeRosterImage(supabase, imageUrl, `notify-${window}`, jobRunAt);
+    console.log(`[Notify] Storing roster image and recording message_log — job: notify-${window}, imagePath: ${imagePath ?? 'null'}`);
+    await recordMessageLog(supabase, sendResults, `notify-${window}`, 'image', null, imagePath).catch(err =>
+      console.warn(`[Notify] Failed to record message_log (${window}): ${err.message}`)
     );
 
     // --- Persist state (non-fatal) ---
