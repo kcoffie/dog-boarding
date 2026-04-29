@@ -6,6 +6,37 @@ For full release notes see [GitHub Releases](https://github.com/kcoffie/dog-boar
 
 ---
 
+## [5.5.0] — 2026-04-23
+
+**Message Log & Full Observability**
+
+> Architectural milestone: every outbound WhatsApp send is now recorded in the database with delivery status and roster image storage, surfaced in a new /messages admin page.
+
+- **F-2** — Message log: `message_log` table records all sends (roster images + text alerts) with status, wamid, and recipient. Non-fatal — pipeline continues if logging fails.
+- **F-2** — Roster image storage: notify job uploads each PNG to Supabase `roster-images` bucket after sending. Storage RLS policy (migration 026) added so signed URL generation works for authenticated users.
+- **F-2** — `/messages` admin page: last 5 days of sends with inline roster PNG rendering via signed URLs.
+- **F-1** — Meta webhook endpoint (`POST /api/webhooks/meta`): HMAC-SHA256 verified; stores delivery events (delivered/read/failed) in `message_delivery_status` table.
+- **I-1** — Integration check smart-send: run 1 (1am PDT) always sends; runs 2 and 3 suppressed on pass — no noise on clean runs.
+- Added `/privacy` and `/terms` pages for Meta app compliance.
+- Doc staleness CI check: warns on PRs that modify `api/` or `src/lib/scraper/` without touching `docs/job_docs/`.
+- Fixed: Daycare Add-On Day bare-date titles (e.g., `"4/21"`) no longer false-positive in integration check.
+- Fixed: N/C (new client initial eval) titles no longer false-positive in integration check.
+- Fixed: nav order (Messages before Settings); mobile menu height.
+
+## [5.4.0] — 2026-04-02
+
+**Roster Image Reliability & Portfolio Polish**
+
+> Architectural milestone: WhatsApp image delivery now upload-first (Meta CDN), eliminating silent send failures caused by Meta's inability to fetch images from Vercel's edge network.
+
+- **K-1b** — Upload-first: roster PNG uploaded to Meta's media API (`POST /v18.0/{PHONE_NUMBER_ID}/media`) before template send. Confirmed delivered April 2, 2026.
+- **M3-4** — "As of" timestamp: roster image header now shows `as of [time], [day] [M/D]` in Pacific time, reflecting when the notify job ran.
+- **M3-5** — DST-aware scheduling: GH Actions cron UTC times documented; `timingSafeEqual` for token auth; `daytimeSchedule.js` regexes pre-compiled outside hot loop; flaky DST test fixed.
+- Fixed: weekend roster image query returning incorrect boardings.
+- Fixed: PG concatenated day codes (MTWTH, TWTH, WTH) no longer false-positive in integration check.
+- Fixed: 27 daycare false positives suppressed in integration check.
+- Gmail monitor: graceful `invalid_grant` detection; `npm run reauth-gmail` helper script added.
+
 ## [5.3.0] — 2026-03-25
 
 **Meta Template Newline Fix**
@@ -158,6 +189,8 @@ For full release notes see [GitHub Releases](https://github.com/kcoffie/dog-boar
 
 ---
 
+[5.5.0]: https://github.com/kcoffie/dog-boarding/releases/tag/v5.5.0
+[5.4.0]: https://github.com/kcoffie/dog-boarding/releases/tag/v5.4.0
 [5.3.0]: https://github.com/kcoffie/dog-boarding/releases/tag/v5.3.0
 [5.2.0]: https://github.com/kcoffie/dog-boarding/releases/tag/v5.2.0
 [5.1.0]: https://github.com/kcoffie/dog-boarding/releases/tag/v5.1.0
