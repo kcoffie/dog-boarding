@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 23, 2026 (session 16) — F-2 done, v5.5.0 live. Next: K-8 (replace test phone number before ~July 2)._
+_Last updated: April 29, 2026 (session 17) — **v5 CLOSED at v5.5.0.** v6 open. Theme: Client-driven operational intelligence._
 
 ---
 
@@ -61,7 +61,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Roster image "As of" timestamp | ✅ DONE | M3-4 — `formatAsOf`, ts param (#137) |
 | DST-aware scheduling + code polish | ✅ DONE | M3-5 — timingSafeEqual, regex cache, flaky test fix (#140) |
 | Doc staleness CI check | ✅ DONE | M3-6 |
-| Screen recording (portfolio artifact) | 🔄 IN PROGRESS | M3-7 — recording file on hand; blocked on Kate's trim/edit decision |
+| Screen recording (portfolio artifact) | ⏸ DEFERRED | M3-7 — existing recording has privacy concerns (WhatsApp inbox names visible). Re-record when time allows. Screenshots (M3-8) cover the portfolio gap in the meantime. Can be added anytime as a docs-only push. |
 | README screenshots | ✅ DONE | M3-8 |
 | K-6 — Docs direct-push to main | ✅ DONE | Admin bypass on ruleset (April 3, 2026) |
 | CHANGELOG.md | ✅ DONE | M3-9 — merged PR #143 |
