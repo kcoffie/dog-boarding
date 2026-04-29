@@ -618,6 +618,7 @@ async function main() {
     claudeNames = await extractNamesFromScreenshot(anthropic, screenshot);
   } catch (err) {
     console.error('[IntegCheck] Claude vision failed (skipping name check): %s', err.message);
+    console.log(`::warning::Integration check Step 3 (Claude vision) skipped — ${err.message}`);
   }
 
   // Step 4: DB — boarding + daytime in parallel
