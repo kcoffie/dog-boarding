@@ -1,29 +1,36 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** April 29, 2026 (session 17) — v5 closed at v5.5.0. v6 open. Three client-requested tickets fully specced.
+**Last updated:** April 29, 2026 (session 18) — R-1 complete. J-1 is next.
 
 ---
 
 ## Current State
 
-- **v5 CLOSED at v5.5.0** — all v5 work complete
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
-- **999 tests, 57 files, 0 failures**
-- **main clean** (PR #185 merged this session — G-2 warning annotation)
+- **1006 tests, 57 files, 0 failures**
+- **main clean** (PR #187 merged this session — R-1 Q Boarding box)
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### v5 Close Summary (this session)
+### Session 18 Summary
 | Item | Status |
 |---|---|
-| CHANGELOG v5.4.0 + v5.5.0 backfilled | ✅ pushed to main |
-| M3-7 (screen recording) formally deferred | ✅ — privacy concern; screenshots in README cover the gap. Re-record when time allows. |
-| G-2 (::warning:: when Step 3 skipped) | ✅ PR #185 merged |
-| SPRINT_PLAN v5 closed / v6 opened | ✅ pushed to main |
+| R-1 — Q Boarding 6th box | ✅ PR #187 merged — issue #186 |
+| Verify on live image | ⏳ **Kate to trigger manually** — see command below |
+
+**Manual verify command (run after Vercel deploys):**
+```
+curl -s "https://qboarding.vercel.app/api/notify?window=830am&token=$VITE_SYNC_PROXY_TOKEN" | jq .
+```
+Or open the image URL directly:
+```
+https://qboarding.vercel.app/api/roster-image?date=YYYY-MM-DD&token=TOKEN
+```
+Confirm Q Boarding box appears bottom-right with correct boarder list.
 
 ---
 
-## v6 — Three Tickets (Fully Specced, Ready to Build)
+## v6 — Remaining Tickets
 
-### R-1 — Roster image: 6th "Q Boarding" box
+### R-1 — Roster image: 6th "Q Boarding" box ✅ DONE
 
 **What:** Add a 6th box to the existing 5-box roster image layout. The empty slot (bottom-right) shows the full list of dogs boarding tonight — all dogs regardless of which worker has them. Heading: "Q Boarding".
 
@@ -40,12 +47,12 @@
 **Definition of Done:**
 - [ ] 6th box renders in existing empty slot (bottom-right)
 - [ ] Heading: "Q Boarding" in AGYD forest green `#4A773C`
-- [ ] Lists all dogs boarding tonight (all workers combined, sorted alphabetically)
-- [ ] Dog count shown (e.g., "14 dogs") consistent with other boxes
-- [ ] Renders correctly on both weekday and friday-pm (weekend) image types
-- [ ] No layout regression on the other 5 boxes
-- [ ] Unit tests: (a) 6th box with dogs, (b) 6th box with zero dogs (empty night)
-- [ ] 999+ tests pass
+- [x] Lists all dogs boarding tonight (all workers combined, sorted alphabetically)
+- [x] Dog count shown (e.g., "14 dogs") consistent with other boxes
+- [x] No layout regression on the other 5 boxes (weekend path untouched)
+- [x] Unit tests: 7 new (sort order, empty state, singular/plural, height calc)
+- [x] 1006 tests pass
+- [ ] **Verify on live image** — Kate to trigger manually after deploy
 
 ---
 
