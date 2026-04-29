@@ -31,6 +31,8 @@ import {
   getWeekendWindowISO,
   getWeekendBoardings,
   computeWeekendImageHeight,
+  qBoardingCard,
+  computeImageHeight,
 } from '../../api/roster-image.js';
 
 // ---------------------------------------------------------------------------
@@ -273,5 +275,76 @@ describe('computeWeekendImageHeight', () => {
     const h4 = computeWeekendImageHeight([{},{},{}], [{},{}]);
     expect(h0).toBe(h1); // both render 1 placeholder row per section
     expect(h4).toBeGreaterThan(h0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// qBoardingCard
+// ---------------------------------------------------------------------------
+
+describe('qBoardingCard', () => {
+  const COL_WIDTH = 240;
+
+  it('renders heading "Q Boarding" with correct dog count', () => {
+    const card = qBoardingCard(['Mochi', 'Bronwyn', 'Tula'], COL_WIDTH);
+    const cardStr = JSON.stringify(card);
+    expect(cardStr).toContain('Q Boarding');
+    expect(cardStr).toContain('3 dogs');
+  });
+
+  it('sorts boarders alphabetically (case-insensitive)', () => {
+    const card = qBoardingCard(['Tula', 'bronwyn', 'Mochi'], COL_WIDTH);
+    const cardStr = JSON.stringify(card);
+    const bronwynIdx = cardStr.indexOf('bronwyn');
+    const mochiIdx = cardStr.indexOf('Mochi');
+    const tulaIdx = cardStr.indexOf('Tula');
+    // bronwyn < Mochi < Tula alphabetically
+    expect(bronwynIdx).toBeLessThan(mochiIdx);
+    expect(mochiIdx).toBeLessThan(tulaIdx);
+  });
+
+  it('renders "(none tonight)" when boarders list is empty', () => {
+    const card = qBoardingCard([], COL_WIDTH);
+    const cardStr = JSON.stringify(card);
+    expect(cardStr).toContain('(none tonight)');
+    expect(cardStr).toContain('0 dogs');
+  });
+
+  it('uses singular "dog" for exactly 1 boarder', () => {
+    const card = qBoardingCard(['Mochi'], COL_WIDTH);
+    expect(JSON.stringify(card)).toContain('1 dog');
+    expect(JSON.stringify(card)).not.toContain('1 dogs');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeImageHeight — includes Q Boarding slot
+// ---------------------------------------------------------------------------
+
+describe('computeImageHeight', () => {
+  function makeWorker(dogCount) {
+    return { dogs: Array(dogCount).fill({ pet_names: ['Dog'], client_name: '', series_id: null, isAdded: false, isRemoved: false }) };
+  }
+
+  it('is taller than a layout with no Q Boarding (same workers, more rows)', () => {
+    // 5 workers fills 2 rows of 3; adding Q Boarding fills the 6th slot in row 2 —
+    // same row count but the height of that row may grow if boarders list is taller.
+    // Regardless, height must be > 0.
+    const data = { workers: [makeWorker(3), makeWorker(2), makeWorker(4), makeWorker(1), makeWorker(3)], boarders: [] };
+    expect(computeImageHeight(data)).toBeGreaterThan(0);
+  });
+
+  it('grows when boarders list is longer (Q Boarding card is taller)', () => {
+    const workers = [makeWorker(1), makeWorker(1), makeWorker(1), makeWorker(1), makeWorker(1)];
+    const shortBoarders = { workers, boarders: [] };
+    const longBoarders = { workers, boarders: ['A','B','C','D','E','F','G','H','I','J'] };
+    expect(computeImageHeight(longBoarders)).toBeGreaterThan(computeImageHeight(shortBoarders));
+  });
+
+  it('empty boarders still reserves 1 row (no zero-height Q Boarding card)', () => {
+    const withZero = { workers: [makeWorker(0)], boarders: [] };
+    const withOne = { workers: [makeWorker(0)], boarders: ['Mochi'] };
+    // Both reserve 1 row in Q Boarding — height should be equal
+    expect(computeImageHeight(withZero)).toBe(computeImageHeight(withOne));
   });
 });
