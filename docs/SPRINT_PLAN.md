@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 29, 2026 (session 17) — **v5 CLOSED at v5.5.0.** v6 open. Theme: Client-driven operational intelligence._
+_Last updated: April 29, 2026 (session 18) — **R-1 done (PR #187).** J-1 is next. Theme: Client-driven operational intelligence._
 
 ---
 
@@ -89,17 +89,13 @@ These are not code tickets. They block specific milestones. Track them here so n
 
 ---
 
-## Sprint Focus — Top 3 Tickets (Start Here)
-
-These are the three tickets that move the Professional Quality needle most right now.
+## Sprint Focus — v6 Tickets (Start Here)
 
 **Why this order:**
 
-1. **M3-4** ✅ makes the roster image genuinely more useful. Needed before M3-7 screen recording.
-2. **M3-5** ✅ cleans up real hardening issues (misleading auth comment, hot-loop regex, flaky test).
-3. **M3-8** puts the roster image and boarding matrix in front of every person who visits the repo. Currently the README has zero screenshots — this is the most glaring portfolio gap after K-1 is resolved.
-
-> **Note:** M3-7 (screen recording) is the single most impactful portfolio artifact but is gated on K-1 (Kate's Meta template fix). Unblock K-1 first, then M3-7 can be done at any time after M3-4 and M3-8 are complete.
+1. **R-1** ✅ Q Boarding 6th box — done PR #187
+2. **J-1** — Intraday change notification job. New cron + state design. Architect carefully before building.
+3. **P-1** — Employee pay daytime follow-on. DB schema change, needs spec review at architect step.
 
 ---
 
