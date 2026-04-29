@@ -292,6 +292,106 @@ function workerCard(worker, colWidth) {
 }
 
 // ---------------------------------------------------------------------------
+// Q Boarding card
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the "Q Boarding" card for the 6th slot in the daily roster grid.
+ *
+ * Shows all overnight boarders for the day (all workers combined), sorted
+ * alphabetically. Heading is Forest Green (#4A773C) to distinguish it from
+ * worker cards (which use Sage Green). No diff indicators — boarders have
+ * no yesterday baseline.
+ *
+ * Exported for unit testing.
+ *
+ * @param {string[]} boarders - Pet name strings from getPictureOfDay result
+ * @param {number} colWidth   - Pixel width of this column
+ * @returns {object}
+ */
+export function qBoardingCard(boarders, colWidth) {
+  const sorted = [...boarders].sort((a, b) =>
+    decodeEntities(a).toLowerCase().localeCompare(decodeEntities(b).toLowerCase())
+  );
+
+  console.log(`[RosterImage] Q Boarding: ${sorted.length} boarders (${sorted.join(', ') || 'none'})`);
+
+  const dogRows = sorted.length > 0
+    ? sorted.map(name =>
+        h('div', {
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          height: DOG_ROW_H,
+          paddingLeft: H_PADDING,
+          paddingRight: H_PADDING,
+        },
+          h('span', {
+            fontFamily: 'Inter',
+            fontWeight: 400,
+            fontSize: 13,
+            color: COLORS.unchanged,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }, decodeEntities(name)),
+        )
+      )
+    : [h('div', {
+        display: 'flex',
+        alignItems: 'center',
+        height: DOG_ROW_H,
+        paddingLeft: H_PADDING,
+        fontFamily: 'Inter',
+        fontWeight: 400,
+        fontSize: 13,
+        color: COLORS.dogCount,
+        fontStyle: 'italic',
+      }, '(none tonight)')];
+
+  return h('div', {
+    display: 'flex',
+    flexDirection: 'column',
+    width: colWidth,
+    backgroundColor: COLORS.workerBg,
+    border: `1px solid ${COLORS.workerBorder}`,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: ROW_GAP,
+  },
+    h('div', {
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      height: WORKER_NAME_H + V_PADDING,
+      paddingLeft: H_PADDING,
+      paddingRight: H_PADDING,
+      borderBottom: `1px solid ${COLORS.workerBorder}`,
+    },
+      h('span', {
+        fontFamily: 'Inter',
+        fontWeight: 700,
+        fontSize: 14,
+        color: COLORS.headerBg, // Forest Green #4A773C — per spec
+        flex: 1,
+      }, 'Q Boarding'),
+      h('span', {
+        fontFamily: 'Inter',
+        fontWeight: 400,
+        fontSize: 12,
+        color: COLORS.dogCount,
+      }, `${sorted.length} dog${sorted.length !== 1 ? 's' : ''}`),
+    ),
+    h('div', {
+      display: 'flex',
+      flexDirection: 'column',
+      paddingTop: 6,
+      paddingBottom: 6,
+    }, ...dogRows),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Full image layout
 // ---------------------------------------------------------------------------
 
@@ -318,20 +418,31 @@ function cardHeight(worker) {
 }
 
 /**
+ * Estimate the pixel height of the Q Boarding card.
+ * Math.max(boarders.length, 1) reserves one row for the "(none tonight)" empty state.
+ *
+ * @param {string[]} boarders
+ * @returns {number}
+ */
+function qBoardingCardHeight(boarders) {
+  return WORKER_NAME_H + V_PADDING + 12 + Math.max(boarders.length, 1) * DOG_ROW_H;
+}
+
+/**
  * Compute the total image height dynamically based on content.
- * Boarders section removed in v4.1.1 — only worker cards are rendered.
+ * Treats Q Boarding as the (N+1)th slot after all worker cards.
  *
  * @param {object} data - getPictureOfDay result
  * @returns {number}
  */
-function computeImageHeight(data) {
+export function computeImageHeight(data) {
   const cols = columnsPerRow(data.workers.length);
+  const allHeights = [...data.workers.map(cardHeight), qBoardingCardHeight(data.boarders)];
   let gridH = 0;
 
-  for (let i = 0; i < data.workers.length; i += cols) {
-    const rowWorkers = data.workers.slice(i, i + cols);
-    const rowH = Math.max(...rowWorkers.map(cardHeight));
-    gridH += rowH + ROW_GAP;
+  for (let i = 0; i < allHeights.length; i += cols) {
+    const rowHeights = allHeights.slice(i, i + cols);
+    gridH += Math.max(...rowHeights) + ROW_GAP;
   }
 
   return HEADER_H + gridH + OUTER_PAD * 3;
@@ -344,8 +455,7 @@ function computeImageHeight(data) {
  *   [Header: "Thursday, March 5 (as of 6:04 PM, Mon 3/16)"  ·  Daily Roster  ·  UPDATED!]
  *   [Worker grid: N columns, each worker gets a card]
  *
- * Boarders section removed in v4.1.1 — data.boarders still exists in the
- * data struct for easy restoration, but is not rendered here.
+ * data.boarders is rendered as the "Q Boarding" 6th box (bottom-right slot).
  *
  * @param {object} data       - getPictureOfDay result
  * @param {string|null} asOfStr - Pre-formatted "as of" string (e.g. "6:04 PM, Mon 3/16"),
@@ -358,11 +468,16 @@ function buildLayout(data, asOfStr) {
   const colWidth = Math.floor((availableWidth - COL_GAP * (cols - 1)) / cols);
 
   // Worker grid — fill rows left to right.
+  // Q Boarding is appended as the (N+1)th item, placing it in the empty slot
+  // bottom-right when 5 workers are active (the typical case). With 6 workers
+  // it flows into a new third row at position col 1 — acceptable.
+  const Q_BOARDING = Symbol('qBoarding');
+  const allItems = [...data.workers, Q_BOARDING];
   const rows = [];
-  for (let i = 0; i < data.workers.length; i += cols) {
-    const rowWorkers = data.workers.slice(i, i + cols);
+  for (let i = 0; i < allItems.length; i += cols) {
+    const rowItems = allItems.slice(i, i + cols);
     // Pad short rows with null so flex layout stays consistent.
-    while (rowWorkers.length < cols) rowWorkers.push(null);
+    while (rowItems.length < cols) rowItems.push(null);
 
     rows.push(
       h('div', {
@@ -372,9 +487,11 @@ function buildLayout(data, asOfStr) {
         marginBottom: ROW_GAP,
         width: availableWidth,
       },
-        ...rowWorkers.map(w =>
-          w
-            ? workerCard(w, colWidth)
+        ...rowItems.map(item =>
+          item === Q_BOARDING
+            ? qBoardingCard(data.boarders, colWidth)
+            : item
+            ? workerCard(item, colWidth)
             : h('div', { width: colWidth, flexShrink: 0 }) // empty spacer
         ),
       )
