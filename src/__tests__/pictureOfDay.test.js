@@ -45,25 +45,29 @@ function appt(overrides = {}) {
 /**
  * Build a minimal Supabase mock that returns the given row arrays for each query.
  *
- * The mock intercepts .from('daytime_appointments').select(...) chains by
- * tracking the last .eq() call to determine which query is in flight.
- * Workers table returns the provided workers array.
+ * The mock routes by table name:
+ *   'workers'              → workerRows
+ *   'boardings'            → boarderRows (new: queryBoarders uses boardings table)
+ *   'daytime_appointments' → todayRows by default; yestRows when the last .eq()
+ *                            sets appointment_date to yestDateStr
  *
  * This is intentionally minimal — only the fields used by getPictureOfDay.
+ *
+ * boarderRows format: [{ booking_status: string|null, dogs: { name: string } }]
  */
 function buildSupaMock({ todayRows = [], yestRows = [], workerRows = [], boarderRows = [], yestDateStr = YEST } = {}) {
   const buildChain = (rows) => {
     const chain = {
       select: () => chain,
       eq: (col, val) => {
-        // Distinguish today vs yesterday vs boarding queries
         if (col === 'appointment_date' && val === yestDateStr) {
           chain._rows = yestRows;
-        } else if (col === 'service_category' && val === 'Boarding') {
-          chain._rows = boarderRows;
         }
         return chain;
       },
+      lt:  () => chain,
+      gte: () => chain,
+      not: () => chain,
       in: () => chain,
       order: () => chain,
       maybeSingle: async () => ({ data: null, error: null }),
@@ -85,7 +89,8 @@ function buildSupaMock({ todayRows = [], yestRows = [], workerRows = [], boarder
   return {
     from: (table) => {
       if (table === 'workers') return buildChain(workerRows);
-      // For daytime_appointments, start with todayRows as default
+      if (table === 'boardings') return buildChain(boarderRows);
+      // daytime_appointments — default to todayRows; eq() intercepts yesterday
       return buildChain(todayRows);
     },
   };
@@ -403,5 +408,53 @@ describe('getPictureOfDay diff logic', () => {
     const result = await getPictureOfDay(supa, date);
 
     expect(result.workers.every(w => w.workerId !== 0)).toBe(true);
+  });
+
+  it('boarders: returns dog names from boardings table (not daytime_appointments)', async () => {
+    const boarderRows = [
+      { booking_status: 'confirmed', dogs: { name: 'Mochi' } },
+      { booking_status: null, dogs: { name: 'Bronwyn' } },
+    ];
+    const supa = buildSupaMock({ boarderRows });
+
+    const result = await getPictureOfDay(supa, parseDateParam(DATE));
+
+    expect(result.boarders).toHaveLength(2);
+    expect(result.boarders).toContain('Mochi');
+    expect(result.boarders).toContain('Bronwyn');
+  });
+
+  it('boarders: excludes cancelled bookings', async () => {
+    const boarderRows = [
+      { booking_status: 'confirmed', dogs: { name: 'Mochi' } },
+      { booking_status: 'cancelled', dogs: { name: 'Ghost' } },
+    ];
+    const supa = buildSupaMock({ boarderRows });
+
+    const result = await getPictureOfDay(supa, parseDateParam(DATE));
+
+    expect(result.boarders).toEqual(['Mochi']);
+  });
+
+  it('boarders: deduplicates dogs that appear in multiple boarding rows', async () => {
+    // Mirrors the Annie/Tracy bug: AGYD gave two appointment IDs for the same stay,
+    // causing the sync to create two boarding rows for the same dog.
+    const boarderRows = [
+      { booking_status: 'confirmed', dogs: { name: 'Annie' } },
+      { booking_status: 'confirmed', dogs: { name: 'Annie' } }, // duplicate row
+    ];
+    const supa = buildSupaMock({ boarderRows });
+
+    const result = await getPictureOfDay(supa, parseDateParam(DATE));
+
+    expect(result.boarders).toEqual(['Annie']);
+  });
+
+  it('boarders: returns empty array when no boardings overlap', async () => {
+    const supa = buildSupaMock({ boarderRows: [] });
+
+    const result = await getPictureOfDay(supa, parseDateParam(DATE));
+
+    expect(result.boarders).toEqual([]);
   });
 });

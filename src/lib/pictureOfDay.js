@@ -132,24 +132,42 @@ async function queryAppointmentsByDate(supabase, dateStr, label) {
 }
 
 /**
- * Query boarding dogs present on a given date.
- * Returns a deduplicated array of pet name strings.
+ * Query boarding dogs present overnight on a given date.
+ * Returns a deduplicated array of dog name strings.
+ *
+ * Uses the boardings table (source of truth for overnight stays) rather than
+ * daytime_appointments service_category='Boarding', which only captures dogs
+ * whose external appointment is typed as Boarding — missing dogs who have DC/PG
+ * daytime appointments on the same day as their overnight stay.
+ *
+ * A dog is "overnight tonight" if:
+ *   arrival_datetime  <  midnight(dateStr+1) local time  (arrived by end of today)
+ *   departure_datetime >= midnight(dateStr+1) local time  (departs tomorrow or later)
  *
  * Error-handling: returns [] on DB error (boarders list is non-critical;
  * a failed boarders query should not block the image send).
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {string} dateStr
+ * @param {string} dateStr - YYYY-MM-DD
  * @returns {Promise<string[]>}
  */
 async function queryBoarders(supabase, dateStr) {
-  log(`Querying boarders for ${dateStr}`);
+  log(`Querying boarders for ${dateStr} (from boardings table)`);
+
+  // Midnight of dateStr+1 in local time — dogs staying overnight must depart
+  // at or after this moment. Using local Date to stay consistent with
+  // parseDateParam and the rest of the date logic in this module.
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const nextDayMidnight = new Date(y, m - 1, d + 1); // JS handles month/day overflow
+  const nextDayISO = nextDayMidnight.toISOString();
+
+  log(`Boarders date boundary: arrival < ${nextDayISO} AND departure >= ${nextDayISO}`);
 
   const { data, error } = await supabase
-    .from('daytime_appointments')
-    .select('pet_names')
-    .eq('appointment_date', dateStr)
-    .eq('service_category', 'Boarding');
+    .from('boardings')
+    .select('booking_status, dogs(name)')
+    .lt('arrival_datetime', nextDayISO)
+    .gte('departure_datetime', nextDayISO);
 
   if (error) {
     // Decision: non-fatal — return empty list and warn.
@@ -157,15 +175,16 @@ async function queryBoarders(supabase, dateStr) {
     return [];
   }
 
-  // Flatten all pet_names arrays, deduplicate preserving first-seen order.
+  // Deduplicate by name — a dog with multiple boarding rows (e.g. sync created
+  // duplicates from the same AGYD booking) should appear only once.
   const seen = new Set();
   const boarders = [];
-  for (const row of data) {
-    for (const name of (row.pet_names || [])) {
-      if (name && !seen.has(name)) {
-        seen.add(name);
-        boarders.push(name);
-      }
+  for (const row of (data || [])) {
+    if (row.booking_status === 'cancelled') continue;
+    const name = row.dogs?.name;
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      boarders.push(name);
     }
   }
 
