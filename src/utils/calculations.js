@@ -83,6 +83,27 @@ export function calculateEmployeeTotals(nightAssignments, dogs, boardings, dates
 }
 
 /**
+ * Calculate daytime follow-on credit for a worker who worked the following day.
+ * Matches pet names from daytime_appointments against the dogs array by name
+ * and sums their dayRate × (netPercentage / 100).
+ * @param {string[]} petNames - Unique pet names with daytime appointments that day
+ * @param {Array} dogs - Dogs array with { name, dayRate }
+ * @param {number} netPercentage - Net percentage (0-100)
+ * @returns {number} - Daytime credit amount
+ */
+export function calculateDaytimeCredit(petNames, dogs, netPercentage) {
+  let gross = 0;
+  const seen = new Set();
+  for (const name of petNames) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const dog = dogs.find(d => d.name === name);
+    if (dog) gross += dog.dayRate ?? 0;
+  }
+  return gross * (netPercentage / 100);
+}
+
+/**
  * Calculate total gross revenue for a boarding
  * @param {Object} dog - Dog with nightRate
  * @param {Object} boarding - Boarding with arrival/departure
