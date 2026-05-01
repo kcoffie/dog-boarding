@@ -202,6 +202,34 @@ async function readLastSentState(supabase) {
 }
 
 /**
+ * Store the 8:30am boarders snapshot in cron_health under 'boarders-snapshot'.
+ * The hourly intraday job reads this to compute additions/cancellations since 8:30am.
+ * Stored regardless of whether the 8:30am notify actually sends — the snapshot is
+ * always captured so the hourly job has a baseline even on no-change days.
+ *
+ * Non-fatal — a failed write logs a warning but does not block the notify send.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {Array<{name: string, arrival_datetime: string, departure_datetime: string}>} boarders
+ * @param {string} dateStr - YYYY-MM-DD
+ */
+async function storeBoardersSnapshot(supabase, boarders, dateStr) {
+  const snapshot = boarders.map(b => ({
+    name: b.name,
+    arrival_datetime: b.arrival_datetime,
+    departure_datetime: b.departure_datetime,
+  }));
+  await writeCronHealth(supabase, 'boarders-snapshot', 'success', {
+    snapshotDate: dateStr,
+    boarders: snapshot,
+    capturedAt: new Date().toISOString(),
+  }, null).catch(err =>
+    console.warn(`[Notify/Snapshot] Failed to store boarders snapshot: ${err.message}`)
+  );
+  console.log(`[Notify/Snapshot] Stored boarders snapshot for ${dateStr} — ${snapshot.length} boarders: [${snapshot.map(b => b.name).join(', ')}]`);
+}
+
+/**
  * Persist the just-sent hash so future sends in the same day can compare.
  * Non-fatal — a failed write doesn't block the caller.
  *
@@ -354,6 +382,13 @@ export default async function handler(req, res) {
     if (data.workers.length === 0) {
       console.warn(`[Notify] No worker data for today — skipping send (refreshed=${refresh.refreshed}, rowCount=${refresh.rowCount})`);
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_data' });
+    }
+
+    // --- Store 8:30am boarders snapshot (J-1 baseline) ---
+    // Stored before the send-gate check so the hourly intraday job always has a baseline,
+    // even when 8:30am skips sending due to no change in the roster.
+    if (window === '8:30am') {
+      await storeBoardersSnapshot(supabase, data.boarders, dateStr);
     }
 
     // --- Read last sent state (for 7am/8:30am gate) ---

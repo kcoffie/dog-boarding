@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: April 29, 2026 (session 18) — **R-1 done (PR #187).** J-1 is next. Theme: Client-driven operational intelligence._
+_Last updated: May 1, 2026 (session 20) — **J-1 PR open (#190).** P-1 is next. Theme: Client-driven operational intelligence._
 
 ---
 
@@ -93,8 +93,8 @@ These are not code tickets. They block specific milestones. Track them here so n
 
 **Why this order:**
 
-1. **R-1** ✅ Q Boarding 6th box — done PR #187
-2. **J-1** — Intraday change notification job. New cron + state design. Architect carefully before building.
+1. **R-1** ✅ Q Boarding 6th box — PR #187 + bug fix PR #189 (queryBoarders now uses boardings table)
+2. **J-1** ✅ PR open issue #190 — Intraday change notification job.
 3. **P-1** — Employee pay daytime follow-on. DB schema change, needs spec review at architect step.
 
 ---

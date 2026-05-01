@@ -296,6 +296,28 @@ function workerCard(worker, colWidth) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Format a compact date range for the Q Boarding card: "4/29–5/2"
+ * Uses America/Los_Angeles to match the rest of the app's date display.
+ *
+ * @param {string} arrivalIso
+ * @param {string} departureIso
+ * @returns {string}
+ */
+function formatCompactDateRange(arrivalIso, departureIso) {
+  const fmt = (iso) => {
+    if (!iso) return '?';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '?';
+    return d.toLocaleDateString('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      timeZone: 'America/Los_Angeles',
+    });
+  };
+  return `${fmt(arrivalIso)}–${fmt(departureIso)}`; // en dash
+}
+
+/**
  * Render the "Q Boarding" card for the 6th slot in the daily roster grid.
  *
  * Shows all overnight boarders for the day (all workers combined), sorted
@@ -305,20 +327,21 @@ function workerCard(worker, colWidth) {
  *
  * Exported for unit testing.
  *
- * @param {string[]} boarders - Pet name strings from getPictureOfDay result
+ * @param {Array<{name: string, arrival_datetime: string, departure_datetime: string}>} boarders
  * @param {number} colWidth   - Pixel width of this column
  * @returns {object}
  */
 export function qBoardingCard(boarders, colWidth) {
   const sorted = [...boarders].sort((a, b) =>
-    decodeEntities(a).toLowerCase().localeCompare(decodeEntities(b).toLowerCase())
+    decodeEntities(a.name).toLowerCase().localeCompare(decodeEntities(b.name).toLowerCase())
   );
 
-  console.log(`[RosterImage] Q Boarding: ${sorted.length} boarders (${sorted.join(', ') || 'none'})`);
+  console.log(`[RosterImage] Q Boarding: ${sorted.length} boarders (${sorted.map(b => b.name).join(', ') || 'none'})`);
 
   const dogRows = sorted.length > 0
-    ? sorted.map(name =>
-        h('div', {
+    ? sorted.map(boarding => {
+        const label = `${decodeEntities(boarding.name)} (${formatCompactDateRange(boarding.arrival_datetime, boarding.departure_datetime)})`;
+        return h('div', {
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
@@ -334,9 +357,9 @@ export function qBoardingCard(boarders, colWidth) {
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-          }, decodeEntities(name)),
-        )
-      )
+          }, label),
+        );
+      })
     : [h('div', {
         display: 'flex',
         alignItems: 'center',

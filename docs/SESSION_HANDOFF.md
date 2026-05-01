@@ -1,30 +1,45 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** April 29, 2026 (session 18) — R-1 complete. J-1 is next.
+**Last updated:** May 1, 2026 (session 20) — J-1 built, PR open, pending CI + merge.
 
 ---
 
 ## Current State
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
-- **1006 tests, 57 files, 0 failures**
-- **main clean** (PR #187 merged this session — R-1 Q Boarding box)
+- **1028 tests, 59 files, 0 failures**
+- **J-1 PR open** — pending CI + merge
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### Session 18 Summary
+### Session 20 Summary
+| Item | Status |
+|---|---|
+| J-1 — intraday boarding change notification job | ✅ Built — PR open, issue #190 |
+
+**J-1 changes:**
+- `queryBoarders` now returns `{ name, arrival_datetime, departure_datetime }[]` (was `string[]`)
+- `hashPicture` now includes boarders in hash (boarders are rendered in Q Boarding box — R-1/PR #187)
+- Q Boarding card in roster image shows compact date ranges: `Name (M/D–M/D)`
+- `notify.js` 8:30am window stores `boarders-snapshot` in `cron_health` before the send-gate check
+- New `api/notify-intraday.js` — hourly delta handler: snapshot → current → delta → hash gate → send
+- New `api/intraday-image.js` — delta PNG: "Q Boarding Changes" header + Added/Cancelled sections
+- New `.github/workflows/notify-intraday.yml` — hourly 9am–8pm PDT Mon–Fri (two cron expressions for midnight-spanning window)
+- 18 new tests (8 notify-intraday, 5 intraday-image, 3 hash, 1 boarder object, 1 date-range render)
+
+### Session 19 Summary (reference)
+| Item | Status |
+|---|---|
+| R-1 bug fix — Q Boarding missing dogs with DC/PG appointments | ✅ PR #189 merged — issue #188 |
+| Calendar duplication (Annie/Tracy shown twice) | ✅ Root cause confirmed, data cleanup deferred |
+
+**R-1 bug fix (PR #189):** `queryBoarders` in `src/lib/pictureOfDay.js` was reading `daytime_appointments` with `service_category='Boarding'`. Dogs who have DC/PG daytime appointments on the same night (Annie, Tracy) had no Boarding row in `daytime_appointments` — invisible to Q Boarding. Fixed to query the `boardings` table directly with a date-overlap filter (`arrival < midnight(dateStr+1)`, `departure >= midnight(dateStr+1)`), joining `dogs` for names. Deduplication by name guards against the sync duplicate issue below. 4 new tests.
+
+**Calendar duplication (Annie + Tracy shown twice):** AGYD has two separate appointment IDs (`C63QgeoP` and `C63QgeoR`) for the same boarding stay (Apr 27–May 1). The sync correctly processed both distinct IDs, creating 4 boarding rows instead of 2. Likely cause: booking was modified (originally Apr 27 start, extended to Apr 26/27) creating a new AGYD record while the old one remained. **Deferred data cleanup:** delete boarding rows `d47115e8` (Annie) and `36e76c49` (Tracy) — the `C63QgeoP` pair. Null `sync_appointments.mapped_boarding_id` first (FK constraint, same pattern as the delete flow in `useBoardings.js`).
+
+### Session 18 Summary (reference)
 | Item | Status |
 |---|---|
 | R-1 — Q Boarding 6th box | ✅ PR #187 merged — issue #186 |
-| Verify on live image | ⏳ **Kate to trigger manually** — see command below |
-
-**Manual verify command (run after Vercel deploys):**
-```
-curl -s "https://qboarding.vercel.app/api/notify?window=830am&token=$VITE_SYNC_PROXY_TOKEN" | jq .
-```
-Or open the image URL directly:
-```
-https://qboarding.vercel.app/api/roster-image?date=YYYY-MM-DD&token=TOKEN
-```
-Confirm Q Boarding box appears bottom-right with correct boarder list.
+| Verify on live image | ✅ Verified April 30 — box renders. Bug found and fixed this session. |
 
 ---
 
@@ -36,68 +51,38 @@ Confirm Q Boarding box appears bottom-right with correct boarder list.
 
 **Key facts:**
 - The data already flows through the notify pipeline — boardings are queried in `getPictureOfDay()`. The 6th box just aggregates them.
-- Change is isolated to `api/roster-image.js` (Satori layout).
+- Change is isolated to `api/roster-image.js` (Satori layout) and `src/lib/pictureOfDay.js` (query source).
 - No DB change, no new cron.
 
-**Files to read before coding:**
-- `api/roster-image.js` — full layout, box rendering, data shape passed in
-- `src/lib/pictureOfDay.js` — what data is returned and how boardings are structured
-- `api/notify.js` — what gets passed to the image URL
-
 **Definition of Done:**
-- [ ] 6th box renders in existing empty slot (bottom-right)
-- [ ] Heading: "Q Boarding" in AGYD forest green `#4A773C`
+- [x] 6th box renders in existing empty slot (bottom-right)
+- [x] Heading: "Q Boarding" in AGYD forest green `#4A773C`
 - [x] Lists all dogs boarding tonight (all workers combined, sorted alphabetically)
-- [x] Dog count shown (e.g., "14 dogs") consistent with other boxes
+- [x] Dog count shown (e.g., "1 dog") consistent with other boxes
 - [x] No layout regression on the other 5 boxes (weekend path untouched)
 - [x] Unit tests: 7 new (sort order, empty state, singular/plural, height calc)
-- [x] 1006 tests pass
-- [ ] **Verify on live image** — Kate to trigger manually after deploy
+- [x] Bug fix: `queryBoarders` uses `boardings` table (not `daytime_appointments`) — PR #189
+- [x] 1010 tests pass
+- [x] Verified on live image April 30
 
 ---
 
-### J-1 — Intraday change notification job
+### J-1 — Intraday change notification job ✅ PR OPEN
 
-**What:** A new hourly job that runs 9am–8pm and sends a WhatsApp notification **only when something changed** from the 8:30am baseline. Different image design from the roster — delta-only format showing what was added or cancelled since 8:30am. Primary signal: new overnight boarders tonight. Secondary: cancellations.
-
-**Confirmed design decisions:**
-- **Baseline:** 8:30am snapshot (stored at end of the 8:30am notify run)
-- **Delta logic:** cumulative since 8:30am. Once dogA shows as new, it stays in every report until the next morning resets the baseline. No send if zero changes since 8:30am.
-- **Scope:** additions (new overnight boarders) AND cancellations (dogs removed from tonight since 8:30am)
-- **Last run:** 8pm
-- **Image design:** NOT a full worker roster grid. Delta-only format, e.g.:
-  ```
-  Changes since 8:30am, Wed 4/29
-  ✅ Added: Mochi Hill, Bronwyn
-  ❌ Cancelled: Tula
-  ```
-- **No send if no changes** — this is not a "heartbeat" job
-
-**State design (the hard part):**
-- The 8:30am notify run must store a snapshot of tonight's boarders (not just the hash) in `cron_health`.
-- The hourly job loads that snapshot and compares to the current boarders list.
-- Delta = dogs in current but not in snapshot (added) + dogs in snapshot but not in current (cancelled).
-- If delta is empty → no send. If non-empty → send delta image.
-
-**N-1 still relevant?** Yes — N-1 (blue overlay on existing morning images for intra-day changes) and J-1 (separate hourly delta job) solve different UX needs and are complementary. N-1 is still on backlog.
-
-**Files to read before coding:**
-- `api/notify.js` — where the 8:30am snapshot must be stored; how `cron_health` is written
-- `src/lib/pictureOfDay.js` — boarding data shape
-- `api/roster-image.js` — for the new delta image design
-- `.github/workflows/notify-830am.yml` — GH Actions cron pattern to copy for J-1
+**Issue:** #190 | **PR:** pending CI
 
 **Definition of Done:**
-- [ ] New GH Actions workflow: hourly 9am–8pm (Mon–Fri), `workflow_dispatch` for manual test
-- [ ] 8:30am notify run stores a `boarders_snapshot` (array of boarding IDs/names) to `cron_health`
-- [ ] Hourly job: load snapshot → compare to current → compute delta
-- [ ] No send if delta empty
-- [ ] WhatsApp message sent for non-empty delta (additions + cancellations)
-- [ ] New image design for delta-only content (distinct from full roster image)
-- [ ] Graceful fallback: if no snapshot found for today (8:30am run was skipped), log + skip send
-- [ ] Unit tests: (a) empty delta → no send, (b) addition detected → send, (c) cancellation detected → send, (d) missing snapshot → graceful skip
-- [ ] 999+ tests pass
-- [ ] Verify on a real morning cycle
+- [x] New GH Actions workflow: hourly 9am–8pm (Mon–Fri), `workflow_dispatch` for manual test
+- [x] 8:30am notify run stores `boarders-snapshot` in `cron_health`
+- [x] Hourly job: load snapshot → compare → compute delta → hash gate → send if new delta
+- [x] No send if delta empty
+- [x] WhatsApp sent for non-empty delta with "Q Boarding Changes" image
+- [x] Intraday image shows readable dates `Name (Apr 29 – May 2)`
+- [x] Q Boarding box in roster image shows compact dates `Name (M/D–M/D)`
+- [x] `hashPicture` includes boarders (boarders now rendered — R-1/PR #187)
+- [x] Graceful skip if no snapshot found for today
+- [x] 1028 tests pass, 0 failures
+- [ ] Verify on a real morning cycle (after merge)
 
 ---
 
@@ -145,10 +130,18 @@ Confirm Q Boarding box appears bottom-right with correct boarder list.
 
 ---
 
+## Known Data Issues (Deferred)
+
+| Issue | Detail | Fix when ready |
+|---|---|---|
+| Annie + Tracy duplicate boardings | AGYD created 2 appointment IDs for same stay. 4 rows in `boardings` instead of 2. Calendar shows each dog twice. | Delete rows `d47115e8` (Annie) and `36e76c49` (Tracy). Null `sync_appointments.mapped_boarding_id` first. |
+
+---
+
 ## v6 Sprint Order (Recommended)
 
-1. **R-1** — Isolated, no new infrastructure, high visual value. First win.
-2. **J-1** — New cron + state design. Architect carefully before building.
+1. **R-1** ✅ DONE — PR #187 + bug fix PR #189
+2. **J-1** — New cron + state design. Architect carefully before building. **NEXT.**
 3. **P-1** — DB schema change. Needs spec review at architect step.
 
 ---
@@ -193,7 +186,7 @@ cron-detail-2.js (00:15)    → re-exports cron-detail (second Vercel path = dou
 | `api/webhooks/meta.js` | Incoming Meta webhook — HMAC-SHA256 verify, stores delivery events |
 | `scripts/integration-check.js` | Integration check — Playwright + Claude vision + DB compare; smart-send logic |
 | `src/lib/scraper/syncRunner.js` | `runScheduleSync`, `runDetailSync` — shared sync logic |
-| `src/lib/pictureOfDay.js` | `getPictureOfDay`, `computeWorkerDiff`, `hashPicture` |
+| `src/lib/pictureOfDay.js` | `getPictureOfDay`, `computeWorkerDiff`, `hashPicture`; `queryBoarders` uses `boardings` table |
 | `api/roster-image.js` | Token-gated PNG endpoint; `formatAsOf`; `timingSafeEqual` auth; weekend path |
 | `api/notify.js` | Notify orchestrator (4am/7am/830am/friday-pm windows) + `storeRosterImage` |
 | `src/lib/notifyHelpers.js` | `refreshDaytimeSchedule` (extracted for testability) |
@@ -213,7 +206,7 @@ cron-detail-2.js (00:15)    → re-exports cron-detail (second Vercel path = dou
 | Stephen Muro | 164375 |
 
 ### GitHub Releases
-v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0, v5.2.0, v5.3.0, v5.4.0, **v5.5.0 (latest)**
+v1.0, v1.2.0, v2.0.0, v3.0.0, v3.1.0, v3.2.0, v4.0.0, v4.1.0, v4.1.1, v4.1.2, v4.2.0, v4.3.0, v4.4.0, v4.4.1, v4.4.2, v4.4.3, v5.0.0, v5.1.0, v5.2.0, v5.3.0, v5.4.0, v5.5.0, **v6.0.0 (pending)**
 
 ### Useful SQL
 ```sql
@@ -232,6 +225,13 @@ SELECT cron_name, last_ran_at, status, result, error_msg FROM cron_health ORDER 
 SELECT b.external_id, d.name, b.billed_amount, b.night_rate, b.updated_at
 FROM boardings b JOIN dogs d ON b.dog_id = d.id
 ORDER BY b.updated_at DESC LIMIT 20;
+
+-- Tonight's boarders (what Q Boarding box shows)
+SELECT d.name, b.arrival_datetime, b.departure_datetime, b.booking_status
+FROM boardings b JOIN dogs d ON b.dog_id = d.id
+WHERE b.arrival_datetime < (CURRENT_DATE + INTERVAL '1 day')
+  AND b.departure_datetime >= (CURRENT_DATE + INTERVAL '1 day')
+ORDER BY d.name;
 ```
 
 ### GitHub Actions repo secrets / Vercel env vars

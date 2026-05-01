@@ -1,22 +1,23 @@
 # Notify Jobs (WhatsApp Roster)
 
-**Status:** Live (weekdays + Friday PM, PDT schedule — update UTC times each DST transition)
-**Last reviewed:** April 2, 2026
+**Status:** Live (weekdays + Friday PM + hourly intraday, PDT schedule — update UTC times each DST transition)
+**Last reviewed:** May 1, 2026
 
 ---
 
 ## What They Do
 
-Four GitHub Actions workflows send WhatsApp notifications. Three fire on weekday mornings with the daily roster image; one fires Friday afternoon with a weekend boarding preview.
+Five GitHub Actions workflows send WhatsApp notifications. Three fire on weekday mornings with the daily roster image; one fires Friday afternoon with a weekend boarding preview; one fires hourly throughout the day to catch intraday boarding changes.
 
 | Workflow | File | Time (PDT) | UTC | Days | Behavior |
 |---|---|---|---|---|---|
 | Notify 4am | `notify-4am.yml` | 4:00 AM | 11:00 | Mon–Fri | Always sends — daily roster image |
 | Notify 7am | `notify-7am.yml` | 7:00 AM | 14:00 | Mon–Fri | Sends only if roster changed |
-| Notify 8:30am | `notify-830am.yml` | 8:30 AM | 15:30 | Mon–Fri | Sends only if roster changed |
+| Notify 8:30am | `notify-830am.yml` | 8:30 AM | 15:30 | Mon–Fri | Sends only if roster changed; also stores boarders snapshot |
 | Notify Friday PM | `notify-friday-pm.yml` | 3:00 PM | 22:00 | Fri only | Always sends — weekend boarding preview image |
+| Notify Intraday | `notify-intraday.yml` | 9am–8pm hourly | 16–23 + 0–3 UTC | Mon–Fri | Sends delta image only when boarders changed since 8:30am |
 
-All four support manual trigger (`workflow_dispatch`) for testing.
+All five support manual trigger (`workflow_dispatch`) for testing.
 
 ---
 
@@ -64,12 +65,38 @@ The endpoint orchestrates the full notify flow:
 
 ## Change Detection
 
-The roster hash is computed from the current set of {worker → dog name} pairs. If any worker's dog changes (new booking, cancellation, name correction), the hash changes and the 7am/8:30am sends fire.
+### Morning roster hash (4am / 7am / 8:30am)
+
+The roster hash is computed from the current set of {worker → dog name} pairs **plus the list of overnight boarders** (sorted by name). If any worker's dog changes, or if a new boarder is added/cancelled, the hash changes and the 7am/8:30am sends fire.
+
+This is a change from v4.1.1 where boarders were intentionally excluded from the hash. As of J-1 (v6.0.0), boarders are rendered in the Q Boarding box (R-1/PR #187) and included in the hash so boarder additions/removals trigger a resend.
 
 Hash is stored in `cron_health WHERE cron_name = 'notify'`. Check it with:
 
 ```sql
 SELECT result FROM cron_health WHERE cron_name = 'notify';
+```
+
+### Intraday delta (hourly job)
+
+The 8:30am notify run stores a snapshot of tonight's boarders in `cron_health`:
+```sql
+SELECT result FROM cron_health WHERE cron_name = 'boarders-snapshot';
+-- result: { snapshotDate, boarders: [{name, arrival_datetime, departure_datetime}], capturedAt }
+```
+
+Each hourly run:
+1. Loads the snapshot (rejects if `snapshotDate` ≠ today — stale row from a prior day)
+2. Queries current boarders from the `boardings` table
+3. Computes delta: `added` = in current but not in snapshot; `cancelled` = in snapshot but not in current
+4. Hashes the delta (djb2 over sorted names). If hash matches the last intraday send, skips — nothing new since the last hourly image
+5. If delta is empty, skips
+6. If delta is non-empty and new, sends the intraday delta image
+
+Last intraday state stored in `cron_health WHERE cron_name = 'notify-intraday'`:
+```sql
+SELECT result FROM cron_health WHERE cron_name = 'notify-intraday';
+-- result: { lastDeltaHash, lastDate, sentAt, addedCount, cancelledCount }
 ```
 
 ---
@@ -115,11 +142,14 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 |---|---|
 | `.github/workflows/notify-4am.yml` | 4am weekday workflow — always sends daily roster |
 | `.github/workflows/notify-7am.yml` | 7am weekday workflow — sends on change |
-| `.github/workflows/notify-830am.yml` | 8:30am weekday workflow — sends on change |
+| `.github/workflows/notify-830am.yml` | 8:30am weekday workflow — sends on change; triggers boarders snapshot |
 | `.github/workflows/notify-friday-pm.yml` | Friday 3pm workflow — always sends weekend boarding preview |
-| `api/notify.js` | Notify orchestrator endpoint (handles all windows incl. friday-pm) |
-| `api/roster-image.js` | PNG image generation endpoint (satori + resvg, token-gated; supports `type=weekend`) |
-| `src/lib/pictureOfDay.js` | `getPictureOfDay()`, `computeWorkerDiff()`, `hashPicture()` |
+| `.github/workflows/notify-intraday.yml` | Hourly 9am–8pm PDT Mon–Fri — sends delta image when boarders changed since 8:30am |
+| `api/notify.js` | Notify orchestrator endpoint (handles all windows incl. friday-pm); stores boarders snapshot at 8:30am |
+| `api/notify-intraday.js` | Intraday delta handler — snapshot read, delta compute, hash gate, send |
+| `api/roster-image.js` | PNG image generation endpoint (satori + resvg, token-gated; supports `type=weekend`); Q Boarding card shows compact date ranges |
+| `api/intraday-image.js` | Intraday delta PNG endpoint (satori + resvg, token-gated); shows added/cancelled boarders |
+| `src/lib/pictureOfDay.js` | `getPictureOfDay()`, `computeWorkerDiff()`, `hashPicture()`, `queryBoarders()` |
 | `src/lib/notifyHelpers.js` | `refreshDaytimeSchedule()` — live schedule refresh before each send |
 | `src/lib/notifyWhatsApp.js` | Meta Cloud API wrapper — `metaMediaUpload()` (K-1b upload-first), `sendRosterImage()`, `sendTextMessage()`, `getRecipients()` |
 

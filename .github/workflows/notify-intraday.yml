@@ -1,0 +1,28 @@
+# Hourly intraday boarding change check, 9am–8pm PDT Mon–Fri.
+# DST: times are PDT (Mar–Nov). Revisit UTC offsets at each DST transition.
+# Two cron expressions are required because the 5pm–8pm PDT window spans UTC midnight:
+#   5pm–8pm PDT = 0am–3am UTC on the following calendar day.
+#   Mon–Fri PDT evenings = Tue–Sat UTC, hence days-of-week '2-6' on the second expression.
+name: Notify Intraday (9am–8pm hourly)
+
+on:
+  schedule:
+    - cron: '0 16,17,18,19,20,21,22,23 * * 1-5'  # 9am–4pm PDT (UTC 16–23, Mon–Fri UTC)
+    - cron: '0 0,1,2,3 * * 2-6'                    # 5pm–8pm PDT (UTC 0–3, Tue–Sat UTC = Mon–Fri PDT)
+  workflow_dispatch:
+
+jobs:
+  notify-intraday:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send intraday boarding change notification if delta changed
+        run: |
+          RESPONSE=$(curl -s -o /tmp/intraday_response.json -w "%{http_code}" \
+            "${{ secrets.APP_URL }}/api/notify-intraday?token=${{ secrets.VITE_SYNC_PROXY_TOKEN }}")
+          echo "HTTP status: $RESPONSE"
+          cat /tmp/intraday_response.json
+          if [ "$RESPONSE" != "200" ]; then
+            echo "Notify-intraday endpoint returned non-200 status"
+            exit 1
+          fi
