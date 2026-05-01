@@ -1,16 +1,43 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 1, 2026 (session 24) — N-1 built. PR open, CI pending.
+**Last updated:** May 1, 2026 (session 24) — N-1 merged. PR #197. main clean. 1043 tests.
 
 ---
 
 ## Current State
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
-- **1034 tests, 59 files, 0 failures**
-- **main is clean** — v6.1.0 released
+- **1043 tests, 59 files, 0 failures**
+- **main is clean** — v6.1.0 released, N-1 merged (PR #197)
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### Session 22 Summary
+### Session 24 Summary (this session)
+| Item | Status |
+|---|---|
+| N-1 — suppress UPDATED! badge on 4am | ✅ Built. PR #197 merged. |
+| N-1 — blue intra-day overlay on 7am/8:30am | ✅ Built. PR #197 merged. |
+| N-1 — 9 unit tests (badge, blue, fallback) | ✅ 1043 tests, 0 failures |
+
+**N-1 final state:**
+- `notify.js`: `persistSentState()` writes `snapshot: workers` to `cron_health.result`; `readLastSentState()` returns `lastSnapshot`; image URL gets `&sendWindow=${window}` + `&lastSnapshot=<base64>` (7am/8:30am only)
+- `roster-image.js`: `buildChangedDogs(lastSnapshot, currentWorkers)` → `Set<string>`; `workerCard()` checks set first (blue `#2563eb`); `buildLayout()` suppresses badge when `sendWindow === '4am'`
+- No schema migration needed — `cron_health.result` is free-form JSONB; `snapshot` field is additive
+
+**N-1 DoD — all complete:**
+- [x] 4am image: no UPDATED! badge
+- [x] 7am/8:30am: UPDATED! badge present; green/red today-vs-yesterday diff unchanged; blue overlay on changed dogs
+- [x] Blue strikethrough for dogs removed intra-day
+- [x] Blue + for dogs added intra-day
+- [x] Null/malformed snapshot: graceful green/red fallback, no crash
+- [x] 9 unit tests passing
+- [x] 1043 tests, 0 failures
+- [x] PR #197 merged — **pending: Kate verifies on first 3-send morning cycle**
+
+**Kate verification (next morning):**
+- 4am image should have no UPDATED! badge even when dogs differ from yesterday
+- 7am image should show blue dogs if anything changed since 4am (first morning: no snapshot yet → green/red only)
+- 8:30am image: if roster changed since 7am, those dogs should show blue
+
+### Session 22 Summary (reference)
 | Item | Status |
 |---|---|
 | P-1 — merge PR #193 + run migration 027 | ✅ Merged. Kate ran migration 027 in Supabase. |
@@ -18,45 +45,13 @@
 | P-1 bug fix — daytime credit source (#194, PR #195) | ✅ Fixed. Merged. |
 | v6.1.0 GitHub release | ✅ Tagged and released. |
 
-**P-1 final state (fully shipped):**
-- DB: `worked_following_day BOOLEAN DEFAULT NULL` on `night_assignments` (migration 027, live in Supabase)
-- `useNightAssignments`: `workedFollowingDay` in shape; `getWorkedFollowingDay(date)`, `setWorkedFollowingDay(date, value)`
-- `DataContext`: exposes `getWorkedFollowingDay`, `setWorkedFollowingDay`
-- `calculations.js`: `calculateDaytimeCredit(petNames, dogs, netPercentage)` — not used by components (kept for tests); components compute credit directly from boardings
-- `EmployeeDropdown.jsx`: "Also worked [Day, M/D]?" checkbox below dropdown when a worker is assigned
-- `PayrollPage.jsx`: daytime credit computed from overnight boardings (`isOvernight`) × `dayRate` × `netPercentage`; shows "Daytime follow-on" line item in Outstanding Payments
-- `EmployeeTotals.jsx`: same daytime credit computation; included in "Total earnings" widget on matrix page
-- **Bug fixed (#194):** original implementation queried `daytime_appointments` (all DC/PG dogs that day — wrong). Corrected to use `boardings` table via `isOvernight` — only the dogs the worker actually cared for that night.
-- Expected amount for Apr 30 night: Annie ($50) + Tracy ($35) + Frances Wiebe ($50) × 65% = **$87.75**
-- 1034 tests, 0 failures
-
-**P-1 DoD — all complete:**
-- [x] DB migration 027 run in Supabase
-- [x] Checkbox renders on matrix page
-- [x] Daytime credit appears in Payroll Outstanding Payments
-- [x] Daytime credit included in EmployeeTotals widget
-- [x] Correct data source: overnight boardings, not daytime_appointments
-- [x] v6.1.0 released
-
 ---
 
 ## v6 — Remaining Tickets
 
-All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done (warning already in code). K-5 closed. Remaining work is from the backlog.
+All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done. K-5 closed. N-1 merged (PR #197). Remaining work is from the backlog.
 
-### Next: N-1 — Notify diff UX (PR open, CI pending)
-
-**Status:** Built this session. PR pending CI + merge. No Kate action required post-merge (cron_health `snapshot` field is additive — no schema migration).
-
-**What shipped:**
-- **4am badge suppression:** `sendWindow` param appended to image URL; `roster-image.js` suppresses UPDATED! badge unconditionally on `sendWindow=4am`
-- **Intra-day blue overlay (7am/8:30am):** `persistSentState()` now stores `snapshot: workers` in `cron_health.result`; `readLastSentState()` returns it; 7am/8:30am passes base64-encoded snapshot to `roster-image.js` via `&lastSnapshot=`; `buildChangedDogs()` builds the changed-dog Set; `workerCard()` uses `COLORS.intraday = '#2563eb'` for changed dogs
-- **No-snapshot fallback:** malformed or missing `lastSnapshot` → graceful green/red only, no crash
-- **Tests:** 9 new unit tests in `rosterImage.test.js` — badge suppression (3), blue overlay (3), fallback (3). Total: 1043 tests, 0 failures
-
-**Files changed:** `api/notify.js`, `api/roster-image.js`, `src/__tests__/rosterImage.test.js`, `docs/job_docs/notify-jobs.md`, `docs/SESSION_HANDOFF.md`
-
-### Other backlog candidates (after N-1):
+### Next backlog candidates:
 
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
