@@ -133,7 +133,8 @@ async function queryAppointmentsByDate(supabase, dateStr, label) {
 
 /**
  * Query boarding dogs present overnight on a given date.
- * Returns a deduplicated array of dog name strings.
+ * Returns a deduplicated array of `{ name, arrival_datetime, departure_datetime }` objects.
+ * The richer shape lets callers (intraday image, J-1 delta) show date ranges per dog.
  *
  * Uses the boardings table (source of truth for overnight stays) rather than
  * daytime_appointments service_category='Boarding', which only captures dogs
@@ -149,9 +150,9 @@ async function queryAppointmentsByDate(supabase, dateStr, label) {
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} dateStr - YYYY-MM-DD
- * @returns {Promise<string[]>}
+ * @returns {Promise<Array<{name: string, arrival_datetime: string, departure_datetime: string}>>}
  */
-async function queryBoarders(supabase, dateStr) {
+export async function queryBoarders(supabase, dateStr) {
   log(`Querying boarders for ${dateStr} (from boardings table)`);
 
   // Midnight of dateStr+1 in local time — dogs staying overnight must depart
@@ -165,7 +166,7 @@ async function queryBoarders(supabase, dateStr) {
 
   const { data, error } = await supabase
     .from('boardings')
-    .select('booking_status, dogs(name)')
+    .select('booking_status, arrival_datetime, departure_datetime, dogs(name)')
     .lt('arrival_datetime', nextDayISO)
     .gte('departure_datetime', nextDayISO);
 
@@ -184,11 +185,11 @@ async function queryBoarders(supabase, dateStr) {
     const name = row.dogs?.name;
     if (name && !seen.has(name)) {
       seen.add(name);
-      boarders.push(name);
+      boarders.push({ name, arrival_datetime: row.arrival_datetime, departure_datetime: row.departure_datetime });
     }
   }
 
-  log(`Boarders today: ${boarders.length} (${boarders.join(', ') || 'none'})`);
+  log(`Boarders today: ${boarders.length} (${boarders.map(b => b.name).join(', ') || 'none'})`);
   return boarders;
 }
 
@@ -433,7 +434,8 @@ export async function getPictureOfDay(supabase, date) {
   log(`getPictureOfDay complete — ${workers.length} workers, ${boarders.length} boarders, hasUpdates: ${hasUpdates}, lastSyncedAt: ${lastSyncedAt ?? 'none'}`);
 
   // lastSyncedAt: ISO string or null. Rendered as "(as of HH:MM AM)" in the image header.
-  // boarders: kept in data struct for easy restoration; not rendered or hashed in v4.1.1+.
+  // boarders: { name, arrival_datetime, departure_datetime }[] — rendered in Q Boarding box
+  //   (R-1/PR #187) and included in hashPicture (J-1) so boarder changes trigger a resend.
   return { date: dateStr, workers, boarders, hasUpdates, lastSyncedAt };
 }
 
@@ -452,8 +454,9 @@ export async function getPictureOfDay(supabase, date) {
  * @returns {string} Unsigned 32-bit integer as a decimal string
  */
 export function hashPicture(data) {
-  // Decision: boarders intentionally excluded from hash in v4.1.1.
-  // Boarder changes should not trigger a resend since boarders are not rendered.
+  // boarders included in hash as of J-1 (v6): boarders are rendered in the Q Boarding box
+  // (R-1/PR #187) so boarder additions/removals must trigger a resend.
+  // Sorted by name for stability — DB query order may vary.
   // lastSyncedAt intentionally excluded — timestamp changes must not trigger resend.
   const key = JSON.stringify({
     date: data.date,
@@ -462,6 +465,7 @@ export function hashPicture(data) {
       // Use series_id as the stable identifier; fall back to pet names for null-series rows.
       dogs: w.dogs.map(d => d.series_id || d.pet_names.join(',')),
     })),
+    boarders: data.boarders.map(b => b.name).sort(),
   });
 
   // djb2 hash — fast, sufficient entropy for change detection.
