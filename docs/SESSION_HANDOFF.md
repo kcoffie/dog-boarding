@@ -42,7 +42,7 @@
 
 ## v6 — Remaining Tickets
 
-All v6 specced tickets (R-1, J-1, P-1) are **DONE**. Remaining work is from the backlog.
+All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done (warning already in code). K-5 closed. Remaining work is from the backlog.
 
 ### Next candidates (pick one):
 
@@ -87,7 +87,7 @@ All v6 specced tickets (R-1, J-1, P-1) are **DONE**. Remaining work is from the 
 
 | # | Action | Blocks | Priority |
 |---|--------|--------|----------|
-| K-5 | Add Anthropic API credits at console.anthropic.com | Integration check Step 3 vision name-check | 🟢 Low |
+| ~~K-5~~ | ✅ Closed May 1 — Step 3 skipping silently without ill effects; `::warning::` already fires (integration-check.js:621). Credits not needed. | — | — |
 | K-8 | **Replace Meta test phone number before ~July 2, 2026.** Google Voice (free). Meta API Setup → Step 5 → verify → update `META_PHONE_NUMBER_ID` in Vercel. | WhatsApp continuity | 🟡 Medium — ~9 weeks |
 
 ---
