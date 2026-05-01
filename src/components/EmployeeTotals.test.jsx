@@ -33,11 +33,9 @@ describe('REQ-040: EmployeeTotals', () => {
     ],
   };
 
-  // Daytime-credit fields added by P-1 — no-op defaults for tests that don't exercise them
+  // Daytime follow-on field added by P-1 — no-op default for tests that don't exercise it
   const mockDaytimeExtras = {
-    nightAssignments: [],
     getWorkedFollowingDay: () => null,
-    queryDaytimePetNames: async () => ({}),
   };
 
   // Helper to create getNightAssignment mock from assignments object

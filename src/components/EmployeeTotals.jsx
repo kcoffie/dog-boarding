@@ -1,11 +1,9 @@
-import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
 import { DEFAULT_MATRIX_DAYS } from '../utils/constants';
-import { calculateDaytimeCredit } from '../utils/calculations';
 
 export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }) {
-  const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment, nightAssignments, getWorkedFollowingDay, queryDaytimePetNames } = useData();
+  const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment, getWorkedFollowingDay } = useData();
 
   // Helper to check if employee is active
   const isEmployeeActive = (name) => {
@@ -18,34 +16,20 @@ export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }
 
   const dates = getDateRange(startDate, days);
 
-  const [daytimeCreditByNightDate, setDaytimeCreditByNightDate] = useState({});
-
-  useEffect(() => {
-    const followingDayDates = dates
-      .filter(d => getWorkedFollowingDay(d))
-      .map(d => {
-        const dt = new Date(d + 'T00:00:00');
-        dt.setDate(dt.getDate() + 1);
-        return { nightDate: d, followingDate: dt.toISOString().split('T')[0] };
-      });
-
-    if (followingDayDates.length === 0) {
-      setDaytimeCreditByNightDate({});
-      return;
+  const computeDaytimeNet = (dateStr) => {
+    if (!getWorkedFollowingDay(dateStr)) return 0;
+    const percentage = getNetPercentageForDate(dateStr);
+    const seenIds = new Set();
+    let gross = 0;
+    for (const b of boardings) {
+      if (!isOvernight(b, dateStr)) continue;
+      if (seenIds.has(b.dogId)) continue;
+      seenIds.add(b.dogId);
+      const dog = dogs.find(d => d.id === b.dogId);
+      if (dog) gross += dog.dayRate ?? 0;
     }
-
-    const uniqueFollowingDates = [...new Set(followingDayDates.map(x => x.followingDate))];
-    queryDaytimePetNames(uniqueFollowingDates).then(petsByDate => {
-      const credits = {};
-      for (const { nightDate, followingDate } of followingDayDates) {
-        const petNames = petsByDate[followingDate] ?? [];
-        const percentage = getNetPercentageForDate(nightDate);
-        credits[nightDate] = calculateDaytimeCredit(petNames, dogs, percentage);
-      }
-      setDaytimeCreditByNightDate(credits);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nightAssignments, dogs, startDate, days]);
+    return gross * (percentage / 100);
+  };
 
   const calculateDayNet = (dateStr) => {
     let gross = 0;
@@ -122,7 +106,7 @@ export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }
     const employeeName = getNightAssignment(dateStr);
     if (employeeName && employeeName !== 'N/A') {
       const net = calculateDayNet(dateStr);
-      const daytimeNet = daytimeCreditByNightDate[dateStr] ?? 0;
+      const daytimeNet = computeDaytimeNet(dateStr);
       if (!employeeTotals[employeeName]) {
         employeeTotals[employeeName] = { nights: 0, earnings: 0, dates: [] };
       }
