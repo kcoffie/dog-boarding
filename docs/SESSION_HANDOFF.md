@@ -1,19 +1,39 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 1, 2026 (session 20) — J-1 built. PR #191 CI green, ready to merge.
+**Last updated:** May 1, 2026 (session 21) — J-1 merged + v6.0.0 released. P-1 built, PR open.
 
 ---
 
 ## Current State
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
-- **1028 tests, 59 files, 0 failures**
-- **J-1 PR #191 — CI green, ready to merge**
+- **1034 tests, 59 files, 0 failures**
+- **P-1 PR open — CI pending**
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
+
+### Session 21 Summary
+| Item | Status |
+|---|---|
+| J-1 — merge PR #191 + verify Vercel deploy | ✅ Merged. `notify-intraday?token=...` returns `{"ok":true,"action":"skipped","reason":"no_snapshot"}` |
+| v6.0.0 GitHub release | ✅ Tagged — J-1 + R-1 + hashPicture fix |
+| P-1 — employee pay daytime follow-on | ✅ Built. PR open (issue #192). CI pending. **NEXT: merge PR after CI green.** |
+
+**P-1 changes (PR pending):**
+- `supabase/migrations/027_add_worked_following_day.sql` — adds `worked_following_day BOOLEAN DEFAULT NULL` to `night_assignments`
+- `useNightAssignments`: includes `workedFollowingDay` in shape; adds `getWorkedFollowingDay(date)` and `setWorkedFollowingDay(date, value)`
+- `DataContext`: exposes `getWorkedFollowingDay`, `setWorkedFollowingDay`, `queryDaytimePetNames(dates[])`
+- `calculations.js`: new `calculateDaytimeCredit(petNames, dogs, netPercentage)` — sums dayRate for matched pets × percentage
+- `EmployeeDropdown.jsx`: checkbox "Also worked [Sun M/D]?" shown below dropdown when a worker is assigned
+- `PayrollPage.jsx`: useEffect fetches daytime pets via `queryDaytimePetNames`; shows daytime credit as separate "Daytime follow-on" line item
+- 6 new tests for `calculateDaytimeCredit`; PayrollPage test mock updated for `nightAssignments` + `queryDaytimePetNames`
+
+**P-1 DoD remaining:**
+- [ ] Run migration 027 in Supabase SQL editor
+- [ ] Verify on live site: toggle checkbox on a night assignment, confirm daytime credit appears in Payroll page
 
 ### Session 20 Summary
 | Item | Status |
 |---|---|
-| J-1 — intraday boarding change notification job | ✅ PR #191 CI green — ready to merge |
+| J-1 — intraday boarding change notification job | ✅ PR #191 CI green — merged this session |
 
 **J-1 changes:**
 - `queryBoarders` now returns `{ name, arrival_datetime, departure_datetime }[]` (was `string[]`)
@@ -67,9 +87,9 @@
 
 ---
 
-### J-1 — Intraday change notification job ✅ PR OPEN
+### J-1 — Intraday change notification job ✅ DONE
 
-**Issue:** #190 | **PR:** #191 | **CI:** ✅ green — merge when ready
+**Issue:** #190 | **PR:** #191 | **CI:** ✅ merged
 
 **Definition of Done:**
 - [x] New GH Actions workflow: hourly 9am–8pm (Mon–Fri), `workflow_dispatch` for manual test
@@ -86,7 +106,9 @@
 
 ---
 
-### P-1 — Employee pay: daytime follow-on
+### P-1 — Employee pay: daytime follow-on ✅ PR OPEN
+
+**Issue:** #192 | **PR:** open — CI pending. **NEXT: merge after CI green, run migration 027 in Supabase.**
 
 **What:** Night shift workers sometimes also work the following day. This allows crediting them for daytime work at the same pay rate (currently 65%) applied to each dog present that day. It is an **optional per-assignment flag**, not a global setting.
 
@@ -112,12 +134,14 @@
 - `src/hooks/useNightAssignments.js` (or equivalent)
 
 **Definition of Done:**
-- [ ] DB migration: `worked_following_day` boolean (nullable, default null) on night assignments
-- [ ] Payroll calculation updated: when flag is true, add daytime credit to worker total
-- [ ] UI: checkbox on assignment form — "Also worked [Day, M/D]?" — unchecked by default
-- [ ] Payroll display shows the daytime credit as a separate line item (not folded into night pay)
-- [ ] Unit tests: (a) flag false → no daytime credit, (b) flag true → daytime credit computed correctly, (c) no daytime dogs that day → $0 daytime credit
-- [ ] 999+ tests pass
+- [x] DB migration: `worked_following_day` boolean (nullable, default null) on night assignments — migration 027 written, needs to be run in Supabase
+- [x] Payroll calculation updated: when flag is true, add daytime credit to worker total
+- [x] UI: checkbox on assignment form — "Also worked [Day, M/D]?" — unchecked by default
+- [x] Payroll display shows the daytime credit as a separate line item (not folded into night pay)
+- [x] Unit tests: (a) flag false → no daytime credit, (b) flag true → daytime credit computed correctly, (c) no daytime dogs that day → $0 daytime credit — 6 new tests
+- [x] 1034 tests pass
+- [ ] Run migration 027 in Supabase SQL editor (Kate action)
+- [ ] Verify on live site: toggle checkbox on a night assignment, confirm daytime credit shows in Payroll
 
 ---
 
@@ -141,8 +165,8 @@
 ## v6 Sprint Order (Recommended)
 
 1. **R-1** ✅ DONE — PR #187 + bug fix PR #189
-2. **J-1** ✅ PR #191 CI green — merge + deploy verify + v6.0.0 release tag. **NEXT.**
-3. **P-1** — DB schema change. Needs spec review at architect step.
+2. **J-1** ✅ DONE — PR #191 merged + v6.0.0 released
+3. **P-1** ✅ PR open (issue #192) — **NEXT: CI green → merge → run migration 027 → verify live**
 
 ---
 
