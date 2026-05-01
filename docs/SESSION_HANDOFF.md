@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 1, 2026 (session 22) — P-1 merged, bug fixed, v6.1.0 released. v6 complete.
+**Last updated:** May 1, 2026 (session 23) — G-2/K-5 closed. N-1 architect plan complete. Ready to build.
 
 ---
 
@@ -44,11 +44,33 @@
 
 All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done (warning already in code). K-5 closed. Remaining work is from the backlog.
 
-### Next candidates (pick one):
+### Next: N-1 — Notify diff UX (architect complete, ready to build)
+
+**Architect plan:** See full spec in SPRINT_PLAN.md. Summary:
+
+**Item 1 — Badge suppression (4am):**
+- Pass `sendWindow` as query param on image URL in `notify.js`
+- `roster-image.js`: suppress badge when `sendWindow === '4am'`
+- ~5 lines, two files
+
+**Item 2 — Blue intra-day overlay:**
+- `cron_health.result` is already a JSON object — add `snapshot: workers` alongside `lastHash` (no schema change)
+- `readLastSentState()` returns `lastSnapshot`; `persistSentState()` writes `snapshot: workers`
+- For 7am/8:30am: build `changedDogs` Set (keyed `workerId:series_id`), base64-encode prior snapshot, append `&lastSnapshot=<base64>` to image URL
+- 4am: no `lastSnapshot` param passed → graceful fallback to green/red only
+- `roster-image.js`: parse param, build changedDogs Set, add `COLORS.intraday = '#2563eb'`, blue takes priority in `workerCard()`
+- Fallback key for null series_id: `${workerId}:${pet_names[0]}`
+
+**Files to touch:**
+- `api/notify.js` — URL construction, readLastSentState, persistSentState
+- `api/roster-image.js` — parse sendWindow + lastSnapshot, color logic, buildLayout/workerCard signatures
+- `src/lib/pictureOfDay.js` — probably none
+- `src/__tests__/pictureOfDay.test.js` (or new test file) — badge suppression, blue overlay, no-snapshot fallback
+
+### Other backlog candidates (after N-1):
 
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
-| N-1 | **Notify diff UX** — suppress UPDATED! on 4am; blue intra-day overlay on 7am/8:30am | Medium | Full spec in SPRINT_PLAN.md |
 | G-1 | **Alert on failed wamid** — nothing reads `message_delivery_status` and fires on status=`failed` | Medium | — |
 | G-3 | **Client-facing status page** — no self-serve health check for operator | Medium | UAT gate 4 |
 
