@@ -264,7 +264,7 @@ This is distinct from:
 
 ### N-1 — Notify diff UX: suppress UPDATED! on 4am; blue intra-day diff on 7am/8:30am
 
-**Status:** Not started.
+**Status:** Architect complete (session 23, May 1, 2026). Ready to build.
 
 **What:** Three behavioral changes to the roster notify job:
 
@@ -291,22 +291,36 @@ Example from April 7:
 
 **4am has no previous send → no blue shown. Falls back to green/red only.**
 
-**Technical approach:**
+**Technical approach (architect-verified, May 1 session 23):**
 
-- **Badge suppression (item 1):** Pass `sendWindow` into the image renderer. When `sendWindow === '4am'`, force `hasUpdates = false`. One-liner, no schema change.
+**Item 1 — Badge suppression:**
+- `notify.js`: append `&sendWindow=${sendWindow}` to image URL (sendWindow already in scope at URL construction)
+- `roster-image.js`: parse `req.query.sendWindow`; pass to `buildLayout()`; suppress badge: `data.hasUpdates && sendWindow !== '4am'`
+- `hasUpdates` stays semantically correct — renderer controls display policy
 
-- **Intra-day diff (item 3):** Requires storing the previous send's roster snapshot alongside the existing hash in notify state.
-  - Extend the notify state table/column to store `snapshot` JSON (the `workers` array: per-worker list of `{ series_id, isAdded, isRemoved }`) at each send.
-  - On 7am/8:30am: load prior snapshot → compute intra-day diff (compare current series_id+status against snapshot) → produce a `Set` of series_ids that changed.
-  - Pass the changed-set into the image renderer; renderer uses blue for any dog whose series_id is in the set.
-  - Graceful fallback: if no snapshot exists for today (4am missed or first run), render green/red only — no blue.
+**Item 2 — Snapshot storage:**
+- `cron_health.result` is already a free-form JSON object (no schema change needed)
+- Extend `readLastSentState()` in `notify.js` to return `lastSnapshot: data.result.snapshot || null`
+- Extend `persistSentState()` in `notify.js` to write `snapshot: workers` alongside `lastHash`
+- `workers` is the array returned by `getPictureOfDay()`, already in scope at call site
 
-**Files to read before coding:**
+**Item 2 — Blue overlay delivery:**
+- For 7am/8:30am: after reading `lastSnapshot` and before building image URL, base64-encode snapshot: `Buffer.from(JSON.stringify(lastSnapshot)).toString('base64')`
+- Append `&lastSnapshot=<base64>` to image URL
+- For 4am: omit `lastSnapshot` param entirely
+- `roster-image.js`: parse param (try/catch, graceful on missing/malformed), build `changedDogs` Set
+- Key per dog: `${workerId}:${series_id}` if series_id non-null, else `${workerId}:${pet_names[0]}`
+- Flag as changed if: dog appeared, disappeared, or flipped `isAdded`/`isRemoved` state vs snapshot
+- Add `COLORS.intraday = '#2563eb'` (blue-600) to color palette
+- In `workerCard()`: blue takes priority over green/red — check `changedDogs` first
 
-- `src/lib/pictureOfDay.js` — `getPictureOfDay`, `computeWorkerDiff`
-- `api/notify.js` — orchestrator; where hash is read/written; where send window is known
-- `api/roster-image.js` — where `hasUpdates` drives UPDATED! badge and dog colors are rendered
-- DB table that stores `last_hash` (check `notify.js` for the table/column name)
+**Key facts (from architect read):**
+- `hasUpdates` set in `pictureOfDay.js` lines 392/417-419; Monday override at 429-431
+- Badge rendered in `roster-image.js` at ~line 525-539
+- Dog color set in `workerCard()` at ~line 212-216
+- `cron_health.result` currently stores: `{ lastHash, lastDate, window, sentAt, recipients, results }`
+- `workers` array shape: `{ workerId, name, dogs[], addedCount, removedCount }` where each dog has `{ pet_names[], client_name, series_id, title, isAdded, isRemoved }`
+- Existing pictureOfDay tests are pure function unit tests (no notify handler coverage)
 
 **Definition of Done:**
 
