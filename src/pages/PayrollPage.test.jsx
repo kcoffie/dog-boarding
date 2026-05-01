@@ -75,15 +75,26 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
   const mockAddPayment = vi.fn();
   const mockDeletePayment = vi.fn();
   const mockGetPaidDatesForEmployee = vi.fn(() => []);
+  const mockQueryDaytimePetNames = vi.fn().mockResolvedValue({});
+
+  // nightAssignments array (shape mirrors useNightAssignments return value)
+  const mockNightAssignmentsArray = [
+    { id: '1', date: dates.day1, employeeId: 'emp-1', workedFollowingDay: null },
+    { id: '2', date: dates.day2, employeeId: 'emp-1', workedFollowingDay: null },
+    { id: '3', date: dates.day3, employeeId: 'emp-2', workedFollowingDay: null },
+  ];
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetPaidDatesForEmployee.mockReturnValue([]);
+    mockQueryDaytimePetNames.mockResolvedValue({});
     useData.mockReturnValue({
       dogs: mockDogs,
       boardings: mockBoardings,
       settings: mockSettings,
       getNightAssignment: (date) => mockNightAssignments[date] || '',
+      nightAssignments: mockNightAssignmentsArray,
+      queryDaytimePetNames: mockQueryDaytimePetNames,
       payments: [],
       getNetPercentageForDate: () => 65,
       addPayment: mockAddPayment,
@@ -117,6 +128,8 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         boardings: [],
         settings: mockSettings,
         getNightAssignment: () => '',
+        nightAssignments: [],
+        queryDaytimePetNames: mockQueryDaytimePetNames,
         payments: [],
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
@@ -138,6 +151,8 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         boardings: mockBoardings,
         settings: mockSettings,
         getNightAssignment: (date) => assignments[date] || '',
+        nightAssignments: mockNightAssignmentsArray,
+        queryDaytimePetNames: mockQueryDaytimePetNames,
         payments: [],
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
@@ -164,6 +179,8 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         boardings: mockBoardings,
         settings: mockSettings,
         getNightAssignment: (date) => mockNightAssignments[date] || '',
+        nightAssignments: mockNightAssignmentsArray,
+        queryDaytimePetNames: mockQueryDaytimePetNames,
         payments: [{
           id: '1',
           employeeName: 'Kate',
@@ -248,6 +265,8 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         boardings: mockBoardings,
         settings: mockSettings,
         getNightAssignment: () => '',
+        nightAssignments: [],
+        queryDaytimePetNames: mockQueryDaytimePetNames,
         payments: [{
           id: '1',
           employeeName: 'Kate',
@@ -277,6 +296,8 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         boardings: mockBoardings,
         settings: mockSettings,
         getNightAssignment: () => '',
+        nightAssignments: [],
+        queryDaytimePetNames: mockQueryDaytimePetNames,
         payments: [{
           id: '1',
           employeeName: 'Kate',
@@ -309,6 +330,8 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         boardings: mockBoardings,
         settings: mockSettings,
         getNightAssignment: () => '',
+        nightAssignments: [],
+        queryDaytimePetNames: mockQueryDaytimePetNames,
         payments: [{
           id: 'payment-1',
           employeeName: 'Kate',
@@ -356,6 +379,8 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         boardings: [],
         settings: mockSettings,
         getNightAssignment: () => '',
+        nightAssignments: [],
+        queryDaytimePetNames: mockQueryDaytimePetNames,
         payments: [],
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
