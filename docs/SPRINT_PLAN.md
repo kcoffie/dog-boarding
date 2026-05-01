@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 1, 2026 (session 20) — **J-1 PR #191 CI green, ready to merge.** After merge: v6.0.0 release, then P-1. Theme: Client-driven operational intelligence._
+_Last updated: May 1, 2026 (session 21) — **J-1 merged, v6.0.0 released. P-1 PR open (issue #192) — CI pending.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -94,8 +94,8 @@ These are not code tickets. They block specific milestones. Track them here so n
 **Why this order:**
 
 1. **R-1** ✅ Q Boarding 6th box — PR #187 + bug fix PR #189 (queryBoarders now uses boardings table)
-2. **J-1** ✅ PR #191 — Intraday change notification job.
-3. **P-1** — Employee pay daytime follow-on. DB schema change, needs spec review at architect step.
+2. **J-1** ✅ PR #191 merged — Intraday change notification job. v6.0.0 released.
+3. **P-1** ✅ PR open (issue #192) — Employee pay daytime follow-on. **NEXT: CI green → merge → run migration 027 → verify live.**
 
 ---
 
