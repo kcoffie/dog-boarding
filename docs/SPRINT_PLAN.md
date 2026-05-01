@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 1, 2026 (session 23) — **G-2 confirmed done; K-5 closed. Next: N-1 architect review.** Theme: Client-driven operational intelligence._
+_Last updated: May 1, 2026 (session 24) — **N-1 merged (PR #197). 1043 tests. Next: G-1 or G-3 from backlog.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -97,7 +97,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 2. **J-1** ✅ PR #191 merged — Intraday change notification job. v6.0.0 released.
 3. **P-1** ✅ PR #193 merged — Employee pay daytime follow-on. Bug fix PR #195 (wrong data source). v6.1.0 released. Migration 027 live in Supabase. **All v6 tickets done.**
 
-**Next:** Pick from backlog — N-1 (notify diff UX), G-1 (alert on failed wamid), or G-3 (client status page).
+**Next:** Pick from backlog — G-1 (alert on failed wamid) or G-3 (client status page).
 
 ---
 
@@ -253,7 +253,7 @@ This is distinct from:
 
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
-| N-1 | **Notify diff UX** — suppress UPDATED! on 4am; 7am/8:30am overlay blue for intra-day changes | Medium | See full ticket below |
+| ~~N-1~~ | ✅ **Done** — PR #197 merged May 1, 2026. Badge suppressed on 4am; blue intra-day overlay on 7am/8:30am. | — | — |
 | #145 | **Tooling upgrade** — eslint 9→10 + @vitejs/plugin-react 5→6. Dependabot PRs #106/#107 closed (CI failed — breaking changes). Needs intentional upgrade. | Low | Dev tooling only, no prod impact |
 | F-1 | **Message delivery observability** — webhook + wamid storage, no alerting layer. PR #165 open. | Medium | ✅ Built April 3, 2026. Pending: migration 024 + META_WEBHOOK_VERIFY_TOKEN + Meta Business Manager webhook registration. |
 | F-2 | **Message log page** — ✅ DONE Apr 23 (v5.5.0). `message_log` table + `roster-images` Storage + 6 write sites + `/messages` page. | High | — |
@@ -264,7 +264,7 @@ This is distinct from:
 
 ### N-1 — Notify diff UX: suppress UPDATED! on 4am; blue intra-day diff on 7am/8:30am
 
-**Status:** Architect complete (session 23, May 1, 2026). Ready to build.
+**Status:** ✅ DONE — PR #197 merged May 1, 2026 (session 24).
 
 **What:** Three behavioral changes to the roster notify job:
 
@@ -324,13 +324,13 @@ Example from April 7:
 
 **Definition of Done:**
 
-- [ ] 4am image: no UPDATED! badge
-- [ ] 7am/8:30am image: UPDATED! badge present; green/red today-vs-yesterday diff unchanged; blue overlay on any dog whose state changed since the previous send
-- [ ] Blue strikethrough for dogs removed intra-day (appointment cancelled since last send)
-- [ ] Blue `+` for dogs added intra-day (new appointment since last send)
-- [ ] If no prior snapshot for today, gracefully renders green/red only (no crash, no missing dogs)
-- [ ] Unit tests: (a) 4am badge suppression, (b) blue overlay with a stored snapshot, (c) fallback when no snapshot
-- [ ] Deployed + verified on a real 3-send morning cycle
+- [x] 4am image: no UPDATED! badge
+- [x] 7am/8:30am image: UPDATED! badge present; green/red today-vs-yesterday diff unchanged; blue overlay on any dog whose state changed since the previous send
+- [x] Blue strikethrough for dogs removed intra-day (appointment cancelled since last send)
+- [x] Blue `+` for dogs added intra-day (new appointment since last send)
+- [x] If no prior snapshot for today, gracefully renders green/red only (no crash, no missing dogs)
+- [x] Unit tests: (a) 4am badge suppression (3), (b) blue overlay with a stored snapshot (3), (c) fallback when no snapshot (3)
+- [ ] Deployed + verified on a real 3-send morning cycle ← **pending Kate's morning observation**
 
 ---
 
