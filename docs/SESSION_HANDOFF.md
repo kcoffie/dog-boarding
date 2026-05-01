@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 1, 2026 (session 23) — G-2/K-5 closed. N-1 architect plan complete. Ready to build.
+**Last updated:** May 1, 2026 (session 24) — N-1 built. PR open, CI pending.
 
 ---
 
@@ -44,28 +44,17 @@
 
 All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done (warning already in code). K-5 closed. Remaining work is from the backlog.
 
-### Next: N-1 — Notify diff UX (architect complete, ready to build)
+### Next: N-1 — Notify diff UX (PR open, CI pending)
 
-**Architect plan:** See full spec in SPRINT_PLAN.md. Summary:
+**Status:** Built this session. PR pending CI + merge. No Kate action required post-merge (cron_health `snapshot` field is additive — no schema migration).
 
-**Item 1 — Badge suppression (4am):**
-- Pass `sendWindow` as query param on image URL in `notify.js`
-- `roster-image.js`: suppress badge when `sendWindow === '4am'`
-- ~5 lines, two files
+**What shipped:**
+- **4am badge suppression:** `sendWindow` param appended to image URL; `roster-image.js` suppresses UPDATED! badge unconditionally on `sendWindow=4am`
+- **Intra-day blue overlay (7am/8:30am):** `persistSentState()` now stores `snapshot: workers` in `cron_health.result`; `readLastSentState()` returns it; 7am/8:30am passes base64-encoded snapshot to `roster-image.js` via `&lastSnapshot=`; `buildChangedDogs()` builds the changed-dog Set; `workerCard()` uses `COLORS.intraday = '#2563eb'` for changed dogs
+- **No-snapshot fallback:** malformed or missing `lastSnapshot` → graceful green/red only, no crash
+- **Tests:** 9 new unit tests in `rosterImage.test.js` — badge suppression (3), blue overlay (3), fallback (3). Total: 1043 tests, 0 failures
 
-**Item 2 — Blue intra-day overlay:**
-- `cron_health.result` is already a JSON object — add `snapshot: workers` alongside `lastHash` (no schema change)
-- `readLastSentState()` returns `lastSnapshot`; `persistSentState()` writes `snapshot: workers`
-- For 7am/8:30am: build `changedDogs` Set (keyed `workerId:series_id`), base64-encode prior snapshot, append `&lastSnapshot=<base64>` to image URL
-- 4am: no `lastSnapshot` param passed → graceful fallback to green/red only
-- `roster-image.js`: parse param, build changedDogs Set, add `COLORS.intraday = '#2563eb'`, blue takes priority in `workerCard()`
-- Fallback key for null series_id: `${workerId}:${pet_names[0]}`
-
-**Files to touch:**
-- `api/notify.js` — URL construction, readLastSentState, persistSentState
-- `api/roster-image.js` — parse sendWindow + lastSnapshot, color logic, buildLayout/workerCard signatures
-- `src/lib/pictureOfDay.js` — probably none
-- `src/__tests__/pictureOfDay.test.js` (or new test file) — badge suppression, blue overlay, no-snapshot fallback
+**Files changed:** `api/notify.js`, `api/roster-image.js`, `src/__tests__/rosterImage.test.js`, `docs/job_docs/notify-jobs.md`, `docs/SESSION_HANDOFF.md`
 
 ### Other backlog candidates (after N-1):
 

@@ -87,6 +87,7 @@ const COLORS = {
   added: '#16a34a',          // green-600 — functional indicator, keep
   removed: '#dc2626',        // red-600 — functional indicator, keep
   unchanged: '#333333',      // Deep Charcoal — body text
+  intraday: '#2563eb',       // blue-600 — dog changed since previous send
   clientName: '#6b7280',     // gray-500
   updated: '#ea580c',        // orange-600 — functional indicator, keep
 };
@@ -192,6 +193,56 @@ export function formatAsOf(isoStr) {
 }
 
 // ---------------------------------------------------------------------------
+// Intra-day change detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a Set of dog keys that changed between the previous send (lastSnapshot)
+ * and the current workers state.
+ *
+ * A dog is "changed" if it appeared, disappeared (now isRemoved), or flipped
+ * isAdded/isRemoved state since the last send. Blue takes priority in workerCard.
+ *
+ * Key format: `${workerId}:${series_id}` (or `${workerId}:${pet_names[0]}` when
+ * series_id is null — conservative fallback matching by first pet name).
+ *
+ * @param {Array|null} lastSnapshot - workers array from the previous send, or null
+ * @param {Array} currentWorkers    - current data.workers from getPictureOfDay
+ * @returns {Set<string>}
+ */
+export function buildChangedDogs(lastSnapshot, currentWorkers) {
+  const changedDogs = new Set();
+  if (!lastSnapshot || !Array.isArray(lastSnapshot)) return changedDogs;
+
+  // Build snapshot map: key → { isAdded, isRemoved }
+  const snapshotMap = new Map();
+  for (const worker of lastSnapshot) {
+    if (!Array.isArray(worker.dogs)) continue;
+    for (const dog of worker.dogs) {
+      const key = dog.series_id != null
+        ? `${worker.workerId}:${dog.series_id}`
+        : `${worker.workerId}:${dog.pet_names?.[0]}`;
+      snapshotMap.set(key, { isAdded: dog.isAdded, isRemoved: dog.isRemoved });
+    }
+  }
+
+  // For each currently rendered dog, mark as changed if new or state flipped
+  for (const worker of currentWorkers) {
+    for (const dog of worker.dogs) {
+      const key = dog.series_id != null
+        ? `${worker.workerId}:${dog.series_id}`
+        : `${worker.workerId}:${dog.pet_names?.[0]}`;
+      const prev = snapshotMap.get(key);
+      if (!prev || prev.isAdded !== dog.isAdded || prev.isRemoved !== dog.isRemoved) {
+        changedDogs.add(key);
+      }
+    }
+  }
+
+  return changedDogs;
+}
+
+// ---------------------------------------------------------------------------
 // Per-worker card
 // ---------------------------------------------------------------------------
 
@@ -202,16 +253,24 @@ export function formatAsOf(isoStr) {
  * color-coded prefix indicator. Removed dogs get a strikethrough via
  * text-decoration (satori supports this).
  *
- * @param {object} worker   - From getPictureOfDay result
- * @param {number} colWidth - Pixel width of this column
+ * Blue (COLORS.intraday) takes priority over green/red when the dog's key
+ * is present in changedDogs — indicating a change since the previous send.
+ *
+ * @param {object} worker       - From getPictureOfDay result
+ * @param {number} colWidth     - Pixel width of this column
+ * @param {Set<string>} changedDogs - Keys of dogs that changed since last send
  * @returns {object}
  */
-function workerCard(worker, colWidth) {
+function workerCard(worker, colWidth, changedDogs = new Set()) {
   const todayDogCount = worker.dogs.filter(d => !d.isRemoved).length;
 
   const dogRows = worker.dogs.map(dog => {
     const label = dogLabel(dog.pet_names, dog.client_name);
-    const color = dog.isAdded ? COLORS.added : dog.isRemoved ? COLORS.removed : COLORS.unchanged;
+    const dogKey = dog.series_id != null
+      ? `${worker.workerId}:${dog.series_id}`
+      : `${worker.workerId}:${dog.pet_names?.[0]}`;
+    const isChanged = changedDogs.has(dogKey);
+    const color = isChanged ? COLORS.intraday : dog.isAdded ? COLORS.added : dog.isRemoved ? COLORS.removed : COLORS.unchanged;
     const prefix = dog.isAdded ? '+' : dog.isRemoved ? '−' : ' ';
     const decoration = dog.isRemoved ? 'line-through' : 'none';
 
@@ -480,12 +539,13 @@ export function computeImageHeight(data) {
  *
  * data.boarders is rendered as the "Q Boarding" 6th box (bottom-right slot).
  *
- * @param {object} data       - getPictureOfDay result
- * @param {string|null} asOfStr - Pre-formatted "as of" string (e.g. "6:04 PM, Mon 3/16"),
- *   or null if no timestamp is available. Caller is responsible for formatting via formatAsOf().
+ * @param {object} data            - getPictureOfDay result
+ * @param {string|null} asOfStr    - Pre-formatted "as of" string, or null
+ * @param {string} sendWindow      - '4am' | '7am' | '8:30am' | '' — controls badge display
+ * @param {Set<string>} changedDogs - Keys of dogs changed since last send (blue overlay)
  * @returns {object} Satori element tree
  */
-function buildLayout(data, asOfStr) {
+export function buildLayout(data, asOfStr, sendWindow = '', changedDogs = new Set()) {
   const cols = columnsPerRow(data.workers.length);
   const availableWidth = IMAGE_WIDTH - OUTER_PAD * 2;
   const colWidth = Math.floor((availableWidth - COL_GAP * (cols - 1)) / cols);
@@ -514,15 +574,16 @@ function buildLayout(data, asOfStr) {
           item === Q_BOARDING
             ? qBoardingCard(data.boarders, colWidth)
             : item
-            ? workerCard(item, colWidth)
+            ? workerCard(item, colWidth, changedDogs)
             : h('div', { width: colWidth, flexShrink: 0 }) // empty spacer
         ),
       )
     );
   }
 
-  // "UPDATED!" badge — shown when there are diffs vs. yesterday.
-  const updatedBadge = data.hasUpdates
+  // "UPDATED!" badge — shown when there are diffs vs. yesterday, but never on
+  // the 4am send (no prior send exists to compare against; badge is meaningless).
+  const updatedBadge = data.hasUpdates && sendWindow !== '4am'
     ? h('span', {
         fontFamily: 'Inter',
         fontWeight: 700,
@@ -941,7 +1002,27 @@ export default async function handler(req, res) {
     const asOfSource = tsParam ? 'ts param (notify job)' : data.lastSyncedAt ? 'lastSyncedAt (DB)' : 'none';
     console.log(`[RosterImage] as-of: "${asOfStr ?? 'none'}" (source: ${asOfSource})`);
 
-    const element = buildLayout(data, asOfStr);
+    // Parse sendWindow for badge suppression (4am → no UPDATED! badge).
+    const sendWindow = req.query.sendWindow || '';
+
+    // Parse lastSnapshot for the blue intra-day overlay (7am/8:30am only).
+    // Graceful fallback: malformed or missing param → no blue overlay, green/red only.
+    let lastSnapshot = null;
+    const rawSnapshot = req.query.lastSnapshot;
+    if (rawSnapshot) {
+      try {
+        lastSnapshot = JSON.parse(Buffer.from(rawSnapshot, 'base64').toString('utf8'));
+      } catch {
+        console.warn('[RosterImage] lastSnapshot param is malformed — rendering green/red only');
+      }
+    }
+
+    const changedDogs = buildChangedDogs(lastSnapshot, data.workers);
+    if (changedDogs.size > 0) {
+      console.log(`[RosterImage] intra-day blue overlay: ${changedDogs.size} changed dog(s): [${[...changedDogs].join(', ')}]`);
+    }
+
+    const element = buildLayout(data, asOfStr, sendWindow, changedDogs);
     const height = computeImageHeight(data);
     console.log(`[RosterImage] Computed dimensions: ${IMAGE_WIDTH}x${height}`);
 
