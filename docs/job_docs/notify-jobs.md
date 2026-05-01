@@ -51,7 +51,12 @@ The endpoint orchestrates the full notify flow:
    - `window=7am` or `window=8:30am` → hashes the current roster; if hash matches stored hash in `cron_health`, skips sending
    - `window=friday-pm` → always sends; generates a weekend-themed image (arrivals + departures Sat–Sun) instead of the daily roster. Writes health record to `cron_health WHERE cron_name = 'notify-friday-pm'`
 
-5. **Generate roster image** — constructs a URL to `/api/roster-image` (same Vercel deployment). The URL includes a `&ts=<jobRunAt ISO>` parameter — `jobRunAt` is captured at the very start of the request so the "as of [time], [day]" line in the image header reflects when the notify job ran, not when the DB was last written. Uses AGYD brand colors (Forest Green `#4A773C`, Sage Green `#78A354`).
+5. **Generate roster image** — constructs a URL to `/api/roster-image` (same Vercel deployment). Params:
+   - `&ts=<jobRunAt ISO>` — job run time for the "as of [time], [day]" header line
+   - `&sendWindow=<window>` — `4am`, `7am`, or `8:30am`. Drives badge display: `4am` suppresses the UPDATED! badge (no prior send exists to compare against)
+   - `&lastSnapshot=<base64>` — (7am/8:30am only) the previous send's workers array, base64-encoded JSON. `roster-image.js` uses this to overlay dogs that changed since the last send in blue, so the recipient can see "what's new since the image you received 3 hours ago"
+
+   Uses AGYD brand colors (Forest Green `#4A773C`, Sage Green `#78A354`). Blue `#2563eb` for intra-day changes.
 
 6. **Upload + send via Meta Cloud API (WhatsApp)** — calls `sendRosterImage()` from `notifyWhatsApp.js`, which executes a two-step flow:
    1. **Upload (K-1b):** fetches the PNG buffer from the image URL, then POSTs it to Meta's media API (`POST /v18.0/{PHONE_NUMBER_ID}/media`, `multipart/form-data`). Returns a stable `media_id` from Meta's CDN. Upload happens once regardless of recipient count.
@@ -59,7 +64,7 @@ The endpoint orchestrates the full notify flow:
 
    **Why upload-first:** Meta silently drops template sends when it cannot fetch image URLs from Vercel endpoints — the API accepts the call and returns a wamid, but the message never reaches the phone. Uploading to Meta's CDN first (K-1b, April 2) eliminates this dependency entirely.
 
-7. **Store hash** — writes the roster hash and roster data to `cron_health` (`notify` row) so the 7am/8:30am windows can compare against it.
+7. **Store hash + snapshot** — writes to `cron_health` (`notify` row): the roster hash (for the no-change gate), plus `snapshot: workers` (the full workers array from `getPictureOfDay`). The next window reads `snapshot` to build the intra-day blue overlay.
 
 ---
 
@@ -68,6 +73,16 @@ The endpoint orchestrates the full notify flow:
 ### Morning roster hash (4am / 7am / 8:30am)
 
 The roster hash is computed from the current set of {worker → dog name} pairs **plus the list of overnight boarders** (sorted by name). If any worker's dog changes, or if a new boarder is added/cancelled, the hash changes and the 7am/8:30am sends fire.
+
+### Intra-day blue overlay (7am / 8:30am images)
+
+When 7am or 8:30am generates an image, `notify.js` reads the `snapshot` from the previous send's `cron_health.result`. It base64-encodes this as `lastSnapshot` and passes it to `roster-image.js`. The image renderer compares each dog's `isAdded`/`isRemoved` state against the snapshot: dogs that appeared, disappeared, or flipped state are shown in blue (`#2563eb`) instead of green/red.
+
+This answers "what changed since the last image you received?" rather than "what changed vs yesterday?". Blue takes priority over green/red.
+
+- **4am**: no prior send → no snapshot → no blue. Falls back to green/red only.
+- **4am**: UPDATED! badge suppressed (no prior send to compare against — badge would be misleading).
+- **7am / 8:30am**: UPDATED! badge shown when `hasUpdates` is true (today vs yesterday diff exists).
 
 This is a change from v4.1.1 where boarders were intentionally excluded from the hash. As of J-1 (v6.0.0), boarders are rendered in the Q Boarding box (R-1/PR #187) and included in the hash so boarder additions/removals trigger a resend.
 
