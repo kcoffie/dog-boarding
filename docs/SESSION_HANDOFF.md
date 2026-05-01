@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 1, 2026 (session 20) — J-1 built, PR open, pending CI + merge.
+**Last updated:** May 1, 2026 (session 20) — J-1 built. PR #191 CI green, ready to merge.
 
 ---
 
@@ -7,13 +7,13 @@
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
 - **1028 tests, 59 files, 0 failures**
-- **J-1 PR open** — pending CI + merge
+- **J-1 PR #191 — CI green, ready to merge**
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
 ### Session 20 Summary
 | Item | Status |
 |---|---|
-| J-1 — intraday boarding change notification job | ✅ Built — PR #191, issue #190 |
+| J-1 — intraday boarding change notification job | ✅ PR #191 CI green — ready to merge |
 
 **J-1 changes:**
 - `queryBoarders` now returns `{ name, arrival_datetime, departure_datetime }[]` (was `string[]`)
@@ -69,7 +69,7 @@
 
 ### J-1 — Intraday change notification job ✅ PR OPEN
 
-**Issue:** #190 | **PR:** #191
+**Issue:** #190 | **PR:** #191 | **CI:** ✅ green — merge when ready
 
 **Definition of Done:**
 - [x] New GH Actions workflow: hourly 9am–8pm (Mon–Fri), `workflow_dispatch` for manual test
@@ -141,7 +141,7 @@
 ## v6 Sprint Order (Recommended)
 
 1. **R-1** ✅ DONE — PR #187 + bug fix PR #189
-2. **J-1** — New cron + state design. Architect carefully before building. **NEXT.**
+2. **J-1** ✅ PR #191 CI green — merge + deploy verify + v6.0.0 release tag. **NEXT.**
 3. **P-1** — DB schema change. Needs spec review at architect step.
 
 ---

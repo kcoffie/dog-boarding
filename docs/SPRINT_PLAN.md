@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 1, 2026 (session 20) — **J-1 PR #191 open.** P-1 is next. Theme: Client-driven operational intelligence._
+_Last updated: May 1, 2026 (session 20) — **J-1 PR #191 CI green, ready to merge.** After merge: v6.0.0 release, then P-1. Theme: Client-driven operational intelligence._
 
 ---
 
