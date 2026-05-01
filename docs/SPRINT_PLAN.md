@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 1, 2026 (session 22) — **P-1 merged + bug fixed, v6.1.0 released. All v6 specced tickets done. Next: pick from N-1 / G-1 / G-3 backlog.** Theme: Client-driven operational intelligence._
+_Last updated: May 1, 2026 (session 23) — **G-2 confirmed done; K-5 closed. Next: N-1 architect review.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -84,7 +84,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 | ~~K-3~~          | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged                                                                                                                                 | —                                                    | —         |
 | ~~K-4~~          | ✅ Done April 5 — second number added to `NOTIFY_RECIPIENTS` Vercel env var                                                                                                                   | —                                                    | —         |
 | ~~K-7~~          | ✅ Closed April 21 — publishing not needed. App uses Meta test phone in dev mode (≤5 recipients). Dev mode is the correct long-term model. No registered business required.                    | —                                                    | —         |
-| K-5              | Add Anthropic API credits at console.anthropic.com                                                                                                                                             | M1-3 — Step 3 vision name-check in integration check | 🟢 Low    |
+| ~~K-5~~          | ✅ Closed May 1 — Step 3 has been silently skipping without ill effects. Warning already fires on skip (line 621 integration-check.js). Credits not needed. | — | — |
 | K-8              | **Replace Meta test phone number before ~July 2, 2026.** Test number (+1 555 153 3723) expires 90 days from ~April 3. Get a number not on WhatsApp (Google Voice is easiest). Add via Meta API Setup → Step 5 → verify → update `META_PHONE_NUMBER_ID` in Vercel. | WhatsApp continuity | 🟡 Medium — ~10 weeks |
 
 ---
@@ -327,7 +327,7 @@ These were surfaced in the April 5, 2026 status review. Each needs a "do it / sk
 | # | Gap | What to Investigate | Priority |
 |---|-----|---------------------|----------|
 | G-1 | **Alert on failed wamid** — F-1 stores delivery events but nothing reads the table and fires an alert when status=`failed`. A message can silently fail delivery after Meta accepts it. | Is a lightweight cron or webhook-triggered check sufficient? What N-minute threshold is right? How does this interact with F-2? | Medium |
-| G-2 | **Integration check Step 3 silent skip** — when Anthropic credits are zero, Step 3 (Claude vision name-check) is skipped entirely with no warning. A failure in Step 3 logic is invisible. | Add a `::warning::` log when Step 3 is skipped so the silence is explicit. Small change — may not need a full ticket, just a PR. | Low |
+| ~~G-2~~ | ✅ **Done** — `::warning::` already fires on Step 3 skip (integration-check.js:621). Was in the code; sprint plan not updated. Closed May 1. | — | — |
 | G-3 | **Client-facing status page** — no self-serve way for the operator to check system health. They rely entirely on WhatsApp alerts. The "client can verify health" UAT gate is partially uncleared. | What does "verify health" mean to this operator? A simple read-only page (last cron run, last notify sent, last delivery status) vs. documented manual steps in the runbook. Decide scope before building. | Medium |
 | G-4 | **UAT gate 4 — operator self-serve health check** — once M3-7 (screen recording) is done, Milestone 3 is complete and three of four UAT gates are cleared. The fourth gate ("client can verify the system is healthy") is the only one not fully resolved. | Does G-3 (status page) close this gate, or is the runbook + GitHub Actions visibility sufficient? Decide before declaring UAT done. | Medium |
 | G-5 | **No defined client acceptance criteria** — the system is live and serving a real client, but there is no documented "client sign-off" definition. What does the operator need to see, do, or confirm before the engagement is complete? | Short conversation with the operator (or internally) to write down 3–5 acceptance criteria. Not a code ticket — a process/doc item. | Low |
