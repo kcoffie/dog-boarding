@@ -30,6 +30,7 @@ export function useNightAssignments(employees = []) {
         id: a.id,
         date: a.date,
         employeeId: a.employee_id,
+        workedFollowingDay: a.worked_following_day ?? null,
       })));
     } catch (err) {
       console.error('Error fetching night assignments:', err);
@@ -105,6 +106,7 @@ export function useNightAssignments(employees = []) {
           id: data.id,
           date: data.date,
           employeeId: data.employee_id,
+          workedFollowingDay: data.worked_following_day ?? null,
         }]);
       }
     } catch (err) {
@@ -120,6 +122,28 @@ export function useNightAssignments(employees = []) {
     if (assignment.employeeId === null) return 'N/A';
     return getEmployeeNameById(employees, assignment.employeeId) || '';
   }, [nightAssignments, employees]);
+
+  const getWorkedFollowingDay = useCallback((date) => {
+    const assignment = nightAssignments.find(a => a.date === date);
+    return assignment?.workedFollowingDay ?? null;
+  }, [nightAssignments]);
+
+  const setWorkedFollowingDay = useCallback(async (date, value) => {
+    if (!user) return;
+    const existing = nightAssignments.find(a => a.date === date);
+    if (!existing) return;
+
+    const { error } = await supabase
+      .from('night_assignments')
+      .update({ worked_following_day: value })
+      .eq('id', existing.id);
+
+    if (error) throw error;
+
+    setNightAssignments(prev => prev.map(a =>
+      a.id === existing.id ? { ...a, workedFollowingDay: value } : a
+    ));
+  }, [user, nightAssignments]);
 
   // For deleting assignments when an employee is deleted
   const deleteAssignmentsForEmployee = async (employeeName) => {
@@ -150,6 +174,8 @@ export function useNightAssignments(employees = []) {
     error,
     setNightAssignment,
     getNightAssignment,
+    getWorkedFollowingDay,
+    setWorkedFollowingDay,
     deleteAssignmentsForEmployee,
     refresh: fetchNightAssignments,
   };
