@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 1, 2026 (session 21) — **J-1 merged, v6.0.0 released. P-1 PR open (issue #192) — CI pending.** Theme: Client-driven operational intelligence._
+_Last updated: May 1, 2026 (session 22) — **P-1 merged + bug fixed, v6.1.0 released. All v6 specced tickets done. Next: pick from N-1 / G-1 / G-3 backlog.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -93,9 +93,11 @@ These are not code tickets. They block specific milestones. Track them here so n
 
 **Why this order:**
 
-1. **R-1** ✅ Q Boarding 6th box — PR #187 + bug fix PR #189 (queryBoarders now uses boardings table)
+1. **R-1** ✅ Q Boarding 6th box — PR #187 + bug fix PR #189
 2. **J-1** ✅ PR #191 merged — Intraday change notification job. v6.0.0 released.
-3. **P-1** ✅ PR open (issue #192) — Employee pay daytime follow-on. **NEXT: CI green → merge → run migration 027 → verify live.**
+3. **P-1** ✅ PR #193 merged — Employee pay daytime follow-on. Bug fix PR #195 (wrong data source). v6.1.0 released. Migration 027 live in Supabase. **All v6 tickets done.**
+
+**Next:** Pick from backlog — N-1 (notify diff UX), G-1 (alert on failed wamid), or G-3 (client status page).
 
 ---
 
