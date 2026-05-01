@@ -33,6 +33,11 @@ describe('REQ-040: EmployeeTotals', () => {
     ],
   };
 
+  // Daytime follow-on field added by P-1 — no-op default for tests that don't exercise it
+  const mockDaytimeExtras = {
+    getWorkedFollowingDay: () => null,
+  };
+
   // Helper to create getNightAssignment mock from assignments object
   const createGetNightAssignment = (assignments) => (date) => assignments[date] || '';
 
@@ -48,6 +53,7 @@ describe('REQ-040: EmployeeTotals', () => {
         '2025-01-17': 'Nick',
       };
       useData.mockReturnValue({
+        ...mockDaytimeExtras,
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
@@ -72,6 +78,7 @@ describe('REQ-040: EmployeeTotals', () => {
         '2025-01-17': 'N/A',
       };
       useData.mockReturnValue({
+        ...mockDaytimeExtras,
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
@@ -95,6 +102,7 @@ describe('REQ-040: EmployeeTotals', () => {
         '2025-01-17': 'Nick',
       };
       useData.mockReturnValue({
+        ...mockDaytimeExtras,
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
@@ -114,6 +122,7 @@ describe('REQ-040: EmployeeTotals', () => {
         '2025-01-15': 'Kate',
       };
       useData.mockReturnValue({
+        ...mockDaytimeExtras,
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
@@ -139,6 +148,7 @@ describe('REQ-040: EmployeeTotals', () => {
         '2025-01-15': 'Kate',
       };
       useData.mockReturnValue({
+        ...mockDaytimeExtras,
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: settingsWithInactive,
@@ -161,6 +171,7 @@ describe('REQ-040: EmployeeTotals', () => {
         '2025-01-17': 'Kate',
       };
       useData.mockReturnValue({
+        ...mockDaytimeExtras,
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
@@ -180,6 +191,7 @@ describe('REQ-040: EmployeeTotals', () => {
         '2025-01-17': 'Kate',
       };
       useData.mockReturnValue({
+        ...mockDaytimeExtras,
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
@@ -197,6 +209,7 @@ describe('REQ-040: EmployeeTotals', () => {
   describe('Empty states', () => {
     it('returns null when no assignments', () => {
       useData.mockReturnValue({
+        ...mockDaytimeExtras,
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
@@ -214,6 +227,7 @@ describe('REQ-040: EmployeeTotals', () => {
         '2025-01-15': 'N/A',
       };
       useData.mockReturnValue({
+        ...mockDaytimeExtras,
         dogs: mockDogs,
         boardings: mockBoardings,
         settings: mockSettings,
