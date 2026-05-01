@@ -3,8 +3,8 @@ import { useData } from '../context/DataContext';
 import DateNavigator from '../components/DateNavigator';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PaymentDialog from '../components/PaymentDialog';
-import { getDateRange } from '../utils/dateUtils';
-import { calculateGross, calculateDaytimeCredit } from '../utils/calculations';
+import { getDateRange, isOvernight } from '../utils/dateUtils';
+import { calculateGross } from '../utils/calculations';
 
 export default function PayrollPage() {
   const {
@@ -14,7 +14,6 @@ export default function PayrollPage() {
     getNetPercentageForDate,
     getNightAssignment,
     nightAssignments,
-    queryDaytimePetNames,
     addPayment,
     deletePayment,
     getPaidDatesForEmployee,
@@ -56,42 +55,25 @@ export default function PayrollPage() {
   const [payConfirm, setPayConfirm] = useState({ isOpen: false, employee: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, payment: null });
 
-  // daytimeCreditByNightDate: { [nightDateStr]: number } — credit earned for the following day
-  const [daytimeCreditByNightDate, setDaytimeCreditByNightDate] = useState({});
-
   const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
   const dates = getDateRange(startDate, daysDiff);
 
-  // Fetch daytime pet names for nights where worked_following_day = true, then compute credits
-  useEffect(() => {
-    if (!nightAssignments) return;
-
-    const followingDayDates = nightAssignments
-      .filter(a => a.workedFollowingDay && dates.includes(a.date))
-      .map(a => {
-        const d = new Date(a.date + 'T00:00:00');
-        d.setDate(d.getDate() + 1);
-        return { nightDate: a.date, followingDate: d.toISOString().split('T')[0] };
-      });
-
-    if (followingDayDates.length === 0) {
-      setDaytimeCreditByNightDate({});
-      return;
+  // Daytime follow-on credit for a night date: sum day rates of the dogs boarded that night × net%
+  const computeDaytimeNet = (dateStr) => {
+    const a = nightAssignments.find(x => x.date === dateStr);
+    if (!a?.workedFollowingDay) return 0;
+    const percentage = getNetPercentageForDate(dateStr);
+    const seenIds = new Set();
+    let gross = 0;
+    for (const b of boardings) {
+      if (!isOvernight(b, dateStr)) continue;
+      if (seenIds.has(b.dogId)) continue;
+      seenIds.add(b.dogId);
+      const dog = dogs.find(d => d.id === b.dogId);
+      if (dog) gross += dog.dayRate ?? 0;
     }
-
-    const uniqueFollowingDates = [...new Set(followingDayDates.map(x => x.followingDate))];
-
-    queryDaytimePetNames(uniqueFollowingDates).then(petsByDate => {
-      const credits = {};
-      for (const { nightDate, followingDate } of followingDayDates) {
-        const petNames = petsByDate[followingDate] ?? [];
-        const percentage = getNetPercentageForDate(nightDate);
-        credits[nightDate] = calculateDaytimeCredit(petNames, dogs, percentage);
-      }
-      setDaytimeCreditByNightDate(credits);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nightAssignments, dogs, startDate, endDate]);
+    return gross * (percentage / 100);
+  };
 
   // Calculate net for a specific date
   const calculateDayNet = (dateStr) => {
@@ -153,7 +135,7 @@ export default function PayrollPage() {
         if (paidDates.includes(dateStr)) continue;
 
         const nightNet = calculateDayNet(dateStr);
-        const daytimeNet = daytimeCreditByNightDate[dateStr] ?? 0;
+        const daytimeNet = computeDaytimeNet(dateStr);
 
         if (!outstanding[employeeName]) {
           outstanding[employeeName] = { nights: 0, amount: 0, daytimeAmount: 0, dates: [] };
