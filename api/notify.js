@@ -198,6 +198,7 @@ async function readLastSentState(supabase) {
   return {
     lastHash: data.result.lastHash,
     lastDate: data.result.lastDate || '',
+    lastSnapshot: data.result.snapshot || null,
   };
 }
 
@@ -239,7 +240,7 @@ async function storeBoardersSnapshot(supabase, boarders, dateStr) {
  * @param {string} window  - '4am' | '7am' | '8:30am'
  * @param {Array} sendResults - From sendRosterImage
  */
-async function persistSentState(supabase, hash, dateStr, window, sendResults) {
+async function persistSentState(supabase, hash, dateStr, window, sendResults, workers) {
   await writeCronHealth(supabase, 'notify', 'success', {
     lastHash: hash,
     lastDate: dateStr,
@@ -247,6 +248,7 @@ async function persistSentState(supabase, hash, dateStr, window, sendResults) {
     sentAt: new Date().toISOString(),
     recipients: sendResults.map(r => r.to), // already masked
     results: sendResults,
+    snapshot: workers,
   }, null);
 }
 
@@ -397,8 +399,11 @@ export default async function handler(req, res) {
 
     // Decision: if last send was for a different date, treat as no baseline.
     // This ensures the 7am gate doesn't compare against yesterday's hash.
-    const lastHash = (lastState?.lastDate === dateStr) ? lastState.lastHash : null;
-    if (lastState?.lastDate && lastState.lastDate !== dateStr) {
+    const sameDate = lastState?.lastDate === dateStr;
+    const lastHash = sameDate ? lastState.lastHash : null;
+    // lastSnapshot: only used for intra-day blue overlay on 7am/8:30am. Not needed for 4am.
+    const lastSnapshot = (window !== '4am' && sameDate) ? (lastState.lastSnapshot || null) : null;
+    if (lastState?.lastDate && !sameDate) {
       console.log(`[Notify] Last send was for ${lastState.lastDate} (different date) — resetting baseline`);
     }
 
@@ -419,10 +424,15 @@ export default async function handler(req, res) {
     // --- Construct image URL ---
     // Use the request's own host so this works for any deployment (prod, preview, local).
     // ts param passes the job run time to roster-image.js for the "as of" header line.
+    // sendWindow drives badge suppression (4am has no prior send to diff against).
+    // lastSnapshot (7am/8:30am only) enables the blue intra-day overlay in roster-image.js.
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const imageUrl = `${protocol}://${host}/api/roster-image?date=${dateStr}&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}`;
-    console.log(`[Notify] Image URL: ${protocol}://${host}/api/roster-image?date=${dateStr}&token=***&ts=${encodeURIComponent(jobRunAt)}`);
+    let imageUrl = `${protocol}://${host}/api/roster-image?date=${dateStr}&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}`;
+    if (lastSnapshot) {
+      imageUrl += `&lastSnapshot=${Buffer.from(JSON.stringify(lastSnapshot)).toString('base64')}`;
+    }
+    console.log(`[Notify] Image URL: ${protocol}://${host}/api/roster-image?date=${dateStr}&token=***&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}${lastSnapshot ? '&lastSnapshot=<snapshot>' : ''}`);
 
     // --- Get recipients ---
     const recipients = getRecipients();
@@ -448,7 +458,7 @@ export default async function handler(req, res) {
     );
 
     // --- Persist state (non-fatal) ---
-    await persistSentState(supabase, currentHash, dateStr, window, sendResults);
+    await persistSentState(supabase, currentHash, dateStr, window, sendResults, data.workers);
 
     const sentCount = sendResults.filter(r => r.status === 'sent').length;
     const failedCount = sendResults.filter(r => r.status === 'failed').length;

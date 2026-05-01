@@ -33,6 +33,8 @@ import {
   computeWeekendImageHeight,
   qBoardingCard,
   computeImageHeight,
+  buildLayout,
+  buildChangedDogs,
 } from '../../api/roster-image.js';
 
 // ---------------------------------------------------------------------------
@@ -360,5 +362,113 @@ describe('computeImageHeight', () => {
     const withOne = { workers: [makeWorker(0)], boarders: [{ name: 'Mochi', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z' }] };
     // Both reserve 1 row in Q Boarding — height should be equal
     expect(computeImageHeight(withZero)).toBe(computeImageHeight(withOne));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// N-1: Badge suppression, blue overlay, no-snapshot fallback
+// ---------------------------------------------------------------------------
+
+function makeData(dogOverrides = {}) {
+  return {
+    date: '2026-03-05',
+    workers: [{
+      workerId: 61023,
+      name: 'Charlie',
+      dogs: [{
+        pet_names: ['Benny'],
+        client_name: 'Kate',
+        series_id: 'SRS001',
+        isAdded: true,
+        isRemoved: false,
+        title: 'DC:FT',
+        ...dogOverrides,
+      }],
+      addedCount: 1,
+      removedCount: 0,
+    }],
+    boarders: [],
+    hasUpdates: true,
+    lastSyncedAt: null,
+  };
+}
+
+describe('N-1: 4am badge suppression', () => {
+  it('does not render UPDATED! badge when sendWindow is 4am and hasUpdates is true', () => {
+    const data = makeData();
+    const element = buildLayout(data, null, '4am');
+    expect(JSON.stringify(element)).not.toContain('UPDATED!');
+  });
+
+  it('renders UPDATED! badge when sendWindow is 7am and hasUpdates is true', () => {
+    const data = makeData();
+    const element = buildLayout(data, null, '7am');
+    expect(JSON.stringify(element)).toContain('UPDATED!');
+  });
+
+  it('renders UPDATED! badge when sendWindow is empty (direct hit) and hasUpdates is true', () => {
+    const data = makeData();
+    const element = buildLayout(data, null, '');
+    expect(JSON.stringify(element)).toContain('UPDATED!');
+  });
+});
+
+describe('N-1: blue intra-day overlay', () => {
+  it('uses intraday blue (#2563eb) for a dog that changed since the previous send', () => {
+    // Snapshot has Benny with isAdded: false — current state has isAdded: true (state flipped)
+    const lastSnapshot = [{
+      workerId: 61023,
+      name: 'Charlie',
+      dogs: [{ pet_names: ['Benny'], series_id: 'SRS001', isAdded: false, isRemoved: false }],
+    }];
+    const data = makeData({ isAdded: true, isRemoved: false });
+    const changedDogs = buildChangedDogs(lastSnapshot, data.workers);
+
+    expect(changedDogs.has('61023:SRS001')).toBe(true);
+
+    const element = buildLayout(data, null, '7am', changedDogs);
+    expect(JSON.stringify(element)).toContain('#2563eb');
+  });
+
+  it('detects a dog that appeared since the last send (not in snapshot)', () => {
+    // Snapshot has no dogs for Charlie — Benny appeared after the last send
+    const lastSnapshot = [{ workerId: 61023, name: 'Charlie', dogs: [] }];
+    const data = makeData({ isAdded: true });
+    const changedDogs = buildChangedDogs(lastSnapshot, data.workers);
+
+    expect(changedDogs.has('61023:SRS001')).toBe(true);
+    expect(JSON.stringify(buildLayout(data, null, '7am', changedDogs))).toContain('#2563eb');
+  });
+
+  it('uses null series_id fallback key (workerId:pet_names[0])', () => {
+    const lastSnapshot = [{ workerId: 61023, name: 'Charlie', dogs: [] }];
+    const data = makeData({ series_id: null, isAdded: true });
+    const changedDogs = buildChangedDogs(lastSnapshot, data.workers);
+
+    expect(changedDogs.has('61023:Benny')).toBe(true);
+  });
+});
+
+describe('N-1: no-snapshot fallback', () => {
+  it('returns an empty Set when lastSnapshot is null', () => {
+    const data = makeData();
+    const changedDogs = buildChangedDogs(null, data.workers);
+    expect(changedDogs.size).toBe(0);
+  });
+
+  it('renders green/red only (no blue) when lastSnapshot is null', () => {
+    const data = makeData({ isAdded: true });
+    const changedDogs = buildChangedDogs(null, data.workers);
+    const element = buildLayout(data, null, '7am', changedDogs);
+    const str = JSON.stringify(element);
+    expect(str).not.toContain('#2563eb');
+    expect(str).toContain('#16a34a'); // green-600 for isAdded
+  });
+
+  it('does not crash and renders all dogs when lastSnapshot is null', () => {
+    const data = makeData();
+    const changedDogs = buildChangedDogs(null, data.workers);
+    const element = buildLayout(data, null, '7am', changedDogs);
+    expect(JSON.stringify(element)).toContain('Benny');
   });
 });
