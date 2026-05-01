@@ -135,7 +135,7 @@ describe('hashPicture', () => {
     const data = {
       date: DATE,
       workers: [{ workerId: 61023, dogs: [{ series_id: 'SRS001', pet_names: ['Benny'] }] }],
-      boarders: ['Millie'],
+      boarders: [{ name: 'Millie', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z' }],
     };
     expect(hashPicture(data)).toBe(hashPicture(data));
   });
@@ -150,11 +150,29 @@ describe('hashPicture', () => {
     expect(hashPicture(base)).not.toBe(hashPicture(changed));
   });
 
-  it('returns the same hash regardless of boarder changes (boarders excluded in v4.1.1)', () => {
-    // Boarders are no longer rendered or hashed — boarder changes must not trigger a resend.
-    const base = { date: DATE, workers: [], boarders: ['Benny'] };
-    const changed = { date: DATE, workers: [], boarders: ['Millie'] };
-    expect(hashPicture(base)).toBe(hashPicture(changed));
+  it('returns a different hash when boarders change (boarders included as of J-1/v6)', () => {
+    // Boarders are rendered in the Q Boarding box (R-1) — boarder changes must trigger a resend.
+    const base = { date: DATE, workers: [], boarders: [{ name: 'Benny', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-01T00:00:00Z' }] };
+    const changed = { date: DATE, workers: [], boarders: [{ name: 'Millie', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-01T00:00:00Z' }] };
+    expect(hashPicture(base)).not.toBe(hashPicture(changed));
+  });
+
+  it('returns the same hash regardless of boarder order (sorted by name)', () => {
+    const a = {
+      date: DATE, workers: [],
+      boarders: [
+        { name: 'Zoe', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-01T00:00:00Z' },
+        { name: 'Apple', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-01T00:00:00Z' },
+      ],
+    };
+    const b = {
+      date: DATE, workers: [],
+      boarders: [
+        { name: 'Apple', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-01T00:00:00Z' },
+        { name: 'Zoe', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-01T00:00:00Z' },
+      ],
+    };
+    expect(hashPicture(a)).toBe(hashPicture(b));
   });
 
   it('returns the same hash regardless of lastSyncedAt (timestamp must not trigger resend)', () => {
@@ -410,44 +428,48 @@ describe('getPictureOfDay diff logic', () => {
     expect(result.workers.every(w => w.workerId !== 0)).toBe(true);
   });
 
-  it('boarders: returns dog names from boardings table (not daytime_appointments)', async () => {
+  it('boarders: returns dog objects from boardings table (not daytime_appointments)', async () => {
     const boarderRows = [
-      { booking_status: 'confirmed', dogs: { name: 'Mochi' } },
-      { booking_status: null, dogs: { name: 'Bronwyn' } },
+      { booking_status: 'confirmed', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Mochi' } },
+      { booking_status: null,        arrival_datetime: '2026-04-28T00:00:00Z', departure_datetime: '2026-05-01T00:00:00Z', dogs: { name: 'Bronwyn' } },
     ];
     const supa = buildSupaMock({ boarderRows });
 
     const result = await getPictureOfDay(supa, parseDateParam(DATE));
 
     expect(result.boarders).toHaveLength(2);
-    expect(result.boarders).toContain('Mochi');
-    expect(result.boarders).toContain('Bronwyn');
+    expect(result.boarders.map(b => b.name)).toContain('Mochi');
+    expect(result.boarders.map(b => b.name)).toContain('Bronwyn');
+    expect(result.boarders[0]).toHaveProperty('arrival_datetime');
+    expect(result.boarders[0]).toHaveProperty('departure_datetime');
   });
 
   it('boarders: excludes cancelled bookings', async () => {
     const boarderRows = [
-      { booking_status: 'confirmed', dogs: { name: 'Mochi' } },
-      { booking_status: 'cancelled', dogs: { name: 'Ghost' } },
+      { booking_status: 'confirmed', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Mochi' } },
+      { booking_status: 'cancelled', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Ghost' } },
     ];
     const supa = buildSupaMock({ boarderRows });
 
     const result = await getPictureOfDay(supa, parseDateParam(DATE));
 
-    expect(result.boarders).toEqual(['Mochi']);
+    expect(result.boarders).toHaveLength(1);
+    expect(result.boarders[0].name).toBe('Mochi');
   });
 
   it('boarders: deduplicates dogs that appear in multiple boarding rows', async () => {
     // Mirrors the Annie/Tracy bug: AGYD gave two appointment IDs for the same stay,
     // causing the sync to create two boarding rows for the same dog.
     const boarderRows = [
-      { booking_status: 'confirmed', dogs: { name: 'Annie' } },
-      { booking_status: 'confirmed', dogs: { name: 'Annie' } }, // duplicate row
+      { booking_status: 'confirmed', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Annie' } },
+      { booking_status: 'confirmed', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Annie' } },
     ];
     const supa = buildSupaMock({ boarderRows });
 
     const result = await getPictureOfDay(supa, parseDateParam(DATE));
 
-    expect(result.boarders).toEqual(['Annie']);
+    expect(result.boarders).toHaveLength(1);
+    expect(result.boarders[0].name).toBe('Annie');
   });
 
   it('boarders: returns empty array when no boardings overlap', async () => {
