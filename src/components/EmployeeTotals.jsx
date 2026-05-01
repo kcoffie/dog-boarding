@@ -3,7 +3,7 @@ import { getDateRange, isOvernight } from '../utils/dateUtils';
 import { DEFAULT_MATRIX_DAYS } from '../utils/constants';
 
 export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }) {
-  const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment } = useData();
+  const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment, getWorkedFollowingDay } = useData();
 
   // Helper to check if employee is active
   const isEmployeeActive = (name) => {
@@ -15,6 +15,21 @@ export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }
   };
 
   const dates = getDateRange(startDate, days);
+
+  const computeDaytimeNet = (dateStr) => {
+    if (!getWorkedFollowingDay(dateStr)) return 0;
+    const percentage = getNetPercentageForDate(dateStr);
+    const seenIds = new Set();
+    let gross = 0;
+    for (const b of boardings) {
+      if (!isOvernight(b, dateStr)) continue;
+      if (seenIds.has(b.dogId)) continue;
+      seenIds.add(b.dogId);
+      const dog = dogs.find(d => d.id === b.dogId);
+      if (dog) gross += dog.dayRate ?? 0;
+    }
+    return gross * (percentage / 100);
+  };
 
   const calculateDayNet = (dateStr) => {
     let gross = 0;
@@ -91,11 +106,12 @@ export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }
     const employeeName = getNightAssignment(dateStr);
     if (employeeName && employeeName !== 'N/A') {
       const net = calculateDayNet(dateStr);
+      const daytimeNet = computeDaytimeNet(dateStr);
       if (!employeeTotals[employeeName]) {
         employeeTotals[employeeName] = { nights: 0, earnings: 0, dates: [] };
       }
       employeeTotals[employeeName].nights += 1;
-      employeeTotals[employeeName].earnings += net;
+      employeeTotals[employeeName].earnings += net + daytimeNet;
       employeeTotals[employeeName].dates.push(dateStr);
     }
   }
