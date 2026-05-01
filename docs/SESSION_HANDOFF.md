@@ -13,7 +13,7 @@
 ### Session 20 Summary
 | Item | Status |
 |---|---|
-| J-1 — intraday boarding change notification job | ✅ Built — PR open, issue #190 |
+| J-1 — intraday boarding change notification job | ✅ Built — PR #191, issue #190 |
 
 **J-1 changes:**
 - `queryBoarders` now returns `{ name, arrival_datetime, departure_datetime }[]` (was `string[]`)
@@ -69,7 +69,7 @@
 
 ### J-1 — Intraday change notification job ✅ PR OPEN
 
-**Issue:** #190 | **PR:** pending CI
+**Issue:** #190 | **PR:** #191
 
 **Definition of Done:**
 - [x] New GH Actions workflow: hourly 9am–8pm (Mon–Fri), `workflow_dispatch` for manual test
