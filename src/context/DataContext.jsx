@@ -6,6 +6,7 @@ import { useBoardings as useSupabaseBoardings } from '../hooks/useBoardings';
 import { useNightAssignments as useSupabaseNightAssignments } from '../hooks/useNightAssignments';
 import { usePayments as useSupabasePayments } from '../hooks/usePayments';
 import { logger } from '../utils/logger';
+import { supabase } from '../lib/supabase';
 
 const DataContext = createContext(null);
 
@@ -59,6 +60,8 @@ export function DataProvider({ children }) {
     loading: nightAssignmentsLoading,
     setNightAssignment: setSupabaseNightAssignment,
     getNightAssignment: getSupabaseNightAssignment,
+    getWorkedFollowingDay: getSupabaseWorkedFollowingDay,
+    setWorkedFollowingDay: setSupabaseWorkedFollowingDay,
     deleteAssignmentsForEmployee: deleteSupabaseAssignmentsForEmployee,
   } = useSupabaseNightAssignments(supabaseEmployees);
 
@@ -298,6 +301,28 @@ export function DataProvider({ children }) {
     return getSupabasePaidDatesForEmployee(employeeName);
   };
 
+  // Returns a map of { [dateStr]: string[] } of unique DC/PG pet names for each requested date.
+  const queryDaytimePetNames = async (datesToQuery) => {
+    if (!datesToQuery || datesToQuery.length === 0) return {};
+    const { data, error } = await supabase
+      .from('daytime_appointments')
+      .select('appointment_date, pet_names')
+      .in('appointment_date', datesToQuery)
+      .in('service_category', ['DC', 'PG']);
+    if (error) {
+      console.error('[DataContext] queryDaytimePetNames error:', error);
+      return {};
+    }
+    const result = {};
+    for (const row of data ?? []) {
+      const d = row.appointment_date;
+      if (!result[d]) result[d] = new Set();
+      for (const name of row.pet_names ?? []) result[d].add(name);
+    }
+    for (const d of Object.keys(result)) result[d] = [...result[d]];
+    return result;
+  };
+
   const value = {
     // Data
     dogs,
@@ -334,6 +359,9 @@ export function DataProvider({ children }) {
     // Night assignment operations
     setNightAssignment,
     getNightAssignment,
+    getWorkedFollowingDay: getSupabaseWorkedFollowingDay,
+    setWorkedFollowingDay: setSupabaseWorkedFollowingDay,
+    queryDaytimePetNames,
     // Payment operations
     addPayment,
     deletePayment,

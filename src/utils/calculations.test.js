@@ -5,6 +5,7 @@ import {
   countOvernightDogs,
   calculateEmployeeTotals,
   calculateBoardingGross,
+  calculateDaytimeCredit,
 } from './calculations';
 
 const sampleDogs = [
@@ -200,5 +201,48 @@ describe('REQ-063: calculateBoardingGross', () => {
     const dates = ['2025-01-14', '2025-01-19'];
     const gross = calculateBoardingGross(luna, lunaBoarding, dates);
     expect(gross).toBe(0);
+  });
+});
+
+/**
+ * @requirements REQ-P1
+ */
+describe('REQ-P1: calculateDaytimeCredit', () => {
+  const dogs = [
+    { name: 'Luna', dayRate: 35 },
+    { name: 'Cooper', dayRate: 35 },
+    { name: 'Bella', dayRate: 40 },
+  ];
+
+  it('returns 0 when petNames is empty (no daytime dogs)', () => {
+    expect(calculateDaytimeCredit([], dogs, 65)).toBe(0);
+  });
+
+  it('computes credit for matching dogs at the given net percentage', () => {
+    // Luna ($35) + Cooper ($35) = $70 gross → $70 × 0.65 = $45.50
+    const credit = calculateDaytimeCredit(['Luna', 'Cooper'], dogs, 65);
+    expect(credit).toBeCloseTo(45.5);
+  });
+
+  it('skips pet names not in the dogs array (unrecognized dog)', () => {
+    // Only Bella ($40) matches → $40 × 0.65 = $26
+    const credit = calculateDaytimeCredit(['Bella', 'Unknown'], dogs, 65);
+    expect(credit).toBeCloseTo(26);
+  });
+
+  it('deduplicates repeated pet names', () => {
+    // Luna appears twice — should only be counted once: $35 × 0.65 = $22.75
+    const credit = calculateDaytimeCredit(['Luna', 'Luna'], dogs, 65);
+    expect(credit).toBeCloseTo(22.75);
+  });
+
+  it('returns 0 when net percentage is 0', () => {
+    expect(calculateDaytimeCredit(['Luna', 'Cooper'], dogs, 0)).toBe(0);
+  });
+
+  it('uses the full dayRate when percentage is 100', () => {
+    // Luna ($35) + Bella ($40) = $75 at 100%
+    const credit = calculateDaytimeCredit(['Luna', 'Bella'], dogs, 100);
+    expect(credit).toBeCloseTo(75);
   });
 });

@@ -4,7 +4,7 @@ import DateNavigator from '../components/DateNavigator';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PaymentDialog from '../components/PaymentDialog';
 import { getDateRange } from '../utils/dateUtils';
-import { calculateGross } from '../utils/calculations';
+import { calculateGross, calculateDaytimeCredit } from '../utils/calculations';
 
 export default function PayrollPage() {
   const {
@@ -13,6 +13,8 @@ export default function PayrollPage() {
     payments,
     getNetPercentageForDate,
     getNightAssignment,
+    nightAssignments,
+    queryDaytimePetNames,
     addPayment,
     deletePayment,
     getPaidDatesForEmployee,
@@ -54,8 +56,42 @@ export default function PayrollPage() {
   const [payConfirm, setPayConfirm] = useState({ isOpen: false, employee: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, payment: null });
 
+  // daytimeCreditByNightDate: { [nightDateStr]: number } — credit earned for the following day
+  const [daytimeCreditByNightDate, setDaytimeCreditByNightDate] = useState({});
+
   const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
   const dates = getDateRange(startDate, daysDiff);
+
+  // Fetch daytime pet names for nights where worked_following_day = true, then compute credits
+  useEffect(() => {
+    if (!nightAssignments) return;
+
+    const followingDayDates = nightAssignments
+      .filter(a => a.workedFollowingDay && dates.includes(a.date))
+      .map(a => {
+        const d = new Date(a.date + 'T00:00:00');
+        d.setDate(d.getDate() + 1);
+        return { nightDate: a.date, followingDate: d.toISOString().split('T')[0] };
+      });
+
+    if (followingDayDates.length === 0) {
+      setDaytimeCreditByNightDate({});
+      return;
+    }
+
+    const uniqueFollowingDates = [...new Set(followingDayDates.map(x => x.followingDate))];
+
+    queryDaytimePetNames(uniqueFollowingDates).then(petsByDate => {
+      const credits = {};
+      for (const { nightDate, followingDate } of followingDayDates) {
+        const petNames = petsByDate[followingDate] ?? [];
+        const percentage = getNetPercentageForDate(nightDate);
+        credits[nightDate] = calculateDaytimeCredit(petNames, dogs, percentage);
+      }
+      setDaytimeCreditByNightDate(credits);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nightAssignments, dogs, startDate, endDate]);
 
   // Calculate net for a specific date
   const calculateDayNet = (dateStr) => {
@@ -111,21 +147,20 @@ export default function PayrollPage() {
     const outstanding = {};
 
     for (const dateStr of dates) {
-      // Use getNightAssignment to resolve employee name from ID
       const employeeName = getNightAssignment(dateStr);
       if (employeeName && employeeName !== 'N/A') {
         const paidDates = getPaidDatesForEmployee(employeeName);
-
-        // Skip if already paid
         if (paidDates.includes(dateStr)) continue;
 
-        const net = calculateDayNet(dateStr);
+        const nightNet = calculateDayNet(dateStr);
+        const daytimeNet = daytimeCreditByNightDate[dateStr] ?? 0;
 
         if (!outstanding[employeeName]) {
-          outstanding[employeeName] = { nights: 0, amount: 0, dates: [] };
+          outstanding[employeeName] = { nights: 0, amount: 0, daytimeAmount: 0, dates: [] };
         }
         outstanding[employeeName].nights += 1;
-        outstanding[employeeName].amount += net;
+        outstanding[employeeName].amount += nightNet + daytimeNet;
+        outstanding[employeeName].daytimeAmount += daytimeNet;
         outstanding[employeeName].dates.push(dateStr);
       }
     }
@@ -262,10 +297,20 @@ export default function PayrollPage() {
                       <span className="font-semibold text-slate-700 bg-slate-200/60 px-2 py-0.5 rounded-md">{emp.nights}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Amount owed</span>
+                      <span className="text-slate-500">Night pay</span>
+                      <span className="font-semibold text-slate-700">{formatCurrency(emp.amount - emp.daytimeAmount)}</span>
+                    </div>
+                    {emp.daytimeAmount > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">+ Daytime follow-on</span>
+                        <span className="font-semibold text-indigo-600">{formatCurrency(emp.daytimeAmount)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center pt-1 border-t border-slate-200">
+                      <span className="text-slate-600 font-medium">Total owed</span>
                       <span className="font-semibold text-amber-600">{formatCurrency(emp.amount)}</span>
                     </div>
-                    <div className="pt-2 mt-2 border-t border-slate-200">
+                    <div className="pt-1">
                       <span className="text-slate-500 text-xs">Dates: </span>
                       <span className="text-slate-600 text-xs">{formatDateRanges(emp.dates)}</span>
                     </div>
