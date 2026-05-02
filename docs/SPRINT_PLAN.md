@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 1, 2026 (session 25) — **B-1 merged (PR #199). Integration Check triggered (run 25239049354, in progress at handoff). Verify Peanut synced. 1045 tests. Next: G-1 or G-3.** Theme: Client-driven operational intelligence._
+_Last updated: May 2, 2026 (session 26) — **B-1 fully resolved. Peanut (C63QghzF) confirmed in DB. 1045 tests. Next: G-1 or G-3 (Kate picks).** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -45,7 +45,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Overnight boarding sync — DC filter fix | ✅ PR #199 merged | B-1 — anchor `^(d\/c\|dc)\b`; Integration Check triggered to sync Peanut (C63QghzF, run 25239049354). |
+| Overnight boarding sync — DC filter fix | ✅ DONE | B-1 — anchor `^(d\/c\|dc)\b`; Peanut (C63QghzF) confirmed in DB May 2 (run 25239049354). |
 | Overnight boarding sync | ✅ LIVE | 3-page scan + cron-detail-2 |
 | Overnight daytime ingest | ✅ LIVE | cron-schedule.js handles this |
 | Weekday morning notify (M-F 4am/7am/8:30am) | ✅ LIVE | |
@@ -338,7 +338,7 @@ Example from April 7:
 
 ### B-1 — DC filter false positive drops "Boarding discounted nights for DC full-time"
 
-**Status:** 🔄 PR #199 open — CI pending (session 25, May 1, 2026).
+**Status:** ✅ DONE — PR #199 merged (session 25, May 1, 2026). Peanut (C63QghzF) confirmed in DB May 2.
 
 **What:** The `nonBoardingPatterns` filter `/(d\/c|\bdc\b)/i` matched `DC` as a standalone word mid-title in "Boarding discounted nights for DC full-time". That service name uses "DC full-time" as a client membership tier (full-time daycare client gets discounted boarding rate), not as an appointment type indicator. The appointment was silently dropped in every sync scan all day and never reached the DB.
 
@@ -362,7 +362,7 @@ Example from April 7:
 - [x] Existing DC/D/C skip tests still pass (start-of-title anchor still catches pure daycare titles)
 - [x] 1045 tests, 0 failures
 - [x] PR #199 merged
-- [ ] Integration Check run 25239049354 completes → Peanut (C63QghzF) appears in app ← **verify next session**
+- [x] Integration Check run 25239049354 completes → Peanut (C63QghzF) appears in app ← ✅ Verified May 2: in DB, $270, May 1–5, confirmed.
 
 ---
 

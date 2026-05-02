@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 1, 2026 (session 25) — B-1 merged (PR #199). Integration Check triggered (run 25239049354, in progress at handoff). 1045 tests.
+**Last updated:** May 2, 2026 (session 26) — B-1 fully resolved. Peanut (C63QghzF) confirmed in DB. Next: G-1 or G-3 (Kate picks). 1045 tests.
 
 ---
 
@@ -7,7 +7,7 @@
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
 - **1045 tests, 59 files, 0 failures**
-- **PR #199 open** — B-1 fix (DC filter false positive). Merge + trigger Integration Check workflow_dispatch to sync Peanut.
+- **B-1 done** — PR #199 merged, Peanut (C63QghzF) synced and confirmed in DB.
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
 ### Session 25 Summary (this session)
@@ -18,7 +18,7 @@
 | B-1 — SKIP log now includes title for observability | ✅ |
 | notify-intraday.yml health check | ✅ 5/5 runs healthy today. All skipped correctly (boarding not in DB). |
 | integration-check.yml health check | ✅ 3/3 runs healthy today. Step 3 (Claude vision) still warning (credit balance). |
-| Integration Check workflow_dispatch (post-merge) | 🔄 Run 25239049354 in progress at handoff — verify Peanut synced |
+| Integration Check workflow_dispatch (post-merge) | ✅ Run 25239049354 completed. C63QghzF ENQUEUE'd + new boarding created. Peanut confirmed in DB. |
 
 **B-1 fix:**
 - Root cause: `/(d\/c|\bdc\b)/i` matched `DC` mid-title in "Boarding discounted nights for DC **full-time**". All real daycare titles start with "D/C" or "DC".
@@ -76,7 +76,7 @@ All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done. K-5 clo
 
 | # | Ticket | Status |
 |---|--------|--------|
-| B-1 | **DC filter false positive** — "Boarding discounted nights for DC full-time" silently dropped. Fix: anchor to `^(d\/c\|dc)\b`. | ✅ PR #199 merged. Integration Check run 25239049354 triggered (in progress at handoff) — verify Peanut synced. |
+| B-1 | **DC filter false positive** — "Boarding discounted nights for DC full-time" silently dropped. Fix: anchor to `^(d\/c\|dc)\b`. | ✅ **DONE** — PR #199 merged. Run 25239049354 confirmed C63QghzF ENQUEUE'd. Peanut in DB: $270, May 1–5, confirmed. |
 
 ### Next backlog candidates:
 
