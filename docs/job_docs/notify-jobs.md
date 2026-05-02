@@ -172,7 +172,6 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 
 ## Known Issues / Backlog
 
-- **Second recipient:** `NOTIFY_RECIPIENTS` currently has only Kate's number. Second number to be added when provided (Vercel env var change only — no code change needed).
-- **WhatsApp delivery receipts:** a `wamid` returned by Meta proves the message was accepted, not that it was delivered to the phone. Post-acceptance delivery failures are silent. Meta Webhooks can provide delivery status callbacks — not yet implemented (M3-10).
-- **DST manual update:** each March and November, the UTC times in all **four** `.yml` files need to be updated by hand. No automation exists for this.
+- **WhatsApp delivery receipts:** a `wamid` returned by Meta proves the message was accepted, not that it was delivered to the phone. Post-acceptance delivery failures are silent. F-1 (PR #165, April 3) implemented the webhook endpoint and `message_delivery_status` table — delivery events are now stored. Alerting on `status=failed` is not yet implemented (G-1 backlog).
+- **DST manual update:** each March and November, the UTC times in all **five** `.yml` files need to be updated by hand. No automation exists for this.
 - **`shouldSendNotification` `window` param shadowing:** the parameter named `window` shadows the browser global. Low-priority rename to `sendWindow`.

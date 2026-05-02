@@ -1,7 +1,7 @@
 # Integration Check Job
 
 **Status:** Live — Step 0 sync-before-compare (v4.5), boarding + daytime checks, always exits 0
-**Last reviewed:** April 2, 2026
+**Last reviewed:** May 1, 2026
 
 ---
 
@@ -49,9 +49,9 @@ Reads `session_cookies` from `sync_settings` in Supabase — the same auth token
 - Navigates to `https://agirlandyourdog.com/schedule`
 - Detects login redirect (if session is stale, AGYD redirects to login page)
 - Takes a full-page PNG screenshot (~600KB)
-- Extracts **boarding appointments**: all `<a href="/schedule/a/{id}/{ts}">` links from the rendered DOM → list of `{id, title, petName}`, then filtered by `NON_BOARDING_PATTERNS`. `petName` comes from `.event-pet` text inside the link.
+- Extracts **boarding appointments**: all `<a href="/schedule/a/{id}/{ts}">` links from the rendered DOM → list of `{id, title, petName}`, then filtered by `SCRAPER_CONFIG.nonBoardingPatterns`. `petName` comes from `.event-pet` text inside the link.
 - Extracts **daytime appointments**: all `<a class="day-event cat-5634 ...">` and `cat-7431` links → list of `{id, catId, dayTs, title, petName}` (DC + PG only)
-- `NON_BOARDING_PATTERNS` and `DAYTIME_CAT_IDS` are defined independently in this file — no import from `src/` (signal isolation)
+- `SCRAPER_CONFIG.nonBoardingPatterns` is imported from `src/lib/scraper/config.js` (shared with the sync pipeline). The independent verification signal is Playwright's live DOM rendering, not a duplicate copy of the filter logic. `DAYTIME_CAT_IDS` is still defined locally.
 
 ### Step 3 — Claude reads the screenshot *(requires Anthropic credits)*
 Sends the PNG to Claude API (claude-sonnet-4-6) with a vision prompt asking it to list every boarding dog name it can see. Returns `string[]`. This is the "what a human would see" signal — entirely independent from any code. Non-fatal: if Claude fails (no credits, API down), the check continues without the name comparison.
@@ -107,7 +107,7 @@ Sends to `INTEGRATION_CHECK_RECIPIENTS` (Kate only — separate from `NOTIFY_REC
 | **Session cookie is a live auth credential** | `session_cookies` from `sync_settings` must never be logged — only log hours remaining |
 | **Past-week departures still visible on schedule** | DB query uses 7-days-ago as lower bound. The AGYD schedule page shows ~2 weeks. If you narrow the lower bound to midnight today, past-departed boardings still on the page will be falsely flagged as missing |
 | **NON_BOARDING_PATTERNS must be case-insensitive** | `ADD` is uppercase on the schedule. `/\badd\b/i` not `/\badd\b/`. Same fix needed in `cron-schedule.js` |
-| **NON_BOARDING_PATTERNS are duplicated on purpose** | Defined independently in `integration-check.js`, not imported from `src/` — signal isolation. If you update them in the sync pipeline, update here too |
+| **NON_BOARDING_PATTERNS are shared, not duplicated** | `integration-check.js` imports `SCRAPER_CONFIG.nonBoardingPatterns` from `src/lib/scraper/config.js`. Signal isolation is at the scraping level (Playwright DOM vs regex HTML parser), not the filter level. Updating `config.js` automatically applies to the integration check. |
 | **Claude name check is fuzzy** | Claude returns first-word names from appointment titles. A dog named "Buddy Jr." will always trigger a false positive. This is acceptable for a smoke test |
 | **Claude is non-fatal** | If Claude API fails or returns unparseable output, Check 3 is skipped. Checks 1 and 2 still run. The report will still be sent |
 | **Playwright downloads ~280MB of Chromium** | Cached by GH Actions after first run. If the cache is cold the job takes ~5 minutes |
@@ -118,7 +118,7 @@ Sends to `INTEGRATION_CHECK_RECIPIENTS` (Kate only — separate from `NOTIFY_REC
 ## What It Still Needs
 
 ### Claude credits
-The Anthropic API key has no credits as of March 8, 2026. Step 3 (name mismatch check) is silently skipped. Top up at console.anthropic.com → Plans & Billing.
+Step 3 silently skips when the Anthropic API key has no credits. A `::warning::` annotation fires in the GH Actions log (line 621 of `integration-check.js`). Checks 1 and 2 still run and the report is still sent. This is accepted behavior — K-5 closed May 1, 2026. Top up at console.anthropic.com → Plans & Billing if you want the name-mismatch check restored.
 
 ### Multi-week schedule coverage
 Playwright scrapes the current week's schedule page only. Boardings starting next week won't appear in Playwright's scrape but will be in the DB query window. This means the boarding ID check only catches *this week's* missing boardings. Widening would require fetching a second schedule page.
