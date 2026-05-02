@@ -1,7 +1,7 @@
 # Sync Cron Jobs
 
 **Status:** Live (Hobby plan — once per day, midnight UTC; cron-detail runs twice via cron-detail-2)
-**Last reviewed:** April 2, 2026
+**Last reviewed:** May 1, 2026
 
 ---
 
@@ -84,8 +84,8 @@ Unlike `schedule.js` (the browser scraper), this cron uses a regex-based `parseS
 Applied before enqueue to skip obvious non-boardings. The canonical list lives in `src/lib/scraper/config.js` (`SCRAPER_CONFIG.nonBoardingPatterns`) and is imported by every execution path — browser UI (`sync.js`), Vercel crons (`syncRunner.js`), and the integration check (`integration-check.js`) — so behavior is identical regardless of how a sync is triggered.
 
 Current patterns:
-- `d/c`, `dc` — Daycare
-- `\badd\b` — ADD appointments
+- `/^(d\/c|dc)\b/i` — Daycare. **Anchored to start-of-title** (B-1, May 1 2026): the old `/\bdc\b/i` mid-word match falsely filtered "Boarding discounted nights for DC full-time" (a boarding service whose name includes a membership tier). Real daycare titles always start with "D/C" or "DC".
+- `/\badd\b/i` — ADD appointments (daycare add-on days)
 - `switch day`, `back to N`, `initial eval`, `busy`
 
 **NOTE: `pg` is intentionally excluded.** `"PG 3/23-30"` style titles are pack group **boarding** appointments with Boarding (Nights) pricing. PG daycare events are caught downstream by the post-detail filter in `appointmentFilter.js` (see cron-detail section below).
