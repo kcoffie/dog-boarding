@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 2, 2026 (session 26) — B-1 fully resolved. Peanut (C63QghzF) confirmed in DB. Next: G-1 or G-3 (Kate picks). 1045 tests.
+**Last updated:** May 1, 2026 (session 25b) — B-1 fully resolved. Peanut (C63QghzF) confirmed in DB. Next: G-1 or G-3 (Kate picks). 1045 tests.
 
 ---
 
