@@ -262,6 +262,49 @@ describe('runScheduleSync', () => {
     expect(enqueue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ external_id: 'C63QgJQ9' }));
     expect(result.skipped).toBe(0);
   });
+
+  it('enqueues "Boarding discounted nights for DC full-time" — mid-title DC must not be filtered', async () => {
+    // Regression: C63QghzF (Peanut, Leo Garver, May 1–5 2026). The service name
+    // "Boarding discounted nights for DC full-time" contains "DC" as a client tier
+    // descriptor. The old /(d\/c|\bdc\b)/i pattern matched the mid-title "DC" word
+    // and silently dropped this overnight boarding all day. Fix: anchor to ^(d\/c|dc)\b.
+    ensureSession.mockResolvedValue('session=abc');
+    setSession.mockReturnValue(undefined);
+    const html = `
+      <a href="/schedule/a/C63QghzF/1777629600" class="day-event">
+        <span class="day-event-title">Boarding discounted nights for DC full-time</span>
+        <span class="event-pet" data-pet="138053">Peanut</span>
+      </a>
+    `;
+    authenticatedFetch.mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(html),
+    });
+    const { enqueue } = await import('../../lib/scraper/syncQueue.js');
+    enqueue.mockResolvedValue(undefined);
+    const supabase = {
+      from: (table) => {
+        if (table === 'sync_settings') {
+          return {
+            select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }) }) }),
+            update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+            insert: () => Promise.resolve({ error: null }),
+          };
+        }
+        return {
+          select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+          update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+          insert: () => Promise.resolve({ error: null }),
+        };
+      },
+    };
+    getQueueDepth.mockResolvedValue(0);
+    const result = await runScheduleSync(supabase);
+    expect(result.action).toBe('ok');
+    expect(result.found).toBe(1);
+    expect(enqueue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ external_id: 'C63QghzF' }));
+    expect(result.skipped).toBe(0);
+  });
 });
 
 // ─── runDetailSync — key branches ─────────────────────────────────────────────

@@ -9,13 +9,13 @@
 
 Five GitHub Actions workflows send WhatsApp notifications. Three fire on weekday mornings with the daily roster image; one fires Friday afternoon with a weekend boarding preview; one fires hourly throughout the day to catch intraday boarding changes.
 
-| Workflow | File | Time (PDT) | UTC | Days | Behavior |
-|---|---|---|---|---|---|
-| Notify 4am | `notify-4am.yml` | 4:00 AM | 11:00 | Mon–Fri | Always sends — daily roster image |
-| Notify 7am | `notify-7am.yml` | 7:00 AM | 14:00 | Mon–Fri | Sends only if roster changed |
-| Notify 8:30am | `notify-830am.yml` | 8:30 AM | 15:30 | Mon–Fri | Sends only if roster changed; also stores boarders snapshot |
-| Notify Friday PM | `notify-friday-pm.yml` | 3:00 PM | 22:00 | Fri only | Always sends — weekend boarding preview image |
-| Notify Intraday | `notify-intraday.yml` | 9am–8pm hourly | 16–23 + 0–3 UTC | Mon–Fri | Sends delta image only when boarders changed since 8:30am |
+| Workflow         | File                   | Time (PDT)     | UTC             | Days     | Behavior                                                    |
+| ---------------- | ---------------------- | -------------- | --------------- | -------- | ----------------------------------------------------------- |
+| Notify 4am       | `notify-4am.yml`       | 4:00 AM        | 11:00           | Mon–Fri  | Always sends — daily roster image                           |
+| Notify 7am       | `notify-7am.yml`       | 7:00 AM        | 14:00           | Mon–Fri  | Sends only if roster changed                                |
+| Notify 8:30am    | `notify-830am.yml`     | 8:30 AM        | 15:30           | Mon–Fri  | Sends only if roster changed; also stores boarders snapshot |
+| Notify Friday PM | `notify-friday-pm.yml` | 3:00 PM        | 22:00           | Fri only | Always sends — weekend boarding preview image               |
+| Notify Intraday  | `notify-intraday.yml`  | 9am–8pm hourly | 16–23 + 0–3 UTC | Mon–Fri  | Sends delta image only when boarders changed since 8:30am   |
 
 All five support manual trigger (`workflow_dispatch`) for testing.
 
