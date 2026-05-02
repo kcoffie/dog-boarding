@@ -315,7 +315,7 @@ export async function runScheduleSync(supabase) {
     const matchedPattern = SCRAPER_CONFIG.nonBoardingPatterns.find(re => re.test(titleLower));
 
     if (matchedPattern) {
-      console.log(`[SyncRunner:Schedule] ⏭️ SKIP ${appt.id} — matched nonBoardingPatterns ${matchedPattern}`);
+      console.log(`[SyncRunner:Schedule] ⏭️ SKIP ${appt.id} title="${appt.title}" — matched nonBoardingPatterns ${matchedPattern}`);
       stats.skipped++;
       continue;
     }

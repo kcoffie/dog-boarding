@@ -13,7 +13,7 @@ import { applyDetailFilters } from '../../lib/scraper/appointmentFilter.js';
 vi.mock('../../lib/scraper/config.js', () => ({
   SCRAPER_CONFIG: {
     nonBoardingPatterns: [
-      /(d\/c|\bdc\b)/i,
+      /^(d\/c|dc)\b/i,
       /\badd\b/i,
       /switch\s+day/i,
       /back\s+to\s+\d+/i,
@@ -89,6 +89,17 @@ describe('title filter', () => {
   it('does NOT skip PG titles — PG is intentionally absent from nonBoardingPatterns', () => {
     const { skip } = applyDetailFilters(
       validBoarding({ service_type: 'PG 3/23-30' }), 'PG 3/23-30',
+    );
+    expect(skip).toBe(false);
+  });
+
+  it('does NOT skip "Boarding discounted nights for DC full-time" — DC mid-title is a pricing tier, not daycare', () => {
+    // Regression: C63QghzF (Peanut/Leo Garver, May 1–5 2026). Service name includes
+    // "DC full-time" as a client tier descriptor. The old /(d\/c|\bdc\b)/i pattern
+    // matched the mid-title "DC" and silently dropped this boarding all day.
+    const { skip } = applyDetailFilters(
+      validBoarding({ service_type: 'Boarding discounted nights for DC full-time' }),
+      'Boarding discounted nights for DC full-time',
     );
     expect(skip).toBe(false);
   });
