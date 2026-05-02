@@ -20,8 +20,12 @@ export const SCRAPER_CONFIG = {
   // pack group BOARDING appointments with Boarding (Nights) pricing — they pass
   // the pricing filter correctly. PG daycare-only events are caught by the pricing
   // filter (all line items match /pack/i dayServicePatterns).
+  //
+  // NOTE: DC/D/C is anchored to start-of-title. Titles starting with "Boarding"
+  // may reference a "DC full-time" client tier in the service name (e.g.,
+  // "Boarding discounted nights for DC full-time") — those must not be filtered.
   nonBoardingPatterns: [
-    /(d\/c|\bdc\b)/i,
+    /^(d\/c|dc)\b/i,
     /\badd\b/i,
     /switch\s+day/i,
     /back\s+to\s+\d+/i,
