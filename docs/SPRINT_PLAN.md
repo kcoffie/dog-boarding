@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 1, 2026 (session 25b) — **B-1 fully resolved. Peanut (C63QghzF) confirmed in DB. 1045 tests. Next: G-1 or G-3 (Kate picks).** Theme: Client-driven operational intelligence._
+_Last updated: May 1, 2026 (session 26) — **B-1 fully resolved + verified. Job docs updated, OVERVIEW.md created. 1045 tests. Next: G-1 or G-3 (Kate picks).** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -97,7 +97,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 1. **R-1** ✅ Q Boarding 6th box — PR #187 + bug fix PR #189
 2. **J-1** ✅ PR #191 merged — Intraday change notification job. v6.0.0 released.
 3. **P-1** ✅ PR #193 merged — Employee pay daytime follow-on. Bug fix PR #195 (wrong data source). v6.1.0 released. Migration 027 live in Supabase. **All v6 tickets done.**
-4. **B-1** 🔄 PR #199 open — DC filter false positive drops boarding with "DC full-time" tier in service name.
+4. **B-1** ✅ PR #199 merged — DC filter false positive. Peanut (C63QghzF) confirmed in DB May 1.
 
 **Next:** Pick from backlog — G-1 (alert on failed wamid) or G-3 (client status page).
 

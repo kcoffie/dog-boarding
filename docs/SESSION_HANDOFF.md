@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 1, 2026 (session 25b) — B-1 fully resolved. Peanut (C63QghzF) confirmed in DB. Next: G-1 or G-3 (Kate picks). 1045 tests.
+**Last updated:** May 1, 2026 (session 26) — B-1 fully resolved. Job docs updated + OVERVIEW.md created. Next: G-1 or G-3 (Kate picks). 1045 tests.
 
 ---
 
@@ -7,29 +7,39 @@
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
 - **1045 tests, 59 files, 0 failures**
-- **B-1 done** — PR #199 merged, Peanut (C63QghzF) synced and confirmed in DB.
+- **main clean** — all PRs merged, no open branches
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### Session 25 Summary (this session)
+### Session 26 Summary (this session)
+| Item | Status |
+|---|---|
+| B-1 — verify Integration Check run 25239049354 | ✅ C63QghzF ENQUEUE'd (not SKIP'd). New boarding created in DB: Peanut $270, May 1–5, confirmed. |
+| B-1 — verify Peanut in DB via Supabase query | ✅ Row confirmed: `external_id=C63QghzF`, `billed_amount=270`, `booking_status=confirmed` |
+| Intraday timing analysis — will Peanut trigger a notification? | ✅ Yes — 8:30am snapshot taken before Peanut synced (5:32pm PDT). Next intraday run (6pm PDT) should detect Peanut as "added" and send WhatsApp. Run 25238309409 at 4:57pm returned `no_change_since_830am` (Peanut not yet in DB at that time). |
+| docs/job_docs/ — review and update all 4 docs | ✅ All 4 updated. See below. |
+| docs/job_docs/OVERVIEW.md — create new overview doc | ✅ Created. Covers all 12 jobs with schedule, behavior, interesting design notes, weekday timeline, failure coverage map. |
+
+**Job docs changes (May 1):**
+- `integration-check.md` — fixed stale "NON_BOARDING_PATTERNS duplicated on purpose" claim (they now import from shared `config.js`); updated Claude credits note (K-5 closed)
+- `notify-jobs.md` — removed stale "second recipient not added" (G-6 fixed April 21); updated delivery receipts to note F-1 done, G-1 is the gap
+- `sync-crons.md` — updated DC pattern description to `^(d/c|dc)\b/i` with B-1 explanation
+- `gmail-monitor.md` — date only
+
+**Pending verifications (check at next session start):**
+1. **Peanut intraday notify** — did the 6pm PDT intraday run (01:00 UTC May 2) fire and send a WhatsApp showing Peanut as Added? Check: `gh run list --workflow=notify-intraday.yml --limit=5` and view the log for the run at ~01:00 UTC.
+2. **N-1 morning verification** — still pending Kate's observation on the first real 3-send morning cycle (tomorrow, May 2):
+   - 4am image: no UPDATED! badge
+   - 7am image: blue dogs if anything changed since 4am
+   - 8:30am image: blue dogs if anything changed since 7am
+
+### Session 25 Summary (reference)
 | Item | Status |
 |---|---|
 | B-1 — DC filter false positive drops "Boarding discounted nights for DC full-time" | ✅ PR #199 merged. Deployed. |
 | B-1 — 2 regression tests (appointmentFilter + syncRunner) | ✅ 1045 tests, 0 failures |
 | B-1 — SKIP log now includes title for observability | ✅ |
-| notify-intraday.yml health check | ✅ 5/5 runs healthy today. All skipped correctly (boarding not in DB). |
+| notify-intraday.yml health check | ✅ 5/5 runs healthy today. All skipped correctly (boarding not in DB before 5:32pm). |
 | integration-check.yml health check | ✅ 3/3 runs healthy today. Step 3 (Claude vision) still warning (credit balance). |
-| Integration Check workflow_dispatch (post-merge) | ✅ Run 25239049354 completed. C63QghzF ENQUEUE'd + new boarding created. Peanut confirmed in DB. |
-
-**B-1 fix:**
-- Root cause: `/(d\/c|\bdc\b)/i` matched `DC` mid-title in "Boarding discounted nights for DC **full-time**". All real daycare titles start with "D/C" or "DC".
-- Fix: `/^(d\/c|dc)\b/i` — anchored to start-of-title.
-- Files: `src/lib/scraper/config.js` (pattern), `src/lib/scraper/syncRunner.js` (SKIP log adds title)
-- Confirmed instance: Peanut (Leo Garver, C63QghzF, May 1–5 2026). Was skipped in every scan all day. Once PR merges, trigger Integration Check workflow_dispatch → Step 0 re-syncs → Peanut appears in app.
-
-**After PR #199 merges:**
-1. Go to Actions → Integration Check → Run workflow
-2. Peanut (C63QghzF) will be enqueued by Step 0, processed by cron-detail within minutes
-3. App will show the boarding; next intraday run will include it in the boarders baseline
 
 ### Session 24 Summary (reference)
 | Item | Status |
@@ -51,68 +61,23 @@
 - [x] Null/malformed snapshot: graceful green/red fallback, no crash
 - [x] 9 unit tests passing
 - [x] 1043 tests, 0 failures
-- [x] PR #197 merged — **pending: Kate verifies on first 3-send morning cycle**
-
-**Kate verification (next morning):**
-- 4am image should have no UPDATED! badge even when dogs differ from yesterday
-- 7am image should show blue dogs if anything changed since 4am (first morning: no snapshot yet → green/red only)
-- 8:30am image: if roster changed since 7am, those dogs should show blue
-
-### Session 22 Summary (reference)
-| Item | Status |
-|---|---|
-| P-1 — merge PR #193 + run migration 027 | ✅ Merged. Kate ran migration 027 in Supabase. |
-| P-1 — live verification | ✅ Checkbox renders. Bug found: credit used wrong data source. |
-| P-1 bug fix — daytime credit source (#194, PR #195) | ✅ Fixed. Merged. |
-| v6.1.0 GitHub release | ✅ Tagged and released. |
+- [x] PR #197 merged — **pending: Kate verifies on first 3-send morning cycle (May 2)**
 
 ---
 
 ## v6 — Remaining Tickets
 
-All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done. K-5 closed. N-1 merged (PR #197). B-1 PR #199 open.
+All v6 specced tickets (R-1, J-1, P-1) are **DONE**. B-1 DONE. G-2 confirmed done. K-5 closed. N-1 merged.
 
 ### In flight:
+None.
 
-| # | Ticket | Status |
-|---|--------|--------|
-| B-1 | **DC filter false positive** — "Boarding discounted nights for DC full-time" silently dropped. Fix: anchor to `^(d\/c\|dc)\b`. | ✅ **DONE** — PR #199 merged. Run 25239049354 confirmed C63QghzF ENQUEUE'd. Peanut in DB: $270, May 1–5, confirmed. |
-
-### Next backlog candidates:
+### Next backlog candidates (Kate picks):
 
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
-| G-1 | **Alert on failed wamid** — nothing reads `message_delivery_status` and fires on status=`failed` | Medium | — |
-| G-3 | **Client-facing status page** — no self-serve health check for operator | Medium | UAT gate 4 |
-
----
-
-### Session 21 Summary (reference)
-| Item | Status |
-|---|---|
-| J-1 — merge PR #191 + verify Vercel deploy | ✅ Merged. `notify-intraday?token=...` returns `{"ok":true,"action":"skipped","reason":"no_snapshot"}` |
-| v6.0.0 GitHub release | ✅ Tagged — J-1 + R-1 + hashPicture fix |
-| P-1 — employee pay daytime follow-on | ✅ Built. PR #193 opened (issue #192). |
-
-### Session 20 Summary (reference)
-| Item | Status |
-|---|---|
-| J-1 — intraday boarding change notification job | ✅ PR #191 CI green — merged this session |
-
-**J-1 changes:**
-- `queryBoarders` now returns `{ name, arrival_datetime, departure_datetime }[]` (was `string[]`)
-- `hashPicture` now includes boarders in hash
-- Q Boarding card shows compact date ranges: `Name (M/D–M/D)`
-- `notify.js` 8:30am window stores `boarders-snapshot` in `cron_health` before send-gate check
-- New `api/notify-intraday.js` — hourly delta handler
-- New `api/intraday-image.js` — delta PNG: "Q Boarding Changes" header + Added/Cancelled
-- New `.github/workflows/notify-intraday.yml` — hourly 9am–8pm PDT Mon–Fri
-
-### Session 19 Summary (reference)
-| Item | Status |
-|---|---|
-| R-1 bug fix — Q Boarding missing dogs with DC/PG appointments | ✅ PR #189 merged |
-| Calendar duplication (Annie/Tracy shown twice) | ✅ Root cause confirmed, data cleanup deferred |
+| G-1 | **Alert on failed wamid** — `message_delivery_status` table exists (F-1) but nothing reads it and fires on `status='failed'` | Medium | Lightweight cron or webhook-triggered check |
+| G-3 | **Client-facing status page** — no self-serve health check for the operator | Medium | UAT gate 4 — read-only page: last cron run, last notify sent, last delivery status |
 
 ---
 
@@ -120,7 +85,7 @@ All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done. K-5 clo
 
 | # | Action | Blocks | Priority |
 |---|--------|--------|----------|
-| ~~K-5~~ | ✅ Closed May 1 — Step 3 skipping silently without ill effects; `::warning::` already fires (integration-check.js:621). Credits not needed. | — | — |
+| N-1 verify | **Check tomorrow morning (May 2):** 4am image has no UPDATED! badge. 7am/8:30am shows blue dogs for intra-day changes. | N-1 done | 🔴 First thing |
 | K-8 | **Replace Meta test phone number before ~July 2, 2026.** Google Voice (free). Meta API Setup → Step 5 → verify → update `META_PHONE_NUMBER_ID` in Vercel. | WhatsApp continuity | 🟡 Medium — ~9 weeks |
 
 ---
