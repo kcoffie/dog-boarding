@@ -1,16 +1,37 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 1, 2026 (session 24) — N-1 merged. PR #197. main clean. 1043 tests.
+**Last updated:** May 1, 2026 (session 25) — B-1 merged (PR #199). Integration Check triggered (run 25239049354, in progress at handoff). 1045 tests.
 
 ---
 
 ## Current State
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
-- **1043 tests, 59 files, 0 failures**
-- **main is clean** — v6.1.0 released, N-1 merged (PR #197)
+- **1045 tests, 59 files, 0 failures**
+- **PR #199 open** — B-1 fix (DC filter false positive). Merge + trigger Integration Check workflow_dispatch to sync Peanut.
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### Session 24 Summary (this session)
+### Session 25 Summary (this session)
+| Item | Status |
+|---|---|
+| B-1 — DC filter false positive drops "Boarding discounted nights for DC full-time" | ✅ PR #199 merged. Deployed. |
+| B-1 — 2 regression tests (appointmentFilter + syncRunner) | ✅ 1045 tests, 0 failures |
+| B-1 — SKIP log now includes title for observability | ✅ |
+| notify-intraday.yml health check | ✅ 5/5 runs healthy today. All skipped correctly (boarding not in DB). |
+| integration-check.yml health check | ✅ 3/3 runs healthy today. Step 3 (Claude vision) still warning (credit balance). |
+| Integration Check workflow_dispatch (post-merge) | 🔄 Run 25239049354 in progress at handoff — verify Peanut synced |
+
+**B-1 fix:**
+- Root cause: `/(d\/c|\bdc\b)/i` matched `DC` mid-title in "Boarding discounted nights for DC **full-time**". All real daycare titles start with "D/C" or "DC".
+- Fix: `/^(d\/c|dc)\b/i` — anchored to start-of-title.
+- Files: `src/lib/scraper/config.js` (pattern), `src/lib/scraper/syncRunner.js` (SKIP log adds title)
+- Confirmed instance: Peanut (Leo Garver, C63QghzF, May 1–5 2026). Was skipped in every scan all day. Once PR merges, trigger Integration Check workflow_dispatch → Step 0 re-syncs → Peanut appears in app.
+
+**After PR #199 merges:**
+1. Go to Actions → Integration Check → Run workflow
+2. Peanut (C63QghzF) will be enqueued by Step 0, processed by cron-detail within minutes
+3. App will show the boarding; next intraday run will include it in the boarders baseline
+
+### Session 24 Summary (reference)
 | Item | Status |
 |---|---|
 | N-1 — suppress UPDATED! badge on 4am | ✅ Built. PR #197 merged. |
@@ -49,7 +70,13 @@
 
 ## v6 — Remaining Tickets
 
-All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done. K-5 closed. N-1 merged (PR #197). Remaining work is from the backlog.
+All v6 specced tickets (R-1, J-1, P-1) are **DONE**. G-2 confirmed done. K-5 closed. N-1 merged (PR #197). B-1 PR #199 open.
+
+### In flight:
+
+| # | Ticket | Status |
+|---|--------|--------|
+| B-1 | **DC filter false positive** — "Boarding discounted nights for DC full-time" silently dropped. Fix: anchor to `^(d\/c\|dc)\b`. | ✅ PR #199 merged. Integration Check run 25239049354 triggered (in progress at handoff) — verify Peanut synced. |
 
 ### Next backlog candidates:
 

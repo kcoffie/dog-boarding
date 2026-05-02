@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 1, 2026 (session 24) — **N-1 merged (PR #197). 1043 tests. Next: G-1 or G-3 from backlog.** Theme: Client-driven operational intelligence._
+_Last updated: May 1, 2026 (session 25) — **B-1 merged (PR #199). Integration Check triggered (run 25239049354, in progress at handoff). Verify Peanut synced. 1045 tests. Next: G-1 or G-3.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -45,6 +45,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 
 | Feature | Status | Notes |
 |---------|--------|-------|
+| Overnight boarding sync — DC filter fix | ✅ PR #199 merged | B-1 — anchor `^(d\/c\|dc)\b`; Integration Check triggered to sync Peanut (C63QghzF, run 25239049354). |
 | Overnight boarding sync | ✅ LIVE | 3-page scan + cron-detail-2 |
 | Overnight daytime ingest | ✅ LIVE | cron-schedule.js handles this |
 | Weekday morning notify (M-F 4am/7am/8:30am) | ✅ LIVE | |
@@ -96,6 +97,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 1. **R-1** ✅ Q Boarding 6th box — PR #187 + bug fix PR #189
 2. **J-1** ✅ PR #191 merged — Intraday change notification job. v6.0.0 released.
 3. **P-1** ✅ PR #193 merged — Employee pay daytime follow-on. Bug fix PR #195 (wrong data source). v6.1.0 released. Migration 027 live in Supabase. **All v6 tickets done.**
+4. **B-1** 🔄 PR #199 open — DC filter false positive drops boarding with "DC full-time" tier in service name.
 
 **Next:** Pick from backlog — G-1 (alert on failed wamid) or G-3 (client status page).
 
@@ -331,6 +333,36 @@ Example from April 7:
 - [x] If no prior snapshot for today, gracefully renders green/red only (no crash, no missing dogs)
 - [x] Unit tests: (a) 4am badge suppression (3), (b) blue overlay with a stored snapshot (3), (c) fallback when no snapshot (3)
 - [ ] Deployed + verified on a real 3-send morning cycle ← **pending Kate's morning observation**
+
+---
+
+### B-1 — DC filter false positive drops "Boarding discounted nights for DC full-time"
+
+**Status:** 🔄 PR #199 open — CI pending (session 25, May 1, 2026).
+
+**What:** The `nonBoardingPatterns` filter `/(d\/c|\bdc\b)/i` matched `DC` as a standalone word mid-title in "Boarding discounted nights for DC full-time". That service name uses "DC full-time" as a client membership tier (full-time daycare client gets discounted boarding rate), not as an appointment type indicator. The appointment was silently dropped in every sync scan all day and never reached the DB.
+
+**Confirmed instance:** Peanut (Leo Garver, client 151589, pet 138053), appointment C63QghzF, May 1–5 2026, $270 ($55×4 nights + $50×1 day), assigned to Charlie (worker 61023). Skipped at 1am, 9am, and 5pm integration checks. Zero WhatsApp notifications sent.
+
+**Root cause:** All real daycare appointment titles start with "D/C" or "DC" (e.g., "DC full-time", "D/C M/T/W/TH"). The false positive comes from a boarding service whose name references a "DC full-time" membership tier mid-title.
+
+**Fix:** Anchor the pattern to start-of-title: `/^(d\/c|dc)\b/i`. Also adds title to the SKIP log (previously omitted — made this class of bug invisible).
+
+**Files changed:**
+- `src/lib/scraper/config.js` — pattern change
+- `src/lib/scraper/syncRunner.js` — SKIP log adds `title="..."`
+- `src/__tests__/scraper/appointmentFilter.test.js` — mock updated + new case
+- `src/__tests__/scraper/syncRunner.test.js` — new regression test
+
+**Definition of Done:**
+- [x] `/(d\/c|\bdc\b)/i` → `/^(d\/c|dc)\b/i` in config.js
+- [x] SKIP log includes title
+- [x] `appointmentFilter.test.js`: "Boarding discounted nights for DC full-time" → `skip: false`
+- [x] `syncRunner.test.js`: C63QghzF with that title → enqueued, skipped=0
+- [x] Existing DC/D/C skip tests still pass (start-of-title anchor still catches pure daycare titles)
+- [x] 1045 tests, 0 failures
+- [x] PR #199 merged
+- [ ] Integration Check run 25239049354 completes → Peanut (C63QghzF) appears in app ← **verify next session**
 
 ---
 
