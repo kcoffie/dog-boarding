@@ -1,7 +1,7 @@
 # Gmail Monitor Job
 
 **Status:** Live — hourly at :15 past, OAuth2 confirmed working (March 20, 2026)
-**Last reviewed:** April 2, 2026
+**Last reviewed:** May 1, 2026
 
 ---
 
