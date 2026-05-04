@@ -305,6 +305,48 @@ describe('runScheduleSync', () => {
     expect(enqueue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ external_id: 'C63QghzF' }));
     expect(result.skipped).toBe(0);
   });
+
+  it('skips "PT: T.W.TH" appointment — Part-Time daycare must not be enqueued as a boarding', async () => {
+    // Regression: C63QgiVF (Maverick, May 4 2026). "PT: T.W.TH" is a recurring
+    // Part-Time daycare appointment using the /schedule/a/ URL format. Missing ^PT\b
+    // in nonBoardingPatterns caused the integration check DOM scanner to flag it as
+    // a boarding candidate and fire false "Missing from DB" alerts every run.
+    ensureSession.mockResolvedValue('session=abc');
+    setSession.mockReturnValue(undefined);
+    const html = `
+      <a href="/schedule/a/C63QgiVF/1777975200" class="day-event">
+        <span class="day-event-title">PT: T.W.TH</span>
+        <span class="event-pet" data-pet="168474">Maverick</span>
+      </a>
+    `;
+    authenticatedFetch.mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(html),
+    });
+    const { enqueue } = await import('../../lib/scraper/syncQueue.js');
+    enqueue.mockResolvedValue(undefined);
+    const supabase = {
+      from: (table) => {
+        if (table === 'sync_settings') {
+          return {
+            select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }) }) }),
+            update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+            insert: () => Promise.resolve({ error: null }),
+          };
+        }
+        return {
+          select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+          update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+          insert: () => Promise.resolve({ error: null }),
+        };
+      },
+    };
+    getQueueDepth.mockResolvedValue(0);
+    const result = await runScheduleSync(supabase);
+    expect(result.action).toBe('ok');
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(result.skipped).toBe(1);
+  });
 });
 
 // ─── runDetailSync — key branches ─────────────────────────────────────────────
