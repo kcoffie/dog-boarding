@@ -46,6 +46,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Overnight boarding sync — DC filter fix | ✅ DONE | B-1 — anchor `^(d\/c\|dc)\b`; Peanut (C63QghzF) confirmed in DB May 1 (run 25239049354). |
+| Integration check false positives — PT + Claude vision | ⚠️ PARTIAL | B-2 — PR #201 merged May 4. Fix 1 (`^PT\b`) verified working. Fix 2 (Claude vision demote) still needed — Check 3 fires false positive WhatsApp alerts on every run. |
 | Overnight boarding sync | ✅ LIVE | 3-page scan + cron-detail-2 |
 | Overnight daytime ingest | ✅ LIVE | cron-schedule.js handles this |
 | Weekday morning notify (M-F 4am/7am/8:30am) | ✅ LIVE | |
@@ -98,8 +99,9 @@ These are not code tickets. They block specific milestones. Track them here so n
 2. **J-1** ✅ PR #191 merged — Intraday change notification job. v6.0.0 released.
 3. **P-1** ✅ PR #193 merged — Employee pay daytime follow-on. Bug fix PR #195 (wrong data source). v6.1.0 released. Migration 027 live in Supabase. **All v6 tickets done.**
 4. **B-1** ✅ PR #199 merged — DC filter false positive. Peanut (C63QghzF) confirmed in DB May 1.
+5. **B-2** ⚠️ PR #201 merged May 4 — integration check false positives. Fix 1 (`^PT\b`) confirmed working. **Fix 2 (Check 3 demote to log-only) still needed — do this before picking from backlog.**
 
-**Next:** Pick from backlog — G-1 (alert on failed wamid) or G-3 (client status page).
+**Next:** Finish B-2 (demote Check 3 to log-only, PR + verify), then pick G-1 or G-3.
 
 ---
 

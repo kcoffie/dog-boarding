@@ -1,25 +1,30 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 1, 2026 (session 26) — B-1 fully resolved. Job docs updated + OVERVIEW.md created. Next: G-1 or G-3 (Kate picks). 1045 tests.
+**Last updated:** May 4, 2026 (session 27) — B-2 partially done (PR #201 merged). Check 3 still noisy — demote to log-only is the next immediate task. 1047 tests.
 
 ---
 
 ## Current State
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
-- **1045 tests, 59 files, 0 failures**
-- **main clean** — all PRs merged, no open branches
+- **1047 tests, 59 files, 0 failures**
+- **main clean** — PR #201 merged, no open branches
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### Session 26 Summary (this session)
+### Session 27 Summary (this session)
 | Item | Status |
 |---|---|
-| B-1 — verify Integration Check run 25239049354 | ✅ C63QghzF ENQUEUE'd (not SKIP'd). New boarding created in DB: Peanut $270, May 1–5, confirmed. |
-| B-1 — verify Peanut in DB via Supabase query | ✅ Row confirmed: `external_id=C63QghzF`, `billed_amount=270`, `booking_status=confirmed` |
-| Intraday timing analysis — will Peanut trigger a notification? | ✅ Yes — 8:30am snapshot taken before Peanut synced (5:32pm PDT). Next intraday run (6pm PDT) should detect Peanut as "added" and send WhatsApp. Run 25238309409 at 4:57pm returned `no_change_since_830am` (Peanut not yet in DB at that time). |
-| docs/job_docs/ — review and update all 4 docs | ✅ All 4 updated. See below. |
-| docs/job_docs/OVERVIEW.md — create new overview doc | ✅ Created. Covers all 12 jobs with schedule, behavior, interesting design notes, weekday timeline, failure coverage map. |
+| Peanut intraday notify verify (6pm PDT May 1) | ✅ Confirmed fired — Kate received WhatsApp showing Peanut added |
+| N-1 morning verify (May 2) | ✅ 4am image had no UPDATED! badge. Blue coloring still pending a real intra-day change use case. |
+| B-2 — diagnose integration check false positive alerts | ✅ Two root causes identified |
+| B-2 fix 1 — add `^PT\b` to `nonBoardingPatterns` in `config.js` (#200, PR #201) | ✅ Merged. Verified: `⏭️ SKIP C63QgiVF title="PT: T.W.TH" — matched /^PT\b/i`. "Missing from DB: Maverick" eliminated. |
+| B-2 fix 2 — improve Claude vision prompt (P/U confusion) | ⚠️ Partial. P/U false positives eliminated. New false positives from "No worker" section: Claude reads client names (Gopher Sheraton, Amy Bilodeau, Belma Filip, Jameson Lee) as dog names. All confirmed non-existent in dogs table. |
+| B-2 remaining — demote Check 3 (Claude vision) to log-only | 🔴 NOT DONE — **immediate next task** |
 
-**Job docs changes (May 1):**
+**B-2 root cause analysis:**
+- **PT false positive (fixed):** `"PT: T.W.TH"` is Maverick's Part-Time daycare. Uses `/schedule/a/` URL format so DOM scanner picked it up. Detail sync correctly classified it non-boarding (status `done`, no boarding row). Fix: `^PT\b` in `nonBoardingPatterns`.
+- **Claude vision (still noisy):** Check 3 runs `extractNamesFromScreenshot()` and produces false positives Claude can't reliably filter. First the P/U transport entries, now the "No worker" section client names. Check 1 (DOM ID match) is the reliable signal — Check 3 adds noise, not signal. Fix: demote Check 3 to log-only; only Check 1 + Check 2 (Unknown names) trigger WhatsApp.
+
+**Job docs changes (May 1, session 26):**
 - `integration-check.md` — fixed stale "NON_BOARDING_PATTERNS duplicated on purpose" claim (they now import from shared `config.js`); updated Claude credits note (K-5 closed)
 - `notify-jobs.md` — removed stale "second recipient not added" (G-6 fixed April 21); updated delivery receipts to note F-1 done, G-1 is the gap
 - `sync-crons.md` — updated DC pattern description to `^(d/c|dc)\b/i` with B-1 explanation
@@ -67,12 +72,12 @@
 
 ## v6 — Remaining Tickets
 
-All v6 specced tickets (R-1, J-1, P-1) are **DONE**. B-1 DONE. G-2 confirmed done. K-5 closed. N-1 merged.
+All v6 specced tickets (R-1, J-1, P-1) are **DONE**. B-1 DONE. B-2 partially done (PR #201). G-2 confirmed done. K-5 closed. N-1 merged.
 
 ### In flight:
-None.
+**B-2 (remainder)** — Demote Check 3 (Claude vision) to log-only. See spec below.
 
-### Next backlog candidates (Kate picks):
+### Next backlog candidates (Kate picks, after B-2 is done):
 
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
@@ -81,11 +86,30 @@ None.
 
 ---
 
+## B-2 Remaining Fix — Demote Check 3 to Log-Only
+
+**Why:** Check 3 (`extractNamesFromScreenshot`) is architecturally noisy. Claude reads the full schedule screenshot and can't reliably distinguish dog names from client names, transport entries, or "No worker" section text. First it saw P/U transport entries (Chester, Stephanie, etc.), after the prompt fix it saw client names from the No Worker section (Gopher Sheraton, Amy Bilodeau, Belma Filip). Check 1 (DOM ID match) is the reliable signal. Check 3 adds no actionable signal and fires false WhatsApp alerts on every run.
+
+**Fix:** Separate claudeIssues from boardingIssues in `compareResults()`. WhatsApp alert fires only on `boardingIssues` (Check 1 + Check 2). Claude issues are logged with `ℹ️` prefix but never included in the WhatsApp message body. The run still FAIL-labels internally if claudeIssues exist, but the alert message only mentions boarding gaps.
+
+**Files:** `scripts/integration-check.js` only. No config or test changes needed.
+
+**DoD:**
+- [ ] `compareResults()` returns `{ passed, boardingIssues, claudeIssues }` (separate arrays)
+- [ ] WhatsApp message body only includes `boardingIssues` entries
+- [ ] Claude issues logged as `[IntegCheck] ℹ️ Claude visual check: ...` (not `⚠️`)
+- [ ] First-run always-send behavior unchanged
+- [ ] If `boardingIssues` empty but `claudeIssues` exist: run logs warnings, no WhatsApp fires
+- [ ] 1047 tests, 0 failures (no new tests needed — logic change only)
+- [ ] Trigger manual integration check run, verify no WhatsApp alert for the client name false positives
+
+---
+
 ## Pending Kate Actions
 
 | # | Action | Blocks | Priority |
 |---|--------|--------|----------|
-| N-1 verify | **Check tomorrow morning (May 2):** 4am image has no UPDATED! badge. 7am/8:30am shows blue dogs for intra-day changes. | N-1 done | 🔴 First thing |
+| N-1 verify (blue) | Blue coloring still awaiting a real intra-day change (boarding added/removed after 4am). Mark done when observed on phone. | N-1 fully done | 🟡 Passive |
 | K-8 | **Replace Meta test phone number before ~July 2, 2026.** Google Voice (free). Meta API Setup → Step 5 → verify → update `META_PHONE_NUMBER_ID` in Vercel. | WhatsApp continuity | 🟡 Medium — ~9 weeks |
 
 ---
