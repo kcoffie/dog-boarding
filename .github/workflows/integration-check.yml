@@ -1,4 +1,4 @@
-# Integration check — scrapes the AGYD schedule via real browser + Claude vision,
+# Integration check — scrapes the AGYD schedule via real browser (Playwright),
 # compares against DB, sends WhatsApp report.
 #
 # Step 0 runs schedule sync + drains detail queue before the Playwright compare,
@@ -13,7 +13,6 @@
 # Required Repository secrets (Settings → Secrets → Actions → Repository secrets):
 #   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 #   EXTERNAL_SITE_USERNAME, EXTERNAL_SITE_PASSWORD  ← Step 0 re-auth on session expiry
-#   ANTHROPIC_API_KEY
 #   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
 #   INTEGRATION_CHECK_RECIPIENTS  ← separate from NOTIFY_RECIPIENTS (Kate only)
 name: Integration Check
@@ -53,7 +52,6 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           EXTERNAL_SITE_USERNAME: ${{ secrets.EXTERNAL_SITE_USERNAME }}
           EXTERNAL_SITE_PASSWORD: ${{ secrets.EXTERNAL_SITE_PASSWORD }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           META_PHONE_NUMBER_ID: ${{ secrets.META_PHONE_NUMBER_ID }}
           META_WHATSAPP_TOKEN: ${{ secrets.META_WHATSAPP_TOKEN }}
           INTEGRATION_CHECK_RECIPIENTS: ${{ secrets.INTEGRATION_CHECK_RECIPIENTS }}
