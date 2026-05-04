@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 4, 2026 (session 27) — B-2 partially done (PR #201 merged). Check 3 still noisy — demote to log-only is the next immediate task. 1047 tests.
+**Last updated:** May 4, 2026 (session 28) — B-2 fully done (PR #202 merged, verified clean run). 1047 tests. Next: Kate picks G-1 or G-3.
 
 ---
 
@@ -7,10 +7,18 @@
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
 - **1047 tests, 59 files, 0 failures**
-- **main clean** — PR #201 merged, no open branches
+- **main clean** — PR #202 merged, no open branches
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### Session 27 Summary (this session)
+### Session 28 Summary (this session)
+| Item | Status |
+|---|---|
+| B-2 — decision: remove Check 3 entirely (not demote) | ✅ Kate confirmed: Check 1 (DOM ID match) is the reliable signal; Check 3 never caught anything Check 1 missed |
+| B-2 — removed `extractNamesFromScreenshot()`, Anthropic import, screenshot capture, `ANTHROPIC_API_KEY` from workflow | ✅ PR #202 merged |
+| B-2 — manual integration check run (workflow_dispatch) | ✅ PASS ✅ (0 issues). 6 DOM boarding candidates → 19 in DB, all match. WhatsApp sent (1/1). No false positives. |
+| B-2 — `integration-check.md` and `integration-check.yml` updated | ✅ Steps renumbered, all Claude/Anthropic references removed |
+
+### Session 27 Summary (reference)
 | Item | Status |
 |---|---|
 | Peanut intraday notify verify (6pm PDT May 1) | ✅ Confirmed fired — Kate received WhatsApp showing Peanut added |
@@ -18,11 +26,11 @@
 | B-2 — diagnose integration check false positive alerts | ✅ Two root causes identified |
 | B-2 fix 1 — add `^PT\b` to `nonBoardingPatterns` in `config.js` (#200, PR #201) | ✅ Merged. Verified: `⏭️ SKIP C63QgiVF title="PT: T.W.TH" — matched /^PT\b/i`. "Missing from DB: Maverick" eliminated. |
 | B-2 fix 2 — improve Claude vision prompt (P/U confusion) | ⚠️ Partial. P/U false positives eliminated. New false positives from "No worker" section: Claude reads client names (Gopher Sheraton, Amy Bilodeau, Belma Filip, Jameson Lee) as dog names. All confirmed non-existent in dogs table. |
-| B-2 remaining — demote Check 3 (Claude vision) to log-only | 🔴 NOT DONE — **immediate next task** |
+| B-2 remaining — removed Check 3 entirely | ✅ Done session 28 (PR #202) |
 
-**B-2 root cause analysis:**
-- **PT false positive (fixed):** `"PT: T.W.TH"` is Maverick's Part-Time daycare. Uses `/schedule/a/` URL format so DOM scanner picked it up. Detail sync correctly classified it non-boarding (status `done`, no boarding row). Fix: `^PT\b` in `nonBoardingPatterns`.
-- **Claude vision (still noisy):** Check 3 runs `extractNamesFromScreenshot()` and produces false positives Claude can't reliably filter. First the P/U transport entries, now the "No worker" section client names. Check 1 (DOM ID match) is the reliable signal — Check 3 adds noise, not signal. Fix: demote Check 3 to log-only; only Check 1 + Check 2 (Unknown names) trigger WhatsApp.
+**B-2 root cause analysis (fully resolved):**
+- **PT false positive (fixed PR #201):** `"PT: T.W.TH"` is Maverick's Part-Time daycare. Uses `/schedule/a/` URL format so DOM scanner picked it up. Fix: `^PT\b` in `nonBoardingPatterns`.
+- **Claude vision (fixed PR #202):** Check 3 (`extractNamesFromScreenshot`) produced false positives Claude couldn't reliably filter — first P/U transport entries, then client names from the "No worker" section. Decision: removed Check 3 entirely. Check 1 (DOM ID match) is the reliable signal and already catches any real sync miss. Integration check now runs 2 boarding checks (DOM ID match + Unknown name) + 1 daytime check. Verified clean: PASS ✅ 0 issues on manual run May 4.
 
 **Job docs changes (May 1, session 26):**
 - `integration-check.md` — fixed stale "NON_BOARDING_PATTERNS duplicated on purpose" claim (they now import from shared `config.js`); updated Claude credits note (K-5 closed)
@@ -72,36 +80,17 @@
 
 ## v6 — Remaining Tickets
 
-All v6 specced tickets (R-1, J-1, P-1) are **DONE**. B-1 DONE. B-2 partially done (PR #201). G-2 confirmed done. K-5 closed. N-1 merged.
+All v6 specced tickets (R-1, J-1, P-1) are **DONE**. B-1 DONE. B-2 DONE (PR #202, May 4). G-2 confirmed done. K-5 closed. N-1 merged.
 
 ### In flight:
-**B-2 (remainder)** — Demote Check 3 (Claude vision) to log-only. See spec below.
+Nothing. **Kate picks G-1 or G-3.**
 
-### Next backlog candidates (Kate picks, after B-2 is done):
+### Backlog candidates:
 
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
 | G-1 | **Alert on failed wamid** — `message_delivery_status` table exists (F-1) but nothing reads it and fires on `status='failed'` | Medium | Lightweight cron or webhook-triggered check |
 | G-3 | **Client-facing status page** — no self-serve health check for the operator | Medium | UAT gate 4 — read-only page: last cron run, last notify sent, last delivery status |
-
----
-
-## B-2 Remaining Fix — Demote Check 3 to Log-Only
-
-**Why:** Check 3 (`extractNamesFromScreenshot`) is architecturally noisy. Claude reads the full schedule screenshot and can't reliably distinguish dog names from client names, transport entries, or "No worker" section text. First it saw P/U transport entries (Chester, Stephanie, etc.), after the prompt fix it saw client names from the No Worker section (Gopher Sheraton, Amy Bilodeau, Belma Filip). Check 1 (DOM ID match) is the reliable signal. Check 3 adds no actionable signal and fires false WhatsApp alerts on every run.
-
-**Fix:** Separate claudeIssues from boardingIssues in `compareResults()`. WhatsApp alert fires only on `boardingIssues` (Check 1 + Check 2). Claude issues are logged with `ℹ️` prefix but never included in the WhatsApp message body. The run still FAIL-labels internally if claudeIssues exist, but the alert message only mentions boarding gaps.
-
-**Files:** `scripts/integration-check.js` only. No config or test changes needed.
-
-**DoD:**
-- [ ] `compareResults()` returns `{ passed, boardingIssues, claudeIssues }` (separate arrays)
-- [ ] WhatsApp message body only includes `boardingIssues` entries
-- [ ] Claude issues logged as `[IntegCheck] ℹ️ Claude visual check: ...` (not `⚠️`)
-- [ ] First-run always-send behavior unchanged
-- [ ] If `boardingIssues` empty but `claudeIssues` exist: run logs warnings, no WhatsApp fires
-- [ ] 1047 tests, 0 failures (no new tests needed — logic change only)
-- [ ] Trigger manual integration check run, verify no WhatsApp alert for the client name false positives
 
 ---
 
