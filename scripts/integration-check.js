@@ -9,9 +9,6 @@
  *
  *   1. Playwright renders the schedule page in a real browser, then
  *      document.querySelectorAll reads the live DOM — no regex, no raw HTML.
- *   2. Claude API (vision) reads a screenshot the way a human would —
- *      pixel-level, no DOM parsing at all.
- *
  *   Both signals are compared against the DB to catch bugs the sync pipeline
  *   cannot catch about itself.
  *
@@ -26,25 +23,22 @@
  *      bookings added since the midnight cron are in the DB before we compare.
  *      Non-fatal — if sync fails, the check continues with the current DB state.
  *   1. Load session cookies from Supabase sync_settings (same cache the crons use)
- *   2. Playwright: render /schedule, take screenshot + extract appointment IDs
+ *   2. Playwright: render /schedule, extract appointment IDs
  *      from live DOM links (boarding + daytime)
- *   3. Claude API: read screenshot → list dog names visible on the page
- *   4. Supabase: query boardings overlapping today → today+7d; query daytime_appointments for today
- *   5. Compare → flag missing IDs, Unknown dog names, name mismatches (boarding);
+ *   3. Supabase: query boardings overlapping today → today+7d; query daytime_appointments for today
+ *   4. Compare → flag missing IDs, Unknown dog names (boarding);
  *      flag missing daytime events (daytime smoke check)
- *   6. Send WhatsApp text report to INTEGRATION_CHECK_RECIPIENTS (separate from
+ *   5. Send WhatsApp text report to INTEGRATION_CHECK_RECIPIENTS (separate from
  *      the roster NOTIFY_RECIPIENTS — this is a technical report for Kate only)
  *
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   EXTERNAL_SITE_USERNAME, EXTERNAL_SITE_PASSWORD  (for Step 0 re-auth on session expiry)
- *   ANTHROPIC_API_KEY
  *   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
  *   INTEGRATION_CHECK_RECIPIENTS  (separate from NOTIFY_RECIPIENTS)
  */
 
 import { chromium } from 'playwright';
-import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
 import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
@@ -126,12 +120,6 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-function getAnthropicClient() {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error('Missing ANTHROPIC_API_KEY');
-  return new Anthropic({ apiKey: key });
-}
-
 // ---------------------------------------------------------------------------
 // Step 1: Load session cookies from Supabase
 // ---------------------------------------------------------------------------
@@ -191,14 +179,13 @@ function parseCookieString(raw, domain) {
 
 /**
  * Render the schedule page in a headless Chromium browser and return:
- *   - screenshot: Buffer (PNG) — for Claude vision
  *   - boardingAppointments: Array<{id, title}> — boarding candidates from live DOM
  *   - daytimeAppointments: Array<{id, catId, dayTs, title}> — DC/PG events from live DOM
  *
  * Signal independence: document.querySelectorAll reads the rendered DOM after
  * JavaScript execution — completely different from regex on raw server HTML.
  *
- * Browser is always closed via try/finally, even if screenshot or evaluate throws.
+ * Browser is always closed via try/finally, even if evaluate throws.
  */
 async function scrapeWithPlaywright(cookieString) {
   console.log('[IntegCheck] Launching headless Chromium...');
@@ -226,10 +213,6 @@ async function scrapeWithPlaywright(cookieString) {
     if (isLoginPage > 0) {
       throw new Error('SESSION_REJECTED — AGYD served login page. Run cron-auth to refresh session.');
     }
-
-    console.log('[IntegCheck] Taking full-page screenshot...');
-    const screenshot = await page.screenshot({ fullPage: true });
-    console.log('[IntegCheck] Screenshot: %d bytes', screenshot.length);
 
     // Extract appointment IDs + titles from rendered DOM.
     // Boarding: schedule/a/ links. Daytime: .day-event links with cat-{id} class.
@@ -278,98 +261,15 @@ async function scrapeWithPlaywright(cookieString) {
     );
     console.log('[IntegCheck] DOM daytime events: %d DC/PG events extracted', daytimeAppointments.length);
 
-    return { screenshot, boardingAppointments, daytimeAppointments };
+    return { boardingAppointments, daytimeAppointments };
   } finally {
-    // Always close the browser — even if screenshot or evaluate threw.
+    // Always close the browser — even if evaluate threw.
     await browser.close();
   }
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: Claude vision — read dog names from screenshot
-// ---------------------------------------------------------------------------
-
-/**
- * Ask Claude to identify every boarding appointment visible in the screenshot.
- * Claude reads pixels — no DOM parsing, no regex — fully independent signal.
- *
- * Returns dog names Claude sees on the page. Cross-checked against DB names
- * to catch cases where the sync stored a wrong or "Unknown" name.
- *
- * Response is validated to be string[] before returning — Claude occasionally
- * returns mixed types (numbers, null) that would crash .toLowerCase() downstream.
- */
-async function extractNamesFromScreenshot(client, screenshotBuffer) {
-  console.log('[IntegCheck] Sending screenshot to Claude for visual name extraction...');
-
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: 'image/png',
-              data: screenshotBuffer.toString('base64'),
-            },
-          },
-          {
-            type: 'text',
-            text: `This is a screenshot of a dog boarding facility's weekly schedule page.
-
-Identify ONLY overnight boarding appointments — stays where the dog sleeps at the facility for multiple nights. Their titles show multi-day date ranges like "5/7-15 (Fri)", "5/8-11 (Mon)", or "Boarding (Nights)". Pack-group boardings may appear as "PG 3/23-30".
-
-Do NOT include:
-- Daycare (DC, D/C) — single-day visits
-- Pack Group daycare (PG, P/G with day codes like FT, M/T/W/TH) — recurring single-day
-- Part-Time daycare (PT: T.W.TH, PT FT) — recurring single-day
-- Pick-Up (P/U) entries — daytime transport to/from daycare, not overnight boarding
-- Drop-Off entries — daytime transport, not overnight boarding
-
-For each overnight boarding, extract the dog's name — it appears in the appointment title or as a pet label, before any date or parenthetical.
-Return ONLY a valid JSON array of name strings. Example: ["Buddy", "Goose", "Max"]
-If you see no overnight boardings, return: []`,
-          },
-        ],
-      },
-    ],
-  });
-
-  const raw = message.content[0].text.trim();
-  console.log('[IntegCheck] Claude raw response: %s', raw);
-
-  try {
-    const match = raw.match(/\[[\s\S]*\]/);
-    const parsed = match ? JSON.parse(match[0]) : [];
-
-    // Validate every element is a non-empty string. Claude occasionally returns
-    // numbers or null in the array, which would crash .toLowerCase() in compareResults.
-    const names = Array.isArray(parsed)
-      ? parsed.filter(n => typeof n === 'string' && n.trim().length > 0)
-      : [];
-
-    if (names.length !== (Array.isArray(parsed) ? parsed.length : 0)) {
-      console.warn(
-        '[IntegCheck] Claude response contained %d non-string/empty entries — filtered out (raw: %s)',
-        (Array.isArray(parsed) ? parsed.length : 0) - names.length,
-        raw.slice(0, 200),
-      );
-    }
-
-    console.log('[IntegCheck] Claude identified %d dog name(s): %s', names.length, names.join(', ') || '(none)');
-    return names;
-  } catch (err) {
-    console.error('[IntegCheck] Failed to parse Claude response as JSON: %s (raw: %s)', err.message, raw.slice(0, 200));
-    return [];
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Step 4: Query DB
+// Step 3: Query DB
 // ---------------------------------------------------------------------------
 
 async function queryDbBoardings(supabase) {
@@ -428,20 +328,13 @@ async function queryDbDaytimeAppointments(supabase) {
 // ---------------------------------------------------------------------------
 
 /**
- * Three checks:
+ * Two checks:
  *   1. Schedule IDs missing from DB — scraped but never synced
  *   2. DB boardings with "Unknown" dog name — name extraction failed during sync
- *   3. Claude sees a name not present in any DB boarding — name mismatch
- *      (only flagged when Claude returned names; skipped on empty schedule)
- *
- * Known limitation: Check 3 compares first-word names (Claude) against full
- * DB names (lowercase). "Buddy Jr." in DB won't match "Buddy" from Claude —
- * this is an acceptable false positive rate for a smoke test.
  */
-function compareResults(scraped, claudeNames, dbBoardings) {
+function compareResults(scraped, dbBoardings) {
   const issues = [];
   const dbIds = new Set(dbBoardings.map(b => b.external_id).filter(Boolean));
-  const dbNamesLower = new Set(dbBoardings.map(b => b.dog_name.toLowerCase()));
 
   // Check 1: IDs on schedule not in DB
   for (const appt of scraped) {
@@ -458,16 +351,6 @@ function compareResults(scraped, claudeNames, dbBoardings) {
   for (const b of dbBoardings.filter(b => b.dog_name === 'Unknown')) {
     console.log('[IntegCheck] ⚠️  Unknown dog in DB: external_id=%s', b.external_id);
     issues.push(`Unknown dog name in DB: ${b.external_id ?? '(no external_id)'}`);
-  }
-
-  // Check 3: Claude sees a name the DB doesn't have
-  if (claudeNames.length > 0) {
-    for (const name of claudeNames) {
-      if (!dbNamesLower.has(name.toLowerCase())) {
-        console.log('[IntegCheck] ⚠️  Claude sees "%s" on schedule but no DB boarding matches', name);
-        issues.push(`Claude sees "${name}" on schedule but no DB boarding matches`);
-      }
-    }
   }
 
   const passed = issues.length === 0;
@@ -542,10 +425,9 @@ async function main() {
 
   const today = new Date().toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
 
-  let supabase, anthropic;
+  let supabase;
   try {
     supabase = getSupabase();
-    anthropic = getAnthropicClient();
   } catch (err) {
     const msg = `⚠️ Integration check crashed at startup (${today}): ${err.message}`;
     console.error('[IntegCheck]', msg);
@@ -611,9 +493,9 @@ async function main() {
   }
 
   // Step 2: Playwright
-  let screenshot, boardingAppointments, daytimeAppointments;
+  let boardingAppointments, daytimeAppointments;
   try {
-    ({ screenshot, boardingAppointments, daytimeAppointments } = await scrapeWithPlaywright(cookieString));
+    ({ boardingAppointments, daytimeAppointments } = await scrapeWithPlaywright(cookieString));
   } catch (err) {
     const msg = `⚠️ Integration check failed (${today})\nPlaywright error: ${err.message}`;
     console.error('[IntegCheck]', msg);
@@ -621,28 +503,19 @@ async function main() {
     process.exit(1);
   }
 
-  // Step 3: Claude vision (non-fatal — continue without it if API is down)
-  let claudeNames = [];
-  try {
-    claudeNames = await extractNamesFromScreenshot(anthropic, screenshot);
-  } catch (err) {
-    console.error('[IntegCheck] Claude vision failed (skipping name check): %s', err.message);
-    console.log(`::warning::Integration check Step 3 (Claude vision) skipped — ${err.message}`);
-  }
-
-  // Step 4: DB — boarding + daytime in parallel
+  // Step 3: DB — boarding + daytime in parallel
   const [dbBoardings, dbDaytime] = await Promise.all([
     queryDbBoardings(supabase),
     queryDbDaytimeAppointments(supabase),
   ]);
 
-  // Step 5: Compare
-  const { passed: boardingPassed, issues: boardingIssues } = compareResults(boardingAppointments, claudeNames, dbBoardings);
+  // Step 4: Compare
+  const { passed: boardingPassed, issues: boardingIssues } = compareResults(boardingAppointments, dbBoardings);
   const { passed: daytimePassed, issues: daytimeIssues, domCount, dbCount } = compareDaytimeResults(daytimeAppointments, dbDaytime);
   const passed = boardingPassed && daytimePassed;
   const allIssues = [...boardingIssues, ...daytimeIssues];
 
-  // Step 6: Report
+  // Step 5: Report
   const bn = dbBoardings.length;
   let message;
   if (passed) {

@@ -17,12 +17,11 @@ In short: **Playwright + Claude see what a human sees. The DB sees what the sync
 
 The nightly sync cron (`cron-schedule.js` + `cron-detail.js`) runs at midnight UTC. If it fails silently — bad session, network error, parse bug — boardings go missing from the DB. There's currently no alert for that. You'd only notice when a dog shows up that nobody knew about.
 
-The integration check is that alert. It uses two signal paths that are completely independent from the sync pipeline:
+The integration check is that alert. It uses a signal path completely independent from the sync pipeline:
 
-1. **Playwright DOM extraction** — renders the AGYD schedule page in a real browser, reads the rendered DOM. Different execution environment and code path from the regex-based HTML parser the cron uses.
-2. **Claude vision** — reads a screenshot of the page the way a human would, pixel-level, no DOM parsing at all.
+**Playwright DOM extraction** — renders the AGYD schedule page in a real browser, reads the rendered DOM. Different execution environment and code path from the regex-based HTML parser the cron uses.
 
-If either signal sees something the DB doesn't have → WhatsApp to Kate.
+If Playwright sees something the DB doesn't have → WhatsApp to Kate.
 
 ---
 
@@ -36,7 +35,7 @@ Runs the schedule sync and drains the detail queue **before** the Playwright com
 - `resetStuck` is called once before the loop, not on every iteration (avoids 20 redundant DB queries)
 - **Non-fatal** — if Step 0 throws for any reason (session expired and no credentials configured, network error), the error is logged and the check continues to Step 1 with whatever is currently in the DB
 - Does NOT call `writeCronHealth` — health tracking is the Vercel cron handlers' responsibility. Step 0 is a "best effort" sync, not a scheduled cron run.
-- Signal isolation is preserved: Steps 2–5 (Playwright, Claude, DB compare) are unchanged and import nothing from `src/lib/scraper/`. Step 0 runs before the independent check begins.
+- Signal isolation is preserved: Steps 2–4 (Playwright, DB compare) are unchanged and import nothing from `src/lib/scraper/`. Step 0 runs before the independent check begins.
 
 **Session re-auth in Step 0:** `ensureSession` can re-authenticate if the session is expired, provided `EXTERNAL_SITE_USERNAME` and `EXTERNAL_SITE_PASSWORD` are set as GH repo secrets. If they are, a stale session will be refreshed and the fresh session is available to Step 1's `loadSession` (making Playwright work too). If they're not set, re-auth silently fails and Step 0 is skipped.
 
@@ -53,10 +52,7 @@ Reads `session_cookies` from `sync_settings` in Supabase — the same auth token
 - Extracts **daytime appointments**: all `<a class="day-event cat-5634 ...">` and `cat-7431` links → list of `{id, catId, dayTs, title, petName}` (DC + PG only)
 - `SCRAPER_CONFIG.nonBoardingPatterns` is imported from `src/lib/scraper/config.js` (shared with the sync pipeline). The independent verification signal is Playwright's live DOM rendering, not a duplicate copy of the filter logic. `DAYTIME_CAT_IDS` is still defined locally.
 
-### Step 3 — Claude reads the screenshot *(requires Anthropic credits)*
-Sends the PNG to Claude API (claude-sonnet-4-6) with a vision prompt asking it to list every boarding dog name it can see. Returns `string[]`. This is the "what a human would see" signal — entirely independent from any code. Non-fatal: if Claude fails (no credits, API down), the check continues without the name comparison.
-
-### Step 4 — Query the DB
+### Step 3 — Query the DB
 Two queries run in parallel:
 
 **Boardings** — `boardings JOIN dogs` where:
@@ -67,19 +63,16 @@ The lower bound is **7 days ago** so boardings that departed earlier this week (
 
 **Daytime** — `daytime_appointments` where `appointment_date = today` (UTC). Returns `{external_id, service_category, title}`.
 
-### Step 5 — Compare (4 checks)
+### Step 4 — Compare (3 checks)
 
-**Boarding (3 checks):**
+**Boarding (2 checks):**
 1. **Missing from DB** — any schedule appointment ID from Playwright not found in DB → `"Missing from DB: Buddy — 3/16-19 (C63QgY32)"`. Format is `"{petName} — {title} ({id})"` when a pet name is available, otherwise falls back to just `"{title} ({id})"`.
 2. **Unknown dog name** — any DB boarding in the window with `dog_name = 'Unknown'` → "Unknown dog name in DB: {id}"
-3. **Claude name mismatch** — any name Claude sees that doesn't match any DB boarding name → "Claude sees '{name}' but no DB boarding matches"
-   - Only runs when Claude returned names (skipped if Claude failed)
-   - Known limitation: compares first-word names ("Buddy Jr." in DB won't match "Buddy" from Claude)
 
 **Daytime (1 check — smoke test):**
-4. **Daytime missing from DB** — DOM events in today's column (filtered by `dayTs`) not found in DB by `external_id` → `"Daytime missing from DB: Buddy — D/C FT (C63QgY4U)"`. Same `petName — title (id)` format as boarding.
+3. **Daytime missing from DB** — DOM events in today's column (filtered by `dayTs`) not found in DB by `external_id` → `"Daytime missing from DB: Buddy — D/C FT (C63QgY4U)"`. Same `petName — title (id)` format as boarding.
 
-### Step 6 — WhatsApp report + exit
+### Step 5 — WhatsApp report + exit
 Sends to `INTEGRATION_CHECK_RECIPIENTS` (Kate only — separate from `NOTIFY_RECIPIENTS` which goes to the whole team). Two-section text:
 - ✅ Pass:
   ```
@@ -108,8 +101,6 @@ Sends to `INTEGRATION_CHECK_RECIPIENTS` (Kate only — separate from `NOTIFY_REC
 | **Past-week departures still visible on schedule** | DB query uses 7-days-ago as lower bound. The AGYD schedule page shows ~2 weeks. If you narrow the lower bound to midnight today, past-departed boardings still on the page will be falsely flagged as missing |
 | **NON_BOARDING_PATTERNS must be case-insensitive** | `ADD` is uppercase on the schedule. `/\badd\b/i` not `/\badd\b/`. Same fix needed in `cron-schedule.js` |
 | **NON_BOARDING_PATTERNS are shared, not duplicated** | `integration-check.js` imports `SCRAPER_CONFIG.nonBoardingPatterns` from `src/lib/scraper/config.js`. Signal isolation is at the scraping level (Playwright DOM vs regex HTML parser), not the filter level. Updating `config.js` automatically applies to the integration check. |
-| **Claude name check is fuzzy** | Claude returns first-word names from appointment titles. A dog named "Buddy Jr." will always trigger a false positive. This is acceptable for a smoke test |
-| **Claude is non-fatal** | If Claude API fails or returns unparseable output, Check 3 is skipped. Checks 1 and 2 still run. The report will still be sent |
 | **Playwright downloads ~280MB of Chromium** | Cached by GH Actions after first run. If the cache is cold the job takes ~5 minutes |
 | **GH Actions secrets vs Vercel env vars** | These are separate. Adding something to Vercel doesn't make it available in GH Actions. All secrets in the workflow must also be added as **Repository secrets** in GitHub (NOT environment secrets — the workflows don't declare `environment:`) |
 
@@ -117,14 +108,8 @@ Sends to `INTEGRATION_CHECK_RECIPIENTS` (Kate only — separate from `NOTIFY_REC
 
 ## What It Still Needs
 
-### Claude credits
-Step 3 silently skips when the Anthropic API key has no credits. A `::warning::` annotation fires in the GH Actions log (line 621 of `integration-check.js`). Checks 1 and 2 still run and the report is still sent. This is accepted behavior — K-5 closed May 1, 2026. Top up at console.anthropic.com → Plans & Billing if you want the name-mismatch check restored.
-
 ### Multi-week schedule coverage
 Playwright scrapes the current week's schedule page only. Boardings starting next week won't appear in Playwright's scrape but will be in the DB query window. This means the boarding ID check only catches *this week's* missing boardings. Widening would require fetching a second schedule page.
-
-### Claude name comparison is fragile for multi-word names
-`"Buddy Jr."` in the DB won't match `"Buddy"` from Claude. Currently logged as a warning, not a hard failure. Could be improved by fuzzy matching (startsWith, or checking if DB name starts with the Claude name).
 
 ---
 
@@ -138,7 +123,6 @@ All must be **Repository secrets** in GitHub (Settings → Secrets → Actions �
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key — bypasses RLS | Supabase project settings → API → Secret keys |
 | `EXTERNAL_SITE_USERNAME` | AGYD login email — Step 0 re-auth | Copy from Vercel env vars |
 | `EXTERNAL_SITE_PASSWORD` | AGYD login password — Step 0 re-auth | Copy from Vercel env vars |
-| `ANTHROPIC_API_KEY` | Claude API key | console.anthropic.com → API Keys |
 | `META_PHONE_NUMBER_ID` | Meta sender phone number ID | Meta app dashboard |
 | `META_WHATSAPP_TOKEN` | Meta system user access token | Meta app dashboard |
 | `INTEGRATION_CHECK_RECIPIENTS` | Kate's phone number only (E.164) | Manually set — NOT from Vercel |
@@ -184,9 +168,8 @@ The check uses Playwright (headless Chromium, ~280MB) and runs for ~1 minute. Ve
 These will look like issues but aren't:
 
 1. **`ADD *` appointments** — filtered by `NON_BOARDING_PATTERNS` with `i` flag
-2. **Multi-word dog names vs Claude first-word extraction** — by design, low-priority (e.g. "Buddy Jr." in DB won't match "Buddy" from Claude)
-3. **No boardings this week** — passes with "0 in DB — all match schedule" which is correct
-4. **No daytime events today** — passes with "0 on schedule, 0 in DB — all good" which is correct
-5. **DB daytime count > DOM count** — the DB may have stale records from previous syncs for appointments that were removed from the AGYD schedule. The daytime check only flags DOM→DB misses, not DB→DOM misses, so these don't trigger alerts.
-6. **Canceled/pending booking requests** — AGYD shows booking requests on the schedule DOM even when the client submitted a request that was never confirmed (`booking_status='canceled'`) or is still pending. The sync pipeline (Layer 3b in sync.js) correctly skips canceled ones. The integration check cannot detect cancellation status without fetching every detail page (too slow), so these appear as "Missing from DB" false positives. If you see a missing boarding alert for a dog you know had a canceled or unconfirmed request, this is why.
-7. **`N/C *` titles (new client initial evaluations)** — "N/C" prefix means the dog is a new client doing an Initial Evaluation daytime visit (never an overnight boarding). The sync pipeline correctly excludes these via the detail-page `service_type` ("Initial Evaluation" matches `/initial\s+eval/i` in `nonBoardingPatterns`). The integration check only sees the schedule title (e.g. "N/C Tula 3/23-26") and filters it via `DAYCARE_ONLY_PATTERNS`. Confirmed by business owner: N/C prefix is never used on overnight boardings.
+2. **No boardings this week** — passes with "0 in DB — all match schedule" which is correct
+3. **No daytime events today** — passes with "0 on schedule, 0 in DB — all good" which is correct
+4. **DB daytime count > DOM count** — the DB may have stale records from previous syncs for appointments that were removed from the AGYD schedule. The daytime check only flags DOM→DB misses, not DB→DOM misses, so these don't trigger alerts.
+5. **Canceled/pending booking requests** — AGYD shows booking requests on the schedule DOM even when the client submitted a request that was never confirmed (`booking_status='canceled'`) or is still pending. The sync pipeline (Layer 3b in sync.js) correctly skips canceled ones. The integration check cannot detect cancellation status without fetching every detail page (too slow), so these appear as "Missing from DB" false positives. If you see a missing boarding alert for a dog you know had a canceled or unconfirmed request, this is why.
+6. **`N/C *` titles (new client initial evaluations)** — "N/C" prefix means the dog is a new client doing an Initial Evaluation daytime visit (never an overnight boarding). The sync pipeline correctly excludes these via the detail-page `service_type` ("Initial Evaluation" matches `/initial\s+eval/i` in `nonBoardingPatterns`). The integration check only sees the schedule title (e.g. "N/C Tula 3/23-26") and filters it via `DAYCARE_ONLY_PATTERNS`. Confirmed by business owner: N/C prefix is never used on overnight boardings.
