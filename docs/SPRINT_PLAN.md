@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 1, 2026 (session 26) — **B-1 fully resolved + verified. Job docs updated, OVERVIEW.md created. 1045 tests. Next: G-1 or G-3 (Kate picks).** Theme: Client-driven operational intelligence._
+_Last updated: May 4, 2026 (session 28) — **B-2 fully done (PR #202). Check 3 removed from integration check. 1047 tests. Next: Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -46,7 +46,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Overnight boarding sync — DC filter fix | ✅ DONE | B-1 — anchor `^(d\/c\|dc)\b`; Peanut (C63QghzF) confirmed in DB May 1 (run 25239049354). |
-| Integration check false positives — PT + Claude vision | ⚠️ PARTIAL | B-2 — PR #201 merged May 4. Fix 1 (`^PT\b`) verified working. Fix 2 (Claude vision demote) still needed — Check 3 fires false positive WhatsApp alerts on every run. |
+| Integration check false positives — PT + Claude vision | ✅ DONE | B-2 — PR #201 (Fix 1: `^PT\b`) + PR #202 (removed Check 3 entirely). Verified clean run May 4: PASS ✅ 0 issues. |
 | Overnight boarding sync | ✅ LIVE | 3-page scan + cron-detail-2 |
 | Overnight daytime ingest | ✅ LIVE | cron-schedule.js handles this |
 | Weekday morning notify (M-F 4am/7am/8:30am) | ✅ LIVE | |
@@ -86,7 +86,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 | ~~K-3~~          | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged                                                                                                                                 | —                                                    | —         |
 | ~~K-4~~          | ✅ Done April 5 — second number added to `NOTIFY_RECIPIENTS` Vercel env var                                                                                                                   | —                                                    | —         |
 | ~~K-7~~          | ✅ Closed April 21 — publishing not needed. App uses Meta test phone in dev mode (≤5 recipients). Dev mode is the correct long-term model. No registered business required.                    | —                                                    | —         |
-| ~~K-5~~          | ✅ Closed May 1 — Step 3 has been silently skipping without ill effects. Warning already fires on skip (line 621 integration-check.js). Credits not needed. | — | — |
+| ~~K-5~~          | ✅ Closed May 4 — Check 3 (Claude vision) removed entirely in PR #202. ANTHROPIC_API_KEY no longer used by integration check. | — | — |
 | K-8              | **Replace Meta test phone number before ~July 2, 2026.** Test number (+1 555 153 3723) expires 90 days from ~April 3. Get a number not on WhatsApp (Google Voice is easiest). Add via Meta API Setup → Step 5 → verify → update `META_PHONE_NUMBER_ID` in Vercel. | WhatsApp continuity | 🟡 Medium — ~10 weeks |
 
 ---
@@ -99,9 +99,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 2. **J-1** ✅ PR #191 merged — Intraday change notification job. v6.0.0 released.
 3. **P-1** ✅ PR #193 merged — Employee pay daytime follow-on. Bug fix PR #195 (wrong data source). v6.1.0 released. Migration 027 live in Supabase. **All v6 tickets done.**
 4. **B-1** ✅ PR #199 merged — DC filter false positive. Peanut (C63QghzF) confirmed in DB May 1.
-5. **B-2** ⚠️ PR #201 merged May 4 — integration check false positives. Fix 1 (`^PT\b`) confirmed working. **Fix 2 (Check 3 demote to log-only) still needed — do this before picking from backlog.**
-
-**Next:** Finish B-2 (demote Check 3 to log-only, PR + verify), then pick G-1 or G-3.
+5. **B-2** ✅ PR #201 + PR #202 merged May 4 — Fix 1 (`^PT\b`) + removed Check 3 entirely. Verified clean run. **Next: Kate picks G-1 or G-3.**
 
 ---
 
@@ -399,7 +397,7 @@ These were surfaced in the April 5, 2026 status review. Each needs a "do it / sk
 |---|--------|--------|
 | M1-1 | Direct cron failure alerting (2+ consecutive errors → WhatsApp) | ✅ LIVE |
 | M1-2 | `refreshDaytimeSchedule` unit tests — 7+ exit paths | ✅ LIVE |
-| M1-3 | Anthropic API credits → activate Claude vision Step 3 | ⏳ Pending Kate (K-5) |
+| ~~M1-3~~ | ✅ Closed — Check 3 (Claude vision) removed entirely in PR #202. Not needed. |
 
 ### Milestone 2 — Gmail Monitor ✅
 
