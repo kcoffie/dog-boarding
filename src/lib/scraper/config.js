@@ -24,8 +24,16 @@ export const SCRAPER_CONFIG = {
   // NOTE: DC/D/C is anchored to start-of-title. Titles starting with "Boarding"
   // may reference a "DC full-time" client tier in the service name (e.g.,
   // "Boarding discounted nights for DC full-time") — those must not be filtered.
+  //
+  // NOTE: PT (Part-Time) is an AGYD daycare tier, not a boarding service. Titles
+  // like "PT: T.W.TH" (recurring Part-Time T/W/TH daycare) use the same
+  // /schedule/a/ URL format as boardings but are never overnight stays. Added
+  // after B-2: C63QgiVF (Maverick) triggered false "Missing from DB" alerts
+  // every run because the integration check DOM scanner saw PT appointments as
+  // boarding candidates.
   nonBoardingPatterns: [
     /^(d\/c|dc)\b/i,
+    /^PT\b/i,
     /\badd\b/i,
     /switch\s+day/i,
     /back\s+to\s+\d+/i,

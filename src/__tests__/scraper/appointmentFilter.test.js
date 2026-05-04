@@ -14,6 +14,7 @@ vi.mock('../../lib/scraper/config.js', () => ({
   SCRAPER_CONFIG: {
     nonBoardingPatterns: [
       /^(d\/c|dc)\b/i,
+      /^PT\b/i,
       /\badd\b/i,
       /switch\s+day/i,
       /back\s+to\s+\d+/i,
@@ -91,6 +92,18 @@ describe('title filter', () => {
       validBoarding({ service_type: 'PG 3/23-30' }), 'PG 3/23-30',
     );
     expect(skip).toBe(false);
+  });
+
+  it('skips "PT: T.W.TH" — Part-Time daycare title must not be treated as boarding', () => {
+    // Regression: C63QgiVF (Maverick, May 4 2026). "PT: T.W.TH" is a recurring
+    // Part-Time daycare appointment that uses the /schedule/a/ URL format but is
+    // never an overnight stay. Missing ^PT\b caused false "Missing from DB" alerts
+    // on every integration check run when the appointment was visible on the schedule.
+    const { skip, reason } = applyDetailFilters(
+      validBoarding({ service_type: 'PT: T.W.TH' }), 'PT: T.W.TH',
+    );
+    expect(skip).toBe(true);
+    expect(reason).toMatch(/title_pattern/);
   });
 
   it('does NOT skip "Boarding discounted nights for DC full-time" — DC mid-title is a pricing tier, not daycare', () => {

@@ -320,10 +320,19 @@ async function extractNamesFromScreenshot(client, screenshotBuffer) {
           {
             type: 'text',
             text: `This is a screenshot of a dog boarding facility's weekly schedule page.
-List every BOARDING appointment you can see. Skip daycare (DC), pack group (PG), and other non-boarding events.
-For each boarding, extract the dog's name — it's the first word in the appointment title, before any date or parenthetical.
+
+Identify ONLY overnight boarding appointments — stays where the dog sleeps at the facility for multiple nights. Their titles show multi-day date ranges like "5/7-15 (Fri)", "5/8-11 (Mon)", or "Boarding (Nights)". Pack-group boardings may appear as "PG 3/23-30".
+
+Do NOT include:
+- Daycare (DC, D/C) — single-day visits
+- Pack Group daycare (PG, P/G with day codes like FT, M/T/W/TH) — recurring single-day
+- Part-Time daycare (PT: T.W.TH, PT FT) — recurring single-day
+- Pick-Up (P/U) entries — daytime transport to/from daycare, not overnight boarding
+- Drop-Off entries — daytime transport, not overnight boarding
+
+For each overnight boarding, extract the dog's name — it appears in the appointment title or as a pet label, before any date or parenthetical.
 Return ONLY a valid JSON array of name strings. Example: ["Buddy", "Goose", "Max"]
-If you see no boardings, return: []`,
+If you see no overnight boardings, return: []`,
           },
         ],
       },
