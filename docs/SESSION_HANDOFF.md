@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 4, 2026 (session 28) — B-2 fully done (PR #202 merged, verified clean run). 1047 tests. Next: Kate picks G-1 or G-3.
+**Last updated:** May 14, 2026 (session 29) — Peanut arrival date corrected in DB. B-3 specced (modified appointment re-sync). Maverick alert resolved (timing, not a bug). 1047 tests. Next: build B-3 or Kate picks G-1/G-3.
 
 ---
 
@@ -10,7 +10,15 @@
 - **main clean** — PR #202 merged, no open branches
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### Session 28 Summary (this session)
+### Session 29 Summary (this session)
+| Item | Status |
+|---|---|
+| Integration check alert — "Daytime missing from DB: Maverick PT: T.W.TH (C63Qglor)" | ✅ Resolved. C63Qglor was newly created; appeared in Playwright DOM before raw HTML sync caught up. On next run (`workflow_dispatch`): C63Qglor appeared in raw HTML (SKIP log), upserted to `daytime_appointments`, daytime PASS ✅. Timing window, not a structural gap. No code change needed. |
+| Peanut (C63QghzH) arrival date wrong: DB had 5/13, AGYD shows 5/14 | ✅ Root-caused via `sync_queue.source_url` (synced May 3 when AGYD had May 13 timestamp `/1778666400`; AGYD later updated to May 14 `/1778752800`). DB corrected directly: `arrival_datetime → 2026-05-14T10:00:00+00:00`. |
+| B-3 specced — re-sync appointments modified on AGYD after initial sync | ✅ Full spec in SPRINT_PLAN.md. Fix is in `enqueue()` only — compare incoming `source_url` against stored; re-queue on URL mismatch. `resetIfDone` param already exists, just never triggered. |
+| Memory: how to trace what the sync read when saving a booking | ✅ Saved. Check `sync_queue.source_url` timestamp + `queued_at`/`processed_at`. |
+
+### Session 28 Summary (reference)
 | Item | Status |
 |---|---|
 | B-2 — decision: remove Check 3 entirely (not demote) | ✅ Kate confirmed: Check 1 (DOM ID match) is the reliable signal; Check 3 never caught anything Check 1 missed |
@@ -39,11 +47,8 @@
 - `gmail-monitor.md` — date only
 
 **Pending verifications (check at next session start):**
-1. **Peanut intraday notify** — did the 6pm PDT intraday run (01:00 UTC May 2) fire and send a WhatsApp showing Peanut as Added? Check: `gh run list --workflow=notify-intraday.yml --limit=5` and view the log for the run at ~01:00 UTC.
-2. **N-1 morning verification** — still pending Kate's observation on the first real 3-send morning cycle (tomorrow, May 2):
-   - 4am image: no UPDATED! badge
-   - 7am image: blue dogs if anything changed since 4am
-   - 8:30am image: blue dogs if anything changed since 7am
+1. **N-1 blue overlay** — still awaiting a real intra-day roster change (dog added/removed after 4am) to verify blue highlighting works on phone. Mark done when observed.
+2. **Peanut (C63QghzH) re-appears correctly** — arrival_datetime corrected to May 14 via direct DB update. Verify the Q Boarding box and roster image now show her correctly on May 14.
 
 ### Session 25 Summary (reference)
 | Item | Status |
@@ -83,7 +88,7 @@
 All v6 specced tickets (R-1, J-1, P-1) are **DONE**. B-1 DONE. B-2 DONE (PR #202, May 4). G-2 confirmed done. K-5 closed. N-1 merged.
 
 ### In flight:
-Nothing. **Kate picks G-1 or G-3.**
+Nothing. **Next: build B-3, or Kate picks G-1 or G-3.**
 
 ### Backlog candidates:
 
