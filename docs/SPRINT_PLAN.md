@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 4, 2026 (session 28) — **B-2 fully done (PR #202). Check 3 removed from integration check. 1047 tests. Next: Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
+_Last updated: May 14, 2026 (session 29) — **B-3 specced (modified appointment re-sync). Peanut arrival date corrected in DB. 1047 tests. Next: build B-3 or Kate picks G-1/G-3.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -99,7 +99,8 @@ These are not code tickets. They block specific milestones. Track them here so n
 2. **J-1** ✅ PR #191 merged — Intraday change notification job. v6.0.0 released.
 3. **P-1** ✅ PR #193 merged — Employee pay daytime follow-on. Bug fix PR #195 (wrong data source). v6.1.0 released. Migration 027 live in Supabase. **All v6 tickets done.**
 4. **B-1** ✅ PR #199 merged — DC filter false positive. Peanut (C63QghzF) confirmed in DB May 1.
-5. **B-2** ✅ PR #201 + PR #202 merged May 4 — Fix 1 (`^PT\b`) + removed Check 3 entirely. Verified clean run. **Next: Kate picks G-1 or G-3.**
+5. **B-2** ✅ PR #201 + PR #202 merged May 4 — Fix 1 (`^PT\b`) + removed Check 3 entirely. Verified clean run.
+6. **B-3** — Re-sync appointments modified on AGYD after initial sync. Spec below.
 
 ---
 
@@ -333,6 +334,53 @@ Example from April 7:
 - [x] If no prior snapshot for today, gracefully renders green/red only (no crash, no missing dogs)
 - [x] Unit tests: (a) 4am badge suppression (3), (b) blue overlay with a stored snapshot (3), (c) fallback when no snapshot (3)
 - [ ] Deployed + verified on a real 3-send morning cycle ← **pending Kate's morning observation**
+
+---
+
+### B-3 — Re-sync appointments modified on AGYD after initial sync
+
+**Status:** Not started.
+
+**What:** Once `enqueue()` marks an appointment `done`, it is never re-processed — even if AGYD later reschedules it (date change, title change, etc.). The DB silently retains stale data with no indication anything changed.
+
+**Confirmed instance:** Peanut (C63QghzH, May 14–19 2026). Originally synced May 3 when AGYD had the appointment starting May 13 (`source_url` ends in `/1778666400` = May 13 10:00 UTC). AGYD was subsequently updated to May 14 (`/1778752800`). DB retained May 13 until manually corrected May 14, 2026. Discovered via integration check alert.
+
+**Root cause:** `enqueue()` deduplicates on `external_id`. When `status = 'done'`, all calls are silently skipped regardless of whether `source_url` changed. AGYD embeds the scheduled start timestamp directly in the appointment URL — a URL change is a reliable signal that the appointment was rescheduled. This signal exists in the data but is never checked.
+
+**Fix (one file — `src/lib/scraper/syncQueue.js`):**
+
+In `enqueue()`, when `existing.status === 'done'`, compare the incoming `source_url` against the stored one. If they differ, re-queue the item (same path as `resetIfDone: true`) and update `source_url` to the new URL. No changes needed in `syncRunner.js` — the comparison belongs where the existing entry is already read.
+
+**Logging requirements (Black Box Protocol):**
+- Re-queue path: emit old URL, new URL, and both timestamps decoded to ISO dates so the date shift is human-readable without arithmetic. Example: `[SyncQueue] 🔄 Re-queued modified appointment: C63QghzH (url changed: /1778666400 [2026-05-13] → /1778752800 [2026-05-14])`
+- Same-URL skip: update the existing "already queued" log to include the `source_url` so the skip is auditable, not just `status: done`
+- Null `source_url` guard: if `existing.source_url` is null (pre-dates current URL structure), skip the re-queue and log: `[SyncQueue] ⚠️ Can't compare URL for {id} — source_url null, skipping modification check`
+
+**Edge cases:**
+- `existing.source_url` is null → skip re-queue, warn (don't crash)
+- `status` is `pending` or `processing` + URL changed → skip (don't disturb in-flight items), log mismatch as informational only
+- URL format doesn't contain a timestamp (no `/\d+$` match) → skip re-queue, log warn
+
+**Files to read before coding:**
+- `src/lib/scraper/syncQueue.js` — `enqueue()` function, existing `resetIfDone` path
+- `src/lib/scraper/syncRunner.js` — how `enqueue()` is called; confirm no caller changes needed
+- `src/__tests__/scraper/syncQueue.test.js` — existing enqueue tests to extend
+
+**Definition of Done:**
+- [ ] `enqueue()` re-queues a `done` item when `source_url` URL timestamp changes
+- [ ] `enqueue()` still skips `done` items when `source_url` is unchanged (no regression on normal idempotent re-scans)
+- [ ] `pending`/`processing` items are never disturbed, even if URL changed
+- [ ] Null `source_url` is handled explicitly — no crash, clear warn log
+- [ ] Log line on re-queue includes old URL, new URL, and decoded ISO dates for both timestamps
+- [ ] Log line on same-URL skip includes `source_url`
+- [ ] Unit tests:
+  - (a) `done` + same URL → skip, no re-queue
+  - (b) `done` + changed URL → re-queued, `source_url` updated to new URL
+  - (c) `pending` + changed URL → skip, no re-queue
+  - (d) `done` + null `source_url` → skip, warn logged
+- [ ] All existing enqueue tests still pass
+- [ ] 1047+ tests, 0 failures
+- [ ] PR merged, deployed, verified: trigger `runScheduleSync` against a manually-modified appointment in AGYD (or reset a done item's URL in `sync_queue` and confirm it re-queues)
 
 ---
 
