@@ -160,10 +160,12 @@ describe('REQ-109: enqueue()', () => {
     expect(supabase._rows).toHaveLength(1);
   });
 
-  it('skips silently when item is done', async () => {
-    const supabase = createMockSupabase([makeItem({ external_id: 'AAA', status: 'done' })]);
-    await enqueue(supabase, { external_id: 'AAA', source_url: 'https://example.com/a/AAA/1' });
+  it('skips silently when item is done and source_url is unchanged', async () => {
+    const url = 'https://agirlandyourdog.com/schedule/a/AAA/1778666400';
+    const supabase = createMockSupabase([makeItem({ external_id: 'AAA', status: 'done', source_url: url })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: url });
     expect(supabase._rows).toHaveLength(1);
+    expect(supabase._rows[0].status).toBe('done');
   });
 
   it('re-queues a permanently-failed item (resets retry_count to 0)', async () => {
@@ -173,6 +175,42 @@ describe('REQ-109: enqueue()', () => {
     expect(row.status).toBe('pending');
     expect(row.retry_count).toBe(0);
     expect(row.last_error).toBeNull();
+  });
+
+  // B-3: re-sync appointments modified on AGYD after initial sync
+  it('B-3: re-queues done item when source_url timestamp changes (rescheduled appointment)', async () => {
+    const oldUrl = 'https://agirlandyourdog.com/schedule/a/C63QghzH/1778666400';
+    const newUrl = 'https://agirlandyourdog.com/schedule/a/C63QghzH/1778752800';
+    const supabase = createMockSupabase([makeItem({ id: 'id-done', external_id: 'AAA', status: 'done', source_url: oldUrl })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: newUrl });
+    const row = supabase._rows[0];
+    expect(row.status).toBe('pending');
+    expect(row.source_url).toBe(newUrl);
+    expect(row.retry_count).toBe(0);
+  });
+
+  it('B-3: does not re-queue pending item even when source_url changes', async () => {
+    const oldUrl = 'https://agirlandyourdog.com/schedule/a/AAA/1778666400';
+    const newUrl = 'https://agirlandyourdog.com/schedule/a/AAA/1778752800';
+    const supabase = createMockSupabase([makeItem({ external_id: 'AAA', status: 'pending', source_url: oldUrl })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: newUrl });
+    expect(supabase._rows[0].status).toBe('pending');
+    expect(supabase._rows[0].source_url).toBe(oldUrl);
+  });
+
+  it('B-3: does not re-queue done item when existing source_url is null (cannot compare)', async () => {
+    const supabase = createMockSupabase([makeItem({ external_id: 'AAA', status: 'done', source_url: null })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: 'https://agirlandyourdog.com/schedule/a/AAA/1778752800' });
+    expect(supabase._rows[0].status).toBe('done');
+  });
+
+  it('B-3: does not re-queue processing item even when source_url changes', async () => {
+    const oldUrl = 'https://agirlandyourdog.com/schedule/a/AAA/1778666400';
+    const newUrl = 'https://agirlandyourdog.com/schedule/a/AAA/1778752800';
+    const supabase = createMockSupabase([makeItem({ external_id: 'AAA', status: 'processing', source_url: oldUrl })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: newUrl });
+    expect(supabase._rows[0].status).toBe('processing');
+    expect(supabase._rows[0].source_url).toBe(oldUrl);
   });
 });
 
