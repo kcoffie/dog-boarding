@@ -13,7 +13,7 @@
 ### Session 30 Summary (this session)
 | Item | Status |
 |---|---|
-| B-3 — re-sync appointments modified on AGYD after initial sync | ✅ Done. PR #205 merged. `enqueue()` now compares incoming vs stored `source_url`; re-queues `done` items when URL timestamp changes. 4 new tests. 1051 tests, 0 failures. Verify: trigger `runScheduleSync` against a row with a mismatched `source_url` in `sync_queue` — should log `🔄 Re-queued modified appointment`. |
+| B-3 — re-sync appointments modified on AGYD after initial sync | ✅ Done + verified. PR #205 merged. `enqueue()` re-queues `done` items when URL timestamp changes. Verified live: stale DB URL → `🔄 Re-queued modified appointment: C63Qgl6y (url changed: /1778407200 [2026-05-10] → /1778493600 [2026-05-11])` — row flipped to `pending`. |
 
 ### Session 29 Summary (reference)
 | Item | Status |
