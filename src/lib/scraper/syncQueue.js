@@ -31,7 +31,7 @@ const RETRY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes per retry_count
 export async function enqueue(supabase, { external_id, source_url, title, type = 'appointment', meta = {}, resetIfDone = false }) {
   const { data: existing, error: fetchError } = await supabase
     .from('sync_queue')
-    .select('id, status')
+    .select('id, status, source_url')
     .eq('external_id', external_id)
     .limit(1)
     .maybeSingle();
@@ -39,12 +39,54 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
   if (fetchError) throw fetchError;
 
   if (existing) {
+    // AGYD embeds the appointment start timestamp in the URL — a URL change means it was rescheduled.
+    // Check before the shouldReset gate so a rescheduled done item is caught without requiring resetIfDone.
+    if (existing.status === 'done' && !resetIfDone) {
+      if (existing.source_url === null) {
+        log(`[SyncQueue] ⚠️ Can't compare URL for ${external_id} — source_url null, skipping modification check`);
+      } else {
+        const incomingTs = source_url.match(/\/(\d+)$/);
+        if (!incomingTs) {
+          log(`[SyncQueue] ⚠️ Incoming URL has no timestamp for ${external_id} — skipping modification check`);
+        } else if (source_url !== existing.source_url) {
+          const oldTsMatch = existing.source_url.match(/\/(\d+)$/);
+          const oldTs = oldTsMatch ? oldTsMatch[1] : '?';
+          const newTs = incomingTs[1];
+          const oldIso = oldTs !== '?' ? new Date(parseInt(oldTs, 10) * 1000).toISOString().slice(0, 10) : '?';
+          const newIso = new Date(parseInt(newTs, 10) * 1000).toISOString().slice(0, 10);
+
+          const { error } = await supabase
+            .from('sync_queue')
+            .update({
+              status: 'pending',
+              retry_count: 0,
+              last_error: null,
+              next_retry_at: null,
+              queued_at: new Date().toISOString(),
+              source_url,
+              type,
+              meta,
+            })
+            .eq('id', existing.id);
+          if (error) throw error;
+          log(`[SyncQueue] 🔄 Re-queued modified appointment: ${external_id} (url changed: /${oldTs} [${oldIso}] → /${newTs} [${newIso}])`);
+          return;
+        }
+      }
+    }
+
+    // Don't disturb in-flight items — log the mismatch so it's auditable but take no action
+    if ((existing.status === 'pending' || existing.status === 'processing') &&
+        existing.source_url !== null && source_url !== existing.source_url) {
+      log(`[SyncQueue] ℹ️ URL mismatch for in-flight item ${external_id} (status: ${existing.status}) — not re-queuing`);
+    }
+
     const shouldReset =
       (existing.status === 'failed') ||
       (existing.status === 'done' && resetIfDone);
 
     if (!shouldReset) {
-      log(`[SyncQueue] ⏭️ Already queued: ${external_id} (status: ${existing.status})`);
+      log(`[SyncQueue] ⏭️ Already queued: ${external_id} (status: ${existing.status}, url: ${existing.source_url})`);
       return;
     }
     // Re-queue a failed item, or a done item when the caller confirmed the result isn't stored yet
