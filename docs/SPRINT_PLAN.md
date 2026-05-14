@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 14, 2026 (session 29) — **B-3 specced (modified appointment re-sync). Peanut arrival date corrected in DB. 1047 tests. Next: build B-3 or Kate picks G-1/G-3.** Theme: Client-driven operational intelligence._
+_Last updated: May 14, 2026 (session 30) — **B-3 done (PR #205). 1051 tests. Next: Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -47,6 +47,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 |---------|--------|-------|
 | Overnight boarding sync — DC filter fix | ✅ DONE | B-1 — anchor `^(d\/c\|dc)\b`; Peanut (C63QghzF) confirmed in DB May 1 (run 25239049354). |
 | Integration check false positives — PT + Claude vision | ✅ DONE | B-2 — PR #201 (Fix 1: `^PT\b`) + PR #202 (removed Check 3 entirely). Verified clean run May 4: PASS ✅ 0 issues. |
+| Re-sync appointments modified on AGYD after initial sync | ✅ DONE | B-3 — PR #205. `enqueue()` compares `source_url` on `done` items; re-queues on URL timestamp change. 4 new tests. 1051 tests. |
 | Overnight boarding sync | ✅ LIVE | 3-page scan + cron-detail-2 |
 | Overnight daytime ingest | ✅ LIVE | cron-schedule.js handles this |
 | Weekday morning notify (M-F 4am/7am/8:30am) | ✅ LIVE | |
@@ -100,7 +101,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 3. **P-1** ✅ PR #193 merged — Employee pay daytime follow-on. Bug fix PR #195 (wrong data source). v6.1.0 released. Migration 027 live in Supabase. **All v6 tickets done.**
 4. **B-1** ✅ PR #199 merged — DC filter false positive. Peanut (C63QghzF) confirmed in DB May 1.
 5. **B-2** ✅ PR #201 + PR #202 merged May 4 — Fix 1 (`^PT\b`) + removed Check 3 entirely. Verified clean run.
-6. **B-3** — Re-sync appointments modified on AGYD after initial sync. Spec below.
+6. **B-3** ✅ PR #205 merged May 14 — `enqueue()` re-queues `done` items when `source_url` timestamp changes.
 
 ---
 
@@ -339,7 +340,7 @@ Example from April 7:
 
 ### B-3 — Re-sync appointments modified on AGYD after initial sync
 
-**Status:** Not started.
+**Status:** ✅ DONE — PR #205 merged May 14, 2026 (session 30).
 
 **What:** Once `enqueue()` marks an appointment `done`, it is never re-processed — even if AGYD later reschedules it (date change, title change, etc.). The DB silently retains stale data with no indication anything changed.
 
@@ -367,20 +368,20 @@ In `enqueue()`, when `existing.status === 'done'`, compare the incoming `source_
 - `src/__tests__/scraper/syncQueue.test.js` — existing enqueue tests to extend
 
 **Definition of Done:**
-- [ ] `enqueue()` re-queues a `done` item when `source_url` URL timestamp changes
-- [ ] `enqueue()` still skips `done` items when `source_url` is unchanged (no regression on normal idempotent re-scans)
-- [ ] `pending`/`processing` items are never disturbed, even if URL changed
-- [ ] Null `source_url` is handled explicitly — no crash, clear warn log
-- [ ] Log line on re-queue includes old URL, new URL, and decoded ISO dates for both timestamps
-- [ ] Log line on same-URL skip includes `source_url`
-- [ ] Unit tests:
+- [x] `enqueue()` re-queues a `done` item when `source_url` URL timestamp changes
+- [x] `enqueue()` still skips `done` items when `source_url` is unchanged (no regression on normal idempotent re-scans)
+- [x] `pending`/`processing` items are never disturbed, even if URL changed
+- [x] Null `source_url` is handled explicitly — no crash, clear warn log
+- [x] Log line on re-queue includes old URL, new URL, and decoded ISO dates for both timestamps
+- [x] Log line on same-URL skip includes `source_url`
+- [x] Unit tests:
   - (a) `done` + same URL → skip, no re-queue
   - (b) `done` + changed URL → re-queued, `source_url` updated to new URL
   - (c) `pending` + changed URL → skip, no re-queue
   - (d) `done` + null `source_url` → skip, warn logged
-- [ ] All existing enqueue tests still pass
-- [ ] 1047+ tests, 0 failures
-- [ ] PR merged, deployed, verified: trigger `runScheduleSync` against a manually-modified appointment in AGYD (or reset a done item's URL in `sync_queue` and confirm it re-queues)
+- [x] All existing enqueue tests still pass
+- [x] 1051 tests, 0 failures
+- [ ] Verified: trigger `runScheduleSync` against a row with mismatched `source_url` in `sync_queue` → confirm `🔄 Re-queued modified appointment` log and row flips to `pending` ← **pending Kate's manual verify**
 
 ---
 
