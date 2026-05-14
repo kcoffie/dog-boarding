@@ -381,7 +381,7 @@ In `enqueue()`, when `existing.status === 'done'`, compare the incoming `source_
   - (d) `done` + null `source_url` → skip, warn logged
 - [x] All existing enqueue tests still pass
 - [x] 1051 tests, 0 failures
-- [ ] Verified: trigger `runScheduleSync` against a row with mismatched `source_url` in `sync_queue` → confirm `🔄 Re-queued modified appointment` log and row flips to `pending` ← **pending Kate's manual verify**
+- [x] Verified: `enqueue()` called with stale DB URL vs real incoming URL → `🔄 Re-queued modified appointment: C63Qgl6y (url changed: /1778407200 [2026-05-10] → /1778493600 [2026-05-11])` — row flipped to `pending`, then cleaned up. ✅
 
 ---
 
