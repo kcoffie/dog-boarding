@@ -1,16 +1,21 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 14, 2026 (session 29) — Peanut arrival date corrected in DB. B-3 specced (modified appointment re-sync). Maverick alert resolved (timing, not a bug). 1047 tests. Next: build B-3 or Kate picks G-1/G-3.
+**Last updated:** May 14, 2026 (session 30) — B-3 done (PR #205). 1051 tests. Next: Kate picks G-1 or G-3.
 
 ---
 
 ## Current State
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
-- **1047 tests, 59 files, 0 failures**
-- **main clean** — PR #202 merged, no open branches
+- **1051 tests, 59 files, 0 failures**
+- **main clean** — PR #205 merged, no open branches
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### Session 29 Summary (this session)
+### Session 30 Summary (this session)
+| Item | Status |
+|---|---|
+| B-3 — re-sync appointments modified on AGYD after initial sync | ✅ Done. PR #205 merged. `enqueue()` now compares incoming vs stored `source_url`; re-queues `done` items when URL timestamp changes. 4 new tests. 1051 tests, 0 failures. Verify: trigger `runScheduleSync` against a row with a mismatched `source_url` in `sync_queue` — should log `🔄 Re-queued modified appointment`. |
+
+### Session 29 Summary (reference)
 | Item | Status |
 |---|---|
 | Integration check alert — "Daytime missing from DB: Maverick PT: T.W.TH (C63Qglor)" | ✅ Resolved. C63Qglor was newly created; appeared in Playwright DOM before raw HTML sync caught up. On next run (`workflow_dispatch`): C63Qglor appeared in raw HTML (SKIP log), upserted to `daytime_appointments`, daytime PASS ✅. Timing window, not a structural gap. No code change needed. |
