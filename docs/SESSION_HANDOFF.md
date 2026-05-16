@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 14, 2026 (session 30) — B-3 done + verified (PR #205). 1051 tests, 0 failures. main clean. Next: Kate picks G-1 or G-3.
+**Last updated:** May 16, 2026 (session 31) — label rename + alert diagnosis. 1051 tests, 0 failures. main clean. Next: "Send a Question" button + Kate picks G-1 or G-3.
 
 ---
 
@@ -7,10 +7,19 @@
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
 - **1051 tests, 59 files, 0 failures**
-- **main clean** — PR #205 merged, no open branches
+- **main clean** — PR #206 merged, no open branches
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
-### Session 30 Summary (this session)
+### Session 31 Summary (this session)
+| Item | Status |
+|---|---|
+| Integration check alert — "Missing from DB: Rio Prabhakar 6/15-7/3 (C63Qglz7)" | ✅ Diagnosed. Bad booking in AGYD — system timestamps on detail page show 6.3h on May 15 (creation date), same-day filter correctly skipped it. Kate confirmed it's a bad entry; AGYD will update it; B-3 will re-queue on URL timestamp change and sync the corrected booking automatically. No code change needed. |
+| Integration check WINDOW_DAYS=7 too narrow for far-future boardings | ⏸ Deferred. Even if boarding is correctly synced, DB query (today+7) misses June 15 arrivals. Fix: `WINDOW_DAYS = 7 → 90` in `scripts/integration-check.js`. Saved to memory. Kate will monitor; fix if alerts keep repeating. |
+| "Day boarding {date}" label rename — EmployeeDropdown checkbox | ✅ Done. PR #206 merged. "Also worked {date}" → "Day boarding {date}" on the night assignment checkbox. |
+| Untracked docs checked in | ✅ Done. `Architect.md`, `TechPM_1.md`, `docs/j1-build-plan.md` tracked in PR #206. |
+| "Send a Question" button — nav user dropdown | ⏸ Deferred to next session. Component: `src/components/Layout.jsx`, `userMenuOpen` dropdown ~line 161. Delivery: WhatsApp via existing `sendTextMessage`. Modal: "Question / Comment" label + text box + Send button. |
+
+### Session 30 Summary (reference)
 | Item | Status |
 |---|---|
 | B-3 — re-sync appointments modified on AGYD after initial sync | ✅ Done + verified. PR #205 merged. `enqueue()` re-queues `done` items when URL timestamp changes. Verified live: stale DB URL → `🔄 Re-queued modified appointment: C63Qgl6y (url changed: /1778407200 [2026-05-10] → /1778493600 [2026-05-11])` — row flipped to `pending`. |
