@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 14, 2026 (session 30) — **B-3 done (PR #205). 1051 tests. Next: Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
+_Last updated: May 16, 2026 (session 31) — **label rename done (PR #206). 1051 tests. Next: "Send a Question" button + Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -102,6 +102,18 @@ These are not code tickets. They block specific milestones. Track them here so n
 4. **B-1** ✅ PR #199 merged — DC filter false positive. Peanut (C63QghzF) confirmed in DB May 1.
 5. **B-2** ✅ PR #201 + PR #202 merged May 4 — Fix 1 (`^PT\b`) + removed Check 3 entirely. Verified clean run.
 6. **B-3** ✅ PR #205 merged May 14 — `enqueue()` re-queues `done` items when `source_url` timestamp changes.
+7. **U-1** ✅ PR #206 merged May 16 — Rename "Also worked {date}" → "Day boarding {date}" on night assignment checkbox (`EmployeeDropdown`).
+
+---
+
+## Upcoming Tickets (Next Session)
+
+| # | Ticket | Complexity | Notes |
+|---|--------|------------|-------|
+| U-2 | **"Send a Question" button** — add to nav user dropdown (`Layout.jsx` `userMenuOpen` ~line 161). Modal: "Question / Comment" label + text box + Send. Delivers via WhatsApp (`sendTextMessage`) to Kate with sender username + message text. | Small | Component already identified. No new infrastructure. |
+| G-1 | **Alert on failed wamid** — `message_delivery_status` table exists (F-1) but nothing reads it and fires on `status='failed'` | Medium | Kate to pick this or G-3 |
+| G-3 | **Client-facing status page** — read-only page: last cron run, last notify sent, last delivery status | Medium | Kate to pick this or G-1 |
+| B-4 | **Integration check WINDOW_DAYS too narrow** — `WINDOW_DAYS = 7` in `scripts/integration-check.js` misses far-future boardings (arrival > today+7). Fix: change to `90`. One-line change. | Trivial | Deferred May 16 — Kate monitoring. Do if repeated alerts on correctly-synced far-future bookings. |
 
 ---
 
