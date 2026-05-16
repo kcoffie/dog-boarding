@@ -83,7 +83,7 @@ export default function EmployeeDropdown({ date }) {
             disabled={checkboxSaving}
             className="w-3 h-3 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
           />
-          <span className="text-xs text-slate-500">Also worked {followingDay}</span>
+          <span className="text-xs text-slate-500">Day boarding {followingDay}</span>
         </label>
       )}
     </div>
