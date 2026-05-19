@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 19, 2026 (session 32) — **C-1 added (employee overnight calendar). 1051 tests. Next: U-2 ("Send a Question") + C-1 + Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
+_Last updated: May 19, 2026 (session 32) — **U-2 ✅ PR #208 merged. C-1 ✅ PR #209 open, CI pending. 1065 tests. Next: merge C-1, verify deploy, then Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -103,6 +103,8 @@ These are not code tickets. They block specific milestones. Track them here so n
 5. **B-2** ✅ PR #201 + PR #202 merged May 4 — Fix 1 (`^PT\b`) + removed Check 3 entirely. Verified clean run.
 6. **B-3** ✅ PR #205 merged May 14 — `enqueue()` re-queues `done` items when `source_url` timestamp changes.
 7. **U-1** ✅ PR #206 merged May 16 — Rename "Also worked {date}" → "Day boarding {date}" on night assignment checkbox (`EmployeeDropdown`).
+8. **U-2** ✅ PR #208 merged May 19 — "Send a Question" button in nav user dropdown. Modal + `/api/send-question` endpoint → WhatsApp to Kate. 7 tests. v6.2.0.
+9. **C-1** PR #209 open (CI pending) — Employee overnight calendar grid below dog calendar on CalendarPage. 7 tests (REQ-701). 1065 tests.
 
 ---
 
@@ -110,8 +112,9 @@ These are not code tickets. They block specific milestones. Track them here so n
 
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
-| U-2 | **"Send a Question" button** — add to nav user dropdown (`Layout.jsx` `userMenuOpen` ~line 161). Modal: "Question / Comment" label + text box + Send. Delivers via WhatsApp (`sendTextMessage`) to Kate with sender username + message text. | Small | Component already identified. No new infrastructure. |
-| C-1 | **Employee overnight calendar** — second calendar grid on the Calendar page, below the dog calendar, same month/navigation. Each day cell shows the name of the employee assigned to work that overnight (from `night_assignments` via `nightAssignments` in `useData()`). No new data fetching — data already in context. | Small | See full spec below. |
+| G-1 | **Alert on failed wamid** — `message_delivery_status` table exists (F-1) but nothing reads it and fires on `status='failed'` | Medium | Kate to pick this or G-3 |
+| G-3 | **Client-facing status page** — read-only page: last cron run, last notify sent, last delivery status | Medium | Kate to pick this or G-1 |
+| B-4 | **Integration check WINDOW_DAYS too narrow** — `WINDOW_DAYS = 7` in `scripts/integration-check.js` misses far-future boardings (arrival > today+7). Fix: change to `90`. One-line change. | Trivial | Deferred May 16 — Kate monitoring. Do if repeated alerts on correctly-synced far-future bookings. |
 | G-1 | **Alert on failed wamid** — `message_delivery_status` table exists (F-1) but nothing reads it and fires on `status='failed'` | Medium | Kate to pick this or G-3 |
 | G-3 | **Client-facing status page** — read-only page: last cron run, last notify sent, last delivery status | Medium | Kate to pick this or G-1 |
 | B-4 | **Integration check WINDOW_DAYS too narrow** — `WINDOW_DAYS = 7` in `scripts/integration-check.js` misses far-future boardings (arrival > today+7). Fix: change to `90`. One-line change. | Trivial | Deferred May 16 — Kate monitoring. Do if repeated alerts on correctly-synced far-future bookings. |
