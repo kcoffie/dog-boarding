@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 16, 2026 (session 31) — **label rename done (PR #206). 1051 tests. Next: "Send a Question" button + Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
+_Last updated: May 19, 2026 (session 32) — **C-1 added (employee overnight calendar). 1051 tests. Next: U-2 ("Send a Question") + C-1 + Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
 
 ---
 
@@ -111,9 +111,44 @@ These are not code tickets. They block specific milestones. Track them here so n
 | # | Ticket | Complexity | Notes |
 |---|--------|------------|-------|
 | U-2 | **"Send a Question" button** — add to nav user dropdown (`Layout.jsx` `userMenuOpen` ~line 161). Modal: "Question / Comment" label + text box + Send. Delivers via WhatsApp (`sendTextMessage`) to Kate with sender username + message text. | Small | Component already identified. No new infrastructure. |
+| C-1 | **Employee overnight calendar** — second calendar grid on the Calendar page, below the dog calendar, same month/navigation. Each day cell shows the name of the employee assigned to work that overnight (from `night_assignments` via `nightAssignments` in `useData()`). No new data fetching — data already in context. | Small | See full spec below. |
 | G-1 | **Alert on failed wamid** — `message_delivery_status` table exists (F-1) but nothing reads it and fires on `status='failed'` | Medium | Kate to pick this or G-3 |
 | G-3 | **Client-facing status page** — read-only page: last cron run, last notify sent, last delivery status | Medium | Kate to pick this or G-1 |
 | B-4 | **Integration check WINDOW_DAYS too narrow** — `WINDOW_DAYS = 7` in `scripts/integration-check.js` misses far-future boardings (arrival > today+7). Fix: change to `90`. One-line change. | Trivial | Deferred May 16 — Kate monitoring. Do if repeated alerts on correctly-synced far-future bookings. |
+
+---
+
+### C-1 — Employee overnight calendar
+
+**Status:** Not started.
+
+**What:** A second calendar grid on the Calendar page, placed below the existing dog calendar, labeled "Overnight Staff." Same month and navigation as the dog calendar (shared `currentDate` state). Each day cell shows the name of the employee who worked that overnight boarding shift, sourced from `night_assignments` via `nightAssignments` in `useData()`. No new data fetching — `nightAssignments` is already loaded globally.
+
+**Display rules:**
+- Employee assigned → show their name as a small colored chip (use `stringToColor(name)` already defined in the file)
+- N/A assignment → show a neutral "N/A" pill
+- No assignment (date not in `nightAssignments`) → cell is blank
+
+**Data mapping:**
+- `nightAssignments` shape: `[{ date: 'YYYY-MM-DD', employeeId, workedFollowingDay }, ...]`
+- Resolve name via `getEmployeeNameById(employees, employeeId)` — already used in `useNightAssignments.js`
+- Or use `getNightAssignment(dateStr)` from `useNightAssignments` if wired through context — check what's available in `useData()` before deciding
+
+**Scope:** No detail panel needed. No click interaction needed (read-only view). The grid renders exactly like the dog calendar grid, just simpler cells.
+
+**Files to touch:**
+- `src/pages/CalendarPage.jsx` — add second grid section; consume `nightAssignments` + `employees` from `useData()`; add a helper to look up the employee name for a given date
+
+**Definition of Done:**
+- [ ] Second calendar grid renders below the dog calendar with the label "Overnight Staff"
+- [ ] Shares the same month/navigation state — advancing the month advances both grids
+- [ ] Each day with an assignment shows the employee name as a colored chip
+- [ ] N/A assignment renders a neutral "N/A" pill
+- [ ] Days with no assignment are blank (no crash)
+- [ ] Today's date is highlighted consistently with the dog calendar
+- [ ] Looks correct on both desktop and mobile (same responsive grid)
+- [ ] All existing tests still pass (no regressions)
+- [ ] PR merged + Vercel deploy verified
 
 ---
 
