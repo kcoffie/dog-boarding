@@ -1307,6 +1307,23 @@ Users can send a question or comment to Kate directly from the nav user dropdown
 
 ---
 
+### REQ-701: Overnight Staff Calendar Grid
+**Added:** v6.2.0 | **Status:** Complete
+
+The Calendar page shows a second calendar grid below the dog boarding calendar, labeled "Overnight Staff", showing which employee worked each overnight boarding shift.
+
+**Acceptance Criteria:**
+- A full-width "Overnight Staff" grid appears below the dog boarding calendar, sharing the same month/navigation state
+- Each cell that has a night assignment shows a colored name chip (using `stringToColor`) with the employee's name
+- Cells with `employeeId === null` show a neutral "N/A" pill
+- Cells with no assignment at all are blank
+- The grid is read-only (no click/select behavior)
+- Today's date is highlighted in the staff grid matching the dog grid style
+
+**Tests:** `src/__tests__/pages/CalendarStaffGrid.test.js` (7 tests)
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section

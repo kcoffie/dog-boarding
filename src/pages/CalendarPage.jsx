@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { formatName } from '../utils/dateUtils';
+import { getEmployeeNameById } from '../utils/employeeHelpers';
 
 // Swipe gesture hook
 function useSwipe(onSwipeLeft, onSwipeRight, threshold = 50) {
@@ -263,7 +264,7 @@ function PrintModal({ defaultStart, defaultEnd, onClose, onPrint }) {
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
-  const { dogs, boardings, getNetPercentageForDate } = useData();
+  const { dogs, boardings, getNetPercentageForDate, nightAssignments, settings } = useData();
   const [currentDate, setCurrentDate] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -473,6 +474,16 @@ export default function CalendarPage() {
     return day === today.getDate() &&
            month === today.getMonth() &&
            year === today.getFullYear();
+  };
+
+  // Look up overnight staff assignment for a given calendar day
+  const getStaffForDay = (day) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const assignment = nightAssignments?.find(x => x.date === dateStr);
+    if (!assignment) return null;
+    if (assignment.employeeId === null) return { name: 'N/A', isNA: true };
+    const name = getEmployeeNameById(settings?.employees ?? [], assignment.employeeId) || 'Unknown';
+    return { name, isNA: false };
   };
 
   return (
@@ -730,6 +741,73 @@ export default function CalendarPage() {
               <p>Click a day to see boarding details</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Overnight Staff Calendar */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200/60 overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+          <h3 className="text-sm font-semibold text-slate-700">Overnight Staff</h3>
+        </div>
+        <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+            <div key={d} className="p-2 text-center text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              {d}
+            </div>
+          ))}
+        </div>
+        <div className="divide-y divide-slate-100">
+          {weeks.map((week, weekIndex) => (
+            <div key={weekIndex} className="grid grid-cols-7 divide-x divide-slate-100">
+              {week.map((day, dayIndex) => {
+                const isWeekend = dayIndex === 0 || dayIndex === 6;
+                const isTodayCell = day && isToday(day);
+                const staff = day ? getStaffForDay(day) : null;
+                const colors = staff && !staff.isNA ? stringToColor(staff.name) : null;
+
+                return (
+                  <div
+                    key={dayIndex}
+                    className={`
+                      min-h-12 p-1.5 flex flex-col gap-1
+                      ${!day ? 'bg-slate-50' : ''}
+                      ${isWeekend && day ? 'bg-slate-50/50' : ''}
+                    `}
+                  >
+                    {day && (
+                      <>
+                        <div className={`text-right text-xs font-medium px-0.5 ${isTodayCell ? 'text-indigo-600' : 'text-slate-400'}`}>
+                          {isTodayCell ? (
+                            <span className="inline-flex items-center justify-center w-5 h-5 bg-indigo-600 text-white rounded-full text-[10px]">
+                              {day}
+                            </span>
+                          ) : day}
+                        </div>
+                        {staff && (
+                          staff.isNA ? (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 text-center leading-tight">
+                              N/A
+                            </span>
+                          ) : (
+                            <span
+                              className="text-xs px-1.5 py-0.5 rounded-full truncate leading-tight"
+                              style={{
+                                backgroundColor: colors.bg,
+                                color: colors.text,
+                                border: `1px solid ${colors.border}`,
+                              }}
+                            >
+                              {staff.name}
+                            </span>
+                          )
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
 
