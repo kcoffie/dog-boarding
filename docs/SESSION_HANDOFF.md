@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — OPEN)
-**Last updated:** May 19, 2026 (session 32) — U-2 merged, C-1 PR open (all CI green). 1065 tests, 0 failures. Next: merge C-1 + verify deploy, then Kate picks G-1 or G-3.
+**Last updated:** May 19, 2026 (session 32) — U-2 + C-1 both merged. 1065 tests, 0 failures. main clean. Next: verify C-1 Vercel deploy, then Kate picks G-1 or G-3.
 
 ---
 
@@ -7,8 +7,7 @@
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
 - **1065 tests, 61 files, 0 failures**
-- **Branch:** `c1-overnight-staff-calendar` — PR #209 open, all CI green ✅, ready to merge
-- **main** has U-2 (PR #208 merged today)
+- **main clean** — PR #208 (U-2) + PR #209 (C-1) both merged today
 - Live at [qboarding.vercel.app](https://qboarding.vercel.app)
 
 ### Session 32 Summary (this session)
@@ -16,7 +15,7 @@
 |---|---|
 | U-2 — "Send a Question" button in nav user dropdown | ✅ Done. PR #208 merged. `api/send-question.js` + `QuestionModal` in `Layout.jsx`. 7 tests (REQ-700). WhatsApp to Kate via `getAlertRecipients()`. |
 | OVERVIEW.md corrections — Vercel cron times were wrong | ✅ Done. Fixed all cron times (midnight UTC = 5 PM PDT, not midnight PDT). Added "When Does the DB Get Updated From AGYD?" section. Updated "A Real Weekday" timeline. Removed stale Claude vision reference. |
-| C-1 — Employee overnight calendar grid | ✅ Code done. PR #209 open, all CI green. Second calendar grid below dog calendar on CalendarPage. Colored name chips, N/A pill, blank for unassigned. 7 tests (REQ-701). |
+| C-1 — Employee overnight calendar grid | ✅ Done. PR #209 merged. Second calendar grid below dog calendar on CalendarPage. Colored name chips, N/A pill, blank for unassigned. 7 tests (REQ-701). Vercel deploy pending verification. |
 
 ### Session 31 Summary (reference)
 | Item | Status |
@@ -29,9 +28,8 @@
 
 ## Immediate Next Steps
 
-1. **Merge PR #209** (C-1) — all CI green, ready now
-2. **Verify Vercel deploy** — go to Calendar page, check "Overnight Staff" grid renders below dog calendar
-3. **Kate picks G-1 or G-3** — see specs in SPRINT_PLAN.md
+1. **Verify Vercel deploy** — go to [qboarding.vercel.app](https://qboarding.vercel.app) → Calendar page → confirm "Overnight Staff" grid renders below the dog calendar with colored name chips and N/A pills
+2. **Kate picks G-1 or G-3** — see specs in SPRINT_PLAN.md
 
 ---
 

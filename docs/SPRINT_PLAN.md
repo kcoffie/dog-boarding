@@ -1,6 +1,6 @@
 # Q Boarding — Sprint Plan
 
-_Last updated: May 19, 2026 (session 32) — **U-2 ✅ PR #208 merged. C-1 ✅ PR #209 open, CI pending. 1065 tests. Next: merge C-1, verify deploy, then Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
+_Last updated: May 19, 2026 (session 32) — **U-2 ✅ PR #208 merged. C-1 ✅ PR #209 merged. 1065 tests. main clean. Next: verify C-1 deploy, Kate picks G-1 or G-3.** Theme: Client-driven operational intelligence._
 
 ---
 
