@@ -25,6 +25,40 @@ All automated work in this system runs as either Vercel cron jobs (nightly, insi
 
 ---
 
+## When Does the DB Get Updated From AGYD?
+
+Two different tables update on different schedules.
+
+### Overnight boardings (`boardings` table)
+
+New overnight boarding records enter the DB through the queue pipeline:
+
+1. **5:05 PM PDT** — `cron-schedule` scans AGYD and adds newly discovered appointments to `sync_queue`
+2. **5:10 PM + 5:15 PM PDT** — `cron-detail` and `cron-detail-2` each pull one queued item's full detail page from AGYD and write it to `boardings`
+
+That's the only time new boardings are automatically added. **Two items drain per night** (one per detail job). If the queue is longer, use the UI "Sync Now" button to drain it on demand.
+
+**One exception:** the integration-check also calls `runDetailSync()` at **1 AM, 9 AM, and 5 PM** as part of its Step 0 mini-sync. If items are sitting in the queue from the prior evening's `cron-schedule` run, those runs will drain them — so a new boarding can land in the DB as early as 1 AM rather than waiting until the next 5 PM cycle.
+
+### Daytime appointments (`daytime_appointments` table)
+
+Daytime data is refreshed far more frequently — every job that touches AGYD also upserts daytime events as a side effect:
+
+| Time (PDT) | Job | How |
+|---|---|---|
+| 1:00 AM | `integration-check` (Step 0) | `runScheduleSync()` → `upsertDaytimeAppointments()` |
+| 4:00 AM | `notify-4am` | `refreshDaytimeSchedule()` |
+| 7:00 AM | `notify-7am` | `refreshDaytimeSchedule()` |
+| 8:30 AM | `notify-830am` | `refreshDaytimeSchedule()` |
+| 9:00 AM | `integration-check` (Step 0) | `runScheduleSync()` → `upsertDaytimeAppointments()` |
+| 3:00 PM | `notify-friday-pm` (Fri only) | `refreshDaytimeSchedule()` |
+| 5:00 PM | `integration-check` (Step 0) | `runScheduleSync()` → `upsertDaytimeAppointments()` |
+| 5:05 PM | `cron-schedule` | `parseDaytimeSchedulePage()` → `upsertDaytimeAppointments()` |
+
+On a weekday, daytime appointments are refreshed up to 8 times. The `notify-intraday` job does **not** refresh from AGYD — it reads `boardings` from the DB only.
+
+---
+
 ## The Nightly Sync Cluster (5:00–5:30 PM PDT / midnight UTC daily)
 
 Five jobs run back-to-back each evening with 5-minute gaps to ensure each step completes before the next begins. These run at **midnight UTC**, which is **5:00 PM PDT** (UTC-7 in summer).
