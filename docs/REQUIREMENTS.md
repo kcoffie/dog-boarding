@@ -1290,6 +1290,23 @@ Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arr
 
 ---
 
+### REQ-700: Send a Question
+**Added:** v6.2.0 | **Status:** Complete
+
+Users can send a question or comment to Kate directly from the nav user dropdown. The message is delivered via WhatsApp using the existing `sendTextMessage` infrastructure (same alert channel as cron-health-check and gmail-monitor).
+
+**Acceptance Criteria:**
+- "Send a Question" button in the nav user dropdown (desktop) and mobile menu
+- Clicking opens a modal with a "Question / Comment" label, textarea (max 1000 chars), character counter, Send and Cancel buttons
+- On Send, the message is delivered to Kate via WhatsApp with the sender's username prepended
+- Loading state ("Sending…") shown while in-flight; "Sent!" confirmation on success; inline error message on failure
+- Modal auto-closes 1.5 seconds after a successful send
+- `POST /api/send-question`: validates `Authorization: Bearer` token, rejects empty or >1000-char messages, calls `sendTextMessage` to `getAlertRecipients()` (Kate only)
+
+**Tests:** `src/__tests__/sendQuestion.test.js` (7 tests)
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section
