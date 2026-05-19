@@ -1,6 +1,6 @@
 # Jobs Overview
 
-**Last updated:** May 1, 2026
+**Last updated:** May 19, 2026
 
 All automated work in this system runs as either Vercel cron jobs (nightly, inside the Vercel function runtime) or GitHub Actions workflows (GH-managed compute, no Vercel timeout constraint). This doc is a map of every job — what it does, when it runs, and why it matters.
 
@@ -10,11 +10,11 @@ All automated work in this system runs as either Vercel cron jobs (nightly, insi
 
 | Job | Platform | Schedule (PDT) | Sends WhatsApp? | Audience |
 |-----|----------|----------------|-----------------|----------|
-| `cron-auth` | Vercel | 12:00 AM daily | No | — |
-| `cron-schedule` | Vercel | 12:05 AM daily | No | — |
-| `cron-detail` | Vercel | 12:10 AM daily | No | — |
-| `cron-detail-2` | Vercel | 12:15 AM daily | No | — |
-| `cron-health-check` | GH Actions | 12:30 AM daily | When issues found | Kate only |
+| `cron-auth` | Vercel | 5:00 PM daily (00:00 UTC) | No | — |
+| `cron-schedule` | Vercel | 5:05 PM daily (00:05 UTC) | No | — |
+| `cron-detail` | Vercel | 5:10 PM daily (00:10 UTC) | No | — |
+| `cron-detail-2` | Vercel | 5:15 PM daily (00:15 UTC) | No | — |
+| `cron-health-check` | GH Actions | 5:30 PM daily (00:30 UTC) | When issues found | Kate only |
 | `integration-check` | GH Actions | 1am, 9am, 5pm | Always | Kate only |
 | `gmail-monitor` | GH Actions | Hourly at :15 | When issues found | Kate only |
 | `notify-4am` | GH Actions | 4:00 AM Mon–Fri | Always | Full team |
@@ -25,20 +25,20 @@ All automated work in this system runs as either Vercel cron jobs (nightly, insi
 
 ---
 
-## The Midnight Sync Cluster (12:00–12:30 AM PDT daily)
+## The Nightly Sync Cluster (5:00–5:30 PM PDT / midnight UTC daily)
 
-Five jobs run back-to-back each night with 5-minute gaps to ensure each step completes before the next begins.
+Five jobs run back-to-back each evening with 5-minute gaps to ensure each step completes before the next begins. These run at **midnight UTC**, which is **5:00 PM PDT** (UTC-7 in summer).
 
-### `cron-auth` — 12:00 AM
+### `cron-auth` — 5:00 PM PDT (00:00 UTC)
 **What:** Unconditionally re-authenticates against the AGYD booking site and caches the session cookie in `sync_settings` with a 24h TTL.
 
-**Why unconditional:** An earlier version skipped re-auth if the session looked valid. That caused a race condition: a session cached at 12:27 AM would appear valid to the 12:00 cron but expire before the 4am/7am/8:30am notify windows — and all three morning sends would fail with "no session." The fix was to always re-auth, at the cost of one extra HTTP call per night.
+**Why unconditional:** An earlier version skipped re-auth if the session looked valid. That caused a race condition: a session cached at 5:27 PM PDT (00:27 UTC) would appear valid to the 5:00 PM cron but expire before the 4am/7am/8:30am notify windows the following morning — and all three sends would fail with "no session." The fix was to always re-auth, at the cost of one extra HTTP call per night.
 
 **File:** `api/cron-auth.js`
 
 ---
 
-### `cron-schedule` — 12:05 AM
+### `cron-schedule` — 5:05 PM PDT (00:05 UTC)
 **What:** Fetches schedule pages from AGYD, extracts appointment links, and enqueues boarding candidates into `sync_queue`. Also ingests daytime (DC/PG) events into `daytime_appointments`.
 
 **Interesting details:**
@@ -51,7 +51,7 @@ Five jobs run back-to-back each night with 5-minute gaps to ensure each step com
 
 ---
 
-### `cron-detail` + `cron-detail-2` — 12:10 AM + 12:15 AM
+### `cron-detail` + `cron-detail-2` — 5:10 PM + 5:15 PM PDT (00:10 + 00:15 UTC)
 **What:** Each picks one item from `sync_queue`, fetches its full detail page, runs post-detail filter gates, and upserts the result into `boardings`/`dogs`.
 
 **Why one item per run:** Vercel Hobby functions have a 10-second timeout. One detail page fetch + parse + DB write takes 2–4s. Multiple items would risk timeout on slow responses.
@@ -69,10 +69,10 @@ Five jobs run back-to-back each night with 5-minute gaps to ensure each step com
 
 ---
 
-### `cron-health-check` — 12:30 AM
-**What:** Verifies that the midnight crons (auth, schedule, detail) actually ran and didn't fail. Sends a WhatsApp alert to Kate if any cron missed its window or has 2+ consecutive failures in `cron_health_log`.
+### `cron-health-check` — 5:30 PM PDT (00:30 UTC)
+**What:** Verifies that the nightly sync crons (auth, schedule, detail) actually ran and didn't fail. Sends a WhatsApp alert to Kate if any cron missed its window or has 2+ consecutive failures in `cron_health_log`.
 
-**Why 12:30 AM:** Gives the full cron chain (00:00–00:15) time to complete before the check runs.
+**Why 5:30 PM:** Gives the full cron chain (5:00–5:15 PM PDT / 00:00–00:15 UTC) time to complete before the check runs.
 
 **What it checks:**
 - Did each cron run since midnight UTC? (checks `cron_health.last_ran_at`)
@@ -89,17 +89,13 @@ Three jobs that run independently of the sync pipeline to catch failures the pip
 ### `integration-check` — 1am, 9am, 5pm PDT (3× daily)
 **What:** The main system health check. Uses Playwright (real browser) to render the AGYD schedule page, compares what it sees against what's in the DB, and sends a WhatsApp report to Kate.
 
-**Why it can't use the same code as the sync:** If the sync pipeline has a parsing bug, using the same parser to verify the sync would confirm the wrong output and call it a pass. The integration check uses two completely independent signal paths:
-1. **Playwright DOM** — headless Chromium reads the live rendered DOM, not raw HTML
-2. **Claude vision** — reads a screenshot pixel-by-pixel, the way a human would
-
-Both are compared against the DB. If either sees something the DB doesn't have, Kate gets a WhatsApp.
+**Why it can't use the same code as the sync:** If the sync pipeline has a parsing bug, using the same parser to verify the sync would confirm the wrong output and call it a pass. The integration check uses a completely independent signal path: **Playwright DOM** — headless Chromium reads the live rendered DOM, not the raw HTML the regex-based cron uses.
 
 **Step 0 (sync-before-compare):** Before the Playwright check runs, a mini sync fires (`runScheduleSync` + `runDetailSync`). This eliminates false positives for bookings made after midnight UTC (after the overnight cron ran but before the 1am check).
 
 **Always exits 0:** Data issues are content of the report, not a job failure. The GH Actions UI shows green whether or not issues were found.
 
-**Step 3 (Claude vision):** Currently skips silently due to no Anthropic API credits. A `::warning::` fires in the GH Actions log. Checks 1 and 2 still run.
+**Checks run:** (1) boarding DOM IDs vs DB, (2) unknown dog names in DB, (3) daytime events DOM vs DB. Claude vision (formerly Check 3) was removed in PR #202 — Check 1 (DOM ID match) is the reliable signal and already catches any real sync miss.
 
 **File:** `scripts/integration-check.js` | **Workflow:** `.github/workflows/integration-check.yml`
 
@@ -175,28 +171,28 @@ Five workflows send WhatsApp notifications to the full team. Together they answe
 
 ---
 
-## A Real Weekday (Midnight → 8pm PDT)
+## A Real Weekday (1am → 8pm PDT)
 
-What actually fires on a typical Monday:
+What actually fires on a typical Monday. The Vercel sync crons run at **midnight UTC = 5 PM PDT** — they run in the *evening*, not overnight.
 
 | Time (PDT) | Job | Outcome |
 |------------|-----|---------|
-| 12:00 AM | `cron-auth` | Fresh session cookie cached in DB |
-| 12:05 AM | `cron-schedule` | Schedule scanned, new appointments enqueued |
-| 12:10 AM | `cron-detail` | Oldest queue item processed → boarding upserted |
-| 12:15 AM | `cron-detail-2` | Second queue item processed |
-| 12:30 AM | `cron-health-check` | Confirms all 3 crons ran; alerts if any failed |
-| 1:00 AM | `integration-check` | Playwright compares DB to live schedule; WhatsApp report sent |
-| 4:00 AM | `notify-4am` | Roster image sent to full team (always) |
-| 7:00 AM | `notify-7am` | Roster image sent if anything changed since 4am |
-| 8:30 AM | `notify-830am` | Roster image sent if anything changed since 7am; boarders snapshot stored |
+| 1:00 AM | `integration-check` | Step 0 mini-sync runs, then Playwright compares DB to live schedule; WhatsApp report sent |
+| 4:00 AM | `notify-4am` | Live schedule refreshed from AGYD; roster image sent to full team (always) |
+| 7:00 AM | `notify-7am` | Live schedule refreshed; roster image sent if anything changed since 4am |
+| 8:30 AM | `notify-830am` | Live schedule refreshed; roster image sent if anything changed since 7am; boarders snapshot stored |
 | 9:00 AM | `notify-intraday` | Checks for boarding changes since 8:30am; skips if none |
+| 9:00 AM | `integration-check` | Step 0 mini-sync runs, then mid-morning DB vs schedule compare |
 | 9:15 AM | `gmail-monitor` | Inbox scanned; alerts if infrastructure email found |
-| 10:00–4:00 PM | `notify-intraday` (hourly) | Same delta check; fires only when a new booking or cancellation appears |
-| 9:00 AM | `integration-check` | Mid-morning DB vs schedule compare |
-| 3:00 PM | `notify-friday-pm` | (Fridays only) Weekend preview image sent |
-| 5:00 PM | `integration-check` | Afternoon DB vs schedule compare |
-| 5:00–8:00 PM | `notify-intraday` (hourly) | Same delta check continues |
+| 10:00 AM–4:00 PM | `notify-intraday` (hourly) | Same delta check; fires only when a new booking or cancellation appears |
+| 3:00 PM | `notify-friday-pm` | (Fridays only) Live schedule refreshed; weekend preview image sent |
+| 5:00 PM | `integration-check` | Step 0 mini-sync runs, then afternoon DB vs schedule compare |
+| 5:00 PM | `cron-auth` | Fresh session cookie cached in DB (00:00 UTC) |
+| 5:05 PM | `cron-schedule` | Schedule scanned, new boarding appointments enqueued, daytime events upserted (00:05 UTC) |
+| 5:10 PM | `cron-detail` | Oldest queue item fetched from AGYD → boarding upserted (00:10 UTC) |
+| 5:15 PM | `cron-detail-2` | Second queue item fetched from AGYD → boarding upserted (00:15 UTC) |
+| 5:15–8:00 PM | `notify-intraday` (hourly) | Same delta check continues |
+| 5:30 PM | `cron-health-check` | Confirms all sync crons ran; alerts if any failed (00:30 UTC) |
 
 ---
 
@@ -206,7 +202,7 @@ Three independent paths ensure a failure surfaces before it causes a missed noti
 
 | Failure type | Who catches it | Via |
 |---|---|---|
-| Vercel cron didn't run / threw an error | `cron-health-check` | WhatsApp to Kate at 12:30 AM |
+| Vercel cron didn't run / threw an error | `cron-health-check` | WhatsApp to Kate at 5:30 PM PDT (00:30 UTC) |
 | GH Actions workflow failed (any workflow) | `gmail-monitor` | WhatsApp to Kate within 1 hour |
 | Sync ran but missed a booking (silent data bug) | `integration-check` | WhatsApp to Kate at 1am/9am/5pm |
 | Morning notify fired but image never delivered to phone | F-1 webhook + `message_delivery_status` table | (G-1 alert not yet implemented) |
