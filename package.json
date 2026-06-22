@@ -22,12 +22,12 @@
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
-    "@supabase/supabase-js": "^2.101.1",
-    "papaparse": "^5.5.3",
-    "react": "^19.2.4",
+    "@supabase/supabase-js": "^2.108.2",
+    "papaparse": "^5.5.4",
+    "react": "^19.2.7",
     "react-datepicker": "^9.1.0",
-    "react-dom": "^19.2.4",
-    "react-router-dom": "^7.14.0",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.0",
     "react-select": "^5.10.2",
     "satori": "^0.26.0"
   },
@@ -38,7 +38,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "@vitest/coverage-v8": "^4.1.2",
@@ -61,6 +61,6 @@
     ]
   },
   "optionalDependencies": {
-    "@rollup/rollup-darwin-x64": "^4.60.1"
+    "@rollup/rollup-darwin-x64": "^4.62.2"
   }
 }
