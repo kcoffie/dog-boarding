@@ -82,6 +82,18 @@ The alert message will say which cron missed a run or had consecutive failures (
 
 ---
 
+### "The Keepalive workflow failed" (or no notifications at all)
+
+GitHub disables scheduled workflows after 60 days without a commit. Then notifications, the cron health check, the integration check and the Gmail monitor all stop silently (this happened 2026-08-24 and wasn't noticed until October). `Keepalive` runs every Monday at 12:00 UTC and refreshes each active workflow so that can't happen again.
+
+**If it failed with "was disabled for inactivity":** a workflow got disabled anyway. GitHub → Actions → pick the workflow → **Enable workflow**. Do that for each one named, then run `Keepalive` by hand (Run workflow) and check it goes green.
+
+**If it failed with "Could not refresh":** usually a GitHub outage or a token permission problem. Re-run it. If it keeps failing, check that `keepalive.yml` still has `permissions: actions: write`.
+
+**To check the state of every workflow:** `command gh workflow list --all` (`gh` alone is a shell alias here). `disabled_inactivity` is the problem state. `disabled_manually` means someone turned it off on purpose.
+
+---
+
 ### "The integration check reported missing appointments"
 
 The check runs 3×/day and compares DB boardings against the live schedule page.

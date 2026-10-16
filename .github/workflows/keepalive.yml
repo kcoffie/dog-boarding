@@ -1,0 +1,29 @@
+name: Keepalive
+# GitHub disables scheduled workflows after 60 days without a commit (it happened 2026-08-24 and silenced every
+# notification). This refreshes each active workflow weekly, itself included, and fails, naming it, when one has
+# already been disabled for inactivity. Re-enabling is Kate's call, so it doesn't do that. REQ-650.
+# Caveat: GitHub doesn't document that the enable call resets the 60-day timer (the keepalive-workflow project relies
+# on it; others report it didn't work). Treat this as best effort: the real guard is ops-watch on Vercel (#237).
+
+on:
+  schedule:
+    - cron: '0 12 * * 1'  # Mondays 12:00 UTC
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+      - name: Refresh scheduled workflows
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/keepalive.js
