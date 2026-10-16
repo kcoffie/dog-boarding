@@ -1347,6 +1347,27 @@ GitHub disables a repo's scheduled workflows after 60 days without a commit. Tha
 
 ---
 
+### REQ-651: Ops Watch (outcome check outside GitHub)
+**Added:** v6.3.0 | **Status:** Complete
+
+A daily Vercel cron (`/api/ops-watch`, 17:00 UTC) checks the outcomes the client depends on, from a scheduler GitHub can't switch off. It runs once a day and reports every finding in one message. Design: `docs/specs/ops-watch-design-note.md`.
+
+**Acceptance Criteria:**
+- **Queue backlog:** a finding when the oldest `pending` `sync_queue` item was queued more than 48 h ago
+- **Sync stalled:** a finding when there are `pending` items and no item reached `done` in the last 36 h; an empty queue is never a finding
+- **Morning roster (Mon–Fri, Pacific date):** a finding when no `notify-4am` message was `sent` today, and a different finding when one was sent but none of its wamids has a `delivered` or `read` webhook row. Weekends are never checked
+- **Scheduled workflows:** a finding for each workflow whose last successful run is older than its limit (gmail-monitor 3 h, integration-check 12 h, cron-health-check 26 h, notify-4am 4 days, keepalive 8 days), or that has never succeeded
+- **Roster image:** a finding when the production weekend roster image doesn't return HTTP 200 with an `image/png` body
+- **Couldn't check:** a query error, a missing token, or a GitHub API error is a finding naming what couldn't be checked; it is never treated as healthy
+- With any finding: one WhatsApp text to `getAlertRecipients()` listing all of them, **and** a dispatch of `ops-alert.yml` (which fails, so GitHub emails Kate). With none: nothing is sent
+- The endpoint requires `Authorization: Bearer $CRON_SECRET` and rejects every request when `CRON_SECRET` is unset (fails closed)
+- Each run is recorded in `cron_health` as `ops-watch`: `success` when every check ran and the alert (if any) went out, otherwise `failure`
+- `cron-health-check` reports `ops-watch` when its last run is more than 26 h old
+
+**Tests:** `src/__tests__/opsWatch.test.js`
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section

@@ -63,3 +63,13 @@ A quiet day isn't a failure: an empty queue and no new boardings raise nothing (
 3. A persisting finding: repeat daily, or only when it changes / every 3 days?
 4. Should a closed-day `no_data` roster raise an alert?
 5. Drain or prune the 880-item backlog before go-live?
+
+### Kate's decisions (2026-10-16)
+1. **Email channel: yes.** The token gets Actions read **and write**, so ops-watch can dispatch `ops-alert.yml`, which fails and makes GitHub email Kate.
+2. **K-8 is fine.** The Friday roster sent by hand on 2026-10-16 was `delivered` to both recipients and `read` (webhook rows 2301–2306). WhatsApp works.
+3. **Persisting findings repeat daily.** No dedup state needed.
+4. **A closed-day `no_data` roster does alert.**
+5. **Backlog drained** on 2026-10-16 with `scripts/drain-queue.js`: 880 → 0 (835 skipped, 39 boardings created, 1 updated, 17 forms).
+
+### Build (revised after review)
+Checks 4 and 5 are replaced by **"last successful run age"** per scheduled workflow, which also catches disabled, failing and dropped schedules. Check 3 requires a `delivered`/`read` webhook row, not just `sent`. **New check 7, from the 2026-10-16 incident:** the weekend roster image must render in production (#246: a deps bump crashed the image functions and only the Friday roster send revealed it). Every finding goes to WhatsApp (Kate) **and** to the email channel. `cron-health-check` gets a 26 h rule for `ops-watch`.

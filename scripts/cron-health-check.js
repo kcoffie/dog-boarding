@@ -31,6 +31,11 @@ import { recordSentMessages, recordMessageLog } from '../src/lib/messageDelivery
 // The three midnight Vercel crons we monitor.
 const MONITORED_CRONS = ['auth', 'schedule', 'detail'];
 
+// ops-watch (Vercel, daily at 17:00 UTC) watches the GitHub workflows; this script watches it back.
+// It runs at a different hour, so "ran since midnight UTC" doesn't fit: it gets its own 26h rule (REQ-651).
+const OPS_WATCH = 'ops-watch';
+const OPS_WATCH_MAX_AGE_H = 26;
+
 // A cron stuck in 'started' beyond this threshold is considered hung.
 const HUNG_THRESHOLD_MIN = 20;
 
@@ -59,7 +64,7 @@ async function loadCronHealth(supabase) {
   const { data, error } = await supabase
     .from('cron_health')
     .select('cron_name, last_ran_at, status')
-    .in('cron_name', MONITORED_CRONS);
+    .in('cron_name', [...MONITORED_CRONS, OPS_WATCH]);
 
   if (error) throw error;
 
@@ -133,6 +138,19 @@ export function checkDidRun(cronName, healthRow, midnightUtc) {
  * @param {number} nowMs - Current timestamp in ms (Date.now())
  * @returns {string|null}
  */
+/**
+ * ops-watch must have run within the last 26 hours (REQ-651).
+ * @param {{ last_ran_at: string }|undefined} healthRow
+ * @param {number} nowMs
+ * @returns {string|null}
+ */
+export function checkOpsWatchFresh(healthRow, nowMs) {
+  if (!healthRow) return 'ops-watch (Vercel) has never run';
+  const hours = (nowMs - new Date(healthRow.last_ran_at).getTime()) / 3600e3;
+  if (hours <= OPS_WATCH_MAX_AGE_H) return null;
+  return `ops-watch (Vercel) last ran ${Math.round(hours)}h ago (limit ${OPS_WATCH_MAX_AGE_H}h)`;
+}
+
 export function checkHungCron(cronName, healthRow, nowMs) {
   if (!healthRow || healthRow.status !== 'started') return null;
 
@@ -242,6 +260,9 @@ async function main() {
       issues.push(failureAlert);
     }
   }
+
+  const opsWatchAlert = checkOpsWatchFresh(healthMap.get(OPS_WATCH), now.getTime());
+  if (opsWatchAlert) issues.push(opsWatchAlert);
 
   const passed = issues.length === 0;
   console.log('[CronHealthCheck] Result: %s (%d issue(s))', passed ? 'PASS ✅' : 'FAIL ⚠️', issues.length);
