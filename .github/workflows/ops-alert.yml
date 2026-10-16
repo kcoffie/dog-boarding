@@ -1,0 +1,25 @@
+name: Ops alert
+# Email channel for ops-watch (REQ-651). api/ops-watch.js dispatches this with its findings; it fails on purpose,
+# so GitHub emails the person whose token dispatched it (Kate). Event-triggered, so GitHub never disables it for
+# inactivity. Nothing here reads secrets.
+on:
+  workflow_dispatch:
+    inputs:
+      findings:
+        description: ops-watch findings
+        required: true
+
+permissions: {}
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report findings
+        env:
+          FINDINGS: ${{ inputs.findings }}
+        run: |
+          printf '%s\n' "$FINDINGS" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$FINDINGS" | while IFS= read -r line; do echo "::error::$line"; done
+          exit 1

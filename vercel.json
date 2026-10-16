@@ -1,6 +1,9 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
   ],
   "crons": [
     {
@@ -18,6 +21,15 @@
     {
       "path": "/api/cron-detail-2",
       "schedule": "15 0 * * *"
+    },
+    {
+      "path": "/api/ops-watch",
+      "schedule": "0 17 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/ops-watch.js": {
+      "maxDuration": 60
+    }
+  }
 }
