@@ -43,3 +43,7 @@ NOTES.md
 TechPM.md
 WHOHOW.md
 !.claude/settings.json
+
+# Stryker
+out/
+.stryker-tmp/

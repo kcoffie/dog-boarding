@@ -49,7 +49,7 @@ Every new requirement still gets an `@requirements REQ-XXX` annotation; `npm run
 - Report: `out/mutation.html` (survivors shown inline). `out/` is gitignored.
 - Launch Stryker from the local install (`npm run mutate`, or `./node_modules/.bin/stryker run stryker.config.json`), never `npx` (without a local install it fetches an unrelated old package).
 - **Running it locally:** keep the Mac awake (`caffeinate -dims`). A sleep mid-run turns test runs into timeouts, and Stryker counts timeouts as caught. `timeoutMS` is 20 s for the same reason. Read every Timeout before trusting a score.
-- **Ratchet:** `thresholds.break` in `stryker.config.json` is set just below the measured baseline. Raise it when the score goes up. **Never lower it to make a PR pass.**
+- **Ratchet:** `thresholds.break` in `stryker.config.json` is set just below the measured baseline (35). CI's `mutation` job runs the whole scope on every push to `main` and turns it red below that. Raise it when the score goes up. **Never lower it to make a PR pass.**
 - **New code bar (next):** a `mutate:changed` job that fails a PR when under 80% of the planted bugs in its changed lines are caught, as in dash and dos. Added once the full-run time on CI is known.
 - **Survivors that change nothing:** skip them with `// Stryker disable next-line <Mutator>: <reason>`. The reviewer checks every reason.
 
@@ -57,3 +57,4 @@ Every new requirement still gets an `@requirements REQ-XXX` annotation; `npm run
 
 | Date | Score | Note |
 |---|---|---|
+| 2026-10-16 | **35.25% (2648 / 7512)** | Baseline, local, 10 workers, 4 m 24 s. 2637 killed / 11 timeout / 1866 survived / 2998 no coverage. All 11 timeouts read: genuine infinite loops (`i++` → `i--` in counting loops, a `push` loop whose bound flips). Untested (0%, no coverage): `notify.js` (354 mutants), `sync-proxy.js`, the three sync crons (`cron-auth`, `cron-schedule`, `cron-detail`), `run-sync.js`, `errorCategorization.js`, `historicalSync.js`. Strongest: `calculations.js` 98.6%, `dateUtils.js` 93%, `appointmentFilter.js` 84%. Covered-code score 58.66%. Ratchet → 35. Backfill: #239 |
