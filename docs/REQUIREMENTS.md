@@ -1337,8 +1337,10 @@ GitHub disables a repo's scheduled workflows after 60 days without a commit. Tha
 - A workflow in state `active` is refreshed by calling GitHub's enable endpoint for it (this includes the keep-alive itself)
 - A workflow in state `disabled_inactivity` is **not** re-enabled automatically: the run fails and names it, so Kate decides
 - A workflow in state `disabled_manually` is left alone and is not a failure (someone turned it off on purpose)
+- A workflow in any other state (e.g. `deleted`) is ignored: not refreshed, not a failure
 - An enable call that fails makes the run fail and names the workflow; the remaining workflows are still refreshed
 - If the listing holds no workflows from `.github/workflows/` at all, the run fails (the keep-alive itself should always be there; an empty answer is never "all fine")
+  - Workflows that are all disabled on purpose still count as listed: that run passes
 
 **Tests:** `src/__tests__/workflowHealth.test.js`
 
