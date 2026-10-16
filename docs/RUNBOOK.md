@@ -154,6 +154,8 @@ WHERE status = 'processing'
   AND updated_at < NOW() - INTERVAL '15 minutes';
 ```
 
+
+**Drain it by hand** (sends no WhatsApp): load `.env.local`, then `node scripts/drain-queue.js [maxItems]`. It runs the crons' own `runDetailSync()` until the queue is idle, one item every ~7–10 s. On 2026-10-16 it drained 880 → 0 in about 2 h (835 skipped as daycare/same-day, 39 boardings created).
 ---
 
 ## Manual operations
