@@ -19,11 +19,15 @@ export const config = { runtime: 'nodejs' };
 
 const REPO = process.env.GITHUB_REPO || 'kcoffie/dog-boarding';
 const APP_URL = 'https://qboarding.vercel.app';
+// Every outside call gets a deadline, so a hang (like the #246 image crash) becomes a finding
+// instead of killing the function before it can alert.
+const FETCH_TIMEOUT_MS = 15000;
 
 function github(path, init = {}) {
   const token = process.env.GH_ACTIONS_TOKEN;
   if (!token) throw new Error('GH_ACTIONS_TOKEN not set in Vercel');
   return fetch(`https://api.github.com/repos/${REPO}${path}`, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     ...init,
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
   });
@@ -60,19 +64,28 @@ function makeDeps(supabase) {
     },
 
     async loadLastSuccess() {
-      const result = {};
-      for (const file of Object.keys(WORKFLOW_MAX_AGE_HOURS)) {
-        const res = await github(`/actions/workflows/${file}/runs?status=success&per_page=1`);
-        if (!res.ok) throw new Error(`GitHub runs for ${file}: HTTP ${res.status}`);
-        const body = await res.json();
-        result[file] = body.workflow_runs?.[0]?.updated_at ?? null;
-      }
-      return result;
+      if (!process.env.GH_ACTIONS_TOKEN) throw new Error('GH_ACTIONS_TOKEN not set in Vercel');
+      // Scheduled runs only: a manual run must not hide a schedule that stopped. One failed lookup
+      // is reported for that workflow alone; the others are still checked.
+      const files = Object.keys(WORKFLOW_MAX_AGE_HOURS);
+      const entries = await Promise.all(files.map(async (file) => {
+        try {
+          const res = await github(`/actions/workflows/${file}/runs?status=success&event=schedule&per_page=1`);
+          if (!res.ok) return [file, { error: `HTTP ${res.status}` }];
+          const body = await res.json();
+          return [file, body.workflow_runs?.[0]?.updated_at ?? null];
+        } catch (err) {
+          return [file, { error: err.message }];
+        }
+      }));
+      return Object.fromEntries(entries);
     },
 
     async fetchImage() {
       const token = encodeURIComponent(process.env.VITE_SYNC_PROXY_TOKEN ?? '');
-      const res = await fetch(`${APP_URL}/api/roster-image?type=weekend&token=${token}`);
+      const res = await fetch(`${APP_URL}/api/roster-image?type=weekend&token=${token}`, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
       return { status: res.status, contentType: res.headers.get('content-type') ?? '' };
     },
 

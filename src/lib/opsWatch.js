@@ -9,6 +9,8 @@
  */
 
 const HOUR_MS = 3600e3;
+const COULDNT = "Couldn't check";
+const MAX_FINDING_CHARS = 200;
 const BACKLOG_HOURS = 48;
 const STALLED_HOURS = 36;
 
@@ -63,14 +65,18 @@ export function checkRoster({ sent, deliveredWamids }, now) {
   return [];
 }
 
-/** @param {Record<string, string|null>} lastSuccess  workflow file → ISO time of its last successful run */
+/**
+ * @param {Record<string, string|null|{error:string}>} lastSuccess  workflow file → ISO time of its last
+ *   successful scheduled run, null when it never succeeded, or { error } when GitHub couldn't be asked.
+ */
 export function checkWorkflowRuns(lastSuccess, now) {
   const findings = [];
   for (const [file, maxHours] of Object.entries(WORKFLOW_MAX_AGE_HOURS)) {
     // Stryker disable next-line Regex: the keys are fixed file names, so the $ anchor changes nothing
     const name = file.replace(/\.yml$/, '');
     const at = lastSuccess[file];
-    if (!at) findings.push(`Workflow ${name} has never succeeded (disabled or failing?)`);
+    if (at?.error) findings.push(`${COULDNT} workflow ${name}: ${at.error}`);
+    else if (!at) findings.push(`Workflow ${name} has never succeeded (disabled or failing?)`);
     else if (hoursSince(at, now) > maxHours) {
       findings.push(`Workflow ${name}: last success ${Math.round(hoursSince(at, now))}h ago (limit ${maxHours}h)`);
     }
@@ -91,7 +97,6 @@ export function checkImage({ status, contentType }) {
 export async function runOpsWatch(d) {
   const now = d.now();
   const findings = [];
-  let allChecksRan = true;
 
   const checks = [
     ['the sync queue', async () => checkQueue(await d.loadQueueStats(), now)],
@@ -103,10 +108,12 @@ export async function runOpsWatch(d) {
     try {
       findings.push(...(await run()));
     } catch (err) {
-      allChecksRan = false;
-      findings.push(`Couldn't check ${what}: ${err.message}`);
+      findings.push(`${COULDNT} ${what}: ${err.message}`);
     }
   }
+  // Long API errors would make the WhatsApp template parameter too big.
+  for (let i = 0; i < findings.length; i++) findings[i] = findings[i].slice(0, MAX_FINDING_CHARS);
+  const allChecksRan = !findings.some((f) => f.startsWith(COULDNT));
 
   if (findings.length === 0) return { ok: true, findings };
 

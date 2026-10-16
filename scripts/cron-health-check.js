@@ -129,6 +129,21 @@ export function checkDidRun(cronName, healthRow, midnightUtc) {
 }
 
 /**
+ * ops-watch must have run within the last 26 hours, and its last run must not be a failure
+ * (a failure means a check couldn't run or an alert couldn't be sent) (REQ-651).
+ * @param {{ last_ran_at: string, status: string }|undefined} healthRow
+ * @param {number} nowMs
+ * @returns {string|null}
+ */
+export function checkOpsWatchFresh(healthRow, nowMs) {
+  if (!healthRow) return 'ops-watch (Vercel) has never run';
+  const hours = (nowMs - new Date(healthRow.last_ran_at).getTime()) / 3600e3;
+  if (hours > OPS_WATCH_MAX_AGE_H) return `ops-watch (Vercel) last ran ${Math.round(hours)}h ago (limit ${OPS_WATCH_MAX_AGE_H}h)`;
+  if (healthRow.status === 'failure') return 'ops-watch (Vercel) last run failed: a check or its alert did not go through';
+  return null;
+}
+
+/**
  * Check 2: Is the cron stuck in 'started' beyond the hung threshold?
  * A cron that wrote 'started' but never updated to 'success' or 'failure'
  * within HUNG_THRESHOLD_MIN minutes has likely hung or crashed mid-run.
@@ -138,19 +153,6 @@ export function checkDidRun(cronName, healthRow, midnightUtc) {
  * @param {number} nowMs - Current timestamp in ms (Date.now())
  * @returns {string|null}
  */
-/**
- * ops-watch must have run within the last 26 hours (REQ-651).
- * @param {{ last_ran_at: string }|undefined} healthRow
- * @param {number} nowMs
- * @returns {string|null}
- */
-export function checkOpsWatchFresh(healthRow, nowMs) {
-  if (!healthRow) return 'ops-watch (Vercel) has never run';
-  const hours = (nowMs - new Date(healthRow.last_ran_at).getTime()) / 3600e3;
-  if (hours <= OPS_WATCH_MAX_AGE_H) return null;
-  return `ops-watch (Vercel) last ran ${Math.round(hours)}h ago (limit ${OPS_WATCH_MAX_AGE_H}h)`;
-}
-
 export function checkHungCron(cronName, healthRow, nowMs) {
   if (!healthRow || healthRow.status !== 'started') return null;
 

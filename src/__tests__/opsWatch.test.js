@@ -144,6 +144,14 @@ describe('scheduled workflows', () => {
     expect(checkWorkflowRuns(runs, NOW)).toEqual(['Workflow keepalive has never succeeded (disabled or failing?)']);
   });
 
+  it("a workflow GitHub couldn't be asked about is named, and the others are still checked", () => {
+    const runs = { ...healthy(), 'gmail-monitor.yml': { error: 'HTTP 404' }, 'keepalive.yml': null };
+    expect(checkWorkflowRuns(runs, NOW)).toEqual([
+      "Couldn't check workflow gmail-monitor: HTTP 404",
+      'Workflow keepalive has never succeeded (disabled or failing?)',
+    ]);
+  });
+
   it('the weekend gap before Monday 4am (about 3 days) is inside the 4-day limit', () => {
     const monday0600 = new Date('2026-10-19T06:00:00Z');
     const runs = { ...healthy(), 'notify-4am.yml': '2026-10-16T11:00:00Z' };
@@ -234,6 +242,25 @@ describe('runOpsWatch', () => {
       "Couldn't check the scheduled workflows: x",
       "Couldn't check the roster image: x",
     ]);
+  });
+
+  it("one workflow GitHub couldn't be asked about makes the run not ok", async () => {
+    const d = deps({ loadLastSuccess: async () => ({
+      'gmail-monitor.yml': { error: 'HTTP 500' },
+      'integration-check.yml': hoursAgo(9),
+      'cron-health-check.yml': hoursAgo(17),
+      'notify-4am.yml': hoursAgo(6),
+      'keepalive.yml': hoursAgo(24),
+    }) });
+    const r = await runOpsWatch(d);
+    expect(r.findings).toEqual(["Couldn't check workflow gmail-monitor: HTTP 500"]);
+    expect(r.ok).toBe(false);
+  });
+
+  it('a finding is cut to 200 characters', async () => {
+    const d = deps({ loadQueueStats: async () => { throw new Error('x'.repeat(500)); } });
+    const r = await runOpsWatch(d);
+    expect(r.findings[0]).toHaveLength(200);
   });
 
   it('the other checks still run when one fails', async () => {

@@ -26,5 +26,10 @@
       "path": "/api/ops-watch",
       "schedule": "0 17 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/ops-watch.js": {
+      "maxDuration": 60
+    }
+  }
 }

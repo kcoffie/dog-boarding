@@ -194,14 +194,18 @@ describe('checkOpsWatchFresh', () => {
   const NOW_MS = Date.parse('2026-10-17T00:30:00Z');
   /** @requirements REQ-651 */
   it('ops-watch that ran 7.5 h ago (yesterday 17:00 UTC) is fine', () => {
-    expect(checkOpsWatchFresh({ last_ran_at: '2026-10-16T17:00:00Z' }, NOW_MS)).toBeNull();
+    expect(checkOpsWatchFresh({ last_ran_at: '2026-10-16T17:00:00Z', status: 'success' }, NOW_MS)).toBeNull();
   });
   it('ops-watch that ran exactly 26 h ago is still fine', () => {
-    expect(checkOpsWatchFresh({ last_ran_at: '2026-10-15T22:30:00Z' }, NOW_MS)).toBeNull();
+    expect(checkOpsWatchFresh({ last_ran_at: '2026-10-15T22:30:00Z', status: 'success' }, NOW_MS)).toBeNull();
   });
   it('ops-watch that last ran 31.5 h ago is reported', () => {
-    expect(checkOpsWatchFresh({ last_ran_at: '2026-10-15T17:00:00Z' }, NOW_MS))
+    expect(checkOpsWatchFresh({ last_ran_at: '2026-10-15T17:00:00Z', status: 'success' }, NOW_MS))
       .toBe('ops-watch (Vercel) last ran 32h ago (limit 26h)');
+  });
+  it('a recent ops-watch run that failed is reported', () => {
+    expect(checkOpsWatchFresh({ last_ran_at: '2026-10-16T17:00:00Z', status: 'failure' }, NOW_MS))
+      .toBe('ops-watch (Vercel) last run failed: a check or its alert did not go through');
   });
   it('ops-watch that has never run is reported', () => {
     expect(checkOpsWatchFresh(undefined, NOW_MS)).toBe('ops-watch (Vercel) has never run');
