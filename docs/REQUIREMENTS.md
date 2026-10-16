@@ -1324,6 +1324,26 @@ The Calendar page shows a second calendar grid below the dog boarding calendar, 
 
 ---
 
+## v6.3 — Ops: Silence Is Never Success
+
+### REQ-650: Scheduled Workflow Keep-Alive
+**Added:** v6.3.0 | **Status:** Complete
+
+GitHub disables a repo's scheduled workflows after 60 days without a commit. That happened on 2026-08-24 and stopped every notification silently. A weekly keep-alive workflow refreshes each active workflow so the timer never runs out, and fails loudly when one has already been disabled.
+
+**Acceptance Criteria:**
+- Runs weekly (Monday 12:00 UTC) and on demand (`workflow_dispatch`)
+- Only workflows defined in `.github/workflows/` are considered (GitHub's built-in ones, like Dependabot, are skipped)
+- A workflow in state `active` is refreshed by calling GitHub's enable endpoint for it (this includes the keep-alive itself)
+- A workflow in state `disabled_inactivity` is **not** re-enabled automatically: the run fails and names it, so Kate decides
+- A workflow in state `disabled_manually` is left alone and is not a failure (someone turned it off on purpose)
+- An enable call that fails makes the run fail and names the workflow; the remaining workflows are still refreshed
+- If the listing holds no workflows from `.github/workflows/` at all, the run fails (the keep-alive itself should always be there; an empty answer is never "all fine")
+
+**Tests:** `src/__tests__/workflowHealth.test.js`
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section
@@ -1354,3 +1374,4 @@ The Calendar page shows a second calendar grid below the dog boarding calendar, 
 - **REQ-620 to REQ-629**: Integration Check (v4.3)
 - **REQ-630 to REQ-639**: Friday PM Weekend Notify (v4.4)
 - **REQ-640 to REQ-649**: Session Self-Healing & Observability (v4.4.1)
+- **REQ-650 to REQ-659**: Ops — keep-alive & stale-data alerts (v6.3)
