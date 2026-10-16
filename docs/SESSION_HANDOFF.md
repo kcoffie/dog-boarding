@@ -45,7 +45,8 @@
 3. **Kate:** re-enable the 8 workflows (Actions tab, or `command gh workflow enable <name>`), then run `Keepalive` by hand.
 4. **Kate:** answer the 5 ops-watch decisions in the design note. Then build ops-watch (REQ-651) on `feat/stale-data-alert`.
 5. Drain or prune the 880-item queue before UAT day 1.
-6. Delete the leftover `.stryker-tmp/` and the dangling `docs/MEMORY.md` symlink. Both are outside the delete guard's allowlist, so Kate does it.
+6. Delete the leftover `.stryker-tmp/` the dangling `docs/MEMORY.md` symlink and the stray `~/projs/qap/nah.bak`. Both are outside the delete guard's allowlist, so Kate does it.
+7. **Kate (repo setting):** add `no-attribution` to the `main` ruleset's required checks after its first PR run.
 
 ## Open TODOs
 - [ ] #239: bring existing code up to the gates bar (mutation gaps, Ops audit, security incl. `CRON_SECRET` fail-open, dependency majors)
