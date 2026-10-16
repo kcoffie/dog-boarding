@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 16, 2026 (session 33, end): production recovered and back under watch. The team-gates process is merged, keep-alive and ops-watch are live, the backlog is drained, and the Friday roster was delivered. Waiting on Kate: the GitHub token in Vercel, and the history-rewrite push.
+**Last updated:** October 16, 2026, 23:50 UTC (session 33, end). Production recovered and is watched again. Two steps wait on Kate: `GH_ACTIONS_TOKEN` in Vercel, and pushing the history rewrite. First job next session: confirm the schedules run green on Node 22.
 
 ---
 
@@ -21,52 +21,70 @@
 ## Current State (2026-10-16, end of session 33)
 
 ### Production
-- **WhatsApp works.** The Friday weekend roster was sent by hand at 22:58 UTC: `delivered` to both recipients and `read` by Kate. K-8 is not blocking.
-- **Sync caught up.** The 880-item queue was drained to 0 by `scripts/drain-queue.js`: 835 skipped (daycare/same-day), 39 boardings created, 1 updated, 17 forms.
-- **All 10 GitHub workflows are active**, including the new `keepalive` and `attribution`. The 8 scheduled ones were re-enabled at about 20:50 and 22:53 UTC. Whether they actually resume firing is unconfirmed (see the next steps). ops-watch's first run will report it either way.
-- **Image crash fixed (#246, PR #247).** The deps bump took satori 0.26 → 0.35, which crashed every image function on Vercel (`FUNCTION_INVOCATION_FAILED`). satori is pinned at 0.26.0. Locally both versions rendered fine, so only a production check catches this. ops-watch now does that check daily.
-- **ops-watch is live (#250, REQ-651)**, a Vercel cron at 17:00–17:59 UTC. It fails closed: requests without `CRON_SECRET` get 401. **It needs `GH_ACTIONS_TOKEN` in Vercel** (see the next steps). Until then it alerts "Couldn't check the scheduled workflows".
+- **WhatsApp works.** The Friday roster was sent by hand at 22:58 UTC: `delivered` to both recipients and `read` by Kate. K-8 isn't blocking.
+- **Sync caught up.** The 880-item queue was drained to 0 by `scripts/drain-queue.js`: 835 skipped, 39 boardings created, 1 updated, 17 forms.
+- **All 10 workflows are active, and schedules resumed.** The first one fired at 23:34 UTC (Gmail Monitor). That run **failed**: supabase-js 2.117 (from #240) needs Node 22 and the workflows ran Node 20. **Fixed in #253** (#252): every workflow is now on Node 22. **Not yet seen green:** the next Gmail Monitor run (around 00:15 UTC) is the first one on Node 22.
+- **Image crash fixed (#246 / #247).** satori 0.35 crashed every image function on Vercel. It's pinned at 0.26.0 and the production weekend image is verified at 200 `image/png`.
+- **ops-watch is live (#250, REQ-651).** Vercel cron, daily 17:00–17:59 UTC. Requests without `CRON_SECRET` get 401 (verified). **It needs `GH_ACTIONS_TOKEN` in Vercel.** Until then it alerts "Couldn't check the scheduled workflows".
+- **Expected false alarm:** tonight's 00:30 UTC Cron Health Check will say "ops-watch has never run". Its first run is 2026-10-17 17:00–17:59 UTC.
 
-### Merged today
+### Merged in session 33
 | PR | What |
 |---|---|
 | #240 | 20 Dependabot updates combined (#225 superseded) |
-| #242 | Team gates: attribution hook and required check, reviewer/architect agents, ENGINEERING_PROCESS, CONTRIBUTING, Stryker ratchet |
+| #242 | Team gates: attribution hook and required check, reviewer/architect agents, ENGINEERING_PROCESS, CONTRIBUTING, Stryker ratchet 35 |
 | #244 | Weekly keep-alive (REQ-650). Best effort: GitHub doesn't document that the enable call resets the timer |
 | #247 | satori pinned to 0.26.0 (image crash) |
 | #248 | `scripts/drain-queue.js` plus a RUNBOOK note |
-| #249 | Mutation job on Node 22 (Stryker 10 needs it; it failed 3 times on Node 20) |
+| #249 | CI mutation job on Node 22 |
 | #250 | ops-watch, plus cron-health-check watching it back |
+| #251 | Session handoff |
+| #253 | All workflows on Node 22 (supabase-js) |
 
-The ruleset now also requires `no-attribution`.
+Ruleset: `no-attribution` is now required. 29 shipped issues were closed. Tracking issues #235, #236 and #237 are done.
 
 ### Mutation
-Baseline **35.25% (2648 / 7512)**, ratchet 35. New code: `workflowHealth.js` 100%, `opsWatch.js` 99.33%, `api/ops-watch.js` 82.74%. The first CI `mutation` run on main (Node 22) is still to be checked.
+Baseline **35.25% (2648 / 7512)**, ratchet 35. New code: `workflowHealth.js` 100%, `opsWatch.js` 99.33%, `api/ops-watch.js` 82.74%. CI's `mutation` job on main runs on Node 22 since #249. **Check its first green run and add the CI score to the score log** in ENGINEERING_PROCESS.
+
+### History rewrite (Kate approved; Kate must push)
+110 old commits on main carry Claude attribution lines. Claude can't force-push main (blocked by the permission classifier), so: `sh scripts/prepare-history-rewrite.sh <empty scratch dir>` builds the rewrite in a fresh clone and verifies it:
+- same commit count, and every commit's tree, author, dates and subject unchanged
+- no attribution left
+- dependabot co-authors kept
+- a backup bundle saved to `~/projs/qap/_salvage/`
+
+It then prints the exact push command for Kate. **Rebuild right before Kate pushes**: any merge to main makes an older build's `--force-with-lease` refuse (safely). After the push:
+- every clone needs `git fetch && git reset --hard origin/main` while on main
+- SHAs quoted in old docs and comments stop resolving
+- 80+ stale remote branches still hold the old history (deleting them is Kate's call)
 
 ### Issues
 Open:
 - #239 (backfill: existing code up to the gates bar; findings are in its comments)
 - #238 (deps; close it once the majors are triaged)
-- #246 (image crash; close it once a scheduled roster renders)
+- #246 (close it after a scheduled roster renders)
+- #252 (close it after green Node 22 scheduled runs)
 - #145
 - 15 January backlog items (#6–#24)
 
-Dependabot majors left open: #174 (vite 8), #219 / #241 (vitest 5), #234 (dev group). Note that satori must stay at 0.26 until it's tested in a Vercel deploy.
+Dependabot majors still open: #174 (vite 8), #219 / #241 (vitest 5), #234 (dev group). **Keep satori at 0.26** until a newer version is proven in a Vercel deploy.
 
 ## Immediate Next Steps
-1. **Kate: create the GitHub token.** Fine-grained PAT, repo `kcoffie/dog-boarding` only, **Actions: Read and write**. Set it as `GH_ACTIONS_TOKEN` in Vercel → Production, and confirm `CRON_SECRET` is set there. Then: `curl -H "Authorization: Bearer $CRON_SECRET" "https://qboarding.vercel.app/api/ops-watch?dryRun=1"`.
-2. **Kate: push the history rewrite.** It was prepared and verified but needs her to push, because the force push to main was blocked for Claude. The backup is `~/projs/qap/_salvage/dog-boarding-main-before-rewrite-2026-10-16.bundle`. After the push, every local clone needs `git fetch && git reset --hard origin/main` (on main). SHAs quoted in older docs and issue comments will no longer resolve.
-3. **Check the schedules resumed:** `command gh run list --event schedule --limit 5`. If nothing has run since 2026-10-16, ops-watch will say so. Next, try disabling and re-enabling one workflow, or pushing to main.
-4. **Monday 2026-10-19:** confirm the 4am roster was sent and delivered. That's the first scheduled send since August.
-5. **Kate: run `! rm ~/projs/qap/dog-boarding/docs/MEMORY.md && rm -rf ~/projs/qap/dog-boarding/.stryker-tmp`.** The delete guard blocks Claude here.
-6. Start #239, beginning with tests for `notify.js` and the sync crons (0% mutation score).
+1. **Verify the schedules on Node 22:** `command gh run list --event schedule --limit 8`. Gmail Monitor, Integration Check and Cron Health Check should be green since #253. If one fails, read `--log-failed` and fix it like #253. Then close #252.
+2. **Kate:** create a fine-grained PAT (repo `kcoffie/dog-boarding` only, **Actions: Read and write**), set it as `GH_ACTIONS_TOKEN` in Vercel → Production, and confirm `CRON_SECRET` is set there. Check with `curl -H "Authorization: Bearer $CRON_SECRET" "https://qboarding.vercel.app/api/ops-watch?dryRun=1"`. The next agent can't read Vercel env; ask Kate.
+3. **After 2026-10-17 17:00–17:59 UTC:** confirm ops-watch ran (`cron_health` row `ops-watch`) and what it reported.
+4. **Monday 2026-10-19:** confirm the 4am roster was sent **and delivered** (`message_log` job `notify-4am`, then `message_delivery_status`). If yes, close #246.
+5. **History rewrite:** if Kate hasn't pushed yet, rebuild with `scripts/prepare-history-rewrite.sh` and give her the printed command. Don't merge anything between the rebuild and her push.
+6. **Kate (delete guard):** `rm ~/projs/qap/dog-boarding/docs/MEMORY.md ~/projs/qap/nah.bak && rm -rf ~/projs/qap/dog-boarding/.stryker-tmp`.
+7. Start #239: tests for `api/notify.js` and the sync crons first (0% mutation score; they're what the client feels).
 
 ## Open TODOs
-- [ ] #239 backfill (mutation gaps, Ops audit of every job, `CRON_SECRET` fail-open in older crons, Node 20 EOL, majors incl. satori)
+- [ ] #239 backfill (mutation gaps, Ops audit of every job, `CRON_SECRET` fail-open in older crons, majors incl. satori)
 - [ ] `mutate:changed` (80% on changed lines) as a PR check
 - [ ] A PR check that `thresholds.break` never goes down (the reviewer enforces it for now)
-- [ ] keep-alive: confirm after 60 days (around 2026-12-15) that the timer was really reset. ops-watch will report it if not.
-- [ ] 80+ stale remote branches still carry the pre-rewrite history; delete the merged ones (Kate's call)
+- [ ] keep-alive: confirm after 60 days (around 2026-12-15) that the timer really reset. ops-watch reports it if not.
+- [ ] Delete merged stale remote branches (Kate's call)
+- [ ] Old worktrees for merged branches live in the session scratchpad (temporary). Nothing is unpushed.
 
 ---
 
