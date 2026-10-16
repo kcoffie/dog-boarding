@@ -76,6 +76,14 @@ describe('runKeepalive', () => {
     expect(r.inactive).toEqual(['notify-7am']);
   });
 
+  it('when the only workflow is disabled for inactivity, the run fails, names it, and refreshes nothing', async () => {
+    const gh = fakeGitHub([wf(2, 'notify-7am', 'disabled_inactivity')]);
+    const r = await runKeepalive(gh);
+    expect(gh.enabled).toEqual([]);
+    expect(r.ok).toBe(false);
+    expect(r.inactive).toEqual(['notify-7am']);
+  });
+
   it('a manually disabled workflow is not a failure', async () => {
     const gh = fakeGitHub([wf(1, 'notify-4am', 'active'), wf(3, 'gmail-monitor', 'disabled_manually')]);
     const r = await runKeepalive(gh);

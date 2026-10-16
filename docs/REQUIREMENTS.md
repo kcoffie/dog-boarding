@@ -1341,6 +1341,7 @@ GitHub disables a repo's scheduled workflows after 60 days without a commit. Tha
 - An enable call that fails makes the run fail and names the workflow; the remaining workflows are still refreshed
 - If the listing holds no workflows from `.github/workflows/` at all, the run fails (the keep-alive itself should always be there; an empty answer is never "all fine")
   - Workflows that are all disabled on purpose still count as listed: that run passes
+- **Known exception to the Ops gate (until #237):** a failed keep-alive shows only as a red run plus GitHub's email to whoever last edited its cron. It sends no WhatsApp, because an alert sent from GitHub would share the scheduler it is reporting on. ops-watch on Vercel (#237) is the real alert
 
 **Tests:** `src/__tests__/workflowHealth.test.js`
 
