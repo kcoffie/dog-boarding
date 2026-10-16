@@ -82,6 +82,21 @@ The alert message will say which cron missed a run or had consecutive failures (
 
 ---
 
+### "Ops watch sent an alert" (WhatsApp "Q Boarding ops watch", or a GitHub email from "Ops alert")
+
+`/api/ops-watch` runs on Vercel once a day, some time between 17:00 and 17:59 UTC (Hobby cron precision) and checks outcomes, not just whether jobs ran. Every line of the alert is one finding:
+- **Sync backlog / Sync stalled:** the detail queue isn't draining. See "Queue is backed up". To drain by hand: `node scripts/drain-queue.js` with `.env.local` loaded (sends nothing, about 7–10 s per item).
+- **No morning roster / not delivered:** check today's `notify-4am` run in Actions and the `message_delivery_status` rows. "Not delivered" with Meta errors usually means a token or template problem.
+- **Workflow X: last success Nh ago:** open that workflow in Actions. If it's disabled, enable it. If it's failing, read the error (an expired Gmail token is a common one).
+- **Roster image broken:** call `/api/roster-image?type=weekend&token=…`. A 500 with `FUNCTION_INVOCATION_FAILED` means the function crashed on load. The last time (#246) a dependency bump caused it.
+- **Couldn't check …:** the check itself failed. Fix that first: missing `GH_ACTIONS_TOKEN`, an expired token, or Supabase down.
+
+**To see today's findings without alerting:** `curl -H "Authorization: Bearer $CRON_SECRET" "https://qboarding.vercel.app/api/ops-watch?dryRun=1"`.
+
+`cron-health-check` (GitHub) reports ops-watch itself when it hasn't run for 26 h, so each scheduler watches the other.
+
+---
+
 ### "The Keepalive workflow failed" (or no notifications at all)
 
 GitHub disables scheduled workflows after 60 days without a commit. Then notifications, the cron health check, the integration check and the Gmail monitor all stop silently (this happened 2026-08-24 and wasn't noticed until October). `Keepalive` runs every Monday at 12:00 UTC and refreshes each active workflow so that can't happen again.
@@ -189,6 +204,12 @@ UPDATE boardings SET sync_status = 'archived' WHERE external_id = '<id>';
 ```
 
 ---
+
+## Vercel env for ops-watch
+- `GH_ACTIONS_TOKEN`: fine-grained PAT, repository `kcoffie/dog-boarding` only, permissions **Actions: Read and write**. Used by `/api/ops-watch` to read workflow runs and dispatch `ops-alert.yml`. When it expires, ops-watch reports "Couldn't check the scheduled workflows".
+- `CRON_SECRET`: Vercel sends it to crons; ops-watch rejects every request without it.
+- ops-watch also needs these in **Vercel** env (not just GitHub secrets): `INTEGRATION_CHECK_RECIPIENTS` and the `META_*` WhatsApp vars (already used by `/api/send-question` and `/api/notify`), `VITE_SYNC_PROXY_TOKEN` (roster image) and the Supabase keys. If `CRON_SECRET` is missing, every ops-watch call gets 401 and `cron-health-check` reports "ops-watch has never run".
+- Email alerts arrive only if Kate's GitHub notification settings email her about failed Actions runs she triggered (Settings → Notifications → Actions).
 
 ## GitHub Actions secrets reference
 
