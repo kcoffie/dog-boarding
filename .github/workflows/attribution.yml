@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 5
     permissions: { contents: read }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - name: Commits in this PR
         # From the merge base, without merges: a branch that merged main in must not be judged on main's own commits.
