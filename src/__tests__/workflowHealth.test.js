@@ -42,6 +42,13 @@ describe('classifyWorkflows', () => {
     expect(r.inactive).toEqual([]);
   });
 
+  it('a workflow in any other state (e.g. deleted) is ignored', () => {
+    const r = classifyWorkflows([wf(6, 'old-job', 'deleted')]);
+    expect(r.refresh).toEqual([]);
+    expect(r.inactive).toEqual([]);
+    expect(r.manual).toEqual([]);
+  });
+
   it("GitHub's built-in workflows (outside .github/workflows/) are skipped", () => {
     const r = classifyWorkflows([wf(4, 'Dependabot Updates', 'active', 'dynamic/dependabot/dependabot-updates')]);
     expect(r.refresh).toEqual([]);
@@ -74,6 +81,12 @@ describe('runKeepalive', () => {
     const r = await runKeepalive(gh);
     expect(r.ok).toBe(true);
     expect(r.manual).toEqual(['gmail-monitor']);
+  });
+
+  it('a repo whose workflows are all disabled on purpose passes', async () => {
+    const gh = fakeGitHub([wf(3, 'gmail-monitor', 'disabled_manually')]);
+    const r = await runKeepalive(gh);
+    expect(r.ok).toBe(true);
   });
 
   it('a failed enable call fails the run, names the workflow, and the rest are still refreshed', async () => {
