@@ -106,3 +106,27 @@ jobs:
           else
             echo "✅ No doc staleness detected."
           fi
+
+  # Job 6: Mutation score (Stryker) — main only, after merge. Fails when the score drops below
+  # thresholds.break in stryker.config.json (the ratchet). See docs/ENGINEERING_PROCESS.md.
+  mutation:
+    name: Mutation (ratchet)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Stryker
+        run: ./node_modules/.bin/stryker run stryker.config.json --concurrency 4
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: out/
+          retention-days: 30

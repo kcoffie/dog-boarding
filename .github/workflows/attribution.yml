@@ -1,0 +1,26 @@
+name: attribution
+# Kate's rule: no AI attribution (Co-Authored-By, Claude-Session, session links) in commits or PR descriptions.
+# The husky commit-msg hook only runs where `npm install` set it up (and `--no-verify` skips it); this check runs on
+# every PR, and again when its description is edited. Its own workflow, so a description edit doesn't re-run CI.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  no-attribution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - name: Commits in this PR
+        # From the merge base, without merges: a branch that merged main in must not be judged on main's own commits.
+        run: |
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          BASE=$(git merge-base "${{ github.event.pull_request.base.sha }}" "$HEAD_SHA")
+          git log --no-merges --format=%B "$BASE..$HEAD_SHA" | sh scripts/no-attribution.sh
+      - name: The PR description
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n' "$BODY" | sh scripts/no-attribution.sh
