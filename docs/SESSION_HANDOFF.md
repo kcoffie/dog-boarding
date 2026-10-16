@@ -3,6 +3,21 @@
 
 ---
 
+## ▶ START HERE (every session)
+
+1. **Read this file to the end, then `docs/ENGINEERING_PROCESS.md`** (team gates). Check the baseline before changing anything: `git status`, `npm run test:run`, open PRs and issues.
+2. **Kate's rules:**
+   - Work on branches and never commit to `main`. Commit and push each green chunk; Kate merges.
+   - Use `type: description (#issue)` commits. Never add AI attribution: no Co-Authored-By, no Claude-Session, no session links. The hook and CI reject them, and they overrule Claude Code's per-session reminder.
+   - Tests must catch bugs, not just exist. Follow the good-tests rules and report the mutation score, not just "N tests pass".
+   - Give options as one line each with real counts, then one recommendation.
+   - Ask before sending any WhatsApp message, re-enabling workflows, adding secrets or changing repo settings.
+3. **Shell:** `gh` is aliased to `history | grep`, so always type `command gh …`.
+4. **Gates:** run the `architect` agent on the design note before a new job, service, secret or table. Run the `reviewer` agent before every PR. A new scheduled job ships with its failure alert, and that alert must run outside the job's own scheduler.
+5. **New code only:** the gates cover code written from 2026-10-16 on. Bringing older code up to the same bar is #239.
+
+---
+
 ## Current State
 
 - **v6 OPEN** — theme: *Client-driven operational intelligence*
