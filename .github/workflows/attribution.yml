@@ -15,7 +15,11 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - name: Commits in this PR
-        run: git log --format=%B "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" | sh scripts/no-attribution.sh
+        # From the merge base, without merges: a branch that merged main in must not be judged on main's own commits.
+        run: |
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          BASE=$(git merge-base "${{ github.event.pull_request.base.sha }}" "$HEAD_SHA")
+          git log --no-merges --format=%B "$BASE..$HEAD_SHA" | sh scripts/no-attribution.sh
       - name: The PR description
         env:
           BODY: ${{ github.event.pull_request.body }}

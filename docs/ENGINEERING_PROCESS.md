@@ -9,11 +9,11 @@ dog-boarding is built by one person directing an AI coding agent, for a real cli
 | Reviewer | Before every PR is opened | The `reviewer` agent (fresh context, didn't write the code): correctness against REQUIREMENTS, then a **separate test audit**, then ops and security | Bugs, tests that test nothing, failures nobody hears about |
 | QA | Every push and PR | CI (`ci.yml`): lint, `check:requirements`, tests, build. `npm run mutate` (Stryker) measures whether the tests would notice a bug (below) | Regressions, weak tests |
 | Security | Before secrets go live, and in review | The design note's threat section: each secret's scope, where it lives, what a leak exposes. The repo is **public**: no keys, phone numbers or client data in code, tests, docs or commits | Leaked keys, over-broad tokens, client data on a public repo |
-| Ops | In production, every scheduled run | Every scheduled job reports its **failure** to Kate (WhatsApp). **Silence is never success.** A check that runs on the same scheduler as the job it watches doesn't count (below) | A notification that quietly stops arriving |
+| Ops | In production, every scheduled run | **Target:** every scheduled job reports its **failure** to Kate (WhatsApp); auditing today's jobs against it is #239. **Silence is never success.** A check that runs on the same scheduler as the job it watches doesn't count (below) | A notification that quietly stops arriving |
 | Kate's rules | Every commit and PR | `scripts/no-attribution.sh`, run by `.husky/commit-msg` and the `attribution` workflow (each PR's commits and description, re-run on edit) | AI attribution (Co-Authored-By, Claude-Session, session links). Claude Code's per-session reminder asks for these; it is overruled |
 | Kate | Every merge, and every rule about what the client sees | Reads the test **names** and the real counts; merges PRs herself | A change that's correct in code but wrong for the client |
 
-**What blocks a merge.** `main` has a ruleset (the repo is public). Claude never commits to `main`, never calls a PR ready while a check is red (`command gh pr checks`), and Kate merges.
+**What blocks a merge.** `main` has a ruleset (the repo is public) requiring Lint, Unit Tests, Requirements Coverage and Build. `no-attribution` isn't a required check until Kate adds it to the ruleset, so today it blocks by rule, not mechanically. Claude never commits to `main`, never calls a PR ready while a check is red (`command gh pr checks`), and Kate merges.
 
 **Scope: new code.** These gates fire on diffs, so they cover code written from 2026-10-16 on. Code written before that is brought up to the same bar by the backfill in issue #239 (mutation survivors per file, an Ops audit of every job, a reviewer pass per module, security, dependencies). Until that's done, a low score in an old file is a known gap, not a surprise.
 
@@ -26,7 +26,7 @@ The August 2026 outage is the reason for this gate. GitHub disabled all 8 schedu
 Rules for every scheduled job (GitHub Actions or Vercel cron):
 1. **Failure is loud.** A failed run alerts Kate (`getAlertRecipients()`), never just a log line or a red run nobody opens.
 2. **Check outcomes, not runs.** "The cron ran" isn't health. Check what the client depends on: data freshness, queue depth, a message actually delivered.
-3. **The watcher runs somewhere else.** A health check that shares the scheduler of the job it watches dies with it. Today: GitHub workflows are watched from a Vercel cron, and kept enabled by `keepalive.yml`.
+3. **The watcher runs somewhere else.** A health check that shares the scheduler of the job it watches dies with it. **Not true yet (2026-10-16):** every watcher still runs on GitHub. `keepalive.yml` (#236, best effort) and ops-watch on a Vercel cron (#237, designed, blocked on decisions) close this gap.
 4. **A new job comes with its alert** in the same PR, and its runbook entry in `docs/RUNBOOK.md`.
 
 ## Good tests, not just tests
