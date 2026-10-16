@@ -30,7 +30,7 @@
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4",
     "react-select": "^5.10.2",
-    "satori": "^0.35.0"
+    "satori": "0.26.0"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
