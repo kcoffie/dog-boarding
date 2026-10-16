@@ -1,0 +1,2 @@
+# Reject AI attribution in commit messages (Kate's rule; the pattern is in scripts/no-attribution.sh, which CI uses too)
+sh scripts/no-attribution.sh < "$1" || { echo "commit-msg: remove them and retry." >&2; exit 1; }

@@ -44,6 +44,11 @@
 - [ ] I have added tests that prove my fix is effective or that my feature works
 - [ ] New and existing unit tests pass locally with my changes
 - [ ] `npm run lint` passes
+- [ ] Tests follow the good-tests rules (expected values from REQUIREMENTS, exact assertions, one rule per test) — `docs/ENGINEERING_PROCESS.md`
+- [ ] Logic in `api/`, `src/lib/`, `src/utils/` changed: `npm run mutate` score: ___
+- [ ] A scheduled job changed: it alerts on failure from outside its own scheduler, and `docs/RUNBOOK.md` is updated (Ops gate)
+- [ ] `reviewer` agent run before opening this PR (`.claude/agents/reviewer.md`)
+- [ ] No AI attribution lines in commits or this description
 
 ## Related Issues
 
