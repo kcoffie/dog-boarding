@@ -47,9 +47,9 @@ export async function runKeepalive({ listWorkflows, enableWorkflow }) {
     }
   }
 
-  const seen = refresh.length + inactive.length + manual.length;
+  // Any inactive workflow already fails the run, so only refresh + manual decide "nothing listed".
   return {
-    ok: seen > 0 && inactive.length === 0 && failed.length === 0,
+    ok: inactive.length === 0 && failed.length === 0 && refresh.length + manual.length > 0,
     refreshed,
     inactive: inactive.map((w) => w.name),
     manual: manual.map((w) => w.name),
