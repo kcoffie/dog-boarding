@@ -1,24 +1,31 @@
 /**
- * Tests for api/send-question.js — user question/comment → WhatsApp to Kate.
- * @requirements REQ-700
+ * Tests for api/send-question.js — a user's question or comment, forwarded to Kate's alert channel.
+ * @requirements REQ-700, REQ-652
+ *
+ * Boundaries faked: sendAlert (Telegram), Supabase (createClient) and the message_log writer.
+ * alertDelivered stays real.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../../src/lib/notifyWhatsApp.js', () => ({
-  sendTextMessage: vi.fn(),
-  getAlertRecipients: vi.fn(),
+vi.mock('../../src/lib/alertKate.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  sendAlert: vi.fn(),
 }));
+vi.mock('../../src/lib/messageDeliveryStatus.js', () => ({ recordMessageLog: vi.fn(async () => {}) }));
+vi.mock('@supabase/supabase-js', () => ({ createClient: vi.fn(() => ({ fake: 'supabase' })) }));
 
 import handler from '../../api/send-question.js';
-import { sendTextMessage, getAlertRecipients } from '../../src/lib/notifyWhatsApp.js';
+import { sendAlert } from '../../src/lib/alertKate.js';
+import { recordMessageLog } from '../../src/lib/messageDeliveryStatus.js';
 
-function makeReq({ method = 'POST', token = 'test-token', body = { message: 'Hello', username: 'charlie' } } = {}) {
-  return {
-    method,
-    headers: { authorization: `Bearer ${token}` },
-    body,
-  };
+const SENT = [{ to: 'telegram', status: 'sent' }];
+const FAILED = [{ to: 'telegram', status: 'failed', error: 'Telegram sendMessage 403: Forbidden' }];
+const NOT_CONFIGURED = [{ to: 'telegram', status: 'failed', error: 'Telegram alert channel not configured' }];
+const UNDELIVERED = { ok: false, error: 'Your message could not be delivered. Please try again later.' };
+
+function makeReq({ method = 'POST', token = 'test-token', body = { message: 'Hello', username: 'staff-a' } } = {}) {
+  return { method, headers: { authorization: `Bearer ${token}` }, body };
 }
 
 function makeRes() {
@@ -28,74 +35,102 @@ function makeRes() {
   return res;
 }
 
+async function call(reqOpts) {
+  const res = makeRes();
+  await handler(makeReq(reqOpts), res);
+  return res;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.VITE_SYNC_PROXY_TOKEN = 'test-token';
-  sendTextMessage.mockResolvedValue([{ to: '+1***', status: 'sent', messageId: 'wamid.123' }]);
-  getAlertRecipients.mockReturnValue(['+15555550100']);
+  process.env.VITE_SUPABASE_URL = 'https://db.example.com';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
+  sendAlert.mockResolvedValue(SENT);
+  recordMessageLog.mockImplementation(async () => {});
 });
 
 describe('REQ-700: Send a Question API', () => {
-  it('valid request — calls sendTextMessage with username and message, returns ok', async () => {
-    const req = makeReq();
-    const res = makeRes();
-    await handler(req, res);
-    expect(sendTextMessage).toHaveBeenCalledOnce();
-    const [body, recipients] = sendTextMessage.mock.calls[0];
-    expect(body).toContain('charlie');
-    expect(body).toContain('Hello');
-    expect(recipients).toEqual(['+15555550100']);
+  it('a valid question goes to Kate as "Question from <user>:" plus the trimmed text, and the user is told ok', async () => {
+    const res = await call({ body: { message: '  Is Biscuit staying Friday?  ', username: ' staff-a ' } });
+    expect(sendAlert).toHaveBeenCalledWith('Question from staff-a:\nIs Biscuit staying Friday?');
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ ok: true });
+  });
+
+  it('a question without a username is from "unknown"', async () => {
+    await call({ body: { message: 'Hello' } });
+    expect(sendAlert).toHaveBeenCalledWith('Question from unknown:\nHello');
   });
 
   it('wrong HTTP method → 405, no send', async () => {
-    const req = makeReq({ method: 'GET' });
-    const res = makeRes();
-    await handler(req, res);
+    const res = await call({ method: 'GET' });
     expect(res.status).toHaveBeenCalledWith(405);
-    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(sendAlert).not.toHaveBeenCalled();
   });
 
   it('bad token → 401, no send', async () => {
-    const req = makeReq({ token: 'wrong-token' });
-    const res = makeRes();
-    await handler(req, res);
+    const res = await call({ token: 'wrong-token' });
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(sendAlert).not.toHaveBeenCalled();
   });
 
   it('empty message → 400, no send', async () => {
-    const req = makeReq({ body: { message: '   ', username: 'charlie' } });
-    const res = makeRes();
-    await handler(req, res);
+    const res = await call({ body: { message: '   ', username: 'staff-a' } });
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(sendAlert).not.toHaveBeenCalled();
   });
 
   it('message over 1000 chars → 400, no send', async () => {
-    const req = makeReq({ body: { message: 'a'.repeat(1001), username: 'charlie' } });
-    const res = makeRes();
-    await handler(req, res);
+    const res = await call({ body: { message: 'a'.repeat(1001), username: 'staff-a' } });
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(sendAlert).not.toHaveBeenCalled();
   });
 
-  it('no recipients configured → 200 ok without calling sendTextMessage', async () => {
-    getAlertRecipients.mockReturnValue([]);
-    const req = makeReq();
-    const res = makeRes();
-    await handler(req, res);
-    expect(sendTextMessage).not.toHaveBeenCalled();
+  it('a message of exactly 1000 chars is sent', async () => {
+    const res = await call({ body: { message: 'a'.repeat(1000), username: 'staff-a' } });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('REQ-652: a question is never silently lost', () => {
+  it('when Telegram rejects it, the user gets 502 and is told it was not delivered', async () => {
+    sendAlert.mockResolvedValue(FAILED);
+    const res = await call();
+    expect(res.status).toHaveBeenCalledWith(502);
+    expect(res.json).toHaveBeenCalledWith(UNDELIVERED);
+  });
+
+  it('when the alert channel is not configured, the user gets 502 (not "Sent!")', async () => {
+    sendAlert.mockResolvedValue(NOT_CONFIGURED);
+    const res = await call();
+    expect(res.status).toHaveBeenCalledWith(502);
+    expect(res.json).toHaveBeenCalledWith(UNDELIVERED);
+  });
+
+  it('every attempt is written to message_log under send-question, failed ones included', async () => {
+    sendAlert.mockResolvedValue(FAILED);
+    await call();
+    expect(recordMessageLog).toHaveBeenCalledWith({ fake: 'supabase' }, FAILED, 'send-question', 'text', 'Question from staff-a:\nHello', null);
+  });
+
+  it('a message_log failure does not change what the user is told', async () => {
+    recordMessageLog.mockRejectedValue(new Error('db down'));
+    const res = await call();
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ ok: true });
   });
 
-  it('sendTextMessage throws → 500', async () => {
-    sendTextMessage.mockRejectedValue(new Error('Meta API down'));
-    const req = makeReq();
-    const res = makeRes();
-    await handler(req, res);
+  it('without Supabase settings, the question is still delivered (only the log is skipped)', async () => {
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const res = await call();
+    expect(recordMessageLog).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('an unexpected error → 500', async () => {
+    sendAlert.mockRejectedValue(new Error('boom'));
+    const res = await call();
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'Failed to send message' });
   });
