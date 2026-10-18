@@ -28,20 +28,18 @@
  *   3. Supabase: query boardings overlapping today → today+7d; query daytime_appointments for today
  *   4. Compare → flag missing IDs, Unknown dog names (boarding);
  *      flag missing daytime events (daytime smoke check)
- *   5. Send WhatsApp text report to INTEGRATION_CHECK_RECIPIENTS (separate from
- *      the roster NOTIFY_RECIPIENTS — this is a technical report for Kate only)
+ *   5. Send the text report to Kate's alert channel (sendAlert → Telegram, REQ-652);
+ *      exit 1 when the report was needed but not delivered
  *
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   EXTERNAL_SITE_USERNAME, EXTERNAL_SITE_PASSWORD  (for Step 0 re-auth on session expiry)
- *   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
- *   INTEGRATION_CHECK_RECIPIENTS  (separate from NOTIFY_RECIPIENTS)
+ *   TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID
  */
 
 import { chromium } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
-import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
+import { alertAndLog, exitCodeAfterAlert } from '../src/lib/alertKate.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
@@ -397,23 +395,13 @@ function compareDaytimeResults(domDaytime, dbDaytime) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 6: WhatsApp
+// Step 6: alert Kate (Telegram, REQ-652)
 // ---------------------------------------------------------------------------
 
+/** Returns true when the alert was delivered. supabase may be null (startup crash): the log is then skipped. */
 async function sendAlertMessage(message, supabase = null) {
-  const recipients = getAlertRecipients();
-  console.log('[IntegCheck] Sending WhatsApp to %d recipient(s)...', recipients.length);
-  const results = await sendTextMessage(message, recipients);
-  const sent = results.filter(r => r.status === 'sent').length;
-  console.log('[IntegCheck] WhatsApp: %d/%d sent', sent, recipients.length);
-  // supabase is null at startup-crash call site — both record* functions handle null gracefully.
-  await recordSentMessages(supabase, results, 'integration-check').catch(err =>
-    console.warn('[IntegCheck] Failed to record delivery status: %s', err.message)
-  );
-  console.log('[IntegCheck] Recording message_log — job: integration-check, content length: %d chars', message.length);
-  await recordMessageLog(supabase, results, 'integration-check', 'text', message, null).catch(err =>
-    console.warn('[IntegCheck] Failed to record message_log: %s', err.message)
-  );
+  console.log('[IntegCheck] Sending alert (%d chars)', message.length);
+  return alertAndLog(supabase, 'integration-check', message);
 }
 
 // ---------------------------------------------------------------------------
@@ -488,8 +476,7 @@ async function main() {
   if (!cookieString) {
     const msg = `⚠️ Integration check skipped (${today})\nNo valid session cached. Run cron-auth first.`;
     console.log('[IntegCheck]', msg);
-    await sendAlertMessage(msg, supabase);
-    process.exit(0);
+    process.exit(exitCodeAfterAlert(await sendAlertMessage(msg, supabase)));
   }
 
   // Step 2: Playwright
@@ -536,14 +523,16 @@ async function main() {
   }
 
   console.log('[IntegCheck] === Final report ===\n%s', message);
+  let delivered = null;
   if (alwaysSend || !passed) {
-    await sendAlertMessage(message, supabase);
+    delivered = await sendAlertMessage(message, supabase);
   } else {
-    console.log('[IntegCheck] Run 2/3 — check passed, suppressing WhatsApp (no news is good news)');
+    console.log('[IntegCheck] Run 2/3 — check passed, suppressing the report (no news is good news)');
   }
 
   console.log('[IntegCheck] === Done === (%d issue(s))', allIssues.length);
-  process.exit(0); // job succeeded — data issues are content of the report, not a job failure
+  // Data issues are the report's content, not a job failure (exit 0); an undelivered report is (exit 1).
+  process.exit(exitCodeAfterAlert(delivered));
 }
 
 main().catch(err => {

@@ -90,3 +90,14 @@ export async function alertAndLog(supabase, jobName, text) {
   if (!delivered) console.error(`[Alert] ${jobName}: alert NOT delivered — ${results.map(r => r.error).join('; ')}`);
   return delivered;
 }
+
+/**
+ * A run's exit code after its alert: 1 when an alert was sent but not delivered (the run goes red and
+ * GitHub emails Kate), otherwise 0. `delivered` is null when no alert was needed.
+ *
+ * @param {boolean|null} delivered
+ * @returns {0|1}
+ */
+export function exitCodeAfterAlert(delivered) {
+  return delivered === false ? 1 : 0;
+}

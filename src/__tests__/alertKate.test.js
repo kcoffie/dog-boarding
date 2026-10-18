@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../lib/messageDeliveryStatus.js', () => ({ recordMessageLog: vi.fn(async () => {}) }));
 const { recordMessageLog } = await import('../lib/messageDeliveryStatus.js');
-const { sendAlert, alertDelivered, alertAndLog, truncateAlert, ALERT_TIMEOUT_MS } = await import('../lib/alertKate.js');
+const { sendAlert, alertDelivered, alertAndLog, exitCodeAfterAlert, truncateAlert, ALERT_TIMEOUT_MS } = await import('../lib/alertKate.js');
 
 const TOKEN = '123456:test-bot-token';
 const CHAT = '987654321';
@@ -140,5 +140,19 @@ describe('REQ-652: alertAndLog', () => {
   it('a message_log failure does not change the answer', async () => {
     recordMessageLog.mockRejectedValueOnce(new Error('db down'));
     expect(await alertAndLog(DB, 'integration-check', 'x')).toBe(true);
+  });
+});
+
+describe('REQ-652: exitCodeAfterAlert', () => {
+  it('an undelivered alert makes the run fail', () => {
+    expect(exitCodeAfterAlert(false)).toBe(1);
+  });
+
+  it('a delivered alert leaves the run green', () => {
+    expect(exitCodeAfterAlert(true)).toBe(0);
+  });
+
+  it('a run that needed no alert stays green', () => {
+    expect(exitCodeAfterAlert(null)).toBe(0);
   });
 });
