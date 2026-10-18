@@ -28,8 +28,8 @@ FROM boardings b JOIN dogs d ON b.dog_id = d.id
 ORDER BY b.updated_at DESC
 LIMIT 10;
 
--- 4. Notify state — when was the last roster image sent?
-SELECT result FROM cron_health WHERE cron_name = 'notify';
+-- 4. Notify state — when was the last roster image sent? (status 'failure' + error_msg = last run failed; result is then null)
+SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'notify';
 ```
 
 ---
@@ -44,6 +44,8 @@ Go to the repo → Actions → `notify-4am` → latest run.
 
 - **Run didn't trigger:** the scheduled workflow didn't fire (GitHub Actions outage or missed schedule). Trigger it manually via `workflow_dispatch`.
 - **Run failed:** check the step logs. The curl response body will show the error.
+  - `No recipient received the roster (N of N sends failed)`: Meta rejected every recipient (token expired, template rejected, number problem). See the Meta token and template steps. Nothing else to do for the roster itself: no hash was stored, so the next window sends again.
+  - ops-watch can say "No morning roster sent today" even when 4am failed and 7am got through. Check `message_log` for today's `notify-7am` / `notify-8:30am` rows before acting.
 - **Run succeeded:** the endpoint returned 200. Check Vercel logs for `/api/notify`.
 
 **Step 2: Check Vercel logs**
@@ -186,7 +188,8 @@ GitHub Actions → `notify-4am` → Run workflow.
 ### Check what was sent today
 
 ```sql
-SELECT result FROM cron_health WHERE cron_name = 'notify';
+SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'notify';
+-- status 'failure' = the last window failed (result is null; error_msg says why)
 -- result.lastHash = hash of last roster sent
 -- result.lastDate = date of last send
 ```
