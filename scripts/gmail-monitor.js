@@ -20,8 +20,10 @@
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN
- *   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
- *   INTEGRATION_CHECK_RECIPIENTS
+ *   TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID (Kate's alert channel, REQ-652)
+ *
+ * An email is marked processed only after its alert was delivered, so an undelivered one is
+ * retried on the next hourly run; any undelivered alert makes the run exit 1 (red → GitHub emails Kate).
  *
  * Optional:
  *   ANTHROPIC_API_KEY — if set (and has credits), Claude summarizes the email body.
@@ -29,8 +31,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
+import { alertAndLog } from '../src/lib/alertKate.js';
 
 // ---------------------------------------------------------------------------
 // Known sender configuration
@@ -345,25 +346,30 @@ async function markProcessed(supabase, email) {
 }
 
 // ---------------------------------------------------------------------------
-// WhatsApp
+// Alert (Telegram, REQ-652)
 // ---------------------------------------------------------------------------
 
-async function sendAlertMessage(message, supabase = null) {
-  const recipients = getAlertRecipients();
-  const results = await sendTextMessage(message, recipients);
-  const sent = results.filter(r => r.status === 'sent').length;
-  console.log('[GmailMonitor] WhatsApp: %d/%d sent', sent, recipients.length);
-  await recordSentMessages(supabase, results, 'gmail-monitor').catch(err =>
-    console.warn('[GmailMonitor] Failed to record delivery status: %s', err.message)
-  );
-  console.log('[GmailMonitor] Recording message_log — job: gmail-monitor, content length: %d chars', message.length);
-  await recordMessageLog(supabase, results, 'gmail-monitor', 'text', message, null).catch(err =>
-    console.warn('[GmailMonitor] Failed to record message_log: %s', err.message)
-  );
+/**
+ * Forward one matched email to Kate. It is marked processed only when the alert was delivered,
+ * so an undelivered email is tried again on the next run. Returns true when delivered.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ id: string, from: string, subject: string }} email
+ * @param {string} message - from buildAlertMessage
+ * @returns {Promise<boolean>}
+ */
+export async function forwardEmail(supabase, email, message) {
+  const delivered = await alertAndLog(supabase, 'gmail-monitor', message);
+  if (delivered) {
+    await markProcessed(supabase, email);
+  } else {
+    console.error('[GmailMonitor] Alert for %s not delivered — leaving it unprocessed for the next run', email.id);
+  }
+  return delivered;
 }
 
 /**
- * Build the WhatsApp alert message for a matched email.
+ * Build the alert message for a matched email.
  * Optionally uses Claude for a 1-line summary if ANTHROPIC_API_KEY is set.
  *
  * Falls back to subject line if Claude is unavailable or has no credits.
@@ -436,6 +442,7 @@ async function main() {
 
   // Step 3: Process each message
   let alertsSent = 0;
+  let undelivered = 0;
   let skipped = 0;
 
   for (const id of messageIds) {
@@ -467,15 +474,12 @@ async function main() {
     // Build and send alert
     const message = await buildAlertMessage(email, senderConfig);
     console.log('[GmailMonitor] Sending alert for %s:\n%s', id, message);
-    await sendAlertMessage(message, supabase);
-
-    // Mark processed
-    await markProcessed(supabase, email);
-    alertsSent++;
+    if (await forwardEmail(supabase, email, message)) alertsSent++;
+    else undelivered++;
   }
 
-  console.log('[GmailMonitor] === Done === (%d alert(s) sent, %d skipped)', alertsSent, skipped);
-  process.exit(0);
+  console.log('[GmailMonitor] === Done === (%d alert(s) sent, %d undelivered, %d skipped)', alertsSent, undelivered, skipped);
+  process.exit(undelivered > 0 ? 1 : 0);
 }
 
 // Only run main() when executed directly — not when imported by tests.
