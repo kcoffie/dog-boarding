@@ -58,6 +58,30 @@ describe('REQ-700: Send a Question API', () => {
     expect(res.json).toHaveBeenCalledWith({ ok: true });
   });
 
+  it('a missing message → 400, no send', async () => {
+    const res = await call({ body: { username: 'staff-a' } });
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('a message that is not text → 400, no send', async () => {
+    const res = await call({ body: { message: 42, username: 'staff-a' } });
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('a request with no authorization header → 401, no send', async () => {
+    const res = makeRes();
+    await handler({ method: 'POST', headers: {}, body: { message: 'Hello' } }, res);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('a blank username counts as "unknown"', async () => {
+    await call({ body: { message: 'Hello', username: '   ' } });
+    expect(sendAlert).toHaveBeenCalledWith('Question from unknown:\nHello');
+  });
+
   it('a question without a username is from "unknown"', async () => {
     await call({ body: { message: 'Hello' } });
     expect(sendAlert).toHaveBeenCalledWith('Question from unknown:\nHello');
@@ -66,30 +90,41 @@ describe('REQ-700: Send a Question API', () => {
   it('wrong HTTP method → 405, no send', async () => {
     const res = await call({ method: 'GET' });
     expect(res.status).toHaveBeenCalledWith(405);
+    expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'Method not allowed' });
     expect(sendAlert).not.toHaveBeenCalled();
   });
 
   it('bad token → 401, no send', async () => {
     const res = await call({ token: 'wrong-token' });
     expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'Unauthorized' });
     expect(sendAlert).not.toHaveBeenCalled();
   });
 
   it('empty message → 400, no send', async () => {
     const res = await call({ body: { message: '   ', username: 'staff-a' } });
     expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'Message is required' });
     expect(sendAlert).not.toHaveBeenCalled();
   });
 
   it('message over 1000 chars → 400, no send', async () => {
     const res = await call({ body: { message: 'a'.repeat(1001), username: 'staff-a' } });
     expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'Message must be 1000 characters or fewer' });
     expect(sendAlert).not.toHaveBeenCalled();
   });
 
   it('a message of exactly 1000 chars is sent', async () => {
     const res = await call({ body: { message: 'a'.repeat(1000), username: 'staff-a' } });
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('Vercel runtime', () => {
+  it('runs on the Node.js runtime, not edge', async () => {
+    const { config } = await import('../../api/send-question.js');
+    expect(config).toStrictEqual({ runtime: 'nodejs' });
   });
 });
 
