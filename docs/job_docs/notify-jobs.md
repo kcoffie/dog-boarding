@@ -64,7 +64,8 @@ The endpoint orchestrates the full notify flow:
 
    **Why upload-first:** Meta silently drops template sends when it cannot fetch image URLs from Vercel endpoints — the API accepts the call and returns a wamid, but the message never reaches the phone. Uploading to Meta's CDN first (K-1b, April 2) eliminates this dependency entirely.
 
-7. **Store hash + snapshot** — writes to `cron_health` (`notify` row): the roster hash (for the no-change gate), plus `snapshot: workers` (the full workers array from `getPictureOfDay`). The next window reads `snapshot` to build the intra-day blue overlay.
+7. **No recipient reached → failure (#255).** If every send came back `failed`, the endpoint records `cron_health` `notify` = `failure` (`No recipient received the roster (N of N sends failed)`), stores **no** hash and returns 500 (the workflow goes red). The failure row clears `lastHash`, so the next window sends again. friday-pm does the same with its `notify-friday-pm` row.
+8. **Store hash + snapshot** (at least one recipient reached) — writes to `cron_health` (`notify` row): the roster hash (for the no-change gate), plus `snapshot: workers` (the full workers array from `getPictureOfDay`). The next window reads `snapshot` to build the intra-day blue overlay.
 
 ---
 
