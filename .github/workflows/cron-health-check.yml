@@ -3,14 +3,13 @@
 # Runs at 00:30 UTC — 30 minutes after cron-auth fires at 00:00 UTC, giving the
 # full cron chain time to complete before we check.
 #
-# Sends a WhatsApp alert to INTEGRATION_CHECK_RECIPIENTS when:
+# Alerts Kate (Telegram, REQ-652) when:
 #   - Any cron did not run since midnight UTC
 #   - Any cron shows 2 consecutive failures in cron_health_log
 #
 # Required Repository secrets:
 #   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-#   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
-#   INTEGRATION_CHECK_RECIPIENTS
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID (Kate's alert channel, REQ-652)
 name: Cron Health Check
 
 on:
@@ -39,6 +38,5 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          META_PHONE_NUMBER_ID: ${{ secrets.META_PHONE_NUMBER_ID }}
-          META_WHATSAPP_TOKEN: ${{ secrets.META_WHATSAPP_TOKEN }}
-          INTEGRATION_CHECK_RECIPIENTS: ${{ secrets.INTEGRATION_CHECK_RECIPIENTS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}

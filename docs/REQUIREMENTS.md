@@ -1215,7 +1215,7 @@ An independent GH Actions script verifies that the DB matches the live external 
 - Extracts all boarding + DC/PG appointment IDs from live DOM
 - Queries DB: boardings in past-7d → today+7d window; daytime appointments for today
 - Flags: IDs on schedule missing from DB; IDs in DB with `Unknown` dog name; daytime events on schedule missing from DB
-- Sends WhatsApp text report to `INTEGRATION_CHECK_RECIPIENTS` (separate from `NOTIFY_RECIPIENTS`)
+- Sends the text report to Kate through `sendAlert` (Telegram, REQ-652); exits 1 when the report was needed but not delivered
 - Always exits 0 — discrepancies are reported, not fatal
 - Canceled/request-type bookings are a known false positive (not imported); documented in `docs/job_docs/integration-check.md`
 - Step 3 (Claude vision name-check) silently skipped when `ANTHROPIC_API_KEY` has no credits
@@ -1300,12 +1300,12 @@ Users can send a question or comment to Kate directly from the nav user dropdown
 **Acceptance Criteria:**
 - "Send a Question" button in the nav user dropdown (desktop) and mobile menu
 - Clicking opens a modal with a "Question / Comment" label, textarea (max 1000 chars), character counter, Send and Cancel buttons
-- On Send, the message is delivered to Kate via WhatsApp with the sender's username prepended
+- On Send, the message is delivered to Kate through her alert channel (`sendAlert`, Telegram — REQ-652) with the sender's username prepended
 - Loading state ("Sending…") shown while in-flight; "Sent!" confirmation on success; inline error message on failure
 - Modal auto-closes 1.5 seconds after a successful send
-- `POST /api/send-question`: validates `Authorization: Bearer` token, rejects empty or >1000-char messages, calls `sendTextMessage` to `getAlertRecipients()` (Kate only)
+- `POST /api/send-question`: validates `Authorization: Bearer` token, rejects empty or >1000-char messages, calls `sendAlert`; returns 502 when the message wasn't delivered (REQ-652)
 
-**Tests:** `src/__tests__/sendQuestion.test.js` (7 tests)
+**Tests:** `src/__tests__/sendQuestion.test.js`
 
 ---
 
@@ -1361,7 +1361,7 @@ A daily Vercel cron (`/api/ops-watch`, 17:00 UTC) checks the outcomes the client
 - **Scheduled workflows:** a finding for each workflow whose last successful run is older than its limit (gmail-monitor 3 h, integration-check 12 h, cron-health-check 26 h, notify-4am 4 days, keepalive 8 days), or that has never succeeded
 - **Roster image:** a finding when the production weekend roster image doesn't return HTTP 200 with an `image/png` body
 - **Couldn't check:** a query error, a missing token, or a GitHub API error is a finding naming what couldn't be checked; it is never treated as healthy
-- With any finding: one WhatsApp text to `getAlertRecipients()` listing all of them, **and** a dispatch of `ops-alert.yml` (which fails, so GitHub emails Kate). With none: nothing is sent
+- With any finding: one alert to Kate (`sendAlert`, Telegram — REQ-652) listing all of them, **and** a dispatch of `ops-alert.yml` (which fails, so GitHub emails Kate). With none: nothing is sent
 - The endpoint requires `Authorization: Bearer $CRON_SECRET` and rejects every request when `CRON_SECRET` is unset (fails closed)
 - Each run is recorded in `cron_health` as `ops-watch`: `success` when every check ran and the alert (if any) went out, otherwise `failure`
 - `cron-health-check` reports `ops-watch` when its last run is more than 26 h old
