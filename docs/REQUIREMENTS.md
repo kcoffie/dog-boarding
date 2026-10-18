@@ -1194,6 +1194,7 @@ GitHub Actions workflows call `/api/notify` at three windows each weekday mornin
 - After each send, `hashPicture(data)` stored in `cron_health.result.lastHash` for cron `notify`
 - On next window: if hash matches → skip send, log "no change"
 - 4am always sends (first window of day)
+- A send that reached **no** recipient (every result `failed`) does not count as sent (#255): the hash is not stored, `cron_health` `notify` records `failure` with `No recipient received the roster (N of N sends failed)`, and the endpoint returns 500 so the workflow run goes red. The next window has no baseline and sends again. A send that reached at least one recipient counts as sent.
 - `friday-pm` always sends (separate workflow, no hash gate)
 - `shouldSendNotification(window, lastHash, currentHash)` in `pictureOfDay.js`
 
@@ -1235,6 +1236,7 @@ Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arr
 - `GET /api/notify?window=friday-pm` generates a weekend-themed image
 - Shows two sections: dogs arriving and dogs departing Fri–Sun with check-in/out times and night counts
 - Always sends regardless of hash (weekend preview is always useful)
+- A send that reached no recipient records `notify-friday-pm` `failure` (`No recipient received the roster (N of N sends failed)`) and returns 500 (#255)
 - `cron_health` row written for `notify-friday-pm`
 
 **Tests:** `src/__tests__/notifyHandler.test.js`

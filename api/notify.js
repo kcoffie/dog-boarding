@@ -109,6 +109,20 @@ async function sendRefreshAlert(supabase, warning, dateStr, notifyWindow) {
   );
 }
 
+/**
+ * A send that reached no recipient is a failure, not a send (#255): throwing lands in the
+ * handler's catch, which records the cron_health failure and returns 500, so the workflow
+ * run goes red and no hash is stored (the next window sends again).
+ *
+ * @param {Array<{status: string}>} sendResults - From sendRosterImage
+ */
+function assertSomeoneReached(sendResults) {
+  const sentCount = sendResults.filter(r => r.status === 'sent').length;
+  if (sentCount === 0) {
+    throw new Error(`No recipient received the roster (${sendResults.length} of ${sendResults.length} sends failed)`);
+  }
+}
+
 function getSupabase() {
   const url = process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
@@ -305,6 +319,7 @@ export default async function handler(req, res) {
       await recordMessageLog(supabase, sendResults, 'notify-friday-pm', 'image', null, fridayImagePath).catch(err =>
         console.warn(`[Notify] Failed to record message_log (friday-pm): ${err.message}`)
       );
+      assertSomeoneReached(sendResults);
       await writeCronHealth(supabase, 'notify-friday-pm', 'success', {
         sentAt: new Date().toISOString(),
         recipients: sendResults.map(r => r.to),
@@ -456,6 +471,8 @@ export default async function handler(req, res) {
     await recordMessageLog(supabase, sendResults, `notify-${window}`, 'image', null, imagePath).catch(err =>
       console.warn(`[Notify] Failed to record message_log (${window}): ${err.message}`)
     );
+
+    assertSomeoneReached(sendResults);
 
     // --- Persist state (non-fatal) ---
     await persistSentState(supabase, currentHash, dateStr, window, sendResults, data.workers);
