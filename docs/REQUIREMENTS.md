@@ -724,7 +724,7 @@ CREATE TABLE sync_queue (
 );
 ```
 
-**Tests:** `src/__tests__/scraper/sessionCache.test.js`, `src/__tests__/scraper/syncQueue.test.js`
+**Tests:** `src/__tests__/scraper/sessionCache.test.js`, `src/__tests__/scraper/syncQueue.test.js`, `src/__tests__/syncCronHandlers.test.js`
 
 ---
 
@@ -894,7 +894,7 @@ page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hob
   - Result summary (e.g. "12 queued, 2 pages scanned")
   - "Never" shown if cron has not run yet
 
-**Tests:** N/A (infrastructure — manual verification after deploy)
+**Tests:** `src/__tests__/scraper/cronHealth.test.js` (helper), `src/__tests__/syncCronHandlers.test.js` and `src/__tests__/notifyHandler.test.js` (each handler records success/failure); the Settings card is manual
 
 ---
 
@@ -1177,11 +1177,11 @@ GitHub Actions workflows call `/api/notify` at three windows each weekday mornin
 - `notify-4am.yml` fires at 11:00 UTC (4am PDT, Mon–Fri)
 - `notify-7am.yml` fires at 14:00 UTC (7am PDT, Mon–Fri)
 - `notify-830am.yml` fires at 15:30 UTC (8:30am PDT, Mon–Fri)
-- Each calls `GET /api/notify?window=4am|7am|830am`
+- Each calls `GET /api/notify?window=4am|7am|8:30am`
 - `notify.js` refreshes daytime schedule live before building image (not stale midnight data)
-- Sends to all numbers in `NOTIFY_RECIPIENTS` via Twilio WhatsApp
+- Sends to all numbers in `NOTIFY_RECIPIENTS` via the Meta WhatsApp Cloud API
 
-**Tests:** Integration (manual); `api/notify.js` unit coverage via `cronHealth.test.js`
+**Tests:** `src/__tests__/notifyHandler.test.js` (handler); delivery itself is checked in production by ops-watch (REQ-651)
 
 ---
 
@@ -1197,7 +1197,7 @@ GitHub Actions workflows call `/api/notify` at three windows each weekday mornin
 - `friday-pm` always sends (separate workflow, no hash gate)
 - `shouldSendNotification(window, lastHash, currentHash)` in `pictureOfDay.js`
 
-**Tests:** `src/__tests__/lib/pictureOfDay.test.js`
+**Tests:** `src/__tests__/lib/pictureOfDay.test.js`, `src/__tests__/notifyHandler.test.js`
 
 ---
 
@@ -1237,7 +1237,7 @@ Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arr
 - Always sends regardless of hash (weekend preview is always useful)
 - `cron_health` row written for `notify-friday-pm`
 
-**Tests:** Manual verification
+**Tests:** `src/__tests__/notifyHandler.test.js`
 
 ---
 
@@ -1253,7 +1253,7 @@ Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arr
 - Response always includes `{"action": "refreshed", "expiresAt": "..."}` on success (no `"action": "skipped"`)
 - `writeCronHealth` records the refreshed state after every run
 
-**Tests:** `src/__tests__/scraper/auth.test.js`
+**Tests:** `src/__tests__/scraper/auth.test.js`, `src/__tests__/syncCronHandlers.test.js`
 
 ---
 
@@ -1270,7 +1270,7 @@ Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arr
 - `notify.js` calls `ensureSession` in its daytime refresh path
 - `sendRefreshAlert` deduplicates: only 1 WhatsApp alert per day (checks `lastAlertDate` in cron_health result)
 
-**Tests:** `src/__tests__/scraper/sessionCache.test.js` (8 new tests)
+**Tests:** `src/__tests__/scraper/sessionCache.test.js` (8 new tests), `src/__tests__/notifyHandler.test.js` (refresh alert dedup)
 
 ---
 
