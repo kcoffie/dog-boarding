@@ -894,7 +894,7 @@ page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hob
   - Result summary (e.g. "12 queued, 2 pages scanned")
   - "Never" shown if cron has not run yet
 
-**Tests:** N/A (infrastructure — manual verification after deploy)
+**Tests:** `src/__tests__/scraper/cronHealth.test.js` (helper), `src/__tests__/syncCronHandlers.test.js` and `src/__tests__/notifyHandler.test.js` (each handler records success/failure); the Settings card is manual
 
 ---
 
@@ -1270,7 +1270,7 @@ Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arr
 - `notify.js` calls `ensureSession` in its daytime refresh path
 - `sendRefreshAlert` deduplicates: only 1 WhatsApp alert per day (checks `lastAlertDate` in cron_health result)
 
-**Tests:** `src/__tests__/scraper/sessionCache.test.js` (8 new tests)
+**Tests:** `src/__tests__/scraper/sessionCache.test.js` (8 new tests), `src/__tests__/notifyHandler.test.js` (refresh alert dedup)
 
 ---
 

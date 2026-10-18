@@ -49,11 +49,13 @@ function fakeSupabase() {
   return {
     from: (table) => {
       let name = null;
+      let columns = null;
       const chain = {
-        select: () => chain,
-        eq: (_col, val) => { name = val; return chain; },
+        select: (cols) => { columns = cols; return chain; },
+        eq: (col, val) => { if (col === 'cron_name') name = val; return chain; },
         maybeSingle: async () => {
-          const row = table === 'cron_health' ? cronRows[name] : undefined;
+          // Only the real table/columns find a row; a typo reads as "nothing stored", as Supabase would error.
+          const row = table === 'cron_health' && columns === 'result' ? cronRows[name] : undefined;
           if (row?.throws) throw new Error(row.throws);
           if (row?.error) return { data: null, error: row.error };
           return { data: row ?? null, error: null };
@@ -206,7 +208,7 @@ describe('REQ-612: send gate', () => {
 
   it('8:30am sends when a boarder was added since the last send', async () => {
     sentEarlier(picture({ boarders: ['Biscuit'] }));
-    getPictureOfDay.mockResolvedValue(picture({ boarders: ['Biscuit', 'Mochi'] }));
+    getPictureOfDay.mockResolvedValue(picture({ boarders: ['Biscuit', 'Pickle'] }));
     const res = await call({ window: '8:30am' });
     expect(res.body.action).toBe('sent');
   });

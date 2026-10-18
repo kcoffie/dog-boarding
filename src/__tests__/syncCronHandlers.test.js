@@ -329,6 +329,15 @@ describe('REQ-109: cron-detail', () => {
     expect(writes('detail').at(-1)[2]).toHaveLength(500);
   });
 
+  it('cron-detail does not ask the runner to reset stuck items a second time', async () => {
+    await call(cronDetail);
+    expect(runDetailSync).toHaveBeenCalledWith({ fake: 'supabase' }, { runResetStuck: false });
+  });
+
+  it('cron-detail-2 is the same handler as cron-detail (same gate, same health writes)', () => {
+    expect(cronDetail2).toBe(cronDetail);
+  });
+
   it('cron-detail-2 is a second run of the same detail processor', async () => {
     const res = await call(cronDetail2);
     expect(res.code).toBe(200);
