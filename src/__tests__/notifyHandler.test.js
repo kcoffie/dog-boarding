@@ -411,6 +411,49 @@ describe('REQ-611: weekday roster send', () => {
     expect(res.body.failedCount).toBe(1);
   });
 
+  it('a send that reached no recipient is a failure: 500, failure recorded, hash not stored (#255)', async () => {
+    sendRosterImage.mockResolvedValue([
+      { to: '***-0', status: 'failed', error: 'x' },
+      { to: '***-1', status: 'failed', error: 'y' },
+    ]);
+    const res = await call({ window: '4am' });
+    expect(res.code).toBe(500);
+    expect(res.body).toStrictEqual({ error: 'No recipient received the roster (2 of 2 sends failed)' });
+    const writes = healthWrites('notify');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].slice(2)).toStrictEqual(['failure', null, 'No recipient received the roster (2 of 2 sends failed)']);
+  });
+
+  it('a send that reached at least one recipient counts as sent and stores the hash (#255)', async () => {
+    sendRosterImage.mockResolvedValue([
+      { to: '***-0', status: 'failed', error: 'x' },
+      { to: '***-1', status: 'sent', messageId: 'w1' },
+    ]);
+    const res = await call({ window: '7am' });
+    expect(res.code).toBe(200);
+    const [[, , status, result]] = healthWrites('notify');
+    expect(status).toBe('success');
+    expect(result.lastHash).toBe(hashPicture(picture()));
+  });
+
+  it('after a window that reached nobody, the next window sends the same roster again (#255)', async () => {
+    sentEarlier(picture({ dogs: ['S1'] })); // 4am reached the team
+    getPictureOfDay.mockResolvedValue(picture({ dogs: ['S1', 'S2'] })); // roster changed before 7am
+    sendRosterImage.mockResolvedValueOnce([{ to: '***-0', status: 'failed', error: 'x' }]);
+    expect((await call({ window: '7am' })).code).toBe(500);
+    const [last] = healthWrites('notify').slice(-1);
+    cronRows.notify = { result: last[3] }; // what the 7am run left in cron_health
+    const res = await call({ window: '8:30am' });
+    expect(res.body.action).toBe('sent');
+  });
+
+  it('a send that reached no recipient is still recorded for delivery tracking (#255)', async () => {
+    sendRosterImage.mockResolvedValue([{ to: '***-0', status: 'failed', error: 'x' }]);
+    await call({ window: '4am' });
+    expect(recordSentMessages.mock.calls[0][2]).toBe('notify-4am');
+    expect(recordMessageLog.mock.calls[0][2]).toBe('notify-4am');
+  });
+
   it('falls back to the anon key when the service role key is unset', async () => {
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     process.env.VITE_SUPABASE_ANON_KEY = 'anon-key';
@@ -620,6 +663,33 @@ describe('REQ-630: friday-pm', () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.sentCount).toBe(2);
     expect(res.body.failedCount).toBe(1);
+  });
+
+  it('a send that reached no recipient returns 500 and records a notify-friday-pm failure (#255)', async () => {
+    sendRosterImage.mockResolvedValue([{ to: '***-0', status: 'failed', error: 'x' }]);
+    const res = await call({ window: 'friday-pm' });
+    expect(res.code).toBe(500);
+    expect(res.body).toStrictEqual({ error: 'No recipient received the roster (1 of 1 sends failed)' });
+    const writes = healthWrites('notify-friday-pm');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].slice(2)).toStrictEqual(['failure', null, 'No recipient received the roster (1 of 1 sends failed)']);
+  });
+
+  it('a send that reached at least one recipient records success (#255)', async () => {
+    sendRosterImage.mockResolvedValue([
+      { to: '***-0', status: 'failed', error: 'x' },
+      { to: '***-1', status: 'sent', messageId: 'w1' },
+    ]);
+    const res = await call({ window: 'friday-pm' });
+    expect(res.code).toBe(200);
+    expect(healthWrites('notify-friday-pm')[0][2]).toBe('success');
+  });
+
+  it('a send that reached no recipient is still recorded for delivery tracking (#255)', async () => {
+    sendRosterImage.mockResolvedValue([{ to: '***-0', status: 'failed', error: 'x' }]);
+    await call({ window: 'friday-pm' });
+    expect(recordSentMessages.mock.calls[0][2]).toBe('notify-friday-pm');
+    expect(recordMessageLog.mock.calls[0][2]).toBe('notify-friday-pm');
   });
 
   it('the recorded failure message is cut to 500 characters', async () => {
