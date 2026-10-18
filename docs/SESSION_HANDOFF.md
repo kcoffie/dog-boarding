@@ -18,6 +18,18 @@
 
 ---
 
+## Session 34 (2026-10-18, Sunday)
+- **Node 22 schedules are green:** 21 of 21 runs since #253. #252 closed. GitHub is firing Gmail Monitor (hourly) only 5–6 times a day and hours late; in August it fired 23 a day. That's the GitHub scheduler, not our code.
+- **ops-watch has never run:** there's no `cron_health` row for `ops-watch`. Cron Health Check reported this to Kate on 10-17 and 10-18 (the watcher works). Likely cause: `CRON_SECRET` is missing in Vercel, so every call gets 401. That also means the older crons are running only because they fail open, so **don't ship the fail-closed fix until `CRON_SECRET` is confirmed set**. Asked Kate.
+- **Production checks:**
+  - sync queue at 0 (Integration Check drains it 3× a day; the Vercel detail crons do 2 items a day)
+  - roster image 200 `image/png` (it takes `?token=`, not a bearer header)
+- **History rewrite NOT pushed yet.** Rebuilt and verified on 10-18 (388 commits, main `af1e510`). **Merge freeze** until Kate pushes, then rebuild if main moved.
+- **#239 slice 1: PR #256** (open, waits for the freeze to end). 114 tests for notify plus the sync crons; scoped mutation 0% → 83.27%. Ratchet 35 → 37. CI scores on main logged.
+- **New: #255.** A notify send where every recipient fails still returns 200 and stores the hash, so 7am and 8:30 skip. Needs Kate's REQ decision.
+- **Monday 10-19:** confirm the 4am roster was sent **and delivered**, then close #246.
+- **#239 next:** `syncRunner.js` (229 survived or uncovered), `pictureOfDay.js` (195), then `sync-proxy.js`.
+
 ## Current State (2026-10-16, end of session 33)
 
 ### Production
