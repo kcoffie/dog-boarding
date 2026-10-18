@@ -1370,6 +1370,29 @@ A daily Vercel cron (`/api/ops-watch`, 17:00 UTC) checks the outcomes the client
 
 ---
 
+### REQ-652: Kate's alerts on Telegram
+**Added:** v6.4.0 | **Status:** In Progress
+
+Every alert to Kate goes through one function, `sendAlert(text)` (`src/lib/alertKate.js`), which sends it to her through a dedicated Telegram bot. WhatsApp alerts stopped when Meta disabled the account (2026-10-18). A failed alert is never silent. Design: `docs/specs/telegram-alerts-design-note.md` (#259).
+
+**Acceptance Criteria:**
+- `sendAlert(text)` sends a plain-text Telegram `sendMessage` (no `parse_mode`) to `TELEGRAM_ALERT_CHAT_ID` through the bot `TELEGRAM_BOT_TOKEN`, once, with no retry and a 15 s timeout
+- It never throws; it returns `[{ to: 'telegram', status: 'sent' | 'failed', error? }]`
+- Missing `TELEGRAM_BOT_TOKEN` or `TELEGRAM_ALERT_CHAT_ID` → `failed` with `Telegram alert channel not configured`, and no request is made
+- A Telegram error → `failed` with `Telegram sendMessage <error_code>: <description>`. A network error or timeout → `failed` (`network error` / `timed out`). No error text or log line contains the bot token
+- Text longer than 4000 characters is cut to 4000 code points, ending in `…` (an emoji is never split)
+- `alertDelivered(results)` is true only when at least one result is `sent`
+- **Callers:**
+  - `cron-health-check`, `integration-check` and `gmail-monitor` alert through `sendAlert`. When an alert they sent wasn't delivered, the run exits 1, so it goes red and GitHub emails Kate. Integration discrepancies alone still exit 0
+  - `gmail-monitor` marks an email processed only after its alert was delivered, so the next run retries it
+  - `send-question` returns `502 { ok: false }` when the question wasn't delivered (including a missing channel configuration), and `200 { ok: true }` only when it was
+  - `ops-watch` sends its findings through `sendAlert` (and the GitHub email as before)
+- **ops-watch rule:** any `message_log` row with `status = 'failed'` in the last 24 h for job `cron-health-check`, `integration-check`, `gmail-monitor` or `send-question` is one finding naming the count and the jobs
+
+**Tests:** `src/__tests__/alertKate.test.js`, plus each caller's tests
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section
