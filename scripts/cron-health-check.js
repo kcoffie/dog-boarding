@@ -20,13 +20,13 @@
  *
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- *   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
- *   INTEGRATION_CHECK_RECIPIENTS
+ *   TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID (Kate's alert channel, REQ-652)
+ *
+ * Exit code: 1 when an alert was needed but not delivered, so the run goes red and GitHub emails Kate.
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
+import { alertAndLog } from '../src/lib/alertKate.js';
 
 // The three midnight Vercel crons we monitor.
 const MONITORED_CRONS = ['auth', 'schedule', 'detail'];
@@ -200,29 +200,11 @@ export function checkConsecutiveFailures(cronName, healthRow, recentLog) {
 }
 
 // ---------------------------------------------------------------------------
-// WhatsApp
-// ---------------------------------------------------------------------------
-
-async function sendAlertMessage(message, supabase = null) {
-  const recipients = getAlertRecipients();
-  console.log('[CronHealthCheck] Sending WhatsApp to %d recipient(s)...', recipients.length);
-  const results = await sendTextMessage(message, recipients);
-  const sent = results.filter(r => r.status === 'sent').length;
-  console.log('[CronHealthCheck] WhatsApp: %d/%d sent', sent, recipients.length);
-  await recordSentMessages(supabase, results, 'cron-health-check').catch(err =>
-    console.warn('[CronHealthCheck] Failed to record delivery status: %s', err.message)
-  );
-  console.log('[CronHealthCheck] Recording message_log — job: cron-health-check, content length: %d chars', message.length);
-  await recordMessageLog(supabase, results, 'cron-health-check', 'text', message, null).catch(err =>
-    console.warn('[CronHealthCheck] Failed to record message_log: %s', err.message)
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
+/** Runs the check. Returns the process exit code: 1 when an alert was needed but not delivered. */
+export async function main() {
   console.log('[CronHealthCheck] === Cron health check starting ===');
 
   // Midnight UTC today = start of the window the midnight crons should have run in
@@ -276,18 +258,19 @@ async function main() {
     ];
     const message = lines.join('\n');
     console.log('[CronHealthCheck] Sending alert:\n%s', message);
-    await sendAlertMessage(message, supabase);
-  } else {
-    console.log('[CronHealthCheck] All crons healthy — no alert needed');
+    const delivered = await alertAndLog(supabase, 'cron-health-check', message);
+    console.log('[CronHealthCheck] === Done (alert %s) ===', delivered ? 'delivered' : 'NOT delivered');
+    return delivered ? 0 : 1;
   }
 
+  console.log('[CronHealthCheck] All crons healthy — no alert needed');
   console.log('[CronHealthCheck] === Done ===');
-  process.exit(0);
+  return 0;
 }
 
 // Only run main() when executed directly — not when imported by tests.
 if (process.argv[1]?.endsWith('cron-health-check.js')) {
-  main().catch(err => {
+  main().then(code => process.exit(code)).catch(err => {
     console.error('[CronHealthCheck] Unhandled error:', err.message, err.stack);
     process.exit(1);
   });

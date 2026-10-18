@@ -13,6 +13,8 @@
  * @requirements REQ-652
  */
 
+import { recordMessageLog } from './messageDeliveryStatus.js';
+
 export const ALERT_MAX_CHARS = 4000; // Telegram's limit is 4096
 export const ALERT_TIMEOUT_MS = 15000;
 
@@ -65,4 +67,26 @@ export async function sendAlert(text) {
     console.error(`[Alert] ${error}`);
     return [{ to: TO, status: 'failed', error }];
   }
+}
+
+/**
+ * Send an alert and write it to message_log under `jobName` (sent or failed), so ops-watch can
+ * report undelivered alerts. The log write is non-fatal. Returns true when the alert was delivered;
+ * a caller that gets false must make its run fail (REQ-652).
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient|null} supabase
+ * @param {string} jobName - e.g. 'cron-health-check'
+ * @param {string} text
+ * @returns {Promise<boolean>}
+ */
+export async function alertAndLog(supabase, jobName, text) {
+  const results = await sendAlert(text);
+  try {
+    await recordMessageLog(supabase, results, jobName, 'text', text, null);
+  } catch (err) {
+    console.warn(`[Alert] message_log write failed for ${jobName}: ${err.message}`);
+  }
+  const delivered = alertDelivered(results);
+  if (!delivered) console.error(`[Alert] ${jobName}: alert NOT delivered — ${results.map(r => r.error).join('; ')}`);
+  return delivered;
 }

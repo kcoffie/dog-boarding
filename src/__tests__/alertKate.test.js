@@ -4,7 +4,9 @@
  * @requirements REQ-652
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { sendAlert, alertDelivered, truncateAlert, ALERT_TIMEOUT_MS } from '../lib/alertKate.js';
+vi.mock('../lib/messageDeliveryStatus.js', () => ({ recordMessageLog: vi.fn(async () => {}) }));
+const { recordMessageLog } = await import('../lib/messageDeliveryStatus.js');
+const { sendAlert, alertDelivered, alertAndLog, truncateAlert, ALERT_TIMEOUT_MS } = await import('../lib/alertKate.js');
 
 const TOKEN = '123456:test-bot-token';
 const CHAT = '987654321';
@@ -118,5 +120,25 @@ describe('REQ-652: alertDelivered', () => {
   it('is false for no results', () => {
     expect(alertDelivered([])).toBe(false);
     expect(alertDelivered(undefined)).toBe(false);
+  });
+});
+
+describe('REQ-652: alertAndLog', () => {
+  const DB = { fake: 'supabase' };
+
+  it('a delivered alert returns true and is logged as sent under the job name', async () => {
+    expect(await alertAndLog(DB, 'cron-health-check', 'cron-auth missed')).toBe(true);
+    expect(recordMessageLog).toHaveBeenCalledWith(DB, [{ to: 'telegram', status: 'sent' }], 'cron-health-check', 'text', 'cron-auth missed', null);
+  });
+
+  it('an undelivered alert returns false and is logged as failed', async () => {
+    telegramReplies({ ok: false, error_code: 403, description: 'Forbidden' }, 403);
+    expect(await alertAndLog(DB, 'gmail-monitor', 'x')).toBe(false);
+    expect(recordMessageLog.mock.calls.at(-1)[1]).toStrictEqual([{ to: 'telegram', status: 'failed', error: 'Telegram sendMessage 403: Forbidden' }]);
+  });
+
+  it('a message_log failure does not change the answer', async () => {
+    recordMessageLog.mockRejectedValueOnce(new Error('db down'));
+    expect(await alertAndLog(DB, 'integration-check', 'x')).toBe(true);
   });
 });
