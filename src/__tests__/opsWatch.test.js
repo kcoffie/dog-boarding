@@ -2,7 +2,7 @@
  * Ops watch: outcome checks that run outside GitHub. Expected values come from REQ-651.
  * @requirements REQ-651
  *
- * Boundaries (Supabase, GitHub, the image endpoint, WhatsApp) are fakes passed to runOpsWatch.
+ * Boundaries (Supabase, GitHub, the image endpoint, Kate's alert channel) are fakes passed to runOpsWatch.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -13,6 +13,8 @@ import {
   checkImage,
   runOpsWatch,
   WORKFLOW_MAX_AGE_HOURS,
+  checkFailedAlerts,
+  ALERT_JOBS,
 } from '../lib/opsWatch.js';
 
 // Friday 2026-10-16 17:00 UTC = 10:00 PDT, when the cron runs.
@@ -180,7 +182,7 @@ describe('roster image', () => {
 
 describe('runOpsWatch', () => {
   function deps(over = {}) {
-    const sent = { whatsapp: [], email: [] };
+    const sent = { alert: [], email: [] };
     return {
       sent,
       now: () => NOW,
@@ -194,7 +196,8 @@ describe('runOpsWatch', () => {
         'keepalive.yml': hoursAgo(24),
       }),
       fetchImage: async () => ({ status: 200, contentType: 'image/png' }),
-      sendWhatsApp: async (text) => { sent.whatsapp.push(text); return true; },
+      loadFailedAlerts: async () => [],
+      sendAlert: async (text) => { sent.alert.push(text); return true; },
       sendEmail: async (text) => { sent.email.push(text); return true; },
       ...over,
     };
@@ -204,24 +207,24 @@ describe('runOpsWatch', () => {
     const d = deps();
     const r = await runOpsWatch(d);
     expect(r.findings).toEqual([]);
-    expect(d.sent.whatsapp).toEqual([]);
+    expect(d.sent.alert).toEqual([]);
     expect(d.sent.email).toEqual([]);
     expect(r.ok).toBe(true);
   });
 
-  it('findings from several checks go out together in one WhatsApp and one email', async () => {
+  it('findings from several checks go out together in one alert and one email', async () => {
     const d = deps({
       fetchImage: async () => ({ status: 500, contentType: 'text/plain' }),
       loadRosterRows: async () => ({ sent: [], deliveredWamids: [] }),
     });
     const r = await runOpsWatch(d);
     expect(r.findings).toHaveLength(2);
-    expect(d.sent.whatsapp).toHaveLength(1);
+    expect(d.sent.alert).toHaveLength(1);
     expect(d.sent.email).toHaveLength(1);
-    expect(d.sent.whatsapp[0]).toBe(
+    expect(d.sent.alert[0]).toBe(
       '⚠️ Q Boarding ops watch (2026-10-16)\n• No morning roster sent today (2026-10-16)\n• Roster image broken: HTTP 500 (text/plain)',
     );
-    expect(d.sent.email[0]).toBe(d.sent.whatsapp[0]);
+    expect(d.sent.email[0]).toBe(d.sent.alert[0]);
     expect(r.ok).toBe(true);
   });
 
@@ -229,18 +232,19 @@ describe('runOpsWatch', () => {
     const d = deps({ loadLastSuccess: async () => { throw new Error('GH_ACTIONS_TOKEN not set'); } });
     const r = await runOpsWatch(d);
     expect(r.findings).toEqual(["Couldn't check the scheduled workflows: GH_ACTIONS_TOKEN not set"]);
-    expect(d.sent.whatsapp).toHaveLength(1);
+    expect(d.sent.alert).toHaveLength(1);
     expect(r.ok).toBe(false);
   });
 
   it("each check that can't run is named", async () => {
     const boom = async () => { throw new Error('x'); };
-    const r = await runOpsWatch(deps({ loadQueueStats: boom, loadRosterRows: boom, loadLastSuccess: boom, fetchImage: boom }));
+    const r = await runOpsWatch(deps({ loadQueueStats: boom, loadRosterRows: boom, loadLastSuccess: boom, fetchImage: boom, loadFailedAlerts: boom }));
     expect(r.findings).toEqual([
       "Couldn't check the sync queue: x",
       "Couldn't check the morning roster: x",
       "Couldn't check the scheduled workflows: x",
       "Couldn't check the roster image: x",
+      "Couldn't check the alert log: x",
     ]);
   });
 
@@ -272,23 +276,57 @@ describe('runOpsWatch', () => {
     expect(r.findings).toHaveLength(2);
   });
 
-  it('when WhatsApp fails the email still goes, and the run is not ok', async () => {
+  it('when the alert channel fails the email still goes, and the run is not ok', async () => {
     const d = deps({
       fetchImage: async () => ({ status: 500, contentType: 'text/plain' }),
-      sendWhatsApp: async () => { throw new Error('Meta 401'); },
+      sendAlert: async () => { throw new Error('Telegram 401'); },
     });
     const r = await runOpsWatch(d);
     expect(d.sent.email).toHaveLength(1);
     expect(r.ok).toBe(false);
   });
 
-  it('when the email fails the WhatsApp still goes, and the run is not ok', async () => {
+  it('when the email fails the alert still goes, and the run is not ok', async () => {
     const d = deps({
       fetchImage: async () => ({ status: 500, contentType: 'text/plain' }),
       sendEmail: async () => false,
     });
     const r = await runOpsWatch(d);
-    expect(d.sent.whatsapp).toHaveLength(1);
+    expect(d.sent.alert).toHaveLength(1);
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('REQ-652: undelivered alerts', () => {
+  it('no failed alert rows is no finding', () => {
+    expect(checkFailedAlerts([])).toEqual([]);
+  });
+
+  it('failed alerts are one finding with the count and the jobs, each job named once, in order', () => {
+    const rows = [{ job_name: 'send-question' }, { job_name: 'gmail-monitor' }, { job_name: 'gmail-monitor' }];
+    expect(checkFailedAlerts(rows)).toEqual(['Alerts not delivered in the last 24h: 3 (gmail-monitor, send-question)']);
+  });
+
+  it('the alert jobs watched are the four that alert Kate', () => {
+    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question']);
+  });
+
+  it('runOpsWatch reports failed alerts from the alert log', async () => {
+    const sent = [];
+    const r = await runOpsWatch({
+      now: () => NOW,
+      loadQueueStats: async () => ({ pendingCount: 0, oldestPendingAt: null, lastDoneAt: hoursAgo(5) }),
+      loadRosterRows: async () => ({ sent: [{ wamid: 'w1', sent_at: '2026-10-16T11:00:05Z' }], deliveredWamids: ['w1'] }),
+      loadLastSuccess: async () => ({
+        'gmail-monitor.yml': hoursAgo(1), 'integration-check.yml': hoursAgo(9), 'cron-health-check.yml': hoursAgo(17),
+        'notify-4am.yml': hoursAgo(6), 'keepalive.yml': hoursAgo(24),
+      }),
+      fetchImage: async () => ({ status: 200, contentType: 'image/png' }),
+      loadFailedAlerts: async () => [{ job_name: 'cron-health-check' }],
+      sendAlert: async (t) => { sent.push(t); return true; },
+      sendEmail: async () => true,
+    });
+    expect(r.findings).toEqual(['Alerts not delivered in the last 24h: 1 (cron-health-check)']);
+    expect(sent).toHaveLength(1);
   });
 });
