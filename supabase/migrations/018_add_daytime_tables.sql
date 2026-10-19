@@ -1,7 +1,7 @@
 -- v4.0 Daytime Activity Intelligence
 --
 -- Two new tables:
---   workers            — known staff members, seeded from KNOWN_WORKERS constant
+--   workers            — known staff members, rows entered in Supabase (names are not kept in the repo)
 --   daytime_appointments — all DC/PG/Boarding events from the weekly schedule grid
 --
 -- No detail-page fetches are needed; all fields come from data attributes and
@@ -18,16 +18,9 @@ CREATE TABLE IF NOT EXISTS workers (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Seed known workers (matches KNOWN_WORKERS constant in daytimeSchedule.js).
--- ON CONFLICT DO NOTHING so re-running is safe.
-INSERT INTO workers (external_id, name) VALUES
-  (61023,  'Charlie'),
-  (208669, 'Staff Member 1'),
-  (141407, 'Staff Member 2'),
-  (174385, 'Staff Member 3'),
-  (189436, 'Staff Member 4'),
-  (164375, 'Staff Member 5')
-ON CONFLICT (external_id) DO NOTHING;
+-- Worker rows are not seeded here: the repo is public, so staff names are entered
+-- directly in Supabase (docs/RUNBOOK.md, "Adding a worker"; #281). The UIDs are in
+-- src/lib/workers.js.
 
 -- ---------------------------------------------------------------------------
 -- daytime_appointments

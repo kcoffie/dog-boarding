@@ -35,7 +35,7 @@ const SERVICE_CATS = Object.freeze({
   5635: 'Boarding',
 });
 
-// KNOWN_WORKERS imported from src/lib/workers.js — single source of truth for worker IDs/names.
+// KNOWN_WORKERS imported from src/lib/workers.js — single source of truth for worker IDs.
 
 /** Matches "Pick-Up" variants in title or display_time text. */
 const PICKUP_RE = /pick-?up/i;
@@ -174,10 +174,10 @@ export function parseDaytimeSchedulePage(html) {
     // uid 0 = no worker (boardings). Unknown uid = warn, still store.
     const workerMatch = classes.match(/\bew-(\d+)\b/);
     const workerExternalId = workerMatch ? parseInt(workerMatch[1], 10) : 0;
-    if (workerMatch && !(workerExternalId in KNOWN_WORKERS)) {
+    if (workerMatch && !KNOWN_WORKERS.has(workerExternalId)) {
       logWarn(
         `Unknown worker uid ${workerExternalId} on event ${externalId} (${appointmentDate})` +
-          ' — add to KNOWN_WORKERS constant'
+          ' — add it to WORKER_IDS in src/lib/workers.js and the workers table'
       );
     }
 
