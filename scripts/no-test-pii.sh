@@ -1,12 +1,20 @@
 #!/bin/sh
 # Fails (exit 1) when the text on stdin carries a realistic phone number or a personal email address, and prints
 # each offending line. The repo is public: tests use fictional contact details only (docs/ENGINEERING_PROCESS.md,
-# good tests rule 7; REQ-653; #264). CI runs `npm run check:test-pii` over every test file.
+# good tests rule 7; REQ-653; #264). CI runs `npm run check:test-pii`, which is `--tracked-tests` mode: every tracked
+# test file (src/__tests__ and colocated *.test.*). That mode fails when git finds no test files, so it can't pass empty.
 # - Phone: a North American number written as +1 then 10 digits, or as 3-3-4 digit groups with ( ) . - or
 #   space between them, whose area code or exchange isn't 555 (the fictional range, so +1 555-555-0142 passes).
 #   A bare 10-digit run with no +1 and no separators, or one inside a longer digit run, is a timestamp or an ID.
 # - Email: any address outside the allowed domains (any case, any subdomain): the reserved example domains, the
 #   test placeholders, and the service senders the gmail-monitor tests match on.
+if [ "$1" = "--tracked-tests" ]; then
+  count=$(git ls-files -- src/__tests__ '*.test.*' | wc -l) || exit 1
+  if [ "$count" -eq 0 ]; then echo "no-test-pii: git found no test files to check" >&2; exit 1; fi
+  git grep -n '' -- src/__tests__ '*.test.*' | sh "$0"
+  exit $?
+fi
+
 awk '
   BEGIN {
     phone = "\\+1[ .-]?\\(?[2-9][0-9][0-9]\\)?[ .-]?[0-9][0-9][0-9][ .-]?[0-9][0-9][0-9][0-9]|\\(?[2-9][0-9][0-9]\\)?[ .-][0-9][0-9][0-9][ .-][0-9][0-9][0-9][0-9]|\\([2-9][0-9][0-9]\\)[0-9][0-9][0-9][ .-]?[0-9][0-9][0-9][0-9]"

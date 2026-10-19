@@ -1404,6 +1404,7 @@ The repo is public, so tests carry fictional contact details only (#264). CI rej
 - A bare 10-digit run with no `+1` and no separators, and a phone-shaped group inside a longer digit run, pass (timestamps and IDs)
 - An email address fails unless its domain (any case, or a subdomain of it) is `example.com/.org/.net`, `test.com`, `domain.com`, or a service sender the tests match on (`github.com`, `vercel.com`, `supabase.com`, `anthropic.com`, `someothertool.io`). A lookalike such as `example.com.evil.io` fails
 - A failing check prints each offending line, with its file and line number, and exits 1
+- `check:test-pii` fails when git finds no test files, so it can never pass on empty input
 
 **Tests:** `src/__tests__/noTestPii.test.js`
 

@@ -394,7 +394,7 @@ Example from April 7:
 
 **What:** Once `enqueue()` marks an appointment `done`, it is never re-processed — even if AGYD later reschedules it (date change, title change, etc.). The DB silently retains stale data with no indication anything changed.
 
-**Confirmed instance:** Peanut (C63QghzH, May 14–19 2026). Originally synced May 3 when AGYD had the appointment starting May 13 (`source_url` ends in `/1778666400` = May 13 10:00 UTC). AGYD was subsequently updated to May 14 (`/1778752800`). DB retained May 13 until manually corrected May 14, 2026. Discovered via integration check alert.
+**Confirmed instance:** Peanut (C63QAAAB, May 14–19 2026). Originally synced May 3 when AGYD had the appointment starting May 13 (`source_url` ends in `/1778666400` = May 13 10:00 UTC). AGYD was subsequently updated to May 14 (`/1778752800`). DB retained May 13 until manually corrected May 14, 2026. Discovered via integration check alert.
 
 **Root cause:** `enqueue()` deduplicates on `external_id`. When `status = 'done'`, all calls are silently skipped regardless of whether `source_url` changed. AGYD embeds the scheduled start timestamp directly in the appointment URL — a URL change is a reliable signal that the appointment was rescheduled. This signal exists in the data but is never checked.
 
@@ -403,7 +403,7 @@ Example from April 7:
 In `enqueue()`, when `existing.status === 'done'`, compare the incoming `source_url` against the stored one. If they differ, re-queue the item (same path as `resetIfDone: true`) and update `source_url` to the new URL. No changes needed in `syncRunner.js` — the comparison belongs where the existing entry is already read.
 
 **Logging requirements (Black Box Protocol):**
-- Re-queue path: emit old URL, new URL, and both timestamps decoded to ISO dates so the date shift is human-readable without arithmetic. Example: `[SyncQueue] 🔄 Re-queued modified appointment: C63QghzH (url changed: /1778666400 [2026-05-13] → /1778752800 [2026-05-14])`
+- Re-queue path: emit old URL, new URL, and both timestamps decoded to ISO dates so the date shift is human-readable without arithmetic. Example: `[SyncQueue] 🔄 Re-queued modified appointment: C63QAAAB (url changed: /1778666400 [2026-05-13] → /1778752800 [2026-05-14])`
 - Same-URL skip: update the existing "already queued" log to include the `source_url` so the skip is auditable, not just `status: done`
 - Null `source_url` guard: if `existing.source_url` is null (pre-dates current URL structure), skip the re-queue and log: `[SyncQueue] ⚠️ Can't compare URL for {id} — source_url null, skipping modification check`
 
