@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 19, 2026, ~18:15 UTC (session 35, end). **Kate's alerts still reach nobody:** the `TELEGRAM_*` secrets and the Vercel variables (`CRON_SECRET`, `GH_ACTIONS_TOKEN`) are not set yet, so every alert fails as "not configured" and ops-watch returns 401. The team roster has **no working channel** until SMS (#260; Twilio registration not started). First job next session: ask Kate what she's set up, then prove both alert paths with her OK for each test message.
+**Last updated:** October 19, 2026, ~18:15 UTC (session 35, end). **Kate's alerts still reach nobody:** the `TELEGRAM_*` secrets and the Vercel variables (`CRON_SECRET`, `GH_ACTIONS_TOKEN`) are not set yet (Kate said on 10-19 she hasn't started; ops-watch's 401 agrees), so every alert fails as "not configured" and ops-watch returns 401. The team roster has **no working channel** until SMS (#260; Twilio registration not started). First job next session: ask Kate what she's set up, then prove both alert paths with her OK for each test message.
 
 ---
 
@@ -13,7 +13,7 @@
    - Give options as one line each with real counts, then one recommendation.
    - Ask before sending any message to anyone (Telegram test alerts, SMS, WhatsApp), re-enabling workflows, adding secrets or changing repo settings.
    - Messages must never be tied to the client's (Charlie's) business. The app is Kate's alone, and Kate has no registered business.
-3. **Shell:** `gh` is aliased to `history | grep`, so always type `command gh …`. Production is **`https://qboarding.vercel.app`** (Vercel project `qboard`; the `dog-boarding` Vercel project is a dormant duplicate). Claude can't read Vercel env or logs (no CLI; Hobby logs keep 1 h). Use Kate's Chrome, the Supabase tables, or ask Kate.
+3. **Shell:** `gh` is aliased to `history | grep`, so always type `command gh …`. Production is **`https://qboarding.vercel.app`** (Vercel project `qboard`; the `dog-boarding` Vercel project is a duplicate that deploys production on every merge, but whose crons don't fire). Claude can't read Vercel env or logs (no CLI; Hobby logs keep 1 h). Use Kate's Chrome, the Supabase tables, or ask Kate.
 4. **Gates:** run the `architect` agent on the design note before a new job, service, secret or table. Run the `reviewer` agent before every PR. A new scheduled job ships with its failure alert, and that alert must run outside the job's own scheduler.
 5. **New code only:** the gates cover code written from 2026-10-16 on. Bringing older code up to the same bar is #239.
 
@@ -44,7 +44,7 @@
    - ops-watch's "4am roster not delivered" rule covers this, but it has never run (no `CRON_SECRET`).
    - Other windows aren't covered (#257).
 7. **Not done this session:**
-   - The alert-path tests are blocked on Kate's setup: no `TELEGRAM_*` GitHub secrets, and nothing set in Vercel.
+   - The alert-path tests are blocked on Kate's setup: no `TELEGRAM_*` GitHub secrets, and Kate said she hasn't started the Vercel side (ops-watch's 401 agrees).
    - There is no ops-watch `cron_health` row after 17:00, as expected (401 without `CRON_SECRET`).
 8. **Kate decides:**
    - `src/lib/workers.js` publishes five employees' full names with their AGYD IDs: move them to the DB or env?
@@ -100,12 +100,12 @@
 2. Chat ID: copy the bot token, then run `! curl -s "https://api.telegram.org/bot$(pbpaste)/getUpdates" | grep -o '"chat":{"id":[0-9-]*' | head -1`
 3. GitHub secrets: `! pbpaste | command gh secret set TELEGRAM_BOT_TOKEN -R kcoffie/dog-boarding`, then the same for `TELEGRAM_ALERT_CHAT_ID`.
 4. Vercel **qboard → Production**, type **Secret**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID`, `CRON_SECRET` (random, e.g. `openssl rand -hex 32`), `GH_ACTIONS_TOKEN` (fine-grained PAT, this repo only, Actions read and write). Then **redeploy**.
-5. Optional: turn off Cron Jobs on the dormant `dog-boarding` Vercel project, or delete that project. If it ever deploys production, every cron runs twice.
+5. Optional: turn off Cron Jobs on the duplicate `dog-boarding` Vercel project, or delete that project. It deploys production on every merge, so if its crons are ever enabled, every cron runs twice.
 6. Five Vercel variables show "Needs Attention". All five are secret-looking values stored as type **Config**, so the likely fix is to re-save them as type **Secret** (unconfirmed).
 
 ### Production (verified 2026-10-19 18:15 UTC)
 - main `5cb12fd` is deployed to qboard. The roster image (`/api/roster-image?type=weekend&token=…`) returns 200 `image/png`. send-question without auth returns 401.
-- **The "dormant" `dog-boarding` Vercel project deploys production on every merge to main** (100+ deployments). Its crons are *not* firing: `cron_health_log` shows auth and schedule once a night, and detail twice (cron-detail plus cron-detail-2). If its Cron Jobs were ever enabled, every cron would run twice. Kate's setup step 5 (turn its crons off, or delete the project) still stands.
+- **The duplicate `dog-boarding` Vercel project deploys production on every merge to main** (100+ deployments). Its crons are *not* firing: `cron_health_log` shows auth and schedule once a night, and detail twice (cron-detail plus cron-detail-2). If its Cron Jobs were ever enabled, every cron would run twice. Kate's setup step 5 (turn its crons off, or delete the project) still stands.
 - `sync_queue`: 27 pending at 18:12 UTC (see Session 35 item 2).
 
 ### Mutation
@@ -118,7 +118,7 @@
   - `ops-watch`: 87.3%
   - `alertKate`: 82%
   - integration-check daycare filter: 90.6%
-- **Next #239 target:** `pictureOfDay.js` (51.4% on CI).
+- **Next #239 target:** `pictureOfDay.js` (51.4% in CI's 10-19 per-file table).
 
 ### Issues
 - **#275:** sync silent failures (`sync_settings` errors, endless `session_cleared`, failed enqueues). Needs a design note and the architect review, because it changes what alerts.
@@ -149,7 +149,8 @@
 6. **#239:** `pictureOfDay.js` tests from REQ-610/611, with mutation scores. Also #257 (ops-watch rule for notify failures and undelivered rosters in every window).
 
 ## Open TODOs
-- [ ] #239 backfill (see its comments), #264 fixtures, #257 ops-watch notify-failure rule
+- [ ] #239 backfill (see its comments), #275 sync silent failures, #257 ops-watch notify-failure rule
+- [ ] Kate: rewrite history for the #264 values (and the 20 old tags)?
 - [ ] 20 old tags still on the pre-rewrite history (Kate)
 - [ ] `mutate:changed` (80% on changed lines) as a PR check
 - [ ] A PR check that `thresholds.break` never goes down (the reviewer enforces it for now)
