@@ -94,9 +94,15 @@
   - gmail-monitor exits 0 on a revoked Gmail grant
   - make the older crons fail closed on `CRON_SECRET` (**only after Kate confirms it's set**)
   - next mutation targets: `syncRunner.js`, then `pictureOfDay.js`
-- **#238, #145:** dependencies. Five new Dependabot PRs arrived 10-19 (#266–#270, including vite 8 and vitest 5 majors). After any dependency merge, verify the production image endpoint and the next scheduled run, and keep satori at 0.26.
+- **Dependencies:**
+  - #238 (triage the majors), #145 (eslint 9→10, plugin-react 5→6: a manual upgrade, not Dependabot).
+  - The old Dependabot PRs (#174, #219/#241, #234, #243, #245) were closed by the history rewrite.
+  - Five new ones arrived 10-19 (#266–#270, including vite 8 and vitest 5 majors). After any dependency merge, verify the production image endpoint and the next scheduled run, and keep satori at 0.26.
 
 ## Immediate Next Steps
+0. **A real sync gap, not just missing secrets.** The scheduled Integration Check at 15:07 UTC on 10-19 (run 39275231082) went red with `Missing from DB: C63QhIww` (a weekend daycare booking for 10/24), and its report couldn't be delivered.
+   - Check whether the sync should have imported it (`sync_queue` row, filter rules in `config.js`), and drain or fix it.
+   - Don't dismiss red Integration Check runs as "just the missing Telegram secrets". Read the log first.
 1. **Check Kate's setup** (above): `command gh secret list`, and ask her about Vercel.
 2. **Prove both alert paths, asking Kate before each test message:**
    - GitHub path: `command gh workflow run cron-health-check.yml`. It only alerts if something's wrong; if all is healthy, use Send-a-Question instead.
