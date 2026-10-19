@@ -5,8 +5,8 @@
  * Runs hourly via GitHub Actions. For each unread email from a known sender
  * that matches a subject pattern:
  *   1. Checks gmail_processed_emails to skip already-processed emails
- *   2. Sends a WhatsApp alert to INTEGRATION_CHECK_RECIPIENTS via Meta Cloud API
- *   3. Records the email in gmail_processed_emails to prevent duplicates
+ *   2. Alerts Kate through sendAlert (Telegram, REQ-652)
+ *   3. Records the email in gmail_processed_emails only once its alert was delivered
  *
  * Authentication: uses OAuth2 with a long-lived refresh token (GMAIL_REFRESH_TOKEN).
  * The refresh token is exchanged for a short-lived access token on each run.

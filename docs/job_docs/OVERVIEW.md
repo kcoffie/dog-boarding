@@ -237,8 +237,8 @@ Three independent paths ensure a failure surfaces before it causes a missed noti
 | Failure type | Who catches it | Via |
 |---|---|---|
 | Vercel cron didn't run / threw an error | `cron-health-check` | Telegram alert to Kate at 5:30 PM PDT (00:30 UTC) |
-| GH Actions workflow failed (any workflow) | `gmail-monitor` | WhatsApp to Kate within 1 hour |
-| Sync ran but missed a booking (silent data bug) | `integration-check` | WhatsApp to Kate at 1am/9am/5pm |
+| GH Actions workflow failed (any workflow) | `gmail-monitor` | Telegram alert to Kate within 1 hour |
+| Sync ran but missed a booking (silent data bug) | `integration-check` | Telegram report to Kate at 1am/9am/5pm |
 | Morning notify fired but image never delivered to phone | F-1 webhook + `message_delivery_status` table | (G-1 alert not yet implemented) |
 
 ---

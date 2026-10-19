@@ -13,10 +13,9 @@
  *      2 entries. If both are failures → alert (consecutive = real problem).
  *      A single failure in a sea of successes is likely transient noise.
  *
- * Sends alerts to INTEGRATION_CHECK_RECIPIENTS via Meta Cloud API (same as the
- * integration-check.js path — Kate only, not the roster recipients).
+ * Alerts go to Kate through sendAlert (Telegram, REQ-652).
  *
- * Exit codes: 0 on success or alerts-sent (job succeeded), 1 on startup crash.
+ * Exit codes: 0 when healthy or the alert was delivered; 1 when the alert wasn't delivered, or on a crash.
  *
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY

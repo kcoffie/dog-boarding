@@ -45,7 +45,7 @@ Kate has no registered business, so a verified WhatsApp sender is out. The roste
 
 **Not in scope:** the notify refresh alert goes to the team (`NOTIFY_RECIPIENTS`), so it moves with the roster in #260. `getAlertRecipients()` and `INTEGRATION_CHECK_RECIPIENTS` are removed once nothing uses them.
 
-### New ops-watch rule (REQ-651)
+### New ops-watch rule (REQ-652)
 Any `message_log` row with `status = 'failed'` in the last 24 h, for job `cron-health-check`, `integration-check`, `gmail-monitor` or `send-question`, becomes one finding: "N alerts failed to send (jobs…)". The data already exists.
 
 ### Workflows

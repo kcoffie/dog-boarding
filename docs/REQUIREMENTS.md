@@ -1216,7 +1216,7 @@ An independent GH Actions script verifies that the DB matches the live external 
 - Queries DB: boardings in past-7d → today+7d window; daytime appointments for today
 - Flags: IDs on schedule missing from DB; IDs in DB with `Unknown` dog name; daytime events on schedule missing from DB
 - Sends the text report to Kate through `sendAlert` (Telegram, REQ-652); exits 1 when the report was needed but not delivered
-- Always exits 0 — discrepancies are reported, not fatal
+- Exits 0 when the report was delivered or not needed: discrepancies are reported, not fatal
 - Canceled/request-type bookings are a known false positive (not imported); documented in `docs/job_docs/integration-check.md`
 - Step 3 (Claude vision name-check) silently skipped when `ANTHROPIC_API_KEY` has no credits
 
@@ -1295,7 +1295,7 @@ Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arr
 ### REQ-700: Send a Question
 **Added:** v6.2.0 | **Status:** Complete
 
-Users can send a question or comment to Kate directly from the nav user dropdown. The message is delivered via WhatsApp using the existing `sendTextMessage` infrastructure (same alert channel as cron-health-check and gmail-monitor).
+Users can send a question or comment to Kate directly from the nav user dropdown. The message goes to Kate's alert channel (`sendAlert`, Telegram — REQ-652), the same one cron-health-check and gmail-monitor use.
 
 **Acceptance Criteria:**
 - "Send a Question" button in the nav user dropdown (desktop) and mobile menu
