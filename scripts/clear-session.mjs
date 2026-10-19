@@ -18,7 +18,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
 );
 
-const { data } = await supabase.from('sync_settings').select('id').limit(1).single();
+const { data, error } = await supabase.from('sync_settings').select('id').order('id', { ascending: true }).limit(1).maybeSingle();
+if (error) throw new Error(`sync_settings read failed: ${error.message}`);
 if (data) {
   await supabase.from('sync_settings').update({
     session_cookies: null,

@@ -20,6 +20,8 @@ Each case below makes a sync run look fine while the outcome the client depends 
 **Choice: 1.**
 
 ## The changes
+> **Superseded in two places by the architect review below:** failed enqueues **do** advance the cursor (the run is still red), and a missing `schedule` row is the finding "Schedule scan has never recorded a run".
+
 - **`getCursorDate`:** a `PGRST116` error (no row) means today, as now. Any other error throws `sync_settings read failed: …`. The scan then fails, `cron-schedule` records `failure`, and nothing is enqueued or advanced.
 - **`saveCursorDate`, `storeSession`, `clearSession`:** read the row id with `order('id').limit(1)`. On `PGRST116` insert; on any other read error throw, and **never insert**. Check the update and insert errors too, and throw. `order('id')` makes every reader and writer pick the same row if a duplicate ever appears.
 - **Failed enqueues:** if any enqueue failed, the cursor is **not** advanced, and the run returns `action: 'enqueue_failed'` with `failedEnqueues` and the counts. `cron-schedule` records that as `failure`. Enqueue is idempotent, so the next run retries the week.

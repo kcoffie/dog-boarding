@@ -239,7 +239,8 @@ async function saveCursorDate(supabase, date) {
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  *   Must use the service role key — reads session_cookies from sync_settings.
  * @returns {Promise<{
- *   action: 'ok'|'session_failed'|'session_cleared',
+ *   action: 'ok'|'enqueue_failed'|'session_failed'|'session_cleared',
+ *   reason?: string, failedEnqueues?: number, failedEnqueueIds?: string[],
  *   pagesScanned: number,
  *   found: number,
  *   skipped: number,

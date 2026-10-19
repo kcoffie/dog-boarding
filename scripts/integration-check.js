@@ -456,11 +456,12 @@ async function main() {
   try {
     const scheduleResult = await runScheduleSync(supabase);
     console.log(
-      '[IntegCheck] Step 0 schedule: action=%s pagesScanned=%d queued=%d queueDepth=%d',
+      '[IntegCheck] Step 0 schedule: action=%s pagesScanned=%d queued=%d queueDepth=%d failedEnqueues=%d',
       scheduleResult.action,
       scheduleResult.pagesScanned,
       scheduleResult.queued,
       scheduleResult.queueDepth,
+      scheduleResult.failedEnqueues ?? 0,
     );
 
     if (['ok', 'enqueue_failed', 'session_cleared'].includes(scheduleResult.action)) {

@@ -195,6 +195,30 @@ describe('REQ-104: Sync Scheduling', () => {
     });
   });
 
+  describe('sync_settings read errors (#275)', () => {
+    // A sync_settings table whose read fails; records whether anything was written.
+    const failingDb = () => {
+      const writes = [];
+      const chain = {
+        select: () => chain, order: () => chain, limit: () => chain,
+        maybeSingle: () => Promise.resolve({ data: null, error: { message: 'timeout' } }),
+        update: () => { writes.push('update'); return { eq: () => Promise.resolve({ error: null }) }; },
+        insert: () => { writes.push('insert'); return Promise.resolve({ error: null }); },
+      };
+      return { writes, from: () => chain };
+    };
+
+    it('getSyncSettings throws on a read error instead of returning no settings', async () => {
+      await expect(getSyncSettings(failingDb())).rejects.toThrow('sync_settings read failed: timeout');
+    });
+
+    it('updateSyncSettings writes nothing after a failed read, so it never adds a second row', async () => {
+      const db = failingDb();
+      await expect(updateSyncSettings(db, { enabled: true })).rejects.toThrow('sync_settings read failed');
+      expect(db.writes).toEqual([]);
+    });
+  });
+
   describe('updateSyncSettings()', () => {
     it('updates existing settings', async () => {
       const supabase = createMockSupabase();

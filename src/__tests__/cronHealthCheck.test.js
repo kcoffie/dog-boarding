@@ -14,6 +14,7 @@ import {
   checkOpsWatchFresh,
   checkHungCron,
   checkConsecutiveFailures,
+  loadRecentLog,
 } from '../../scripts/cron-health-check.js';
 
 // ---------------------------------------------------------------------------
@@ -234,3 +235,23 @@ describe('checkOpsWatchFresh', () => {
     expect(checkOpsWatchFresh(undefined, NOW_MS)).toBe('ops-watch (Vercel) has never run');
   });
 });
+
+describe('loadRecentLog (#275)', () => {
+  it('reads enough log rows for 2 finished runs, newest first, with their error text', async () => {
+    const q = {};
+    const chain = {
+      select: (cols) => { q.columns = cols; return chain; },
+      eq: (col, val) => { q.eq = [col, val]; return chain; },
+      order: (col, opts) => { q.order = [col, opts]; return chain; },
+      limit: (n) => { q.limit = n; return Promise.resolve({ data: [{ status: 'failure' }], error: null }); },
+    };
+    const rows = await loadRecentLog({ from: (t) => { q.table = t; return chain; } }, 'schedule');
+    expect(rows).toEqual([{ status: 'failure' }]);
+    expect(q.table).toBe('cron_health_log');
+    expect(q.columns.split(',').map((c) => c.trim())).toEqual(expect.arrayContaining(['status', 'error_msg']));
+    expect(q.eq).toEqual(['cron_name', 'schedule']);
+    expect(q.order).toEqual(['ran_at', { ascending: false }]);
+    expect(q.limit).toBeGreaterThanOrEqual(4); // each run logs 'started' and its result
+  });
+});
+

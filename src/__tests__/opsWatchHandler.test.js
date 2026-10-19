@@ -124,6 +124,14 @@ describe('cron_health', () => {
 });
 
 describe('what the rules are given', () => {
+  it('the schedule-scan rule reads the schedule row of cron_health, with status, result and error (#275)', async () => {
+    await call(AUTH, { dryRun: '1' });
+    const eqs = calls.filter(([t, m]) => t === 'cron_health' && m === 'eq').map(([, , ...a]) => a);
+    expect(eqs).toEqual([['cron_name', 'schedule']]);
+    const [cols] = calls.filter(([t, m]) => t === 'cron_health' && m === 'select').map(([, , c]) => c);
+    expect(cols.split(',').map((c) => c.trim())).toEqual(expect.arrayContaining(['last_ran_at', 'status', 'result', 'error_msg']));
+  });
+
   it('the roster query asks only for sent notify-4am rows, and null wamids are dropped', async () => {
     results.message_log = [{ data: [{ wamid: null, sent_at: new Date().toISOString() }], error: null }];
     const res = await call(AUTH, { dryRun: '1' });
