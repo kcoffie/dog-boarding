@@ -59,17 +59,6 @@ export function getRecipients() {
   return raw.split(',').map(n => n.trim()).filter(Boolean);
 }
 
-/**
- * Parse the INTEGRATION_CHECK_RECIPIENTS env var into an array of E.164 phone numbers.
- * Used by alert scripts (integration-check, cron-health-check, gmail-monitor).
- *
- * @returns {string[]}
- */
-export function getAlertRecipients() {
-  const raw = process.env.INTEGRATION_CHECK_RECIPIENTS || '';
-  return raw.split(',').map(n => n.trim()).filter(Boolean);
-}
-
 // ---------------------------------------------------------------------------
 // Meta Cloud API
 // ---------------------------------------------------------------------------

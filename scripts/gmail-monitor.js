@@ -5,8 +5,8 @@
  * Runs hourly via GitHub Actions. For each unread email from a known sender
  * that matches a subject pattern:
  *   1. Checks gmail_processed_emails to skip already-processed emails
- *   2. Sends a WhatsApp alert to INTEGRATION_CHECK_RECIPIENTS via Meta Cloud API
- *   3. Records the email in gmail_processed_emails to prevent duplicates
+ *   2. Alerts Kate through sendAlert (Telegram, REQ-652)
+ *   3. Records the email in gmail_processed_emails only once its alert was delivered
  *
  * Authentication: uses OAuth2 with a long-lived refresh token (GMAIL_REFRESH_TOKEN).
  * The refresh token is exchanged for a short-lived access token on each run.
@@ -20,8 +20,10 @@
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN
- *   META_PHONE_NUMBER_ID, META_WHATSAPP_TOKEN
- *   INTEGRATION_CHECK_RECIPIENTS
+ *   TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID (Kate's alert channel, REQ-652)
+ *
+ * An email is marked processed only after its alert was delivered, so an undelivered one is
+ * retried on the next hourly run; any undelivered alert makes the run exit 1 (red → GitHub emails Kate).
  *
  * Optional:
  *   ANTHROPIC_API_KEY — if set (and has credits), Claude summarizes the email body.
@@ -29,8 +31,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
+import { alertAndLog } from '../src/lib/alertKate.js';
 
 // ---------------------------------------------------------------------------
 // Known sender configuration
@@ -65,11 +66,16 @@ const KNOWN_SENDERS = [
 
 // Gmail search query — cast a wide net by sender, then filter by subject in code.
 // Using 'is:unread' ensures we only process new emails each run.
-const GMAIL_QUERY = [
+// Our own "Run failed: Gmail Monitor" emails are left out here (not just skipped in code): they stay
+// unread, and while alerts fail every hourly run adds one, which would push an undelivered email out
+// of the result window and lose it (REQ-652).
+export const GMAIL_QUERY = [
   'from:(notifications@github.com OR notifications@vercel.com)',
   'OR from:(@supabase.com)',
   'is:unread',
+  '-subject:"Gmail Monitor"',
 ].join(' ');
+export const GMAIL_MAX_RESULTS = 50;
 
 // ---------------------------------------------------------------------------
 // Client factories
@@ -183,7 +189,7 @@ async function getAccessToken() {
  * @returns {Promise<string[]>} - List of message IDs
  */
 async function searchGmail(accessToken) {
-  const params = new URLSearchParams({ q: GMAIL_QUERY, maxResults: '20' });
+  const params = new URLSearchParams({ q: GMAIL_QUERY, maxResults: String(GMAIL_MAX_RESULTS) });
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`;
 
   const response = await fetch(url, {
@@ -345,25 +351,30 @@ async function markProcessed(supabase, email) {
 }
 
 // ---------------------------------------------------------------------------
-// WhatsApp
+// Alert (Telegram, REQ-652)
 // ---------------------------------------------------------------------------
 
-async function sendAlertMessage(message, supabase = null) {
-  const recipients = getAlertRecipients();
-  const results = await sendTextMessage(message, recipients);
-  const sent = results.filter(r => r.status === 'sent').length;
-  console.log('[GmailMonitor] WhatsApp: %d/%d sent', sent, recipients.length);
-  await recordSentMessages(supabase, results, 'gmail-monitor').catch(err =>
-    console.warn('[GmailMonitor] Failed to record delivery status: %s', err.message)
-  );
-  console.log('[GmailMonitor] Recording message_log — job: gmail-monitor, content length: %d chars', message.length);
-  await recordMessageLog(supabase, results, 'gmail-monitor', 'text', message, null).catch(err =>
-    console.warn('[GmailMonitor] Failed to record message_log: %s', err.message)
-  );
+/**
+ * Forward one matched email to Kate. It is marked processed only when the alert was delivered,
+ * so an undelivered email is tried again on the next run. Returns true when delivered.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ id: string, from: string, subject: string }} email
+ * @param {string} message - from buildAlertMessage
+ * @returns {Promise<boolean>}
+ */
+export async function forwardEmail(supabase, email, message) {
+  const delivered = await alertAndLog(supabase, 'gmail-monitor', message);
+  if (delivered) {
+    await markProcessed(supabase, email);
+  } else {
+    console.error('[GmailMonitor] Alert for %s not delivered — leaving it unprocessed for the next run', email.id);
+  }
+  return delivered;
 }
 
 /**
- * Build the WhatsApp alert message for a matched email.
+ * Build the alert message for a matched email.
  * Optionally uses Claude for a 1-line summary if ANTHROPIC_API_KEY is set.
  *
  * Falls back to subject line if Claude is unavailable or has no credits.
@@ -418,30 +429,36 @@ async function buildAlertMessage(email, senderConfig) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
+// The I/O main() uses (Supabase, the Gmail API); tests pass fakes.
+const defaultDeps = { getSupabase, getAccessToken, searchGmail, fetchMessage, isAlreadyProcessed, buildAlertMessage };
+
+/** Runs one scan. Returns the process exit code: 1 when any matched email's alert wasn't delivered. */
+export async function main(deps = defaultDeps) {
+  const d = { ...defaultDeps, ...deps };
   console.log('[GmailMonitor] === Gmail monitor starting ===');
 
-  const supabase = getSupabase();
+  const supabase = d.getSupabase();
 
   // Step 1: Get Gmail access token
-  const accessToken = await getAccessToken();
+  const accessToken = await d.getAccessToken();
 
   // Step 2: Search for unread emails from known senders
-  const messageIds = await searchGmail(accessToken);
+  const messageIds = await d.searchGmail(accessToken);
 
   if (messageIds.length === 0) {
     console.log('[GmailMonitor] No unread emails from known senders — done');
-    process.exit(0);
+    return 0;
   }
 
   // Step 3: Process each message
   let alertsSent = 0;
+  let undelivered = 0;
   let skipped = 0;
 
   for (const id of messageIds) {
     let email;
     try {
-      email = await fetchMessage(accessToken, id);
+      email = await d.fetchMessage(accessToken, id);
     } catch (err) {
       console.error('[GmailMonitor] Could not fetch message %s: %s', id, err.message);
       continue;
@@ -457,7 +474,7 @@ async function main() {
     }
 
     // Dedup check
-    const alreadyDone = await isAlreadyProcessed(supabase, id);
+    const alreadyDone = await d.isAlreadyProcessed(supabase, id);
     if (alreadyDone) {
       console.log('[GmailMonitor] Already processed %s — skipping', id);
       skipped++;
@@ -465,22 +482,19 @@ async function main() {
     }
 
     // Build and send alert
-    const message = await buildAlertMessage(email, senderConfig);
+    const message = await d.buildAlertMessage(email, senderConfig);
     console.log('[GmailMonitor] Sending alert for %s:\n%s', id, message);
-    await sendAlertMessage(message, supabase);
-
-    // Mark processed
-    await markProcessed(supabase, email);
-    alertsSent++;
+    if (await forwardEmail(supabase, email, message)) alertsSent++;
+    else undelivered++;
   }
 
-  console.log('[GmailMonitor] === Done === (%d alert(s) sent, %d skipped)', alertsSent, skipped);
-  process.exit(0);
+  console.log('[GmailMonitor] === Done === (%d alert(s) sent, %d undelivered, %d skipped)', alertsSent, undelivered, skipped);
+  return undelivered > 0 ? 1 : 0;
 }
 
 // Only run main() when executed directly — not when imported by tests.
 if (process.argv[1]?.endsWith('gmail-monitor.js')) {
-  main().catch(err => {
+  main().then(code => process.exit(code)).catch(err => {
     if (err.code === 'GMAIL_INVALID_GRANT') {
       // Known recoverable state — token revoked (e.g. new country login, password change).
       // Exit 0 so the workflow does not fail and generate its own "run failed" alert email.

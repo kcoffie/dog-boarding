@@ -2,10 +2,10 @@
  * Ops watch (REQ-651): daily outcome checks that run on Vercel, outside GitHub's scheduler.
  *
  * Every check asks "did the outcome happen?", not "did the job run?". A check that can't run is a
- * finding too: silence is never success. The I/O (Supabase, GitHub, the image endpoint, WhatsApp,
+ * finding too: silence is never success. The I/O (Supabase, GitHub, the image endpoint, Kate's alert channel,
  * the email dispatch) is passed in, so the rules can be tested without it. Wiring: api/ops-watch.js.
  * Design: docs/specs/ops-watch-design-note.md.
- * @requirements REQ-651
+ * @requirements REQ-651, REQ-652
  */
 
 const HOUR_MS = 3600e3;
@@ -90,8 +90,21 @@ export function checkImage({ status, contentType }) {
   return [`Roster image broken: HTTP ${status} (${contentType})`];
 }
 
+/** Jobs whose alerts go to Kate; a failed message_log row for any of them is a finding (REQ-652). */
+export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question'];
+
 /**
- * Run every check, then alert once on WhatsApp and by email when there are findings.
+ * @param {Array<{job_name: string}>} failedRows  message_log rows with status 'failed' for ALERT_JOBS
+ *   in the last 24 h.
+ */
+export function checkFailedAlerts(failedRows) {
+  if (failedRows.length === 0) return [];
+  const jobs = [...new Set(failedRows.map((r) => r.job_name))].sort();
+  return [`Alerts not delivered in the last 24h: ${failedRows.length} (${jobs.join(', ')})`];
+}
+
+/**
+ * Run every check, then alert once on Kate's alert channel and by email when there are findings.
  * `ok` is false when a check couldn't run or an alert couldn't be sent.
  */
 export async function runOpsWatch(d) {
@@ -103,6 +116,7 @@ export async function runOpsWatch(d) {
     ['the morning roster', async () => checkRoster(await d.loadRosterRows(), now)],
     ['the scheduled workflows', async () => checkWorkflowRuns(await d.loadLastSuccess(), now)],
     ['the roster image', async () => checkImage(await d.fetchImage())],
+    ['the alert log', async () => checkFailedAlerts(await d.loadFailedAlerts())],
   ];
   for (const [what, run] of checks) {
     try {
@@ -111,7 +125,7 @@ export async function runOpsWatch(d) {
       findings.push(`${COULDNT} ${what}: ${err.message}`);
     }
   }
-  // Long API errors would make the WhatsApp template parameter too big.
+  // Long API errors would make one finding swamp the message.
   for (let i = 0; i < findings.length; i++) findings[i] = findings[i].slice(0, MAX_FINDING_CHARS);
   const allChecksRan = !findings.some((f) => f.startsWith(COULDNT));
 
@@ -120,6 +134,6 @@ export async function runOpsWatch(d) {
   const text = `⚠️ Q Boarding ops watch (${pacific(now).day})\n${findings.map((f) => `• ${f}`).join('\n')}`;
   // A channel counts as delivered only when its sender resolves true; a throw counts as not delivered.
   // Stryker disable next-line ArrowFunction: () => undefined is as falsy as () => false here
-  const delivered = await Promise.all([d.sendWhatsApp(text), d.sendEmail(text)].map((p) => p.then((v) => v === true, () => false)));
+  const delivered = await Promise.all([d.sendAlert(text), d.sendEmail(text)].map((p) => p.then((v) => v === true, () => false)));
   return { ok: allChecksRan && delivered.every((x) => x), findings };
 }

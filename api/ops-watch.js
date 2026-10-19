@@ -6,13 +6,12 @@
  * `?dryRun=1` returns the findings without alerting or writing cron_health.
  *
  * Env: VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET, GH_ACTIONS_TOKEN (fine-grained,
- * this repo only, Actions read + write), VITE_SYNC_PROXY_TOKEN (roster image), META_* and
- * INTEGRATION_CHECK_RECIPIENTS (WhatsApp to Kate). Optional: GITHUB_REPO (default kcoffie/dog-boarding).
+ * this repo only, Actions read + write), VITE_SYNC_PROXY_TOKEN (roster image), TELEGRAM_BOT_TOKEN and
+ * TELEGRAM_ALERT_CHAT_ID (Kate's alert channel, REQ-652). Optional: GITHUB_REPO (default kcoffie/dog-boarding).
  */
 import { createClient } from '@supabase/supabase-js';
-import { runOpsWatch, WORKFLOW_MAX_AGE_HOURS } from '../src/lib/opsWatch.js';
-import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
+import { runOpsWatch, WORKFLOW_MAX_AGE_HOURS, ALERT_JOBS } from '../src/lib/opsWatch.js';
+import { alertAndLog } from '../src/lib/alertKate.js';
 import { writeCronHealth } from './_cronHealth.js';
 
 export const config = { runtime: 'nodejs' };
@@ -89,11 +88,14 @@ function makeDeps(supabase) {
       return { status: res.status, contentType: res.headers.get('content-type') ?? '' };
     },
 
-    async sendWhatsApp(text) {
-      const results = await sendTextMessage(text, getAlertRecipients());
-      await recordSentMessages(supabase, results, 'ops-watch').catch((e) => console.warn('[OpsWatch] delivery record:', e.message));
-      await recordMessageLog(supabase, results, 'ops-watch', 'text', text, null).catch((e) => console.warn('[OpsWatch] message_log:', e.message));
-      return results.some((r) => r.status === 'sent');
+    async loadFailedAlerts() {
+      const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+      return must(supabase.from('message_log').select('job_name')
+        .eq('status', 'failed').in('job_name', ALERT_JOBS).gte('sent_at', since));
+    },
+
+    async sendAlert(text) {
+      return alertAndLog(supabase, 'ops-watch', text);
     },
 
     async sendEmail(text) {
@@ -118,7 +120,7 @@ export default async function handler(req, res) {
   const deps = makeDeps(supabase);
 
   if (req.query?.dryRun === '1') {
-    const silent = { ...deps, sendWhatsApp: async () => true, sendEmail: async () => true };
+    const silent = { ...deps, sendAlert: async () => true, sendEmail: async () => true };
     const result = await runOpsWatch(silent);
     return res.status(200).json({ dryRun: true, findings: result.findings });
   }

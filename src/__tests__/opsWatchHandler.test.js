@@ -1,9 +1,9 @@
 /**
  * /api/ops-watch handler: auth, dry run, cron_health, and the data it hands to the rules (REQ-651).
- * @requirements REQ-651
+ * @requirements REQ-651, REQ-652
  *
  * Boundaries faked: Supabase (a chainable fake returning queued results per table), fetch
- * (GitHub + the roster image), WhatsApp, and the cron_health writer.
+ * (GitHub + the roster image), Kate's alert channel (alertAndLog), and the cron_health writer.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -22,15 +22,11 @@ function builder(table) {
   return b;
 }
 vi.mock('@supabase/supabase-js', () => ({ createClient: vi.fn(() => ({ from: (t) => builder(t) })) }));
-vi.mock('../lib/notifyWhatsApp.js', () => ({
-  sendTextMessage: vi.fn(async () => [{ to: '***-***-0000', status: 'sent', messageId: 'w' }]),
-  getAlertRecipients: () => ['+10000000000'],
-}));
-vi.mock('../lib/messageDeliveryStatus.js', () => ({ recordSentMessages: vi.fn(async () => {}), recordMessageLog: vi.fn(async () => {}) }));
+vi.mock('../lib/alertKate.js', () => ({ alertAndLog: vi.fn(async () => true) }));
 vi.mock('../../api/_cronHealth.js', () => ({ writeCronHealth: vi.fn(async () => {}) }));
 
 const { createClient } = await import('@supabase/supabase-js');
-const { sendTextMessage } = await import('../lib/notifyWhatsApp.js');
+const { alertAndLog } = await import('../lib/alertKate.js');
 const { writeCronHealth } = await import('../../api/_cronHealth.js');
 const { default: handler } = await import('../../api/ops-watch.js');
 
@@ -88,7 +84,7 @@ describe('dry run', () => {
         : { ok: true, status: 200, json: async () => ({ workflow_runs: [{ updated_at: new Date().toISOString() }] }) });
     const res = await call(AUTH, { dryRun: '1' });
     expect(res.body).toEqual({ dryRun: true, findings: ['Roster image broken: HTTP 500 (text/plain)'] });
-    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(alertAndLog).not.toHaveBeenCalled();
     expect(writeCronHealth).not.toHaveBeenCalled();
     expect(globalThis.fetch.mock.calls.some(([u]) => String(u).includes('/dispatches'))).toBe(false);
   });
@@ -98,14 +94,14 @@ describe('cron_health', () => {
   it('a healthy run is recorded as success and sends nothing', async () => {
     await call(AUTH);
     expect(writeCronHealth).toHaveBeenCalledWith(expect.anything(), 'ops-watch', 'success', { findings: [] }, null);
-    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(alertAndLog).not.toHaveBeenCalled();
   });
 
   it('a run whose findings were alerted on both channels is recorded as success', async () => {
     results.sync_queue = [{ count: 5, error: null }, { data: [{ queued_at: '2026-10-10T00:00:00Z' }], error: null },
       { data: [{ processed_at: '2026-10-16T16:00:00Z' }], error: null }];
     await call(AUTH);
-    expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(alertAndLog).toHaveBeenCalledTimes(1);
     expect(writeCronHealth.mock.calls[0][2]).toBe('success');
   });
 
@@ -130,8 +126,9 @@ describe('what the rules are given', () => {
   it('the roster query asks only for sent notify-4am rows, and null wamids are dropped', async () => {
     results.message_log = [{ data: [{ wamid: null, sent_at: new Date().toISOString() }], error: null }];
     const res = await call(AUTH, { dryRun: '1' });
+    // The first message_log query is the roster's (the alert-log query runs after it).
     const logFilters = calls.filter(([t, m]) => t === 'message_log' && m === 'eq').map(([, , ...a]) => a);
-    expect(logFilters).toEqual([['job_name', 'notify-4am'], ['status', 'sent']]);
+    expect(logFilters.slice(0, 2)).toEqual([['job_name', 'notify-4am'], ['status', 'sent']]);
     expect(res.body.findings).toEqual(['Morning roster sent but not delivered to anyone (1 sends, no delivery receipt)']);
   });
 
@@ -201,14 +198,36 @@ describe('GitHub', () => {
   });
 });
 
-describe('WhatsApp', () => {
-  it('a WhatsApp send that reaches nobody makes the run a failure', async () => {
-    sendTextMessage.mockResolvedValueOnce([{ to: '***-***-0000', status: 'failed' }]);
+describe("REQ-652: Kate's alert channel", () => {
+  it('findings go to Kate through alertAndLog under the ops-watch job', async () => {
     results.sync_queue = [{ count: 5, error: null }, { data: [{ queued_at: '2026-10-10T00:00:00Z' }], error: null },
       { data: [{ processed_at: '2026-10-16T16:00:00Z' }], error: null }];
     await call(AUTH);
-    expect(sendTextMessage).toHaveBeenCalledWith(expect.stringContaining('Sync backlog'), ['+10000000000']);
+    expect(alertAndLog).toHaveBeenCalledWith(expect.anything(), 'ops-watch', expect.stringContaining('Sync backlog'));
+  });
+
+  it('an alert that was not delivered makes the run a failure', async () => {
+    alertAndLog.mockResolvedValueOnce(false);
+    results.sync_queue = [{ count: 5, error: null }, { data: [{ queued_at: '2026-10-10T00:00:00Z' }], error: null },
+      { data: [{ processed_at: '2026-10-16T16:00:00Z' }], error: null }];
+    await call(AUTH);
     expect(writeCronHealth.mock.calls[0][2]).toBe('failure');
+  });
+
+  it('failed alerts are read from message_log: status failed, the four alert jobs, the last 24 hours', async () => {
+    await call(AUTH, { dryRun: '1' });
+    const q = calls.filter(([t]) => t === 'message_log').map(([, m, ...a]) => [m, ...a]);
+    expect(q.slice(-4)).toEqual([
+      ['select', 'job_name'], ['eq', 'status', 'failed'],
+      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question']],
+      ['gte', 'sent_at', '2026-10-15T17:00:00.000Z'],
+    ]);
+  });
+
+  it('failed alert rows become a finding', async () => {
+    results.message_log = [results.message_log[0], { data: [{ job_name: 'gmail-monitor' }], error: null }];
+    const res = await call(AUTH, { dryRun: '1' });
+    expect(res.body.findings).toEqual(['Alerts not delivered in the last 24h: 1 (gmail-monitor)']);
   });
 });
 

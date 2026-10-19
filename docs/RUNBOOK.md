@@ -211,7 +211,7 @@ UPDATE boardings SET sync_status = 'archived' WHERE external_id = '<id>';
 ## Vercel env for ops-watch
 - `GH_ACTIONS_TOKEN`: fine-grained PAT, repository `kcoffie/dog-boarding` only, permissions **Actions: Read and write**. Used by `/api/ops-watch` to read workflow runs and dispatch `ops-alert.yml`. When it expires, ops-watch reports "Couldn't check the scheduled workflows".
 - `CRON_SECRET`: Vercel sends it to crons; ops-watch rejects every request without it.
-- ops-watch also needs these in **Vercel** env (not just GitHub secrets): `INTEGRATION_CHECK_RECIPIENTS` and the `META_*` WhatsApp vars (already used by `/api/send-question` and `/api/notify`), `VITE_SYNC_PROXY_TOKEN` (roster image) and the Supabase keys. If `CRON_SECRET` is missing, every ops-watch call gets 401 and `cron-health-check` reports "ops-watch has never run".
+- ops-watch also needs these in **Vercel** env (not just GitHub secrets): `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` (Kate's alert channel, also used by `/api/send-question`), `VITE_SYNC_PROXY_TOKEN` (roster image) and the Supabase keys. Env changes apply only after a redeploy. If `CRON_SECRET` is missing, every ops-watch call gets 401 and `cron-health-check` reports "ops-watch has never run".
 - Email alerts arrive only if Kate's GitHub notification settings email her about failed Actions runs she triggered (Settings → Notifications → Actions).
 
 ## GitHub Actions secrets reference
@@ -227,10 +227,8 @@ All secrets must be **Repository secrets** (not environment secrets) for workflo
 | `META_PHONE_NUMBER_ID` | notify workflows | From Meta app dashboard |
 | `META_WHATSAPP_TOKEN` | notify workflows | System user token — never expires |
 | `NOTIFY_RECIPIENTS` | notify workflows | E.164, comma-separated |
-| `TWILIO_ACCOUNT_SID` | integration-check, health-check, gmail-monitor | Twilio account |
-| `TWILIO_AUTH_TOKEN` | integration-check, health-check, gmail-monitor | Twilio token |
-| `TWILIO_FROM_NUMBER` | integration-check, health-check, gmail-monitor | `whatsapp:+14155238886` |
-| `INTEGRATION_CHECK_RECIPIENTS` | integration-check, health-check, gmail-monitor | Kate's number |
+| `TELEGRAM_BOT_TOKEN` | integration-check, health-check, gmail-monitor (+ Vercel: ops-watch, send-question) | `@qap_alert_bot` token from @BotFather. Rotate with `/revoke`, then update GitHub **and** Vercel |
+| `TELEGRAM_ALERT_CHAT_ID` | same as above | Kate's private chat with the bot (from `getUpdates` after she messages it once) |
 | `ANTHROPIC_API_KEY` | integration-check | Step 3 vision check — silently skipped if no credits |
 | `GMAIL_CLIENT_ID` | gmail-monitor | Google Cloud OAuth2 |
 | `GMAIL_CLIENT_SECRET` | gmail-monitor | Google Cloud OAuth2 |
