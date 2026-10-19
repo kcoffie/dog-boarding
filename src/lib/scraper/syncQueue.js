@@ -21,17 +21,24 @@ const RETRY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes per retry_count
 /**
  * Add an item to the queue.
  *
- * Skips silently if the item is already pending, processing, or done.
+ * Skips silently if the item is already pending or processing.
  * Re-queues items that have permanently failed (status = 'failed').
  *
+ * A `done` appointment is re-queued when the schedule shows it was edited (B-3, #205, #278):
+ *   - its title changed (both trimmed and non-empty), or
+ *   - its URL timestamp changed, unless the detail step skipped it (`meta.detail_skip`).
+ * AGYD gives a stay one timestamp (its start), but a recurring daycare or playgroup series one per
+ * occurrence, so which one a scan sees first changes with the date and the cursor week. Those are
+ * exactly the items the detail step skips, so their URL changes aren't edits.
+ *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {{ external_id: string, source_url: string, title?: string, type?: string, meta?: Object }} item
- * @returns {Promise<void>}
+ * @param {{ external_id: string, source_url: string, title?: string, type?: string, meta?: Object, resetIfDone?: boolean }} item
+ * @returns {Promise<'queued'|'requeued_edited'|'requeued'|'url_change_ignored'|'unchanged'>}
  */
 export async function enqueue(supabase, { external_id, source_url, title, type = 'appointment', meta = {}, resetIfDone = false }) {
   const { data: existing, error: fetchError } = await supabase
     .from('sync_queue')
-    .select('id, status, source_url')
+    .select('id, status, source_url, title, meta')
     .eq('external_id', external_id)
     .limit(1)
     .maybeSingle();
@@ -39,39 +46,18 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
   if (fetchError) throw fetchError;
 
   if (existing) {
-    // AGYD embeds the appointment start timestamp in the URL — a URL change means it was rescheduled.
-    // Check before the shouldReset gate so a rescheduled done item is caught without requiring resetIfDone.
+    // Check before the shouldReset gate so an edited done item is caught without requiring resetIfDone.
     if (existing.status === 'done' && !resetIfDone) {
-      if (existing.source_url === null) {
-        log(`[SyncQueue] ⚠️ Can't compare URL for ${external_id} — source_url null, skipping modification check`);
-      } else {
-        const incomingTs = source_url.match(/\/(\d+)$/);
-        if (!incomingTs) {
-          log(`[SyncQueue] ⚠️ Incoming URL has no timestamp for ${external_id} — skipping modification check`);
-        } else if (source_url !== existing.source_url) {
-          const oldTsMatch = existing.source_url.match(/\/(\d+)$/);
-          const oldTs = oldTsMatch ? oldTsMatch[1] : '?';
-          const newTs = incomingTs[1];
-          const oldIso = oldTs !== '?' ? new Date(parseInt(oldTs, 10) * 1000).toISOString().slice(0, 10) : '?';
-          const newIso = new Date(parseInt(newTs, 10) * 1000).toISOString().slice(0, 10);
-
-          const { error } = await supabase
-            .from('sync_queue')
-            .update({
-              status: 'pending',
-              retry_count: 0,
-              last_error: null,
-              next_retry_at: null,
-              queued_at: new Date().toISOString(),
-              source_url,
-              type,
-              meta,
-            })
-            .eq('id', existing.id);
-          if (error) throw error;
-          log(`[SyncQueue] 🔄 Re-queued modified appointment: ${external_id} (url changed: /${oldTs} [${oldIso}] → /${newTs} [${newIso}])`);
-          return;
-        }
+      const edit = describeEdit(existing, { external_id, source_url, title });
+      if (edit === 'url_change_ignored') return edit;
+      if (edit) {
+        const { error } = await supabase
+          .from('sync_queue')
+          .update(requeueFields(existing, { source_url, title, type, meta }))
+          .eq('id', existing.id);
+        if (error) throw error;
+        log(`[SyncQueue] 🔄 Re-queued edited appointment: ${external_id} (${edit})`);
+        return 'requeued_edited';
       }
     }
 
@@ -87,24 +73,19 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
 
     if (!shouldReset) {
       log(`[SyncQueue] ⏭️ Already queued: ${external_id} (status: ${existing.status}, url: ${existing.source_url})`);
-      return;
+      return 'unchanged';
     }
     // Re-queue a failed item, or a done item when the caller confirmed the result isn't stored yet
+    const update = existing.status === 'failed'
+      ? requeueFields(existing, { source_url, title, type, meta })
+      : { status: 'pending', retry_count: 0, last_error: null, next_retry_at: null, queued_at: new Date().toISOString(), type, meta };
     const { error } = await supabase
       .from('sync_queue')
-      .update({
-        status: 'pending',
-        retry_count: 0,
-        last_error: null,
-        next_retry_at: null,
-        queued_at: new Date().toISOString(),
-        type,
-        meta,
-      })
+      .update(update)
       .eq('id', existing.id);
     if (error) throw error;
     log(`[SyncQueue] 🔄 Re-queued ${existing.status} item: ${external_id}`);
-    return;
+    return 'requeued';
   }
 
   const { error } = await supabase
@@ -112,6 +93,65 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
     .insert({ external_id, source_url, title, status: 'pending', type, meta });
   if (error) throw error;
   log(`[SyncQueue] 📥 Queued: ${external_id} (type=${type})`);
+  return 'queued';
+}
+
+/**
+ * The update that puts an appointment back to pending with what the scan just saw.
+ * Meta is merged so a stored `external_pet_id` survives a scan copy without one, and `detail_skip`
+ * is dropped so the next detail result decides again. A blank incoming title never replaces a stored one.
+ */
+function requeueFields(existing, { source_url, title, type, meta }) {
+  const merged = { ...(existing.meta || {}), ...meta };
+  delete merged.detail_skip;
+  const fields = {
+    status: 'pending',
+    retry_count: 0,
+    last_error: null,
+    next_retry_at: null,
+    queued_at: new Date().toISOString(),
+    source_url,
+    type,
+    meta: merged,
+  };
+  if ((title || '').trim()) fields.title = title;
+  return fields;
+}
+
+/**
+ * Why a done item counts as edited: a reason string, 'url_change_ignored', or null (not edited).
+ * @param {{ source_url: string|null, title: string|null, meta: Object|null }} existing
+ * @param {{ external_id: string, source_url: string, title?: string }} incoming
+ */
+function describeEdit(existing, { external_id, source_url, title }) {
+  const oldTitle = (existing.title || '').trim();
+  const newTitle = (title || '').trim();
+  if (oldTitle && newTitle && oldTitle !== newTitle) return `title changed: "${oldTitle}" → "${newTitle}"`;
+
+  if (existing.source_url === null) {
+    log(`[SyncQueue] ⚠️ Can't compare URL for ${external_id} — source_url null, skipping modification check`);
+    return null;
+  }
+  const incomingTs = source_url.match(/\/(\d+)$/);
+  if (!incomingTs) {
+    log(`[SyncQueue] ⚠️ Incoming URL has no timestamp for ${external_id} — skipping modification check`);
+    return null;
+  }
+  if (source_url === existing.source_url) return null;
+
+  const oldTsMatch = existing.source_url.match(/\/(\d+)$/);
+  const oldTs = oldTsMatch ? oldTsMatch[1] : '?';
+  const newTs = incomingTs[1];
+  const oldIso = oldTs !== '?' ? new Date(parseInt(oldTs, 10) * 1000).toISOString().slice(0, 10) : '?';
+  const newIso = new Date(parseInt(newTs, 10) * 1000).toISOString().slice(0, 10);
+  const change = `url changed: /${oldTs} [${oldIso}] → /${newTs} [${newIso}]`;
+
+  const skipReason = existing.meta?.detail_skip;
+  if (skipReason) {
+    log(`[SyncQueue] ⏭️ Not re-queuing ${external_id}: ${change}, but the detail step skipped it (${skipReason})`);
+    return 'url_change_ignored';
+  }
+  return change;
 }
 
 /**
@@ -157,12 +197,15 @@ export async function dequeueOne(supabase, { type } = {}) {
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} id - queue row UUID
+ * @param {{ meta?: Object }} [options] - `meta` replaces the row's meta (the detail step records `detail_skip` here)
  * @returns {Promise<void>}
  */
-export async function markDone(supabase, id) {
+export async function markDone(supabase, id, { meta } = {}) {
+  const update = { status: 'done', processed_at: new Date().toISOString() };
+  if (meta) update.meta = meta;
   const { error } = await supabase
     .from('sync_queue')
-    .update({ status: 'done', processed_at: new Date().toISOString() })
+    .update(update)
     .eq('id', id);
   if (error) throw error;
   log(`[SyncQueue] ✅ Marked done: ${id}`);

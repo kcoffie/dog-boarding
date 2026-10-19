@@ -87,7 +87,7 @@ The alert message will say which cron missed a run or had consecutive failures (
 ### "Ops watch sent an alert" (WhatsApp "Q Boarding ops watch", or a GitHub email from "Ops alert")
 
 `/api/ops-watch` runs on Vercel once a day, some time between 17:00 and 17:59 UTC (Hobby cron precision) and checks outcomes, not just whether jobs ran. Every line of the alert is one finding:
-- **Sync backlog / Sync stalled:** the detail queue isn't draining. See "Queue is backed up". To drain by hand: `node scripts/drain-queue.js` with `.env.local` loaded (sends nothing, about 7–10 s per item).
+- **Sync backlog / Sync queue deep / Sync stalled:** the detail queue isn't draining (oldest pending over 16 h, more than 30 pending, or nothing processed in 36 h). If `requeuedEdited` in the `schedule` `cron_health` row is large, unchanged appointments are being re-queued again (#278). See "Queue is backed up". To drain by hand: `node scripts/drain-queue.js` with `.env.local` loaded (sends nothing, about 7–10 s per item).
 - **No morning roster / not delivered:** check today's `notify-4am` run in Actions and the `message_delivery_status` rows. "Not delivered" with Meta errors usually means a token or template problem.
 - **Workflow X: last success Nh ago:** open that workflow in Actions. If it's disabled, enable it. If it's failing, read the error (an expired Gmail token is a common one).
 - **Roster image broken:** call `/api/roster-image?type=weekend&token=…`. A 500 with `FUNCTION_INVOCATION_FAILED` means the function crashed on load. The last time (#246) a dependency bump caused it.

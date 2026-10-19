@@ -464,7 +464,42 @@ describe('runDetailSync', () => {
     const result = await runDetailSync(makeMockSupabase());
     expect(result.action).toBe('skipped');
     expect(result.reason).toMatch(/same_day/);
-    expect(markDone).toHaveBeenCalledWith(expect.anything(), 'queue-pg-daycare');
+    expect(markDone).toHaveBeenCalledWith(expect.anything(), 'queue-pg-daycare', {
+      meta: { external_pet_id: '10008', detail_skip: result.reason },
+    });
+    expect(mapAndSaveAppointment).not.toHaveBeenCalled();
+  });
+
+  it('a skipped item with no meta is marked done with only the skip reason (#278)', async () => {
+    // Regression test: cron path must apply the same post-detail filters as sync.js.
+    // A same-day PG daycare appointment (1-hour, no pricing) must be skipped, not saved.
+    dequeueOne.mockResolvedValue({
+      id: 'queue-pg-daycare',
+      external_id: 'C63QgZoi',
+      source_url: 'https://agirlandyourdog.com/schedule/a/C63QgZoi/1742860800',
+      title: 'PG FT',
+      type: 'appointment',
+      meta: null,
+      retry_count: 0,
+    });
+    fetchAppointmentDetails.mockResolvedValue({
+      external_id: 'C63QgZoi',
+      pet_name: 'Rover',
+      service_type: 'PG FT',
+      booking_status: 'confirmed',
+      pricing: null,
+      check_in_datetime:  '2026-03-24T10:00:00Z',
+      check_out_datetime: '2026-03-24T11:00:00Z', // 1 hour — same-day daycare
+    });
+    markDone.mockResolvedValue(undefined);
+    getQueueDepth.mockResolvedValue(0);
+
+    const result = await runDetailSync(makeMockSupabase());
+    expect(result.action).toBe('skipped');
+    expect(result.reason).toMatch(/same_day/);
+    expect(markDone).toHaveBeenCalledWith(expect.anything(), 'queue-pg-daycare', {
+      meta: { detail_skip: result.reason },
+    });
     expect(mapAndSaveAppointment).not.toHaveBeenCalled();
   });
 });
@@ -623,6 +658,18 @@ describe('REQ-109 runScheduleSync', () => {
     expect(result.skipped).toBe(1);
     expect(result.queued).toBe(1);
     expect(enqueue.mock.calls.map(([, item]) => item.external_id)).toEqual(['STAY']);
+  });
+
+  it('counts the scan\'s re-queued edits and ignored URL changes from what enqueue did (#278)', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]:
+      link({ id: 'EDITED', title: '10/24-28' }) + link({ id: 'SERIES', title: 'PG:FT' })
+      + link({ id: 'SERIES2', title: 'P/G FT' }) + link({ id: 'SAME', title: '10/20-22' }) });
+    const outcomes = { EDITED: 'requeued_edited', SERIES: 'url_change_ignored', SERIES2: 'url_change_ignored', SAME: 'unchanged' };
+    enqueue.mockImplementation(async (_db, item) => outcomes[item.external_id]);
+    const result = await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(result.requeuedEdited).toBe(1);
+    expect(result.urlChangesIgnored).toBe(2);
+    expect(result.queued).toBe(4);
   });
 
   it('a non-boarding title with leading spaces is still skipped', async () => {

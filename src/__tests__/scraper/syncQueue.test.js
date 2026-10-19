@@ -214,6 +214,234 @@ describe('REQ-109: enqueue()', () => {
   });
 });
 
+// ─── enqueue(): what counts as an edit (#278) ─────────────────────────────────
+
+describe('REQ-109: enqueue() edit detection (B-3, #278)', () => {
+  const STAY_URL = 'https://agirlandyourdog.com/schedule/a/C63QAAAB/1792404000';
+  const NEXT_DAY_URL = 'https://agirlandyourdog.com/schedule/a/C63QAAAB/1792490400';
+  const doneItem = (overrides = {}) => makeItem({
+    id: 'id-done', external_id: 'AAA', status: 'done', source_url: STAY_URL, title: '10/19-22', meta: {}, ...overrides,
+  });
+
+  it('re-queues a done item whose title changed, storing the new title', async () => {
+    const supabase = createMockSupabase([doneItem({ title: '10/18PM-23 (Fri)' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/18PM-24am (Sat)' });
+    expect(outcome).toBe('requeued_edited');
+    expect(supabase._rows[0].status).toBe('pending');
+    expect(supabase._rows[0].title).toBe('10/18PM-24am (Sat)');
+  });
+
+  it('a title change re-queues even an item the detail step skipped', async () => {
+    const supabase = createMockSupabase([doneItem({ title: 'PG:FT', meta: { detail_skip: 'same_day' } })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/24-27' });
+    expect(outcome).toBe('requeued_edited');
+    expect(supabase._rows[0].status).toBe('pending');
+  });
+
+  it('a title that differs only in surrounding spaces is not an edit', async () => {
+    const supabase = createMockSupabase([doneItem({ title: '10/19-22' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '  10/19-22 ' });
+    expect(outcome).toBe('unchanged');
+    expect(supabase._rows[0].status).toBe('done');
+  });
+
+  it('an empty stored title is not compared, so it is not an edit', async () => {
+    const supabase = createMockSupabase([doneItem({ title: null })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/19-22' });
+    expect(outcome).toBe('unchanged');
+    expect(supabase._rows[0].status).toBe('done');
+  });
+
+  it('an empty incoming title is not compared, so it is not an edit', async () => {
+    const supabase = createMockSupabase([doneItem({ title: '10/19-22' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '' });
+    expect(outcome).toBe('unchanged');
+    expect(supabase._rows[0].status).toBe('done');
+  });
+
+  it('a moved URL on a done stay the detail step saved is an edit: re-queued with the new URL and title', async () => {
+    const supabase = createMockSupabase([doneItem({ title: '10/19-22' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '10/19-22' });
+    expect(outcome).toBe('requeued_edited');
+    expect(supabase._rows[0].status).toBe('pending');
+    expect(supabase._rows[0].source_url).toBe(NEXT_DAY_URL);
+    expect(supabase._rows[0].title).toBe('10/19-22');
+  });
+
+  it('a moved URL on an item the detail step skipped is not an edit: nothing is written', async () => {
+    const queuedAt = '2026-10-19T00:05:00.000Z';
+    const supabase = createMockSupabase([doneItem({ title: 'PG:FT', meta: { external_pet_id: '10001', detail_skip: 'same_day' }, queued_at: queuedAt })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: 'PG:FT' });
+    expect(outcome).toBe('url_change_ignored');
+    const row = supabase._rows[0];
+    expect(row.status).toBe('done');
+    expect(row.source_url).toBe(STAY_URL);
+    expect(row.queued_at).toBe(queuedAt);
+    expect(row.meta).toEqual({ external_pet_id: '10001', detail_skip: 'same_day' });
+  });
+
+  it('an empty detail_skip does not count as skipped', async () => {
+    const supabase = createMockSupabase([doneItem({ meta: { detail_skip: '' } })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '10/19-22' });
+    expect(outcome).toBe('requeued_edited');
+  });
+
+  it('a done item with a null meta and a moved URL is re-queued', async () => {
+    const supabase = createMockSupabase([doneItem({ meta: null })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '10/19-22' });
+    expect(outcome).toBe('requeued_edited');
+  });
+
+  it('a re-queue takes the scan\'s meta over the stored values, clearing detail_skip', async () => {
+    const supabase = createMockSupabase([doneItem({ title: 'PG:FT', meta: { detail_skip: 'same_day' } })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: 'PG:FT OFF', meta: { external_pet_id: '10002' } });
+    expect(supabase._rows[0].meta).toEqual({ external_pet_id: '10002' });
+  });
+
+  it('an incoming URL without a timestamp is not an edit', async () => {
+    const supabase = createMockSupabase([doneItem()]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: 'https://agirlandyourdog.com/schedule/a/C63QAAAB', title: '10/19-22' });
+    expect(outcome).toBe('unchanged');
+    expect(supabase._rows[0].status).toBe('done');
+  });
+
+  it('a title change on a pending item changes nothing', async () => {
+    const supabase = createMockSupabase([doneItem({ status: 'pending', title: '10/19-22' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/19-23' });
+    expect(outcome).toBe('unchanged');
+    expect(supabase._rows[0].title).toBe('10/19-22');
+  });
+
+  it('with resetIfDone a done item takes the reset path and keeps its stored title', async () => {
+    const supabase = createMockSupabase([doneItem({ title: 'Dog A' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: 'Dog B', resetIfDone: true });
+    expect(outcome).toBe('requeued');
+    expect(supabase._rows[0].status).toBe('pending');
+    expect(supabase._rows[0].title).toBe('Dog A');
+  });
+
+  // A fake whose single query result and update result can be set, to drive the error paths.
+  const fakeDb = ({ existing = null, fetchError = null, updateError = null, insertError = null } = {}) => {
+    const tables = [];
+    return {
+      tables,
+      from: (table) => {
+        tables.push(table);
+        const chain = {
+          select: () => chain, eq: () => chain, limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: existing, error: fetchError }),
+          update: () => ({ eq: () => Promise.resolve({ error: updateError }) }),
+          insert: () => Promise.resolve({ error: insertError }),
+        };
+        return chain;
+      },
+    };
+  };
+
+  it('a failed read of the existing row is thrown, not treated as a new item', async () => {
+    const db = fakeDb({ fetchError: { message: 'read failed' } });
+    await expect(enqueue(db, { external_id: 'AAA', source_url: STAY_URL, title: 'x' })).rejects.toEqual({ message: 'read failed' });
+  });
+
+  it('a failed write while re-queuing an edited item is thrown', async () => {
+    const db = fakeDb({ existing: doneItem({ title: 'old' }), updateError: { message: 'write failed' } });
+    await expect(enqueue(db, { external_id: 'AAA', source_url: STAY_URL, title: 'new' })).rejects.toEqual({ message: 'write failed' });
+  });
+
+  it('a failed write while re-queuing a failed item is thrown', async () => {
+    const db = fakeDb({ existing: doneItem({ status: 'failed' }), updateError: { message: 'write failed' } });
+    await expect(enqueue(db, { external_id: 'AAA', source_url: STAY_URL })).rejects.toEqual({ message: 'write failed' });
+  });
+
+  it('a failed insert of a new item is thrown', async () => {
+    const db = fakeDb({ insertError: { message: 'insert failed' } });
+    await expect(enqueue(db, { external_id: 'AAA', source_url: STAY_URL, title: 'x' })).rejects.toEqual({ message: 'insert failed' });
+  });
+
+  it('a stored title with surrounding spaces matches the same title from the scan', async () => {
+    const supabase = createMockSupabase([doneItem({ title: ' 10/19-22  ' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/19-22' });
+    expect(outcome).toBe('unchanged');
+  });
+
+  it('a new item without a type is queued as an appointment', async () => {
+    const supabase = createMockSupabase([]);
+    await enqueue(supabase, { external_id: 'NEW', source_url: STAY_URL, title: 'x' });
+    expect(supabase._rows[0].type).toBe('appointment');
+  });
+
+  it('resetIfDone does not reset an item that is still pending', async () => {
+    const queuedAt = '2026-10-19T00:05:00.000Z';
+    const supabase = createMockSupabase([doneItem({ status: 'pending', queued_at: queuedAt, retry_count: 2 })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, resetIfDone: true });
+    expect(outcome).toBe('unchanged');
+    expect(supabase._rows[0].queued_at).toBe(queuedAt);
+    expect(supabase._rows[0].retry_count).toBe(2);
+  });
+
+  it('reads the stored title and meta, which the edit rules compare', async () => {
+    let selected = null;
+    const db = fakeDb({ existing: null });
+    const from = db.from;
+    db.from = (t) => { const c = from(t); const sel = c.select; c.select = (cols) => { selected ??= cols; return sel(cols); }; return c; };
+    await enqueue(db, { external_id: 'AAA', source_url: STAY_URL, title: 'x' });
+    expect(selected.split(',').map((c) => c.trim())).toEqual(expect.arrayContaining(['id', 'status', 'source_url', 'title', 'meta']));
+  });
+
+  it('reads and writes only the sync_queue table', async () => {
+    const edited = fakeDb({ existing: doneItem({ title: 'old' }) });
+    await enqueue(edited, { external_id: 'AAA', source_url: STAY_URL, title: 'new' });
+    const failed = fakeDb({ existing: doneItem({ status: 'failed' }) });
+    await enqueue(failed, { external_id: 'AAA', source_url: STAY_URL });
+    const fresh = fakeDb();
+    await enqueue(fresh, { external_id: 'AAA', source_url: STAY_URL, title: 'x' });
+    expect([...edited.tables, ...failed.tables, ...fresh.tables]).toEqual(Array(6).fill('sync_queue'));
+  });
+
+  it('returns queued for a new item', async () => {
+    expect(await enqueue(createMockSupabase([]), { external_id: 'NEW', source_url: STAY_URL, title: 'x' })).toBe('queued');
+  });
+
+  it('returns requeued for a failed item', async () => {
+    const supabase = createMockSupabase([makeItem({ external_id: 'FAILED', status: 'failed' })]);
+    expect(await enqueue(supabase, { external_id: 'FAILED', source_url: STAY_URL })).toBe('requeued');
+  });
+
+  it('returns unchanged for a done item with the same title and URL', async () => {
+    const supabase = createMockSupabase([doneItem()]);
+    expect(await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/19-22' })).toBe('unchanged');
+  });
+
+  it('a title-change re-queue also stores the scan\'s URL and meta', async () => {
+    const supabase = createMockSupabase([doneItem({ title: '10/19-22', meta: {} })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '10/19-23', meta: { external_pet_id: '10003' } });
+    expect(supabase._rows[0].source_url).toBe(NEXT_DAY_URL);
+    expect(supabase._rows[0].meta).toEqual({ external_pet_id: '10003' });
+  });
+
+  it('a re-queue keeps the stored pet ID when the scan has none, and drops detail_skip', async () => {
+    const supabase = createMockSupabase([doneItem({ title: 'PG:FT', meta: { external_pet_id: '10001', detail_skip: 'same_day' } })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/24-27', meta: {} });
+    expect(supabase._rows[0].meta).toEqual({ external_pet_id: '10001' });
+  });
+
+  it('a URL re-queue with a blank title from the scan keeps the stored title', async () => {
+    const supabase = createMockSupabase([doneItem({ title: '10/19-22' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '  ' });
+    expect(outcome).toBe('requeued_edited');
+    expect(supabase._rows[0].title).toBe('10/19-22');
+  });
+
+  it('a failed item is re-queued with the scan\'s URL and title', async () => {
+    const supabase = createMockSupabase([doneItem({ status: 'failed', title: '10/19-22' })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '10/19-23' });
+    expect(supabase._rows[0].status).toBe('pending');
+    expect(supabase._rows[0].source_url).toBe(NEXT_DAY_URL);
+    expect(supabase._rows[0].title).toBe('10/19-23');
+  });
+
+});
+
 // ─── dequeueOne() ─────────────────────────────────────────────────────────────
 
 describe('REQ-109: dequeueOne()', () => {
@@ -253,6 +481,20 @@ describe('REQ-109: markDone()', () => {
     await markDone(supabase, row.id);
     expect(supabase._rows[0].status).toBe('done');
     expect(supabase._rows[0].processed_at).toBeTruthy();
+  });
+
+  it('stores the meta it is given (the detail step\'s skip reason)', async () => {
+    const row = makeItem({ external_id: 'AAA', status: 'processing', meta: { external_pet_id: '10001' } });
+    const supabase = createMockSupabase([row]);
+    await markDone(supabase, row.id, { meta: { external_pet_id: '10001', detail_skip: 'same_day' } });
+    expect(supabase._rows[0].meta).toEqual({ external_pet_id: '10001', detail_skip: 'same_day' });
+  });
+
+  it('leaves meta alone when none is given', async () => {
+    const row = makeItem({ external_id: 'AAA', status: 'processing', meta: { external_pet_id: '10001' } });
+    const supabase = createMockSupabase([row]);
+    await markDone(supabase, row.id);
+    expect(supabase._rows[0].meta).toEqual({ external_pet_id: '10001' });
   });
 });
 

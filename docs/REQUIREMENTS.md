@@ -714,6 +714,15 @@ cron functions that each complete within the Hobby plan's 10-second limit.
   - All the pages' daytime events are upserted in one call; `daytimeUpserted` / `daytimeErrors` report its result
   - The cursor is saved as cursor + 7 days (`YYYY-MM-DD`, a local date): the existing `sync_settings` row is updated, or a row is inserted when none exists. With no cursor stored, the cursor is today. A next cursor past today + 56 days wraps back to today; exactly today + 56 is kept
   - Returns `action: 'ok'` with `pagesScanned`, `found`, `skipped`, `queued`, the pending `queueDepth`, and `cursorAdvancedTo` equal to the saved cursor date
+- *Re-queueing an edited appointment (B-3, #205; #278).* AGYD gives a boarding stay one link timestamp (its start), but a recurring daycare or playgroup series one per occurrence, so the timestamp a scan sees for a series changes with the date and the cursor week. `enqueue()` returns what it did (`queued`, `requeued_edited`, `requeued`, `url_change_ignored`, `unchanged`). For an item that is already `done` (and not `resetIfDone`):
+  - **Title changed** (stored and incoming both non-empty after trimming, and different) → re-queued as `pending`, with the new title and URL stored. The incoming title is the one the scan stores (`title`, else the pet name)
+  - **URL changed, title the same**, and the detail step did **not** skip the item → re-queued, with the new URL and title stored (a stay whose start moved)
+  - **URL changed, title the same**, and the detail step skipped the item (`meta.detail_skip` is set) → not re-queued and not written; returns `url_change_ignored`
+  - A stored URL that's null, or an incoming URL with no timestamp, skips the URL rule. An empty stored or incoming title skips the title rule
+  - Items that are `pending` or `processing` are never changed by a scan. `failed` items are re-queued, with the scan's URL and title stored
+  - Every re-queue merges the scan's meta over the stored meta (so a stored `external_pet_id` survives a scan copy without one) and drops `detail_skip`. A blank incoming title never replaces a stored one
+  - When the detail step skips an appointment (REQ-104 filters), it marks the item done with `meta.detail_skip` set to the skip reason, keeping the rest of its meta. A re-queue drops the flag until the next detail result
+  - The scan result, and the `schedule` cron health row, report `requeuedEdited` and `urlChangesIgnored`
 - *Schedule page parsing (`parseScheduleHtml`):* every `/schedule/a/<id>/<timestamp>` link is one appointment (first one wins for a repeated ID), with trimmed pet, client, time and title text, every `data-pet` ID, and a relative link made absolute. A link without both an ID and a numeric timestamp is ignored
 - *Detail step (`runDetailSync`), one queue item per call:*
   - No session → `session_failed`, before anything is dequeued
@@ -1384,7 +1393,8 @@ GitHub disables a repo's scheduled workflows after 60 days without a commit. Tha
 A daily Vercel cron (`/api/ops-watch`, 17:00 UTC) checks the outcomes the client depends on, from a scheduler GitHub can't switch off. It runs once a day and reports every finding in one message. Design: `docs/specs/ops-watch-design-note.md`.
 
 **Acceptance Criteria:**
-- **Queue backlog:** a finding when the oldest `pending` `sync_queue` item was queued more than 48 h ago
+- **Queue backlog:** a finding when the oldest `pending` `sync_queue` item was queued more than 16 h ago (#278; was 48 h)
+- **Queue depth:** a finding when more than 30 `sync_queue` items are `pending` (#278)
 - **Sync stalled:** a finding when there are `pending` items and no item reached `done` in the last 36 h; an empty queue is never a finding
 - **Morning roster (Mon–Fri, Pacific date):** a finding when no `notify-4am` message was `sent` today, and a different finding when one was sent but none of its wamids has a `delivered` or `read` webhook row. Weekends are never checked
 - **Scheduled workflows:** a finding for each workflow whose last successful run is older than its limit (gmail-monitor 3 h, integration-check 12 h, cron-health-check 26 h, notify-4am 4 days, keepalive 8 days), or that has never succeeded

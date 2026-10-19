@@ -11,7 +11,10 @@
 const HOUR_MS = 3600e3;
 const COULDNT = "Couldn't check";
 const MAX_FINDING_CHARS = 200;
-const BACKLOG_HOURS = 48;
+// 16 h: an item from the midnight scans still pending at 17:00 UTC has missed both detail crons and
+// the 08:00 drain. 30: more than one Integration Check drain (20) behind (#278).
+const BACKLOG_HOURS = 16;
+const MAX_PENDING = 30;
 const STALLED_HOURS = 36;
 
 /** Hours since each scheduled workflow's last successful run before it's a finding. */
@@ -42,6 +45,9 @@ export function checkQueue(q, now) {
   if (q.oldestPendingAt && hoursSince(q.oldestPendingAt, now) > BACKLOG_HOURS) {
     const h = Math.round(hoursSince(q.oldestPendingAt, now));
     findings.push(`Sync backlog: ${q.pendingCount} items pending, oldest queued ${h}h ago`);
+  }
+  if (q.pendingCount > MAX_PENDING) {
+    findings.push(`Sync queue deep: ${q.pendingCount} items pending (limit ${MAX_PENDING})`);
   }
   if (!q.lastDoneAt || hoursSince(q.lastDoneAt, now) > STALLED_HOURS) {
     findings.push(`Sync stalled: ${q.pendingCount} items pending and none processed in ${STALLED_HOURS}h`);
