@@ -41,10 +41,10 @@
 5. **Mutation on main: 44.94% (3592/7993)**, the same on two runs. Ratchet 37 → **44**. All 11 timeouts are in pre-10-16 files.
 6. **WhatsApp isn't just rejecting sends.** Meta accepts them (a `wamid` comes back), then the webhook marks each one `failed 131031 "Business Account locked"`.
    - On 10-19 GitHub fired **notify-4am at 17:21 UTC** (6 h late), and `cron_health` recorded `notify` **success** while nothing was delivered.
-   - ops-watch's "4am roster not delivered" rule covers this, but it has never run (no `CRON_SECRET`).
+   - ops-watch's "4am roster not delivered" rule covers this. It hasn't run on schedule yet; the first run is 17:00 UTC on 10-20 (item 7).
    - Other windows aren't covered (#257).
-7. **Kate's alert setup is done, and all three paths are proven** (about 18:30–19:10 UTC, each test message OK'd by Kate):
-   - **Setup:** the GitHub secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` are set. Vercel qboard Production has `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID`, `CRON_SECRET` and `GH_ACTIONS_TOKEN` (a fine-grained PAT for this repo only, Actions read/write, **expires 2027-10-19**), and has been redeployed.
+7. **Kate's alert setup is done, and both alert paths plus ops-watch auth are proven** (about 18:30–19:10 UTC, each test message OK'd by Kate):
+   - **Setup** (the Vercel part per Kate, since Claude can't read Vercel env): the GitHub secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` are set. Vercel qboard Production has `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID`, `CRON_SECRET` and `GH_ACTIONS_TOKEN` (a fine-grained PAT for this repo only, Actions read/write, **expires 2027-10-19**), and has been redeployed.
    - **GitHub → Telegram:** a manual Integration Check (run 39306919363) logged `[Alert] Sent to Telegram`, and Kate received it.
      - The first try (run 39304992997) failed loudly, as designed, with `403 the bot can't send messages to the bot`: the chat ID was the bot's own ID.
      - **The chat ID must come from `getUpdates` → `"chat":{"id":…}` after Kate messages @qap_alert_bot.** The digits before the `:` in the token are the bot's ID, not hers.
@@ -80,7 +80,7 @@
    | #263 | Real phone numbers replaced with fictional ones (they're still in git history) |
    | #265 | **Kate's alerts over Telegram** (#259, REQ-652). Details below |
 
-4. **ops-watch has never run.** `CRON_SECRET` and `GH_ACTIONS_TOKEN` were never set in Vercel; ops-watch fails closed and returns 401. Verified in Kate's Vercel: neither the qboard project, the Shared tab, nor the dog-boarding project has them. The older sync crons only run because they skip the secret check when it's unset (fail open).
+4. **ops-watch had never run (fixed 10-19, session 35 item 7).** `CRON_SECRET` and `GH_ACTIONS_TOKEN` were never set in Vercel; ops-watch fails closed and returns 401. Verified in Kate's Vercel: neither the qboard project, the Shared tab, nor the dog-boarding project has them. The older sync crons only run because they skip the secret check when it's unset (fail open).
 5. **Meta disabled the WhatsApp Business account** (the test account, unverified, "policy issues") on 2026-10-18. Every WhatsApp send now fails: the roster and all alerts.
    - **Kate's decision: end users get SMS (or WhatsApp), never Telegram.**
    - **The plan for end users:** Kate has no registered business, so the roster moves to **Twilio SMS/MMS under a Sole Proprietor 10DLC registration** (#260). Twilio's published fees at the time: $4.50 brand, $15 vetting, $2/month.
@@ -92,7 +92,7 @@
 
 ## Current reference (still true after session 35)
 
-### Telegram alerts (#265, live in code, waiting on secrets)
+### Telegram alerts (#265, live, proven 2026-10-19)
 - **The bot is `@qap_alert_bot`** (neutral name, Kate's).
 - **`sendAlert()` / `alertAndLog()` in `src/lib/alertKate.js`:**
   - One attempt, 15 s timeout. It never throws, and no error or log line contains the token.
