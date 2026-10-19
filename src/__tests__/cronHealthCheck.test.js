@@ -151,6 +151,29 @@ describe('checkConsecutiveFailures', () => {
     expect(result).toMatch(/Supabase connection refused/);
   });
 
+  it('alerts on two failed runs in a row when each run also logged started (the real log shape, #275)', () => {
+    const row = { last_ran_at: TONIGHT_STARTED, status: 'failure' };
+    const log = [
+      { status: 'failure', ran_at: TONIGHT_STARTED, error_msg: 'sync_settings read failed: timeout' },
+      { status: 'started', ran_at: TONIGHT_STARTED, error_msg: null },
+      { status: 'failure', ran_at: LAST_NIGHT, error_msg: 'sync_settings read failed: timeout' },
+      { status: 'started', ran_at: LAST_NIGHT, error_msg: null },
+    ];
+    expect(checkConsecutiveFailures('schedule', row, log)).toBe('cron-schedule: 2 consecutive failure(s): sync_settings read failed: timeout');
+  });
+
+  it('a failure after a successful run is still a single failure when started rows sit between them', () => {
+    const row = { last_ran_at: TONIGHT_STARTED, status: 'failure' };
+    const log = [
+      { status: 'failure', ran_at: TONIGHT_STARTED, error_msg: 'x' },
+      { status: 'started', ran_at: TONIGHT_STARTED, error_msg: null },
+      { status: 'success', ran_at: LAST_NIGHT, error_msg: null },
+      { status: 'started', ran_at: LAST_NIGHT, error_msg: null },
+      { status: 'failure', ran_at: '2026-01-01T00:05:00Z', error_msg: 'older' },
+    ];
+    expect(checkConsecutiveFailures('schedule', row, log)).toBeNull();
+  });
+
   it('does NOT alert on a single failure (transient noise)', () => {
     const row = { last_ran_at: TONIGHT_RECENT, status: 'failure' };
     const log = [

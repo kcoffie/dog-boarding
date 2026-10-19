@@ -109,7 +109,9 @@ const createMockSupabase = () => {
                 ? a[field] > b[field] ? 1 : -1
                 : a[field] < b[field] ? 1 : -1;
             });
-            return Promise.resolve({ data: sorted.slice(0, limitCount), error: null });
+            const result = Promise.resolve({ data: sorted.slice(0, limitCount), error: null });
+            // readSettingsRow: .order().limit(1).maybeSingle()
+            return Object.assign(result, { maybeSingle: () => Promise.resolve({ data: sorted[0] ?? null, error: null }) });
           },
         }),
         limit: () => ({

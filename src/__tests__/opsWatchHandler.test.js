@@ -41,6 +41,7 @@ function healthy() {
   const now = Date.now();
   const ago = (h) => new Date(now - h * 3600e3).toISOString();
   results.sync_queue = [{ count: 0, error: null }, { data: [], error: null }, { data: [{ processed_at: ago(5) }], error: null }];
+  results.cron_health = [{ data: [{ last_ran_at: ago(16), status: 'success', result: { found: 227 }, error_msg: null }], error: null }];
   results.message_log = [{ data: [{ wamid: 'w1', sent_at: ago(0.1) }], error: null }];
   results.message_delivery_status = [{ data: [{ wamid: 'w1' }], error: null }];
   globalThis.fetch = vi.fn(async (url) => {

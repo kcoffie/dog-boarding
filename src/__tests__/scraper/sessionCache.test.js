@@ -40,6 +40,11 @@ const createMockSupabase = (initialRow = null, { failSelect = false, failUpdate 
         return builder;
       },
       limit: () => builder,
+      order: () => builder,
+      maybeSingle: () => {
+        if (failSelect) return Promise.resolve({ data: null, error: { code: 'DB_ERROR', message: 'Select failed' } });
+        return Promise.resolve({ data: row ? { ...row } : null, error: null });
+      },
       single: () => {
         if (failSelect) return Promise.resolve({ data: null, error: { code: 'DB_ERROR', message: 'Select failed' } });
         if (!row) return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'No rows' } });
@@ -119,6 +124,12 @@ describe('REQ-109: storeSession()', () => {
     const supabase = createMockSupabase(null);
     await storeSession(supabase, 'fresh-cookie=xyz', 60 * 60 * 1000);
     expect(supabase._getRow().session_cookies).toBe('fresh-cookie=xyz');
+  });
+
+  it('a failed read of the row id throws and never inserts a second row (#275)', async () => {
+    const supabase = createMockSupabase(null, { failSelect: true });
+    await expect(storeSession(supabase, 'cookie=a', 60 * 60 * 1000)).rejects.toThrow('sync_settings read failed: Select failed');
+    expect(supabase._getRow()).toBeNull();
   });
 
   it('sets session_expires_at approximately expiryMs from now', async () => {
@@ -219,6 +230,18 @@ describe('REQ-109: ensureSession()', () => {
     const result = await ensureSession(supabase);
 
     expect(result).toBe('cached-cookie=abc');
+    expect(mockAuthenticate).not.toHaveBeenCalled();
+  });
+
+  it('a fresh login whose session can\'t be cached still returns the cookies (#275)', async () => {
+    const supabase = createMockSupabase(null, { failInsert: true });
+    mockAuthenticate.mockResolvedValue({ success: true, cookies: 'fresh-cookie=xyz' });
+    expect(await ensureSession(supabase)).toBe('fresh-cookie=xyz');
+  });
+
+  it('a failed read of the cached session is thrown, not taken as "no session"', async () => {
+    const supabase = createMockSupabase(null, { failSelect: true });
+    await expect(ensureSession(supabase)).rejects.toThrow('sync_settings read failed');
     expect(mockAuthenticate).not.toHaveBeenCalled();
   });
 

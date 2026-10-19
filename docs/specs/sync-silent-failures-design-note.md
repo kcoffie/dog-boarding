@@ -10,7 +10,7 @@ Each case below makes a sync run look fine while the outcome the client depends 
    - **Correction to the issue text:** every read is `.limit(1).single()`, so a duplicate row doesn't make reads fail. Each read gets an **arbitrary** row (no `order`), so the cursor and the session cookies can split across rows: the session is stored in one row and read from the other, and the sync loses its login with no error.
    - Production has one row today (id 1).
 2. **Endless `session_cleared`.** When AGYD serves the login form to a session `ensureSession` thinks is valid, `cron-schedule` clears the session and records health **success**, and nothing is queued. The detail path puts its item back to `pending` without counting a retry. If AGYD changes its login flow, every run does this forever.
-3. **Failed enqueues still advance the cursor.** If every enqueue fails, the run returns `ok` with `queued: 0`, and the cursor moves past that week anyway. That week isn't scanned again for about 8 weeks (the cursor's wrap cycle).
+3. **Failed enqueues still advance the cursor.** If every enqueue fails, the run returns `ok` with `queued: 0`, and the cursor moves past that week anyway. (The issue said that week isn't rescanned for about 8 weeks. In fact the cursor advances on every scan, about 4 a day, so it comes back in about 2 days.)
 
 ## Options
 1. **Fix each call site: check `error`, throw, never insert after a failed read, don't advance after failed enqueues. Then add one ops-watch outcome check (chosen).** It's small and local, and a throw already becomes a `cron_health` failure through the existing handlers.
@@ -37,3 +37,21 @@ No new secret, table or recipient. The alert text holds counts and statuses only
 ## How we'll know
 - Tests from REQ-109's "Known gaps" (rewritten as criteria) and REQ-651 (the new rule): each `sync_settings` read and write error throws and doesn't insert; `order('id')` is used; a failed enqueue leaves the cursor; the ops-watch rule fires on each of its four conditions and not on a healthy row. Mutation scores on `syncRunner.js`, `sessionCache.js` and `opsWatch.js`.
 - In production: the schedule `cron_health` row stays `success` with `found > 0`, and ops-watch stays quiet.
+
+## Architect review (2026-10-19): proceed with changes, applied
+1. **`cron-health-check` never alerted on consecutive failures.** Every run logs `started` first, so its "last 2 log rows" were always failure, started. It also never selected `error_msg`. Fixed in this PR: it skips `started` rows and reads `error_msg`. Tested with the real interleaved shape.
+2. **`order('id')` for every reader, not only writers.** One helper, `readSettingsRow`, used by the cursor, the session cache, `sync.js` settings and the integration-check session load.
+3. **Don't let a cache write failure reach staff.** `ensureSession` returns the fresh cookies even when `storeSession` fails, so the notify refresh path can't turn it into a "Notify refresh issue" message to the roster recipients.
+4. **Failed enqueues:**
+   - Record `failure`, but **still advance the cursor**, since it cycles in about 2 days, not 8 weeks.
+   - Treat `23505` (a concurrent scan) as already queued.
+   - Put the count and the first 5 IDs in the result.
+   - Let Integration Check step 0 drain after `enqueue_failed`.
+5. **The ops-watch rule's conditions:**
+   - Guard `result` being null.
+   - A `started` row at 17:00 is hung, with its own wording; each condition has its own wording.
+   - 60 days of production showed 0 would-be findings (found 126–373, no `session_cleared`).
+6. **Deferred:**
+   - An in-run re-login retry on `SESSION_EXPIRED`, as a follow-up.
+   - Option 2 (a single-row constraint) waits on reconciling `sync_settings` into migrations, because migration 005 says UUID while production has integer `id = 1`.
+7. **Merge order:** #278 (the 16 h rule) is already on main.

@@ -51,6 +51,12 @@ function makeDeps(supabase) {
       return { pendingCount: count ?? 0, oldestPendingAt: oldest[0]?.queued_at ?? null, lastDoneAt: lastDone[0]?.processed_at ?? null };
     },
 
+    async loadScheduleHealth() {
+      const rows = await must(supabase.from('cron_health').select('last_ran_at, status, result, error_msg')
+        .eq('cron_name', 'schedule').limit(1));
+      return rows[0] ?? null;
+    },
+
     async loadRosterRows() {
       const since = new Date(Date.now() - 48 * 3600e3).toISOString();
       const sent = await must(supabase.from('message_log').select('wamid, sent_at')

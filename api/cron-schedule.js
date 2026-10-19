@@ -61,7 +61,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, ...result });
     }
 
-    await writeCronHealth(supabase, 'schedule', 'success', {
+    // A scan whose enqueues failed is red, with the same counts so ops-watch can read `found` (#275).
+    const failed = result.action === 'enqueue_failed';
+    await writeCronHealth(supabase, 'schedule', failed ? 'failure' : 'success', {
+      ...(failed ? { action: 'enqueue_failed', failedEnqueues: result.failedEnqueues, failedEnqueueIds: result.failedEnqueueIds } : {}),
       pagesScanned: result.pagesScanned,
       found: result.found,
       skipped: result.skipped,
@@ -70,7 +73,7 @@ export default async function handler(req, res) {
       urlChangesIgnored: result.urlChangesIgnored,
       cursorAdvancedTo: result.cursorAdvancedTo,
       queueDepth: result.queueDepth,
-    }, null);
+    }, failed ? `${result.failedEnqueues} enqueue(s) failed` : null);
 
     return res.status(200).json({ ok: true, ...result });
   } catch (err) {

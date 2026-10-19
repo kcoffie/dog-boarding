@@ -388,6 +388,11 @@ describe('REQ-109: enqueue() edit detection (B-3, #278)', () => {
     expect(selected.split(',').map((c) => c.trim())).toEqual(expect.arrayContaining(['id', 'status', 'source_url', 'title', 'meta']));
   });
 
+  it('an insert that loses the race to a concurrent scan (23505) is unchanged, not an error (#275)', async () => {
+    const db = fakeDb({ insertError: { code: '23505', message: 'duplicate key value' } });
+    expect(await enqueue(db, { external_id: 'AAA', source_url: STAY_URL, title: 'x' })).toBe('unchanged');
+  });
+
   it('reads and writes only the sync_queue table', async () => {
     const edited = fakeDb({ existing: doneItem({ title: 'old' }) });
     await enqueue(edited, { external_id: 'AAA', source_url: STAY_URL, title: 'new' });
