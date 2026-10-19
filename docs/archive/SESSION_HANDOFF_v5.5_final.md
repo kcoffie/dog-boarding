@@ -68,7 +68,7 @@
 ## Completed This Session (April 21, session 13)
 
 ### G-6 — Second number receiving ✅ RESOLVED
-- Root cause: typo in `NOTIFY_RECIPIENTS` Vercel env var — `+14159394562` instead of `+15555550101` (digits transposed since April 5)
+- Root cause: typo in `NOTIFY_RECIPIENTS` Vercel env var — two digits of the second number were transposed (since April 5)
 - Fix: corrected to `+15555550100,+15555550101` in Vercel
 - DB verified: `***-***-0101` shows `sent` → `delivered` on test send; `***-***-0100` shows `sent` → `delivered` → `read`
 - Nothing was wrong with Meta setup — pure typo
