@@ -181,7 +181,7 @@ Every function follows a structured logging convention: log the input, log every
 
 ```
 [Sync 21:24:48] [SessionCache] ✅ Session valid (~3h remaining)
-[PictureOfDay] Worker Sierra Tagle (189436): +1 added, -5 removed, 5 unchanged
+[PictureOfDay] Worker Sam (189436): +1 added, -5 removed, 5 unchanged
 [NotifyWA] Sent to ***-***-0100 — messageId: wamid.HBgL...
 ```
 

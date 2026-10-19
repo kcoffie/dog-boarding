@@ -8,7 +8,7 @@
  * @requirements REQ-v4.0
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { parseDaytimeSchedulePage } from '../../lib/scraper/daytimeSchedule.js';
 
 // ---------------------------------------------------------------------------
@@ -257,6 +257,30 @@ describe('parseDaytimeSchedulePage()', () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].worker_external_id).toBe(999999);
+  });
+
+  describe('unknown-worker warning (REQ-601)', () => {
+    afterEach(() => vi.restoreAllMocks());
+    const unknownWarnings = (spy) =>
+      spy.mock.calls.filter((args) => args.join(' ').includes('Unknown worker uid')).length;
+
+    it('warns once for a worker uid that is not in WORKER_IDS', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      parseDaytimeSchedulePage(buildPage(buildEvent({ classes: 'day-event ew-999999 cat-5634 ser-10692' })));
+      expect(unknownWarnings(warn)).toBe(1);
+    });
+
+    it('does not warn for a known worker uid', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      parseDaytimeSchedulePage(buildPage(buildEvent({ classes: 'day-event ew-164375 cat-5634 ser-10692' })));
+      expect(unknownWarnings(warn)).toBe(0);
+    });
+
+    it('does not warn for uid 0 (no worker assigned)', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      parseDaytimeSchedulePage(buildPage(buildEvent({ classes: 'day-event ew-0 cat-5634 ser-10692' })));
+      expect(unknownWarnings(warn)).toBe(0);
+    });
   });
 
   it('skips an event with a missing data-ts and still returns other events on the page', () => {

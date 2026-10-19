@@ -1168,11 +1168,12 @@ The `workers` table stores the known roster of workers with their external UIDs,
 
 **Acceptance Criteria:**
 - `workers` table: `id`, `external_uid` (unique text), `name`, `active`
-- Seeded with 6 known workers: Charlie (61023), Kathalyn (208669), Kentaro (141407), Max (174385), Sierra (189436), Stephen (164375)
+- Six known workers (UIDs 61023, 208669, 141407, 174385, 189436, 164375). Their names are stored only in the `workers` table, never in the repo (it is public, #281); `src/lib/workers.js` holds the UIDs and the roster column order
+- The roster image reads worker names from the `workers` table (active rows)
 - `daytime_appointments.worker_id` FK references `workers.id`
-- Unknown `ew-{uid}` values stored as-is; unmatched workers logged as warn
+- Unknown `ew-{uid}` values stored as-is; unmatched workers logged as warn. A known UID or uid 0 (no worker) logs no warning
 
-**Tests:** Covered by `daytimeSchedule.test.js`
+**Tests:** `src/__tests__/scraper/daytimeSchedule.test.js`, `src/__tests__/workers.test.js`
 
 ---
 
