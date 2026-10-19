@@ -320,6 +320,84 @@ describe('REQ-109: enqueue() edit detection (B-3, #278)', () => {
     expect(supabase._rows[0].title).toBe('Dog A');
   });
 
+  // A fake whose single query result and update result can be set, to drive the error paths.
+  const fakeDb = ({ existing = null, fetchError = null, updateError = null, insertError = null } = {}) => {
+    const tables = [];
+    return {
+      tables,
+      from: (table) => {
+        tables.push(table);
+        const chain = {
+          select: () => chain, eq: () => chain, limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: existing, error: fetchError }),
+          update: () => ({ eq: () => Promise.resolve({ error: updateError }) }),
+          insert: () => Promise.resolve({ error: insertError }),
+        };
+        return chain;
+      },
+    };
+  };
+
+  it('a failed read of the existing row is thrown, not treated as a new item', async () => {
+    const db = fakeDb({ fetchError: { message: 'read failed' } });
+    await expect(enqueue(db, { external_id: 'AAA', source_url: STAY_URL, title: 'x' })).rejects.toEqual({ message: 'read failed' });
+  });
+
+  it('a failed write while re-queuing an edited item is thrown', async () => {
+    const db = fakeDb({ existing: doneItem({ title: 'old' }), updateError: { message: 'write failed' } });
+    await expect(enqueue(db, { external_id: 'AAA', source_url: STAY_URL, title: 'new' })).rejects.toEqual({ message: 'write failed' });
+  });
+
+  it('a failed write while re-queuing a failed item is thrown', async () => {
+    const db = fakeDb({ existing: doneItem({ status: 'failed' }), updateError: { message: 'write failed' } });
+    await expect(enqueue(db, { external_id: 'AAA', source_url: STAY_URL })).rejects.toEqual({ message: 'write failed' });
+  });
+
+  it('a failed insert of a new item is thrown', async () => {
+    const db = fakeDb({ insertError: { message: 'insert failed' } });
+    await expect(enqueue(db, { external_id: 'AAA', source_url: STAY_URL, title: 'x' })).rejects.toEqual({ message: 'insert failed' });
+  });
+
+  it('a stored title with surrounding spaces matches the same title from the scan', async () => {
+    const supabase = createMockSupabase([doneItem({ title: ' 10/19-22  ' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/19-22' });
+    expect(outcome).toBe('unchanged');
+  });
+
+  it('a new item without a type is queued as an appointment', async () => {
+    const supabase = createMockSupabase([]);
+    await enqueue(supabase, { external_id: 'NEW', source_url: STAY_URL, title: 'x' });
+    expect(supabase._rows[0].type).toBe('appointment');
+  });
+
+  it('resetIfDone does not reset an item that is still pending', async () => {
+    const queuedAt = '2026-10-19T00:05:00.000Z';
+    const supabase = createMockSupabase([doneItem({ status: 'pending', queued_at: queuedAt, retry_count: 2 })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, resetIfDone: true });
+    expect(outcome).toBe('unchanged');
+    expect(supabase._rows[0].queued_at).toBe(queuedAt);
+    expect(supabase._rows[0].retry_count).toBe(2);
+  });
+
+  it('reads the stored title and meta, which the edit rules compare', async () => {
+    let selected = null;
+    const db = fakeDb({ existing: null });
+    const from = db.from;
+    db.from = (t) => { const c = from(t); const sel = c.select; c.select = (cols) => { selected ??= cols; return sel(cols); }; return c; };
+    await enqueue(db, { external_id: 'AAA', source_url: STAY_URL, title: 'x' });
+    expect(selected.split(',').map((c) => c.trim())).toEqual(expect.arrayContaining(['id', 'status', 'source_url', 'title', 'meta']));
+  });
+
+  it('reads and writes only the sync_queue table', async () => {
+    const edited = fakeDb({ existing: doneItem({ title: 'old' }) });
+    await enqueue(edited, { external_id: 'AAA', source_url: STAY_URL, title: 'new' });
+    const failed = fakeDb({ existing: doneItem({ status: 'failed' }) });
+    await enqueue(failed, { external_id: 'AAA', source_url: STAY_URL });
+    const fresh = fakeDb();
+    await enqueue(fresh, { external_id: 'AAA', source_url: STAY_URL, title: 'x' });
+    expect([...edited.tables, ...failed.tables, ...fresh.tables]).toEqual(Array(6).fill('sync_queue'));
+  });
+
   it('returns queued for a new item, requeued for a failed one, unchanged for a done one with nothing changed', async () => {
     const supabase = createMockSupabase([doneItem(), makeItem({ external_id: 'FAILED', status: 'failed' })]);
     expect(await enqueue(supabase, { external_id: 'NEW', source_url: STAY_URL, title: 'x' })).toBe('queued');
