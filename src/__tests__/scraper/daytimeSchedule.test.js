@@ -40,7 +40,7 @@ function buildEvent({
   time       = '8am - 6pm',
   clientUid  = 12345,
   clientName = 'Kate Coffie',
-  pets       = [{ id: 90043, name: 'Benny' }],
+  pets       = [{ id: 10008, name: 'Benny' }],
 } = {}) {
   const petHtml = pets
     .map(
@@ -110,7 +110,7 @@ describe('parseDaytimeSchedulePage()', () => {
     expect(appt.display_time).toBe('8am - 6pm');
     expect(appt.client_uid).toBe(12345);
     expect(appt.client_name).toBe('Kate Coffie');
-    expect(appt.pet_ids).toEqual([90043]);
+    expect(appt.pet_ids).toEqual([10008]);
     expect(appt.pet_names).toEqual(['Benny']);
     expect(appt.is_pickup).toBe(false);
     expect(appt.is_multiday_start).toBe(false);
@@ -272,7 +272,7 @@ describe('parseDaytimeSchedulePage()', () => {
 
   it('ignores <a data-id> links that are not /schedule/a/ appointment links', () => {
     // A nav link that happens to carry data-id should be filtered out
-    const navLink = `<a href="/pets/90043/forms" data-id="irrelevant">Pet Forms</a>`;
+    const navLink = `<a href="/pets/10008/forms" data-id="irrelevant">Pet Forms</a>`;
     const apptEvent = buildEvent({ id: 'REAL01' });
     const html = buildPage(navLink, apptEvent);
     const results = parseDaytimeSchedulePage(html);
@@ -298,23 +298,23 @@ describe('parseDaytimeSchedulePage()', () => {
   // --- HTML entity decoding ---
 
   it('decodes &quot; in pet names to double-quote characters', () => {
-    // Mirrors real data: &quot;Waldo&quot; Client Name 10
+    // Same shape as real data: &quot;Scout&quot; Robin Example-Sample
     const html = buildPage(
-      buildEvent({ pets: [{ id: 55555, name: '&quot;Waldo&quot; Client Name 10' }] })
+      buildEvent({ pets: [{ id: 55555, name: '&quot;Scout&quot; Robin Example-Sample' }] })
     );
     const [appt] = parseDaytimeSchedulePage(html);
 
-    expect(appt.pet_names).toEqual(['"Waldo" Client Name 10']);
+    expect(appt.pet_names).toEqual(['"Scout" Robin Example-Sample']);
   });
 
   it("decodes &#x27; in pet names to apostrophes", () => {
-    // Mirrors real data: Client Name 9
+    // Mirrors real data: Daisy O&#x27;Example
     const html = buildPage(
-      buildEvent({ pets: [{ id: 66666, name: "Client Name 9" }] })
+      buildEvent({ pets: [{ id: 66666, name: "Daisy O&#x27;Example" }] })
     );
     const [appt] = parseDaytimeSchedulePage(html);
 
-    expect(appt.pet_names).toEqual(["Client Name 8"]);
+    expect(appt.pet_names).toEqual(["Daisy O'Example"]);
   });
 
   it('decodes &amp; in client name', () => {
@@ -327,7 +327,7 @@ describe('parseDaytimeSchedulePage()', () => {
   // --- Staff Boarding / empty pets ---
 
   it('stores empty pet_ids and pet_names for Staff Boarding with no pet wrapper in HTML', () => {
-    // Mirrors real "Goose 3/7-8(Sun)" Staff Boarding — source HTML has
+    // Same shape as a real "Bandit 3/7-8(Sun)" Staff Boarding — source HTML has
     // <span class="pets"></span> with no event-pet-wrapper elements.
     const staffBoardingHtml = `
 <a href="/schedule/a/C63QgTXx/${TS_MAR5}"
@@ -337,7 +337,7 @@ describe('parseDaytimeSchedulePage()', () => {
    data-start="${TS_8AM}"
    data-status="1"
    class="day-event ew-0 cat-5635 ser-22387">
-  <div class="day-event-title">Goose 3/7-8(Sun)</div>
+  <div class="day-event-title">Bandit 3/7-8(Sun)</div>
   <div class="day-event-time">All day</div>
   <div class="event-clients-pets" data-uid="98765">
     <span class="event-client">Staff Member</span>

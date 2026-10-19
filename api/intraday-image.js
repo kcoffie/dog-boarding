@@ -153,9 +153,9 @@ function formatAsOfTime(isoStr) {
  * Layout:
  *   [Forest Green header: "Q Boarding Changes · Wednesday, April 29" | "since 8:30 AM (as of 2:00 PM)"]
  *   [✅ Added (N dog/dogs) — sage green section header]
- *   [  Client Name 4 (Apr 29 – May 2)]
+ *   [  Nutmeg Sample (Apr 29 – May 2)]
  *   [❌ Cancelled (N dog/dogs) — red section header]
- *   [  Tula (Apr 27 – May 1)]
+ *   [  Waffles (Apr 27 – May 1)]
  *
  * Exported for unit testing.
  *

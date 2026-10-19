@@ -292,28 +292,28 @@ describe('qBoardingCard', () => {
   }
 
   it('renders heading "Q Boarding" with correct dog count', () => {
-    const card = qBoardingCard([boarder('Mochi'), boarder('Bronwyn'), boarder('Tula')], COL_WIDTH);
+    const card = qBoardingCard([boarder('Nutmeg'), boarder('Cinder'), boarder('Waffles')], COL_WIDTH);
     const cardStr = JSON.stringify(card);
     expect(cardStr).toContain('Q Boarding');
     expect(cardStr).toContain('3 dogs');
   });
 
   it('sorts boarders alphabetically (case-insensitive)', () => {
-    const card = qBoardingCard([boarder('Tula'), boarder('bronwyn'), boarder('Mochi')], COL_WIDTH);
+    const card = qBoardingCard([boarder('Waffles'), boarder('cinder'), boarder('Nutmeg')], COL_WIDTH);
     const cardStr = JSON.stringify(card);
-    const bronwynIdx = cardStr.indexOf('bronwyn');
-    const mochiIdx = cardStr.indexOf('Mochi');
-    const tulaIdx = cardStr.indexOf('Tula');
-    // bronwyn < Mochi < Tula alphabetically
-    expect(bronwynIdx).toBeLessThan(mochiIdx);
-    expect(mochiIdx).toBeLessThan(tulaIdx);
+    const cinderIdx = cardStr.indexOf('cinder');
+    const nutmegIdx = cardStr.indexOf('Nutmeg');
+    const wafflesIdx = cardStr.indexOf('Waffles');
+    // cinder < Nutmeg < Waffles alphabetically
+    expect(cinderIdx).toBeLessThan(nutmegIdx);
+    expect(nutmegIdx).toBeLessThan(wafflesIdx);
   });
 
   it('renders compact date range in each dog row', () => {
-    const card = qBoardingCard([boarder('Mochi', '2026-04-29T07:00:00Z', '2026-05-02T10:00:00Z')], COL_WIDTH);
+    const card = qBoardingCard([boarder('Nutmeg', '2026-04-29T07:00:00Z', '2026-05-02T10:00:00Z')], COL_WIDTH);
     const cardStr = JSON.stringify(card);
-    // Compact format: "Mochi (4/29–5/2)" — month/day without leading zero in en-US locale
-    expect(cardStr).toContain('Mochi');
+    // Compact format: "Nutmeg (4/29–5/2)" — month/day without leading zero in en-US locale
+    expect(cardStr).toContain('Nutmeg');
     expect(cardStr).toContain('4/29');
     expect(cardStr).toContain('5/2');
   });
@@ -326,7 +326,7 @@ describe('qBoardingCard', () => {
   });
 
   it('uses singular "dog" for exactly 1 boarder', () => {
-    const card = qBoardingCard([boarder('Mochi')], COL_WIDTH);
+    const card = qBoardingCard([boarder('Nutmeg')], COL_WIDTH);
     expect(JSON.stringify(card)).toContain('1 dog');
     expect(JSON.stringify(card)).not.toContain('1 dogs');
   });
@@ -359,7 +359,7 @@ describe('computeImageHeight', () => {
 
   it('empty boarders still reserves 1 row (no zero-height Q Boarding card)', () => {
     const withZero = { workers: [makeWorker(0)], boarders: [] };
-    const withOne = { workers: [makeWorker(0)], boarders: [{ name: 'Mochi', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z' }] };
+    const withOne = { workers: [makeWorker(0)], boarders: [{ name: 'Nutmeg', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z' }] };
     // Both reserve 1 row in Q Boarding — height should be equal
     expect(computeImageHeight(withZero)).toBe(computeImageHeight(withOne));
   });

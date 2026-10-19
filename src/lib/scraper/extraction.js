@@ -89,7 +89,7 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     if (tsReasonable) {
       // System timestamps have actual time-of-day precision; parsed title dates are midnight-only.
       // Always prefer timestamps when available and reasonable — even when the title date
-      // matches the same month (e.g. "Goose 3/7-8(Sun)" for a Mar 7 appointment would
+      // matches the same month (e.g. "Bandit 3/7-8(Sun)" for a Mar 7 appointment would
       // produce midnight dates, losing the 5:15pm start time from the timestamp).
       checkInDatetime  = timestamps.checkIn;
       checkOutDatetime = timestamps.checkOut || null;
@@ -261,7 +261,7 @@ function extractEmailFromDataAttr(html) {
 
 /**
  * Extract phone from the data-value attribute on the .mobile-contact element.
- * Returns the raw value (e.g. "+15550100105"), not the formatted display text.
+ * Returns the raw value (e.g. "+15555550143"), not the formatted display text.
  */
 function extractPhoneFromMobileContact(html) {
   // Attribute order in the real HTML: class first, then data-value

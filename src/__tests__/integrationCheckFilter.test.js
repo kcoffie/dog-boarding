@@ -40,12 +40,12 @@ const FALSE_POSITIVES = [
   'PG OFF OFF M/T/W',
   'PG Th/F',
   // PG daycare with concatenated day codes (no delimiters — new March 2026)
-  'Client Name 11 — P/G MTWTH',
-  'Client Name 13 — P/G TWTH',
-  'Client Name 12 — PG:WTH',
+  'Sam Example — P/G MTWTH',
+  'Alex Example — P/G TWTH',
+  'Jo Example — PG:WTH',
   'PG: TWTH',            // separator, then a space, then run-together days
   // Make-up days
-  'Moonbeam — Make up days T.F',
+  'Sprout — Make up days T.F',
   'Maple — make up days',
   'Makeup days',
   // No charge
@@ -55,7 +55,7 @@ const FALSE_POSITIVES = [
   // New client initial evaluation (added April 2026 — #160)
   // N/C = new client; always an Initial Evaluation daytime visit, never overnight boarding.
   // Sync filters this via detail-page service_type; integration check only sees schedule title.
-  'N/C Tula 3/23-26',
+  'N/C Waffles 3/23-26',
   'N/C Buddy 4/1',
   // Daycare Add-On Day (added April 2026 — #177)
   // Appears as /schedule/a/ boarding link but pricing says "all day services (Daycare Add-On Day)".
@@ -77,7 +77,7 @@ const FALSE_POSITIVES = [
 const REAL_BOARDINGS = [
   'PG 3/23-30',          // date-range style — real boarding
   'PG 4/1-7',
-  'Kailin 3/21-28 PG',   // name-first style — real boarding
+  'Rocket 3/21-28 PG',   // name-first style — real boarding
   'Boarding - overnight',
   'Max 3/15-20',
   'Daisy 4/5-10 PG',

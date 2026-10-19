@@ -937,7 +937,7 @@ The IDs are then stored on the `dogs` table (`external_pet_id`) and passed to fo
 
 **Acceptance Criteria:**
 - `parseSchedulePage` returns `petIds: string[]` for each appointment
-- Single-pet appointment returns `petIds: ['90043']` (example)
+- Single-pet appointment returns `petIds: ['10008']` (example)
 - Multi-pet appointment returns all pet IDs in document order
 - Appointment with no `event-pet-wrapper[data-pet]` elements returns `petIds: []`
 - `dogs.external_pet_id` is populated/updated on the next sync for that dog
@@ -1100,7 +1100,7 @@ Currently red and amber are swapped — "no form" uses amber instead of red.
 **Added:** v3.0 | **Status:** Complete
 
 `boarding_forms.submission_url` already holds the full URL to the form detail page on the
-external booking site (e.g. `https://agirlandyourdog.com/pets/90043/forms/7913/view/12345`).
+external booking site (e.g. `https://agirlandyourdog.com/pets/10008/forms/7913/view/12345`).
 The modal should display it so the user can open the original form in a new tab.
 
 **Acceptance Criteria:**
@@ -1391,6 +1391,22 @@ Every alert to Kate goes through one function, `sendAlert(text)` (`src/lib/alert
 - **ops-watch rule:** any `message_log` row with `status = 'failed'` in the last 24 h for job `cron-health-check`, `integration-check`, `gmail-monitor` or `send-question` is one finding naming the count and the jobs
 
 **Tests:** `src/__tests__/alertKate.test.js`, plus each caller's tests
+
+---
+
+### REQ-653: No real contact details in tests
+**Added:** v6.4.0 | **Status:** Complete
+
+The repo is public, so tests carry fictional contact details only (#264). CI rejects a realistic phone number or personal email in any test file: `src/__tests__` and every colocated `*.test.*` (`npm run check:test-pii`, `scripts/no-test-pii.sh`, in the Lint job).
+
+**Acceptance Criteria:**
+- A North American number written as `+1` and 10 digits, or as 3-3-4 digit groups split by `(`, `)`, `.`, `-` or a space, fails the check unless its area code or exchange is 555
+- A bare 10-digit run with no `+1` and no separators, and a phone-shaped group inside a longer digit run, pass (timestamps and IDs)
+- An email address fails unless its domain (any case, or a subdomain of it) is `example.com/.org/.net`, `test.com`, `domain.com`, or a service sender the tests match on (`github.com`, `vercel.com`, `supabase.com`, `anthropic.com`, `someothertool.io`). A lookalike such as `example.com.evil.io` fails
+- A failing check prints each offending line, with its file and line number, and exits 1
+- `check:test-pii` fails when git finds no test files, so it can never pass on empty input
+
+**Tests:** `src/__tests__/noTestPii.test.js`
 
 ---
 

@@ -16,7 +16,7 @@ import { classifyEmail, SELF_SKIP_SUBJECTS, detectOAuthError } from '../../scrip
 
 const GH_ACTIONS_FROM = 'notifications@github.com';
 const VERCEL_FROM = 'notifications@vercel.com';
-const SUPABASE_FROM = 'support@example.com';
+const SUPABASE_FROM = 'alerts@supabase.com';
 const UNKNOWN_FROM = 'noreply@someothertool.io';
 
 // ---------------------------------------------------------------------------

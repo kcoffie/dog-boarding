@@ -24,6 +24,8 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint
+      - name: No real contact details in tests (REQ-653)
+        run: npm run check:test-pii
 
   # Job 2: Requirements coverage
   requirements:

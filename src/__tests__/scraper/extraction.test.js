@@ -279,11 +279,11 @@ describe('REQ-102: Appointment Detail Extraction', () => {
         expect(data.check_out_datetime).toBe('2026-03-07T16:15:00.000Z');
       });
 
-      it('uses system timestamps when title date matches current month — Goose staff boarding case', () => {
-        // "Goose 3/7-8(Sun)" title would parse to Mar 7-8 midnight (same month, <20 day gap).
+      it('uses system timestamps when title date matches current month — Bandit staff boarding case', () => {
+        // "Bandit 3/7-8(Sun)" title would parse to Mar 7-8 midnight (same month, <20 day gap).
         // System timestamps must win to preserve actual time-of-day (5:15pm check-in, 11pm check-out).
         // 1772903700 = 2026-03-07T17:15:00Z, 1773010800 = 2026-03-08T23:00:00Z
-        const html = '<title>Goose 3/7-8(Sun) | A Girl and Your Dog</title>' +
+        const html = '<title>Bandit 3/7-8(Sun) | A Girl and Your Dog</title>' +
           '<div id="when-wrapper" data-start_scheduled="1772903700" data-end_scheduled="1773010800"></div>';
         const data = parseAppointmentPage(html);
 
@@ -291,7 +291,7 @@ describe('REQ-102: Appointment Detail Extraction', () => {
         expect(data.check_in_datetime).toBe('2026-03-07T17:15:00.000Z');
         expect(data.check_out_datetime).toBe('2026-03-08T23:00:00.000Z');
         // Title still used as service_type fallback
-        expect(data.service_type).toBe('Goose 3/7-8(Sun)');
+        expect(data.service_type).toBe('Bandit 3/7-8(Sun)');
       });
 
       it('returns null for check_in/out when no date source is available', () => {
@@ -443,7 +443,7 @@ describe('REQ-200: extractPricing()', () => {
 
     it('uses first pet rate and qty for each line item', () => {
       const result = extractPricing(mockPricingMultiPet);
-      // Nights: first pet (Mochi) rate=5500÷100=55, qty=800÷100=8
+      // Nights: first pet (Nutmeg) rate=5500÷100=55, qty=800÷100=8
       expect(result.lineItems[0].rate).toBe(55);
       expect(result.lineItems[0].qty).toBe(8);
       // Days: first pet rate=5000÷100=50, qty=100÷100=1
@@ -453,7 +453,7 @@ describe('REQ-200: extractPricing()', () => {
 
     it('sums amounts across all pets for each service', () => {
       const result = extractPricing(mockPricingMultiPet);
-      // Nights: 440.00 (Mochi) + 360.00 (Marlee) = 800
+      // Nights: 440.00 (Nutmeg) + 360.00 (Pickle) = 800
       expect(result.lineItems[0].amount).toBe(800);
       // Days: 50.00 + 35.00 = 85
       expect(result.lineItems[1].amount).toBe(85);
@@ -470,13 +470,13 @@ describe('REQ-200: extractPricing()', () => {
       expect(result.perPetRates).toHaveLength(2);
     });
 
-    it('perPetRates[0] holds first pet (Mochi) rates', () => {
+    it('perPetRates[0] holds first pet (Nutmeg) rates', () => {
       const result = extractPricing(mockPricingMultiPet);
       expect(result.perPetRates[0].nightRate).toBe(55);
       expect(result.perPetRates[0].dayRate).toBe(50);
     });
 
-    it('perPetRates[1] holds second pet (Marlee) rates', () => {
+    it('perPetRates[1] holds second pet (Pickle) rates', () => {
       const result = extractPricing(mockPricingMultiPet);
       expect(result.perPetRates[1].nightRate).toBe(45);
       expect(result.perPetRates[1].dayRate).toBe(35);
@@ -491,7 +491,7 @@ describe('REQ-200: extractPricing()', () => {
 
     it('returns all pet names in DOM order for multi-pet appointment', () => {
       const data = parseAppointmentPage(mockAppointmentPageMultiPet);
-      expect(data.all_pet_names).toEqual(['Client Name 4', 'Client Name 5']);
+      expect(data.all_pet_names).toEqual(['Nutmeg Sample', 'Pickle Sample']);
     });
 
     it('returns empty array when no pets on page', () => {

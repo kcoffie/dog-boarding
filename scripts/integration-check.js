@@ -73,10 +73,10 @@ function isBoardingTitle(title) {
 // Confirmed false positives (31 total March 2026; +2 April 2026; +1 April 2026):
 //   - PG daycare with delimiters: "P/G M/T/W/Th", "PG:FT", "PG: MWTH OFF OFF", etc.
 //   - PG daycare with concatenated days: "P/G MTWTH", "P/G TWTH", "PG:WTH"
-//   - Make up days: "Moonbeam — Make up days T.F"
+//   - Make up days: "Sprout — Make up days T.F"
 //   - No charge: "Peanut — No charge"
 //   - Weekend standalone daycare: "Weekend Daycare" (April 2026)
-//   - New client initial eval: "N/C Tula 3/23-26" (April 2026) — N/C = new client,
+//   - New client initial eval: "N/C Waffles 3/23-26" (April 2026) — N/C = new client,
 //     always an Initial Evaluation daytime visit, never an overnight boarding.
 //     The sync filters this via the detail-page service_type ("Initial Evaluation"
 //     matches /initial\s+eval/i in nonBoardingPatterns); the integration check only

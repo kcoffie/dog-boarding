@@ -16,10 +16,10 @@ const SCHEDULE_WITH_PET_IDS = `
      data-status="1">
     <div class="day-event-time">Feb 13, 11am - Feb 17, 10am</div>
     <div class="day-event-title">2/13-17</div>
-    <div class="event-pet-wrapper" data-pet="90043">
-      <span class="event-pet pet-1">Client Name 8</span>
+    <div class="event-pet-wrapper" data-pet="10008">
+      <span class="event-pet pet-1">Daisy O'Example</span>
     </div>
-    <span class="event-client">Jane O'Brien</span>
+    <span class="event-client">Jane O'Example</span>
   </a>
 </body>
 </html>
@@ -36,13 +36,13 @@ const SCHEDULE_MULTI_PET = `
      data-status="1">
     <div class="day-event-time">Feb 13, 11am - Feb 17, 10am</div>
     <div class="day-event-title">2/13-17</div>
-    <div class="event-pet-wrapper" data-pet="90043">
-      <span class="event-pet pet-1">Lilly</span>
+    <div class="event-pet-wrapper" data-pet="10008">
+      <span class="event-pet pet-1">Daisy</span>
     </div>
-    <div class="event-pet-wrapper" data-pet="90053">
+    <div class="event-pet-wrapper" data-pet="10001">
       <span class="event-pet pet-2">Buddy</span>
     </div>
-    <span class="event-client">Jane O'Brien</span>
+    <span class="event-client">Jane O'Example</span>
   </a>
 </body>
 </html>
@@ -69,13 +69,13 @@ describe('REQ-500: petIds extraction from schedule HTML', () => {
   it('extracts petIds from event-pet-wrapper[data-pet] elements', () => {
     const appointments = parseSchedulePage(SCHEDULE_WITH_PET_IDS);
     expect(appointments).toHaveLength(1);
-    expect(appointments[0].petIds).toEqual(['90043']);
+    expect(appointments[0].petIds).toEqual(['10008']);
   });
 
   it('extracts multiple petIds for multi-pet appointments', () => {
     const appointments = parseSchedulePage(SCHEDULE_MULTI_PET);
     expect(appointments).toHaveLength(1);
-    expect(appointments[0].petIds).toEqual(['90043', '90053']);
+    expect(appointments[0].petIds).toEqual(['10008', '10001']);
   });
 
   it('returns empty petIds array when no event-pet-wrapper elements present', () => {
@@ -86,6 +86,6 @@ describe('REQ-500: petIds extraction from schedule HTML', () => {
 
   it('first petId is the primary pet', () => {
     const appointments = parseSchedulePage(SCHEDULE_MULTI_PET);
-    expect(appointments[0].petIds[0]).toBe('90043');
+    expect(appointments[0].petIds[0]).toBe('10008');
   });
 });
