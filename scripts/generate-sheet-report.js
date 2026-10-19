@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process */
 
 /**
  * Generate CSV report from Google Sheets boarding data
@@ -13,7 +14,12 @@ const SHEET_GIDS = [
   { gid: '1731530850', description: 'Dec 28 - Jan 10' },
 ];
 
-const EMPLOYEE_NAMES = ['Kat', 'Max', 'Myles', 'Kintaro', 'Kentaro', 'Stephen', 'Sierra'];
+// Staff first names (as written in the sheet), comma-separated. Kept out of the public repo (#281).
+const EMPLOYEE_NAMES = (process.env.SHEET_REPORT_EMPLOYEE_NAMES || '').split(',').map(n => n.trim()).filter(Boolean);
+if (EMPLOYEE_NAMES.length === 0) {
+  console.error('Set SHEET_REPORT_EMPLOYEE_NAMES (comma-separated staff first names, as written in the sheet).');
+  process.exit(1);
+}
 
 async function fetchSheetCSV(gid) {
   const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${gid}`;

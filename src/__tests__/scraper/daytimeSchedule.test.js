@@ -270,6 +270,13 @@ describe('parseDaytimeSchedulePage()', () => {
       expect(unknownWarnings(warn)).toBe(1);
     });
 
+    it('the warning says where to add the uid: WORKER_IDS and the workers table', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      parseDaytimeSchedulePage(buildPage(buildEvent({ classes: 'day-event ew-999999 cat-5634 ser-10692' })));
+      const text = warn.mock.calls.map((args) => args.join(' ')).find((t) => t.includes('Unknown worker uid'));
+      expect(text).toContain('add it to WORKER_IDS in src/lib/workers.js and the workers table');
+    });
+
     it('does not warn for a known worker uid', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       parseDaytimeSchedulePage(buildPage(buildEvent({ classes: 'day-event ew-164375 cat-5634 ser-10692' })));
