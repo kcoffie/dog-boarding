@@ -285,7 +285,6 @@ export default function CalendarPage() {
   const getDogNightRate = (dogId) => getDog(dogId)?.nightRate || 0;
 
   // Transform boardings to calendar format
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const calendarBookings = useMemo(() => {
     return boardings.map(b => ({
       id: b.id,
