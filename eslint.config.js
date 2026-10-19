@@ -31,7 +31,7 @@ export default defineConfig([
   // Test files are also included — they run in Node.js via Vitest and may need
   // Node globals (e.g. process.env) when testing server-side modules.
   {
-    files: ['api/**/*.js', 'src/lib/scraper/**/*.js', 'src/lib/notifyWhatsApp.js', 'src/lib/pictureOfDay.js', 'src/__tests__/**/*.js'],
+    files: ['api/**/*.js', 'src/lib/scraper/**/*.js', 'src/lib/notifyWhatsApp.js', 'src/lib/alertKate.js', 'src/lib/pictureOfDay.js', 'src/__tests__/**/*.js'],
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },

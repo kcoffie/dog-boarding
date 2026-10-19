@@ -2,15 +2,21 @@
  * POST /api/send-question
  *
  * Accepts a question or comment from a logged-in user and forwards it to Kate
- * via WhatsApp. Uses the same alert channel as cron-health-check and
- * gmail-monitor (INTEGRATION_CHECK_RECIPIENTS — Kate only).
+ * through her alert channel (sendAlert, Telegram — REQ-652). The user sees "Sent!"
+ * only when the question was delivered; otherwise 502, so it is never silently lost.
+ * Each attempt is written to message_log (job 'send-question') so ops-watch can
+ * report failures.
  *
  * Auth:    Authorization: Bearer {VITE_SYNC_PROXY_TOKEN}
  * Body:    { message: string, username: string }
  * Returns: { ok: true } | { ok: false, error: string }
+ *
+ * @requirements REQ-700, REQ-652
  */
 
-import { sendTextMessage, getAlertRecipients } from '../src/lib/notifyWhatsApp.js';
+import { createClient } from '@supabase/supabase-js';
+import { sendAlert, alertDelivered } from '../src/lib/alertKate.js';
+import { recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -45,20 +51,31 @@ export default async function handler(req, res) {
   console.log(`[SendQuestion] user=${sender} chars=${message.trim().length}`);
 
   try {
-    const recipients = getAlertRecipients();
-    if (recipients.length === 0) {
-      console.warn('[SendQuestion] No recipients configured — skipping send');
-      return res.status(200).json({ ok: true });
+    const results = await sendAlert(body);
+    await logAttempt(results, body);
+    if (!alertDelivered(results)) {
+      console.error(`[SendQuestion] Not delivered: ${results.map(r => r.error).join('; ')}`);
+      return res.status(502).json({ ok: false, error: 'Your message could not be delivered. Please try again later.' });
     }
-    const results = await sendTextMessage(body, recipients);
-    const failed = results.filter(r => r.status === 'failed');
-    if (failed.length > 0) {
-      console.warn(`[SendQuestion] ${failed.length}/${results.length} sends failed`);
-    }
-    console.log(`[SendQuestion] complete — ${results.length - failed.length} sent`);
+    console.log('[SendQuestion] complete — delivered');
     return res.status(200).json({ ok: true });
   } catch (err) {
     console.error(`[SendQuestion] Error: ${err.message}`);
     return res.status(500).json({ ok: false, error: 'Failed to send message' });
+  }
+}
+
+/** Write the attempt to message_log. Non-fatal: a logging failure never changes what the user is told. */
+async function logAttempt(results, body) {
+  try {
+    const url = process.env.VITE_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !key) {
+      console.warn('[SendQuestion] Supabase env not set — message_log not written');
+      return;
+    }
+    await recordMessageLog(createClient(url, key), results, 'send-question', 'text', body, null);
+  } catch (err) {
+    console.warn(`[SendQuestion] message_log write failed: ${err.message}`);
   }
 }

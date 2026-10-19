@@ -8,7 +8,7 @@ All automated work in this system runs as either Vercel cron jobs (nightly, insi
 
 ## Quick Reference
 
-| Job | Platform | Schedule (PDT) | Sends WhatsApp? | Audience |
+| Job | Platform | Schedule (PDT) | Sends a message? (Kate: Telegram; team: WhatsApp → SMS, #260) | Audience |
 |-----|----------|----------------|-----------------|----------|
 | `cron-auth` | Vercel | 5:00 PM daily (00:00 UTC) | No | — |
 | `cron-schedule` | Vercel | 5:05 PM daily (00:05 UTC) | No | — |
@@ -104,7 +104,7 @@ Five jobs run back-to-back each evening with 5-minute gaps to ensure each step c
 ---
 
 ### `cron-health-check` — 5:30 PM PDT (00:30 UTC)
-**What:** Verifies that the nightly sync crons (auth, schedule, detail) actually ran and didn't fail. Sends a WhatsApp alert to Kate if any cron missed its window or has 2+ consecutive failures in `cron_health_log`.
+**What:** Verifies that the nightly sync crons (auth, schedule, detail) actually ran and didn't fail. Alerts Kate (Telegram, REQ-652) if any cron missed its window or has 2+ consecutive failures in `cron_health_log`.
 
 **Why 5:30 PM:** Gives the full cron chain (5:00–5:15 PM PDT / 00:00–00:15 UTC) time to complete before the check runs.
 
@@ -121,7 +121,7 @@ Five jobs run back-to-back each evening with 5-minute gaps to ensure each step c
 Three jobs that run independently of the sync pipeline to catch failures the pipeline cannot detect about itself.
 
 ### `integration-check` — 1am, 9am, 5pm PDT (3× daily)
-**What:** The main system health check. Uses Playwright (real browser) to render the AGYD schedule page, compares what it sees against what's in the DB, and sends a WhatsApp report to Kate.
+**What:** The main system health check. Uses Playwright (real browser) to render the AGYD schedule page, compares what it sees against what's in the DB, and sends the report to Kate (Telegram, REQ-652).
 
 **Why it can't use the same code as the sync:** If the sync pipeline has a parsing bug, using the same parser to verify the sync would confirm the wrong output and call it a pass. The integration check uses a completely independent signal path: **Playwright DOM** — headless Chromium reads the live rendered DOM, not the raw HTML the regex-based cron uses.
 
@@ -136,7 +136,7 @@ Three jobs that run independently of the sync pipeline to catch failures the pip
 ---
 
 ### `gmail-monitor` — Hourly at :15 past
-**What:** Scans `kcoffie@gmail.com` for unread emails from known infrastructure senders (GitHub, Vercel, Supabase). When a match is found, sends a WhatsApp alert to Kate and records the email ID in Supabase to prevent duplicate alerts.
+**What:** Scans `kcoffie@gmail.com` for unread emails from known infrastructure senders (GitHub, Vercel, Supabase). When a match is found, alerts Kate (Telegram, REQ-652) and records the email ID in Supabase to prevent duplicate alerts.
 
 **Coverage:** GitHub Actions run failures, Vercel deploy failures, any Supabase email (quota, downtime, billing).
 
@@ -211,7 +211,7 @@ What actually fires on a typical Monday. The Vercel sync crons run at **midnight
 
 | Time (PDT) | Job | Outcome |
 |------------|-----|---------|
-| 1:00 AM | `integration-check` | Step 0 mini-sync runs, then Playwright compares DB to live schedule; WhatsApp report sent |
+| 1:00 AM | `integration-check` | Step 0 mini-sync runs, then Playwright compares DB to live schedule; report sent to Kate (Telegram) |
 | 4:00 AM | `notify-4am` | Live schedule refreshed from AGYD; roster image sent to full team (always) |
 | 7:00 AM | `notify-7am` | Live schedule refreshed; roster image sent if anything changed since 4am |
 | 8:30 AM | `notify-830am` | Live schedule refreshed; roster image sent if anything changed since 7am; boarders snapshot stored |
@@ -236,9 +236,9 @@ Three independent paths ensure a failure surfaces before it causes a missed noti
 
 | Failure type | Who catches it | Via |
 |---|---|---|
-| Vercel cron didn't run / threw an error | `cron-health-check` | WhatsApp to Kate at 5:30 PM PDT (00:30 UTC) |
-| GH Actions workflow failed (any workflow) | `gmail-monitor` | WhatsApp to Kate within 1 hour |
-| Sync ran but missed a booking (silent data bug) | `integration-check` | WhatsApp to Kate at 1am/9am/5pm |
+| Vercel cron didn't run / threw an error | `cron-health-check` | Telegram alert to Kate at 5:30 PM PDT (00:30 UTC) |
+| GH Actions workflow failed (any workflow) | `gmail-monitor` | Telegram alert to Kate within 1 hour |
+| Sync ran but missed a booking (silent data bug) | `integration-check` | Telegram report to Kate at 1am/9am/5pm |
 | Morning notify fired but image never delivered to phone | F-1 webhook + `message_delivery_status` table | (G-1 alert not yet implemented) |
 
 ---

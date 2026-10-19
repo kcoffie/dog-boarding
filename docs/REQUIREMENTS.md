@@ -1215,8 +1215,8 @@ An independent GH Actions script verifies that the DB matches the live external 
 - Extracts all boarding + DC/PG appointment IDs from live DOM
 - Queries DB: boardings in past-7d → today+7d window; daytime appointments for today
 - Flags: IDs on schedule missing from DB; IDs in DB with `Unknown` dog name; daytime events on schedule missing from DB
-- Sends WhatsApp text report to `INTEGRATION_CHECK_RECIPIENTS` (separate from `NOTIFY_RECIPIENTS`)
-- Always exits 0 — discrepancies are reported, not fatal
+- Sends the text report to Kate through `sendAlert` (Telegram, REQ-652); exits 1 when the report was needed but not delivered
+- Exits 0 when the report was delivered or not needed: discrepancies are reported, not fatal
 - Canceled/request-type bookings are a known false positive (not imported); documented in `docs/job_docs/integration-check.md`
 - Step 3 (Claude vision name-check) silently skipped when `ANTHROPIC_API_KEY` has no credits
 
@@ -1295,17 +1295,17 @@ Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arr
 ### REQ-700: Send a Question
 **Added:** v6.2.0 | **Status:** Complete
 
-Users can send a question or comment to Kate directly from the nav user dropdown. The message is delivered via WhatsApp using the existing `sendTextMessage` infrastructure (same alert channel as cron-health-check and gmail-monitor).
+Users can send a question or comment to Kate directly from the nav user dropdown. The message goes to Kate's alert channel (`sendAlert`, Telegram — REQ-652), the same one cron-health-check and gmail-monitor use.
 
 **Acceptance Criteria:**
 - "Send a Question" button in the nav user dropdown (desktop) and mobile menu
 - Clicking opens a modal with a "Question / Comment" label, textarea (max 1000 chars), character counter, Send and Cancel buttons
-- On Send, the message is delivered to Kate via WhatsApp with the sender's username prepended
+- On Send, the message is delivered to Kate through her alert channel (`sendAlert`, Telegram — REQ-652) with the sender's username prepended
 - Loading state ("Sending…") shown while in-flight; "Sent!" confirmation on success; inline error message on failure
 - Modal auto-closes 1.5 seconds after a successful send
-- `POST /api/send-question`: validates `Authorization: Bearer` token, rejects empty or >1000-char messages, calls `sendTextMessage` to `getAlertRecipients()` (Kate only)
+- `POST /api/send-question`: validates `Authorization: Bearer` token, rejects empty or >1000-char messages, calls `sendAlert`; returns 502 when the message wasn't delivered (REQ-652)
 
-**Tests:** `src/__tests__/sendQuestion.test.js` (7 tests)
+**Tests:** `src/__tests__/sendQuestion.test.js`
 
 ---
 
@@ -1361,12 +1361,35 @@ A daily Vercel cron (`/api/ops-watch`, 17:00 UTC) checks the outcomes the client
 - **Scheduled workflows:** a finding for each workflow whose last successful run is older than its limit (gmail-monitor 3 h, integration-check 12 h, cron-health-check 26 h, notify-4am 4 days, keepalive 8 days), or that has never succeeded
 - **Roster image:** a finding when the production weekend roster image doesn't return HTTP 200 with an `image/png` body
 - **Couldn't check:** a query error, a missing token, or a GitHub API error is a finding naming what couldn't be checked; it is never treated as healthy
-- With any finding: one WhatsApp text to `getAlertRecipients()` listing all of them, **and** a dispatch of `ops-alert.yml` (which fails, so GitHub emails Kate). With none: nothing is sent
+- With any finding: one alert to Kate (`sendAlert`, Telegram — REQ-652) listing all of them, **and** a dispatch of `ops-alert.yml` (which fails, so GitHub emails Kate). With none: nothing is sent
 - The endpoint requires `Authorization: Bearer $CRON_SECRET` and rejects every request when `CRON_SECRET` is unset (fails closed)
 - Each run is recorded in `cron_health` as `ops-watch`: `success` when every check ran and the alert (if any) went out, otherwise `failure`
 - `cron-health-check` reports `ops-watch` when its last run is more than 26 h old
 
 **Tests:** `src/__tests__/opsWatch.test.js`
+
+---
+
+### REQ-652: Kate's alerts on Telegram
+**Added:** v6.4.0 | **Status:** In Progress
+
+Every alert to Kate goes through one function, `sendAlert(text)` (`src/lib/alertKate.js`), which sends it to her through a dedicated Telegram bot. WhatsApp alerts stopped when Meta disabled the account (2026-10-18). A failed alert is never silent. Design: `docs/specs/telegram-alerts-design-note.md` (#259).
+
+**Acceptance Criteria:**
+- `sendAlert(text)` sends a plain-text Telegram `sendMessage` (no `parse_mode`) to `TELEGRAM_ALERT_CHAT_ID` through the bot `TELEGRAM_BOT_TOKEN`, once, with no retry and a 15 s timeout
+- It never throws; it returns `[{ to: 'telegram', status: 'sent' | 'failed', error? }]`
+- Missing `TELEGRAM_BOT_TOKEN` or `TELEGRAM_ALERT_CHAT_ID` → `failed` with `Telegram alert channel not configured`, and no request is made
+- A Telegram error → `failed` with `Telegram sendMessage <error_code>: <description>`. A network error or timeout → `failed` (`network error` / `timed out`). No error text or log line contains the bot token
+- Text longer than 4000 characters is cut to 4000 code points, ending in `…` (an emoji is never split)
+- `alertDelivered(results)` is true only when at least one result is `sent`
+- **Callers:**
+  - `cron-health-check`, `integration-check` and `gmail-monitor` alert through `sendAlert`. When an alert they sent wasn't delivered, the run exits 1, so it goes red and GitHub emails Kate. Integration discrepancies alone still exit 0
+  - `gmail-monitor` marks an email processed only after its alert was delivered, so the next run retries it
+  - `send-question` returns `502 { ok: false }` when the question wasn't delivered (including a missing channel configuration), and `200 { ok: true }` only when it was
+  - `ops-watch` sends its findings through `sendAlert` (and the GitHub email as before)
+- **ops-watch rule:** any `message_log` row with `status = 'failed'` in the last 24 h for job `cron-health-check`, `integration-check`, `gmail-monitor` or `send-question` is one finding naming the count and the jobs
+
+**Tests:** `src/__tests__/alertKate.test.js`, plus each caller's tests
 
 ---
 

@@ -72,8 +72,8 @@ The lower bound is **7 days ago** so boardings that departed earlier this week (
 **Daytime (1 check — smoke test):**
 3. **Daytime missing from DB** — DOM events in today's column (filtered by `dayTs`) not found in DB by `external_id` → `"Daytime missing from DB: Buddy — D/C FT (C63QgY4U)"`. Same `petName — title (id)` format as boarding.
 
-### Step 5 — WhatsApp report + exit
-Sends to `INTEGRATION_CHECK_RECIPIENTS` (Kate only — separate from `NOTIFY_RECIPIENTS` which goes to the whole team). Two-section text:
+### Step 5 — report + exit
+Sends to Kate through `sendAlert` (Telegram, REQ-652). If a report was needed and wasn't delivered, the run exits 1 (red, so GitHub emails Kate). Two-section text:
 - ✅ Pass:
   ```
   ✅ Integration check passed (3/17)
@@ -123,11 +123,10 @@ All must be **Repository secrets** in GitHub (Settings → Secrets → Actions �
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key — bypasses RLS | Supabase project settings → API → Secret keys |
 | `EXTERNAL_SITE_USERNAME` | AGYD login email — Step 0 re-auth | Copy from Vercel env vars |
 | `EXTERNAL_SITE_PASSWORD` | AGYD login password — Step 0 re-auth | Copy from Vercel env vars |
-| `META_PHONE_NUMBER_ID` | Meta sender phone number ID | Meta app dashboard |
-| `META_WHATSAPP_TOKEN` | Meta system user access token | Meta app dashboard |
-| `INTEGRATION_CHECK_RECIPIENTS` | Kate's phone number only (E.164) | Manually set — NOT from Vercel |
+| `TELEGRAM_BOT_TOKEN` | Kate's alert bot token | @BotFather |
+| `TELEGRAM_ALERT_CHAT_ID` | Kate's chat with the bot | `getUpdates` after she messages the bot |
 
-Note: `META_PHONE_NUMBER_ID`, `META_WHATSAPP_TOKEN`, `SUPABASE_SERVICE_ROLE_KEY`, `EXTERNAL_SITE_USERNAME`, and `EXTERNAL_SITE_PASSWORD` are also Vercel env vars. They must be separately added as GH repo secrets — Vercel and GitHub Actions do not share env vars.
+Note: `SUPABASE_SERVICE_ROLE_KEY`, `EXTERNAL_SITE_USERNAME`, and `EXTERNAL_SITE_PASSWORD` are also Vercel env vars. They must be separately added as GH repo secrets — Vercel and GitHub Actions do not share env vars.
 
 `APP_URL` and `VITE_SYNC_PROXY_TOKEN` were removed in v4.5 (Step 0 no longer uses an HTTP endpoint).
 

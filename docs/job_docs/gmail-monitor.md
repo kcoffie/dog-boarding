@@ -7,7 +7,7 @@
 
 ## What It Does
 
-Scans `kcoffie@gmail.com` hourly for unread emails from known infrastructure senders. When a matching email is found, it sends a WhatsApp alert to `INTEGRATION_CHECK_RECIPIENTS` (Kate only) and records the email ID in Supabase to prevent duplicate alerts.
+Scans `kcoffie@gmail.com` hourly for unread emails from known infrastructure senders. When a matching email is found, it alerts Kate through `sendAlert` (Telegram, REQ-652) and records the email ID in Supabase to prevent duplicate alerts. The ID is recorded **only after the alert was delivered**: an undelivered email is retried on the next hourly run, and the run exits 1 (red, so GitHub emails Kate).
 
 **Coverage:**
 
@@ -52,7 +52,7 @@ From: GitHub Actions
 Subject: [deploy-dog-boarding] Run failed
 Summary: <1-line Claude summary if available>
 ```
-The `Summary:` line is only included when Claude returns a different value than the subject. Falls back to subject if Claude is unavailable or has no credits. Sends to all numbers in `INTEGRATION_CHECK_RECIPIENTS` via Meta Cloud API.
+The `Summary:` line is only included when Claude returns a different value than the subject. Falls back to subject if Claude is unavailable or has no credits. Sent to Kate through `sendAlert` (Telegram, REQ-652).
 
 ### Step 6 — Mark processed
 Inserts `{ email_id, sender, subject, alert_sent: true }` into `gmail_processed_emails`. Mark-processed failure is non-fatal (logged as warning) — the alert was already sent.
@@ -118,9 +118,8 @@ All must be **Repository secrets** in GitHub (Settings → Secrets and variables
 | `GMAIL_CLIENT_ID` | OAuth2 client ID from Google Cloud Console |
 | `GMAIL_CLIENT_SECRET` | OAuth2 client secret |
 | `GMAIL_REFRESH_TOKEN` | Long-lived token — obtained via one-time local auth flow (`npm run reauth-gmail`) |
-| `META_PHONE_NUMBER_ID` | Meta Cloud API phone number ID |
-| `META_WHATSAPP_TOKEN` | Meta Cloud API system user token |
-| `INTEGRATION_CHECK_RECIPIENTS` | Kate's number only (E.164 format, comma-separated for multiple) |
+| `TELEGRAM_BOT_TOKEN` | Kate's alert bot token (@BotFather) |
+| `TELEGRAM_ALERT_CHAT_ID` | Kate's chat with the bot |
 | `ANTHROPIC_API_KEY` | Optional — Claude 1-line summary. Falls back to subject if absent or no credits |
 
 **Note on Gmail OAuth:** The OAuth app is in "testing" mode on Google Cloud. This works indefinitely for a single authorized user (Kate). No Google app verification is required for personal use. If this ever needs a second authorized user, Google's verification process for Gmail read scope applies.

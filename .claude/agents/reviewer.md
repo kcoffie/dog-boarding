@@ -12,7 +12,7 @@ Start with `git diff main...HEAD` and read the files it touches in full. Find th
 - Name the REQ each change implements and the acceptance criterion it could break. A behavior change with no REQ (new or updated in REQUIREMENTS.md) is a finding.
 - AGYD parsing and filtering: title patterns (DC / PG / D/C / N/C / day codes like MTWTH), cancelled and request appointments, same-day and multi-night stays, HTML entities, a page whose layout changed (must be detected, not silently parsed as empty).
 - Dates and times: Pacific vs UTC (crons are in UTC, the business runs on Pacific), DST transitions, midnight boundaries, weekday-only schedules.
-- WhatsApp: who receives it (`getAlertRecipients()` is Kate only; `NOTIFY_RECIPIENTS` is the team), Meta template rules (no newlines in parameters), dedup (hash-gated sends), and that every send is logged.
+- Messages: who receives it (alerts go to Kate only through `sendAlert`/`alertAndLog`, Telegram — REQ-652; `NOTIFY_RECIPIENTS` is the team roster), Meta template rules (no newlines in parameters), dedup (hash-gated sends), and that every send is logged.
 - Supabase: queries that select columns that don't exist, upserts with the wrong conflict key, a missing `error` check that turns a failed query into "no data".
 
 ## Pass 2: test audit (separate from pass 1)

@@ -347,7 +347,7 @@ docs/
 | `TWILIO_ACCOUNT_SID` | GH Actions | Twilio SID (operational alerts) |
 | `TWILIO_AUTH_TOKEN` | GH Actions | Twilio auth token |
 | `TWILIO_FROM_NUMBER` | GH Actions | Twilio WhatsApp sender number |
-| `INTEGRATION_CHECK_RECIPIENTS` | GH Actions | E.164 numbers for operator alerts |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID` | GH Actions + Vercel | Kate's alert channel (REQ-652) |
 
 ### Gmail monitor (GitHub Actions only)
 

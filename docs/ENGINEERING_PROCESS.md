@@ -24,7 +24,7 @@ Half a page, in the PR description or `docs/specs/`: **problem → options (2–
 The August 2026 outage is the reason for this gate. GitHub disabled all 8 scheduled workflows after 60 days without a commit (2026-08-24). Notifications stopped, and so did the cron health check, because it ran on the same GitHub scheduler. Then the Vercel sync crons kept reporting "success" while the detail queue backed up and boardings stopped updating (2026-09-26). Nothing alerted for seven weeks.
 
 Rules for every scheduled job (GitHub Actions or Vercel cron):
-1. **Failure is loud.** A failed run alerts Kate (`getAlertRecipients()`), never just a log line or a red run nobody opens.
+1. **Failure is loud.** A failed run alerts Kate (`sendAlert`, Telegram — REQ-652), never just a log line or a red run nobody opens. An alert that can't be delivered fails the run in turn.
 2. **Check outcomes, not runs.** "The cron ran" isn't health. Check what the client depends on: data freshness, queue depth, a message actually delivered.
 3. **The watcher runs somewhere else.** A health check that shares the scheduler of the job it watches dies with it. **Not true yet (2026-10-16):** every watcher still runs on GitHub. `keepalive.yml` (#236, best effort) and ops-watch on a Vercel cron (#237, designed, blocked on decisions) close this gap.
 4. **A new job comes with its alert** in the same PR, and its runbook entry in `docs/RUNBOOK.md`.
