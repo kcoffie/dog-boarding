@@ -8,7 +8,7 @@
  * @requirements REQ-109
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildWeekUrl, advanceCursor, parseScheduleHtml, runScheduleSync, runDetailSync } from '../../lib/scraper/syncRunner.js';
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
@@ -51,10 +51,11 @@ vi.mock('../../lib/scraper/forms.js', () => ({
 
 import { setSession, authenticatedFetch } from '../../lib/scraper/auth.js';
 import { ensureSession, clearSession } from '../../lib/scraper/sessionCache.js';
-import { dequeueOne, markDone, resetStuck, getQueueDepth } from '../../lib/scraper/syncQueue.js';
+import { enqueue, dequeueOne, markDone, markFailed, resetStuck, getQueueDepth } from '../../lib/scraper/syncQueue.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../../lib/scraper/daytimeSchedule.js';
 import { fetchAppointmentDetails } from '../../lib/scraper/extraction.js';
 import { mapAndSaveAppointment } from '../../lib/scraper/mapping.js';
+import { fetchAndStoreBoardingForm } from '../../lib/scraper/forms.js';
 
 // ─── Minimal supabase mock ─────────────────────────────────────────────────────
 
@@ -465,5 +466,507 @@ describe('runDetailSync', () => {
     expect(result.reason).toMatch(/same_day/);
     expect(markDone).toHaveBeenCalledWith(expect.anything(), 'queue-pg-daycare');
     expect(mapAndSaveAppointment).not.toHaveBeenCalled();
+  });
+});
+
+// ─── REQ-109 shared runners: one test per acceptance criterion ────────────────
+// Expected values come from the REQ-109 "Shared runners" criteria, worked by hand.
+// The clock is fixed at local midnight Monday 2026-10-19, so this week's page is
+// 10/19 and next week's is 10/26. Only Date is faked; promises run normally.
+
+const SITE = 'https://agirlandyourdog.com';
+
+// A Supabase fake that records what the runners write. sync_settings holds at most one row.
+function makeDb({ cursor = null, hasSettingsRow = true } = {}) {
+  const calls = { settingsSelects: [], settingsUpdates: [], settingsInserts: [], queueUpdates: [] };
+  return {
+    calls,
+    from(table) {
+      if (table === 'sync_settings') {
+        return {
+          select: (cols) => { calls.settingsSelects.push(cols); return { limit: () => ({ single: () => Promise.resolve({
+            data: hasSettingsRow ? { id: 'settings-1', schedule_cursor_date: cursor } : null, error: null,
+          }) }) }; },
+          update: (values) => ({ eq: (col, val) => { calls.settingsUpdates.push({ values, col, val }); return Promise.resolve({ error: null }); } }),
+          insert: (values) => { calls.settingsInserts.push(values); return Promise.resolve({ error: null }); },
+        };
+      }
+      if (table === 'sync_queue') {
+        return { update: (values) => ({ eq: (col, val) => { calls.queueUpdates.push({ values, col, val }); return Promise.resolve({ error: null }); } }) };
+      }
+      throw new Error(`unexpected table ${table}`);
+    },
+  };
+}
+
+// One schedule link in AGYD's markup.
+function link({ id, ts = '1792836000', title = '', pet = '', petId = null, href = null }) {
+  const petAttr = petId ? ` data-pet="${petId}"` : '';
+  return `<a href="${href ?? `/schedule/a/${id}/${ts}`}" class="day-event">`
+    + `<span class="day-event-title">${title}</span><span class="event-pet"${petAttr}>${pet}</span></a>`;
+}
+
+// Serve schedule pages by URL; unknown URLs get an empty page.
+function servePages(pages = {}) {
+  authenticatedFetch.mockImplementation((url) => Promise.resolve({
+    ok: true, status: 200, text: () => Promise.resolve(`<html><body>${pages[url] ?? ''}</body></html>`),
+  }));
+}
+
+const fetchedUrls = () => authenticatedFetch.mock.calls.map(([url]) => url);
+
+describe('REQ-109 runScheduleSync', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 19));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    ensureSession.mockResolvedValue('session=abc');
+    enqueue.mockResolvedValue(undefined);
+    getQueueDepth.mockResolvedValue(0);
+    parseDaytimeSchedulePage.mockReturnValue([]);
+    upsertDaytimeAppointments.mockResolvedValue({ upserted: 0, errors: 0 });
+    servePages();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('fetches this week, next week and the cursor week', async () => {
+    const result = await runScheduleSync(makeDb({ cursor: '2026-11-16' }));
+    expect(fetchedUrls()).toEqual([
+      `${SITE}/schedule/days-7/2026/10/19`,
+      `${SITE}/schedule/days-7/2026/10/26`,
+      `${SITE}/schedule/days-7/2026/11/16`,
+    ]);
+    expect(result.pagesScanned).toBe(3);
+  });
+
+  it('leaves out the cursor page when the cursor is less than 7 days from this week', async () => {
+    await runScheduleSync(makeDb({ cursor: '2026-10-22' }));
+    expect(fetchedUrls()).toEqual([`${SITE}/schedule/days-7/2026/10/19`, `${SITE}/schedule/days-7/2026/10/26`]);
+  });
+
+  it('leaves out a cursor page less than 7 days before this week', async () => {
+    await runScheduleSync(makeDb({ cursor: '2026-10-15' }));
+    expect(fetchedUrls()).toEqual([`${SITE}/schedule/days-7/2026/10/19`, `${SITE}/schedule/days-7/2026/10/26`]);
+  });
+
+  it('leaves out the cursor page when the cursor is less than 7 days from next week', async () => {
+    await runScheduleSync(makeDb({ cursor: '2026-10-30' }));
+    expect(fetchedUrls()).toEqual([`${SITE}/schedule/days-7/2026/10/19`, `${SITE}/schedule/days-7/2026/10/26`]);
+  });
+
+  it('fetches a cursor page exactly 7 days after next week (not "less than 7")', async () => {
+    // 11/2 is 7 days after 10/26 in UTC (CI) and 7 days + 1 h in Pacific (DST ends 11/1): fetched in both.
+    await runScheduleSync(makeDb({ cursor: '2026-11-02' }));
+    expect(fetchedUrls()[2]).toBe(`${SITE}/schedule/days-7/2026/11/2`);
+  });
+
+  it('fetches a cursor page exactly 7 days before this week (not "less than 7")', async () => {
+    await runScheduleSync(makeDb({ cursor: '2026-10-12' }));
+    expect(fetchedUrls()[2]).toBe(`${SITE}/schedule/days-7/2026/10/12`);
+  });
+
+  it('with no session, returns session_failed and fetches nothing', async () => {
+    ensureSession.mockRejectedValue(new Error('no credentials'));
+    const result = await runScheduleSync(makeDb());
+    expect(result.action).toBe('session_failed');
+    expect(result.cursorAdvancedTo).toBe('');
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+  });
+
+  it('fetches with the session ensureSession returned', async () => {
+    await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(setSession).toHaveBeenCalledWith('session=abc');
+  });
+
+  it('a login page clears the session, enqueues nothing and leaves the cursor', async () => {
+    authenticatedFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('<form>login password</form>') });
+    const db = makeDb({ cursor: '2026-11-16' });
+    const result = await runScheduleSync(db);
+    expect(result.action).toBe('session_cleared');
+    expect(result.reason).toBe('session_expired');
+    expect(result.cursorAdvancedTo).toBe('');
+    expect(clearSession).toHaveBeenCalledWith(db);
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(db.calls.settingsUpdates).toEqual([]);
+  });
+
+  it('a page with "login" but no "password" is a schedule, not a login form', async () => {
+    authenticatedFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('<a href="/login">log out</a>') });
+    const result = await runScheduleSync(makeDb());
+    expect(result.action).toBe('ok');
+  });
+
+  it('a page with "password" but no "login" is a schedule, not a login form', async () => {
+    authenticatedFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('<p>reset password</p>') });
+    const result = await runScheduleSync(makeDb());
+    expect(result.action).toBe('ok');
+  });
+
+  it('a non-OK HTTP status throws so the cron records a failure', async () => {
+    authenticatedFetch.mockResolvedValue({ ok: false, status: 503, text: () => Promise.resolve('') });
+    await expect(runScheduleSync(makeDb())).rejects.toThrow('Schedule fetch failed: 503');
+  });
+
+  it('an appointment on two pages is counted and queued once', async () => {
+    const both = link({ id: 'APPT1', title: '10/24-27' });
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: both, [`${SITE}/schedule/days-7/2026/10/26`]: both });
+    const result = await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(result.found).toBe(1);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('a non-boarding title is skipped and counted; a boarding title is queued', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'DAYCARE', title: 'DC FT' }) + link({ id: 'STAY', title: '10/24-27' }) });
+    const result = await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(result.skipped).toBe(1);
+    expect(result.queued).toBe(1);
+    expect(enqueue.mock.calls.map(([, item]) => item.external_id)).toEqual(['STAY']);
+  });
+
+  it('a non-boarding title with leading spaces is still skipped', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'DAYCARE', title: '  DC FT' }) });
+    const result = await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(result.skipped).toBe(1);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('enqueues the ID, absolute URL, title and first pet ID', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'STAY', ts: '1792836000', title: '10/24-27', pet: 'Dog A', petId: '10001' }) });
+    const db = makeDb({ cursor: '2026-10-19' });
+    await runScheduleSync(db);
+    expect(enqueue).toHaveBeenCalledWith(db, {
+      external_id: 'STAY',
+      source_url: `${SITE}/schedule/a/STAY/1792836000`,
+      title: '10/24-27',
+      meta: { external_pet_id: '10001' },
+    });
+  });
+
+  it('an untitled appointment is queued under its pet name, with no meta when it has no pet ID', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'STAY', pet: 'Dog A' }) });
+    await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    const [, item] = enqueue.mock.calls[0];
+    expect(item.title).toBe('Dog A');
+    expect(item.meta).toEqual({});
+  });
+
+  it('an appointment with no title and no pet name is queued with an empty title', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'STAY' }) });
+    await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(enqueue.mock.calls[0][1].title).toBe('');
+  });
+
+  it('one failed enqueue does not stop the others, and only successes count as queued', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'A', title: '10/24-27' }) + link({ id: 'B', title: '10/25-28' }) });
+    enqueue.mockRejectedValueOnce(new Error('db down')).mockResolvedValueOnce(undefined);
+    const result = await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    expect(result.found).toBe(2);
+    expect(result.queued).toBe(1);
+  });
+
+  it("upserts every page's daytime events in one call and reports its counts", async () => {
+    parseDaytimeSchedulePage.mockReturnValueOnce([{ id: 'd1' }]).mockReturnValueOnce([{ id: 'd2' }]).mockReturnValueOnce([{ id: 'd3' }]);
+    upsertDaytimeAppointments.mockResolvedValue({ upserted: 2, errors: 1 });
+    const db = makeDb({ cursor: '2026-11-16' });
+    const result = await runScheduleSync(db);
+    expect(upsertDaytimeAppointments).toHaveBeenCalledTimes(1);
+    expect(upsertDaytimeAppointments).toHaveBeenCalledWith(db, [{ id: 'd1' }, { id: 'd2' }, { id: 'd3' }]);
+    expect(result.daytimeUpserted).toBe(2);
+    expect(result.daytimeErrors).toBe(1);
+  });
+
+  it('saves the cursor + 7 days on the existing settings row', async () => {
+    const db = makeDb({ cursor: '2026-11-16' });
+    const result = await runScheduleSync(db);
+    expect(db.calls.settingsUpdates).toEqual([{ values: { schedule_cursor_date: '2026-11-23' }, col: 'id', val: 'settings-1' }]);
+    expect(db.calls.settingsInserts).toEqual([]);
+    expect(result.cursorAdvancedTo).toBe('2026-11-23');
+  });
+
+  it('reports cursorAdvancedTo as the saved local date, even late in the evening', async () => {
+    vi.setSystemTime(new Date(2026, 9, 19, 23, 30));
+    const db = makeDb({ cursor: '2026-11-16' });
+    const result = await runScheduleSync(db);
+    expect(result.cursorAdvancedTo).toBe(db.calls.settingsUpdates[0].values.schedule_cursor_date);
+  });
+
+  it('with no settings row, starts the cursor at today and inserts today + 7 days', async () => {
+    const db = makeDb({ hasSettingsRow: false });
+    await runScheduleSync(db);
+    expect(db.calls.settingsInserts).toEqual([{ schedule_cursor_date: '2026-10-26' }]);
+    expect(db.calls.settingsUpdates).toEqual([]);
+  });
+
+  it('a cursor date is zero-padded to YYYY-MM-DD', async () => {
+    const db = makeDb({ cursor: '2026-09-01' });
+    await runScheduleSync(db);
+    expect(db.calls.settingsUpdates[0].values.schedule_cursor_date).toBe('2026-09-08');
+  });
+
+  it('a cursor landing exactly on today + 56 days is kept, not wrapped', async () => {
+    const db = makeDb({ cursor: '2026-12-07' });
+    await runScheduleSync(db);
+    expect(db.calls.settingsUpdates[0].values.schedule_cursor_date).toBe('2026-12-14');
+  });
+
+  it('a cursor past today + 56 days wraps back to today', async () => {
+    const db = makeDb({ cursor: '2026-12-08' });
+    await runScheduleSync(db);
+    expect(db.calls.settingsUpdates[0].values.schedule_cursor_date).toBe('2026-10-19');
+  });
+
+  it('reads the cursor column and the row id from sync_settings', async () => {
+    const db = makeDb({ cursor: '2026-10-19' });
+    await runScheduleSync(db);
+    expect(db.calls.settingsSelects).toEqual(['schedule_cursor_date', 'id']);
+  });
+
+  it('returns ok with the pending queue depth', async () => {
+    getQueueDepth.mockResolvedValue(7);
+    const result = await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(result.action).toBe('ok');
+    expect(result.queueDepth).toBe(7);
+  });
+});
+
+describe('REQ-109 parseScheduleHtml', () => {
+  it('makes a relative appointment link absolute', () => {
+    const [appt] = parseScheduleHtml(link({ id: 'X', ts: '123' }));
+    expect(appt.url).toBe(`${SITE}/schedule/a/X/123`);
+    expect(appt.timestamp).toBe('123');
+  });
+
+  it('keeps an absolute appointment link as it is', () => {
+    const [appt] = parseScheduleHtml(link({ id: 'X', href: 'https://other.example.com/schedule/a/X/123' }));
+    expect(appt.url).toBe('https://other.example.com/schedule/a/X/123');
+  });
+
+  it('reads a link whose href comes after other attributes', () => {
+    const [appt] = parseScheduleHtml('<a class="day-event" data-x="1" href="/schedule/a/X/123">x</a>');
+    expect(appt.id).toBe('X');
+  });
+
+  it('ignores a link without a numeric timestamp', () => {
+    expect(parseScheduleHtml(link({ id: 'X', href: '/schedule/a/X/edit' }))).toEqual([]);
+  });
+
+  it('reads each field from its own class, trimmed', () => {
+    const html = '<a href="/schedule/a/X/1"><span class="other">noise</span><span class="event-client"> Pat Example </span>'
+      + '<span class="day-event-title"> 10/24-27 </span><span class="day-event-time"> 9:00 AM </span></a>';
+    const [appt] = parseScheduleHtml(html);
+    expect(appt.time).toBe('9:00 AM');
+    expect(appt.title).toBe('10/24-27');
+    expect(appt.clientName).toBe('Pat Example');
+  });
+
+  it('a field missing from the link is an empty string', () => {
+    const [appt] = parseScheduleHtml('<a href="/schedule/a/X/1"><span class="event-pet">Dog A</span></a>');
+    expect(appt.time).toBe('');
+    expect(appt.title).toBe('');
+  });
+
+  it('collects every data-pet ID in a link', () => {
+    const html = '<a href="/schedule/a/X/1"><span data-pet="10001"></span><span data-pet="10002"></span></a>';
+    expect(parseScheduleHtml(html)[0].petIds).toEqual(['10001', '10002']);
+  });
+});
+
+describe('REQ-109 runDetailSync', () => {
+  const appointmentItem = (over = {}) => ({
+    id: 'q1', external_id: 'C63X', type: 'appointment', title: 'Dog A 10/24-27', retry_count: 0,
+    source_url: `${SITE}/schedule/a/C63X/1792836000`, meta: { external_pet_id: '10001' }, ...over,
+  });
+  const formItem = (over = {}) => ({
+    id: 'q1', external_id: 'form-b1', type: 'form', title: 'Dog A', retry_count: 0,
+    source_url: `${SITE}/pets/10001/forms`, meta: { boarding_id: 'b1', external_pet_id: '10001' }, ...over,
+  });
+  const saved = (stats) => mapAndSaveAppointment.mockResolvedValue({
+    stats: { syncCreated: false, syncUpdated: false, dogUpdated: false, boardingUpdated: false, ...stats },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    ensureSession.mockResolvedValue('session=abc');
+    resetStuck.mockResolvedValue(0);
+    getQueueDepth.mockResolvedValue(4);
+    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63X', pet_name: 'Dog A' });
+    saved({});
+  });
+
+  it('with no session, returns session_failed before dequeuing anything', async () => {
+    ensureSession.mockRejectedValue(new Error('no credentials'));
+    const result = await runDetailSync(makeDb());
+    expect(result.action).toBe('session_failed');
+    expect(dequeueOne).not.toHaveBeenCalled();
+  });
+
+  it('processes the item with the session ensureSession returned', async () => {
+    dequeueOne.mockResolvedValue(null);
+    await runDetailSync(makeDb());
+    expect(setSession).toHaveBeenCalledWith('session=abc');
+  });
+
+  it('a form item with no pet ID is marked done and skipped as no_pet_id', async () => {
+    dequeueOne.mockResolvedValue(formItem({ meta: { boarding_id: 'b1' } }));
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(result).toEqual({ action: 'skipped', reason: 'no_pet_id', externalId: 'form-b1', queueDepth: 4 });
+    expect(markDone).toHaveBeenCalledWith(db, 'q1');
+    expect(fetchAndStoreBoardingForm).not.toHaveBeenCalled();
+  });
+
+  it('a form item is fetched and stored for its boarding and pet, then marked done', async () => {
+    dequeueOne.mockResolvedValue(formItem());
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(fetchAndStoreBoardingForm).toHaveBeenCalledWith(db, 'b1', '10001', 'Dog A');
+    expect(markDone).toHaveBeenCalledWith(db, 'q1');
+    expect(result).toEqual({ action: 'form_stored', externalId: 'form-b1', queueDepth: 4 });
+  });
+
+  it('an untitled form item is fetched with an empty title', async () => {
+    dequeueOne.mockResolvedValue(formItem({ title: null }));
+    const db = makeDb();
+    await runDetailSync(db);
+    expect(fetchAndStoreBoardingForm).toHaveBeenCalledWith(db, 'b1', '10001', '');
+  });
+
+  it('an expired session during a form fetch clears the session and puts the item back to pending', async () => {
+    dequeueOne.mockResolvedValue(formItem());
+    fetchAndStoreBoardingForm.mockRejectedValue(new Error('Session expired'));
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(result).toEqual({ action: 'session_cleared', reason: 'session_expired' });
+    expect(clearSession).toHaveBeenCalledWith(db);
+    expect(db.calls.queueUpdates).toEqual([{ values: { status: 'pending', processing_started_at: null }, col: 'id', val: 'q1' }]);
+    expect(markFailed).not.toHaveBeenCalled();
+  });
+
+  it('any other form error marks the item failed', async () => {
+    dequeueOne.mockResolvedValue(formItem());
+    fetchAndStoreBoardingForm.mockRejectedValue(new Error('form page 500'));
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(markFailed).toHaveBeenCalledWith(db, 'q1', 'form page 500');
+    expect(result).toEqual({ action: 'form_failed', error: 'form page 500', externalId: 'form-b1', queueDepth: 4 });
+    expect(markDone).not.toHaveBeenCalled();
+  });
+
+  it('a form error is recorded with its first 200 characters', async () => {
+    dequeueOne.mockResolvedValue(formItem());
+    fetchAndStoreBoardingForm.mockRejectedValue(new Error('f'.repeat(250)));
+    const db = makeDb();
+    await runDetailSync(db);
+    expect(markFailed).toHaveBeenCalledWith(db, 'q1', 'f'.repeat(200));
+  });
+
+  it("an item with no type is an appointment, fetched by the ID and timestamp in its URL", async () => {
+    dequeueOne.mockResolvedValue(appointmentItem({ type: undefined }));
+    await runDetailSync(makeDb());
+    expect(fetchAppointmentDetails).toHaveBeenCalledWith('C63X', '1792836000');
+    expect(fetchAndStoreBoardingForm).not.toHaveBeenCalled();
+  });
+
+  it("an appointment whose URL doesn't match is fetched by its external_id with no timestamp", async () => {
+    dequeueOne.mockResolvedValue(appointmentItem({ source_url: `${SITE}/somewhere/else` }));
+    await runDetailSync(makeDb());
+    expect(fetchAppointmentDetails).toHaveBeenCalledWith('C63X', '');
+  });
+
+  it('a missing pet name falls back to the queued title', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63X', pet_name: null });
+    await runDetailSync(makeDb());
+    expect(mapAndSaveAppointment.mock.calls[0][0].pet_name).toBe('Dog A 10/24-27');
+  });
+
+  it("is saved with the item's pet ID and marked done", async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    const db = makeDb();
+    await runDetailSync(db);
+    expect(mapAndSaveAppointment).toHaveBeenCalledWith({ external_id: 'C63X', pet_name: 'Dog A' }, { supabase: db, externalPetId: '10001' });
+    expect(markDone).toHaveBeenCalledWith(db, 'q1');
+  });
+
+  it('an item with no pet ID is saved with externalPetId null', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem({ meta: undefined }));
+    await runDetailSync(makeDb());
+    expect(mapAndSaveAppointment.mock.calls[0][1].externalPetId).toBeNull();
+  });
+
+  it('a new sync record is created', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    saved({ syncCreated: true });
+    expect(await runDetailSync(makeDb())).toEqual({ action: 'created', externalId: 'C63X', queueDepth: 4 });
+  });
+
+  it.each(['syncUpdated', 'dogUpdated', 'boardingUpdated'])('a %s change is updated', async (flag) => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    saved({ [flag]: true });
+    expect((await runDetailSync(makeDb())).action).toBe('updated');
+  });
+
+  it('no change is unchanged', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    expect((await runDetailSync(makeDb())).action).toBe('unchanged');
+  });
+
+  it('an expired session during a detail fetch puts the item back to pending, not failed', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    fetchAppointmentDetails.mockRejectedValue(new Error('Session expired — please re-authenticate'));
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(result).toEqual({ action: 'session_cleared', reason: 'session_expired' });
+    expect(db.calls.queueUpdates).toEqual([{ values: { status: 'pending', processing_started_at: null }, col: 'id', val: 'q1' }]);
+    expect(markFailed).not.toHaveBeenCalled();
+  });
+
+  it('any other detail fetch error marks the item failed with the first 200 characters', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    fetchAppointmentDetails.mockRejectedValue(new Error('x'.repeat(250)));
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(markFailed).toHaveBeenCalledWith(db, 'q1', 'x'.repeat(200));
+    expect(result).toEqual({ action: 'failed', error: 'x'.repeat(200), externalId: 'C63X', queueDepth: 4 });
+    expect(mapAndSaveAppointment).not.toHaveBeenCalled();
+  });
+
+  it('a save error marks the item failed, not done', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    mapAndSaveAppointment.mockRejectedValue(new Error('upsert conflict'));
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(markFailed).toHaveBeenCalledWith(db, 'q1', 'upsert conflict');
+    expect(markDone).not.toHaveBeenCalled();
+    expect(result).toEqual({ action: 'save_failed', error: 'upsert conflict', externalId: 'C63X', queueDepth: 4 });
+  });
+
+  it.each([
+    ['form fetch', () => { dequeueOne.mockResolvedValue(formItem()); fetchAndStoreBoardingForm.mockRejectedValue('form page timeout'); }, 'form_failed'],
+    ['detail fetch', () => { dequeueOne.mockResolvedValue(appointmentItem()); fetchAppointmentDetails.mockRejectedValue('detail timeout'); }, 'failed'],
+    ['save', () => { dequeueOne.mockResolvedValue(appointmentItem()); mapAndSaveAppointment.mockRejectedValue({ code: '23505' }); }, 'save_failed'],
+    ['form fetch, rejected with nothing', () => { dequeueOne.mockResolvedValue(formItem()); fetchAndStoreBoardingForm.mockRejectedValue(undefined); }, 'form_failed'],
+    ['detail fetch, rejected with nothing', () => { dequeueOne.mockResolvedValue(appointmentItem()); fetchAppointmentDetails.mockRejectedValue(undefined); }, 'failed'],
+  ])('a thrown non-Error during the %s still marks the item failed', async (_step, arrange, action) => {
+    arrange();
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(result.action).toBe(action);
+    expect(markFailed).toHaveBeenCalledTimes(1);
+    expect(markFailed.mock.calls[0][1]).toBe('q1');
+  });
+
+  it('a save error is recorded with its first 200 characters', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    mapAndSaveAppointment.mockRejectedValue(new Error('s'.repeat(250)));
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(markFailed).toHaveBeenCalledWith(db, 'q1', 's'.repeat(200));
+    expect(result.error).toBe('s'.repeat(200));
   });
 });
