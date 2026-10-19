@@ -200,6 +200,17 @@ SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'notify';
 UPDATE sync_queue SET status = 'pending' WHERE id = <id>;
 ```
 
+### Adding a worker
+
+The repo is public, so worker names are kept only in Supabase (#281).
+1. Find the worker's AGYD UID: the `ew-<uid>` class on their events, or the "Unknown worker uid" warning in the sync logs.
+2. Add the row in Supabase (SQL editor), not in a migration:
+   ```sql
+   INSERT INTO workers (external_id, name) VALUES (<uid>, '<display name>');
+   ```
+3. Add the UID to `WORKER_IDS` in `src/lib/workers.js`, in the roster column position you want, and update REQ-601 and `src/__tests__/workers.test.js`.
+4. To retire someone, set `active = false` on their row. Their column then shows "Worker <uid>" until the UID is removed from `WORKER_IDS`.
+
 ### Mark a boarding as archived (don't sync it again)
 
 ```sql

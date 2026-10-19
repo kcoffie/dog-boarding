@@ -181,7 +181,7 @@ Every function follows a structured logging convention: log the input, log every
 
 ```
 [Sync 21:24:48] [SessionCache] ✅ Session valid (~3h remaining)
-[PictureOfDay] Worker Sierra Tagle (189436): +1 added, -5 removed, 5 unchanged
+[PictureOfDay] Worker 189436 (189436): +1 added, -5 removed, 5 unchanged
 [NotifyWA] Sent to ***-***-0100 — messageId: wamid.HBgL...
 ```
 
@@ -372,8 +372,9 @@ npm run dev                   # http://localhost:5173
 ### Supabase setup
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Run all 23 migrations from `supabase/migrations/` in order via the SQL editor
-3. Copy project URL and keys to `.env.local`
+2. Run every migration in `supabase/migrations/` in order via the SQL editor
+3. Add the staff rows to the `workers` table (`docs/RUNBOOK.md`, "Adding a worker"). Names aren't kept in the repo, so without this the roster image labels each column `Worker <uid>`
+4. Copy project URL and keys to `.env.local`
 
 ### Running crons locally
 

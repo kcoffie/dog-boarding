@@ -1,32 +1,23 @@
 /**
- * Single source of truth for worker identity data.
+ * Single source of truth for which AGYD worker IDs the app knows.
  *
  * Both the daytime schedule parser (daytimeSchedule.js) and the picture-of-day
- * data layer (pictureOfDay.js) need worker IDs and names. Keeping them here
- * means a worker roster change requires one edit in one file.
+ * data layer (pictureOfDay.js) need worker IDs. Names are not kept here: the repo
+ * is public, so they live only in the Supabase `workers` table, which
+ * pictureOfDay.js reads (#281). Adding a worker means a row in that table and
+ * an ID here (docs/RUNBOOK.md).
  *
  * WORKER_ORDER drives the left-to-right column order in the rendered image.
- * KNOWN_WORKERS maps external UID → display name (uid 0 = no worker assigned).
+ * KNOWN_WORKERS holds every known external UID (uid 0 = no worker assigned).
  */
 
-export const WORKERS = [
-  { id: 61023,  name: 'Charlie' },
-  { id: 208669, name: 'Kathalyn Dominguez' },
-  { id: 141407, name: 'Kentaro Cavey' },
-  { id: 174385, name: 'Max Posse' },
-  { id: 189436, name: 'Sierra Tagle' },
-  { id: 164375, name: 'Stephen Muro' },
-];
+/** AGYD worker UIDs (the `ew-{uid}` class on schedule events), in column order. */
+export const WORKER_IDS = [61023, 208669, 141407, 174385, 189436, 164375];
 
 /** Stable display order for worker columns in the rendered image. */
-export const WORKER_ORDER = WORKERS.map(w => w.id);
+export const WORKER_ORDER = WORKER_IDS;
 
 /**
- * Maps worker external UID → display name.
- * uid 0 = no worker assigned (typical for boarding events).
- * Frozen to catch accidental mutation at runtime.
+ * Every known worker external UID. uid 0 = no worker assigned (typical for boarding events).
  */
-export const KNOWN_WORKERS = Object.freeze({
-  0: null,
-  ...Object.fromEntries(WORKERS.map(w => [w.id, w.name])),
-});
+export const KNOWN_WORKERS = new Set([0, ...WORKER_IDS]);
