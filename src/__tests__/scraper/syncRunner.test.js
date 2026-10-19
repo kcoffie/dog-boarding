@@ -229,7 +229,7 @@ describe('runScheduleSync', () => {
     const pgHtml = `
       <a href="/schedule/a/C63QgJQ9/1742342400" class="day-event">
         <span class="day-event-title">PG 3/23-30</span>
-        <span class="event-pet" data-pet="90043">Kailin</span>
+        <span class="event-pet" data-pet="90043">Rocket</span>
       </a>
     `;
     authenticatedFetch.mockResolvedValue({
@@ -307,7 +307,7 @@ describe('runScheduleSync', () => {
   });
 
   it('skips "PT: T.W.TH" appointment — Part-Time daycare must not be enqueued as a boarding', async () => {
-    // Regression: C63QgiVF (Maverick, May 4 2026). "PT: T.W.TH" is a recurring
+    // Regression: C63QgiVF (Rover, May 4 2026). "PT: T.W.TH" is a recurring
     // Part-Time daycare appointment using the /schedule/a/ URL format. Missing ^PT\b
     // in nonBoardingPatterns caused the integration check DOM scanner to flag it as
     // a boarding candidate and fire false "Missing from DB" alerts every run.
@@ -316,7 +316,7 @@ describe('runScheduleSync', () => {
     const html = `
       <a href="/schedule/a/C63QgiVF/1777975200" class="day-event">
         <span class="day-event-title">PT: T.W.TH</span>
-        <span class="event-pet" data-pet="168474">Maverick</span>
+        <span class="event-pet" data-pet="168474">Rover</span>
       </a>
     `;
     authenticatedFetch.mockResolvedValue({
@@ -450,7 +450,7 @@ describe('runDetailSync', () => {
     });
     fetchAppointmentDetails.mockResolvedValue({
       external_id: 'C63QgZoi',
-      pet_name: 'Maverick',
+      pet_name: 'Rover',
       service_type: 'PG FT',
       booking_status: 'confirmed',
       pricing: null,

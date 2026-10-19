@@ -17,9 +17,9 @@ const SCHEDULE_WITH_PET_IDS = `
     <div class="day-event-time">Feb 13, 11am - Feb 17, 10am</div>
     <div class="day-event-title">2/13-17</div>
     <div class="event-pet-wrapper" data-pet="90043">
-      <span class="event-pet pet-1">Lilly O'Brien</span>
+      <span class="event-pet pet-1">Daisy O'Example</span>
     </div>
-    <span class="event-client">Jane O'Brien</span>
+    <span class="event-client">Jane O'Example</span>
   </a>
 </body>
 </html>
@@ -37,12 +37,12 @@ const SCHEDULE_MULTI_PET = `
     <div class="day-event-time">Feb 13, 11am - Feb 17, 10am</div>
     <div class="day-event-title">2/13-17</div>
     <div class="event-pet-wrapper" data-pet="90043">
-      <span class="event-pet pet-1">Lilly</span>
+      <span class="event-pet pet-1">Daisy</span>
     </div>
-    <div class="event-pet-wrapper" data-pet="90053">
+    <div class="event-pet-wrapper" data-pet="10001">
       <span class="event-pet pet-2">Buddy</span>
     </div>
-    <span class="event-client">Jane O'Brien</span>
+    <span class="event-client">Jane O'Example</span>
   </a>
 </body>
 </html>
@@ -75,7 +75,7 @@ describe('REQ-500: petIds extraction from schedule HTML', () => {
   it('extracts multiple petIds for multi-pet appointments', () => {
     const appointments = parseSchedulePage(SCHEDULE_MULTI_PET);
     expect(appointments).toHaveLength(1);
-    expect(appointments[0].petIds).toEqual(['90043', '90053']);
+    expect(appointments[0].petIds).toEqual(['90043', '10001']);
   });
 
   it('returns empty petIds array when no event-pet-wrapper elements present', () => {

@@ -443,7 +443,7 @@ describe('REQ-200: extractPricing()', () => {
 
     it('uses first pet rate and qty for each line item', () => {
       const result = extractPricing(mockPricingMultiPet);
-      // Nights: first pet (Mochi) rate=5500÷100=55, qty=800÷100=8
+      // Nights: first pet (Nutmeg) rate=5500÷100=55, qty=800÷100=8
       expect(result.lineItems[0].rate).toBe(55);
       expect(result.lineItems[0].qty).toBe(8);
       // Days: first pet rate=5000÷100=50, qty=100÷100=1
@@ -453,7 +453,7 @@ describe('REQ-200: extractPricing()', () => {
 
     it('sums amounts across all pets for each service', () => {
       const result = extractPricing(mockPricingMultiPet);
-      // Nights: 440.00 (Mochi) + 360.00 (Marlee) = 800
+      // Nights: 440.00 (Nutmeg) + 360.00 (Pickle) = 800
       expect(result.lineItems[0].amount).toBe(800);
       // Days: 50.00 + 35.00 = 85
       expect(result.lineItems[1].amount).toBe(85);
@@ -470,13 +470,13 @@ describe('REQ-200: extractPricing()', () => {
       expect(result.perPetRates).toHaveLength(2);
     });
 
-    it('perPetRates[0] holds first pet (Mochi) rates', () => {
+    it('perPetRates[0] holds first pet (Nutmeg) rates', () => {
       const result = extractPricing(mockPricingMultiPet);
       expect(result.perPetRates[0].nightRate).toBe(55);
       expect(result.perPetRates[0].dayRate).toBe(50);
     });
 
-    it('perPetRates[1] holds second pet (Marlee) rates', () => {
+    it('perPetRates[1] holds second pet (Pickle) rates', () => {
       const result = extractPricing(mockPricingMultiPet);
       expect(result.perPetRates[1].nightRate).toBe(45);
       expect(result.perPetRates[1].dayRate).toBe(35);
@@ -491,7 +491,7 @@ describe('REQ-200: extractPricing()', () => {
 
     it('returns all pet names in DOM order for multi-pet appointment', () => {
       const data = parseAppointmentPage(mockAppointmentPageMultiPet);
-      expect(data.all_pet_names).toEqual(['Mochi Hill', 'Marlee Hill']);
+      expect(data.all_pet_names).toEqual(['Nutmeg Sample', 'Pickle Sample']);
     });
 
     it('returns empty array when no pets on page', () => {

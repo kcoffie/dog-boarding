@@ -1394,6 +1394,21 @@ Every alert to Kate goes through one function, `sendAlert(text)` (`src/lib/alert
 
 ---
 
+### REQ-653: No real contact details in tests
+**Added:** v6.4.0 | **Status:** Complete
+
+The repo is public, so tests carry fictional contact details only (#264). CI rejects a realistic phone number or personal email anywhere in `src/__tests__` (`scripts/no-test-pii.sh`, in the Lint job).
+
+**Acceptance Criteria:**
+- A North American number written as `+1` and 10 digits, or as 3-3-4 digit groups split by `(`, `)`, `.`, `-` or a space, fails the check unless its area code or exchange is 555
+- A bare 10-digit run with no `+1` and no separators, and a phone-shaped group inside a longer digit run, pass (timestamps and IDs)
+- An email address fails unless its domain is `example.com/.org/.net`, `test.com`, `domain.com`, or a service sender the tests match on (`github.com`, `vercel.com`, `supabase.com`, `anthropic.com`, `someothertool.io`)
+- A failing check prints each offending line (phones) or address (emails) and exits 1
+
+**Tests:** `src/__tests__/noTestPii.test.js`
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section

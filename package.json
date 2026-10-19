@@ -12,6 +12,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "check:requirements": "node scripts/check-requirements.js",
+    "check:test-pii": "git grep -n '' -- src/__tests__ | sh scripts/no-test-pii.sh",
     "seed": "node scripts/seed-test-data.js",
     "reset-db": "node scripts/reset-test-data.js",
     "seed:staging": "VITE_ENVIRONMENT=staging node scripts/seed-test-data.js",

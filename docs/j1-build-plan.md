@@ -23,8 +23,8 @@ A new hourly WhatsApp notification job (9am–8pm Mon–Fri) that sends a delta 
 4. **Boarders included in `hashPicture`** — this fixes a silent gap where a new boarding added between 4:30am and 7:30am was invisible to morning jobs. Now the 7:30am job will catch it and send. J-1's baseline (8:30am snapshot) will already include it, so J-1 correctly skips.
 5. **`queryBoarders` returns richer objects** `{ name, arrival_datetime, departure_datetime }[]` instead of `string[]`
 6. **Dates shown in both images:**
-   - Q Boarding box (roster image, narrow column): `Mochi Hill (4/29–5/2)` compact format
-   - Intraday delta image (full width): `Mochi Hill (Apr 29 – May 2)` readable format
+   - Q Boarding box (roster image, narrow column): `Nutmeg Sample (4/29–5/2)` compact format
+   - Intraday delta image (full width): `Nutmeg Sample (Apr 29 – May 2)` readable format
 7. **Header clearly says "Q Boarding Changes"** — not just "Changes since 8:30am"
 8. **`intraday-image.js` is self-contained** — reads snapshot + current boarders itself (same pattern as `roster-image.js`). Double-querying is intentional and matches existing system.
 9. **Bundle all changes in one PR** — hash fix + J-1 together
@@ -215,11 +215,11 @@ Full logic:
 [Content area, padding 20]
   If added.length > 0:
     [Sage Green section header: "✅ Added (N dog/dogs)"]
-    [Rows: "  Mochi Hill (Apr 29 – May 2)" per dog]
+    [Rows: "  Nutmeg Sample (Apr 29 – May 2)" per dog]
 
   If cancelled.length > 0:
     [Red section header: "❌ Cancelled (N dog/dogs)"]  — use COLORS.removed (#dc2626)
-    [Rows: "  Tula (Apr 27 – May 1)" per dog]
+    [Rows: "  Waffles (Apr 27 – May 1)" per dog]
 ```
 
 New helper for readable date range:
@@ -360,7 +360,7 @@ Similarly export `hashDelta` for testing.
 
 3. **Snapshot stores objects, not names.** Delta comparison uses Set of names, but the objects (with dates) are stored so cancelled dogs can show their date ranges in the image. The snapshot `boarders` field is `{ name, arrival_datetime, departure_datetime }[]`.
 
-4. **`data.boarders` type change ripples through tests.** Any test that passes `boarders: ['Mochi', 'Tula']` as strings will break. Search for all test fixtures and update to objects.
+4. **`data.boarders` type change ripples through tests.** Any test that passes `boarders: ['Nutmeg', 'Waffles']` as strings will break. Search for all test fixtures and update to objects.
 
 5. **`storeRosterImage` can be reused verbatim in `notify-intraday.js`** — it takes `(supabase, imageUrl, jobName, jobRunAt)`. Just call it with `'notify-intraday'` as the job name.
 

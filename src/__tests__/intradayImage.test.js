@@ -48,7 +48,7 @@ describe('buildIntradayLayout', () => {
   it('renders added section with correct dog names and date ranges', () => {
     const layout = buildIntradayLayout({
       date: '2026-04-29',
-      added: [boarder('Mochi Hill', '2026-04-29T07:00:00Z', '2026-05-02T10:00:00Z')],
+      added: [boarder('Nutmeg Sample', '2026-04-29T07:00:00Z', '2026-05-02T10:00:00Z')],
       cancelled: [],
       asOfStr: '2:00 PM',
     });
@@ -56,7 +56,7 @@ describe('buildIntradayLayout', () => {
     expect(str).toContain('Q Boarding Changes');
     expect(str).toContain('Wednesday, April 29');
     expect(str).toContain('Added');
-    expect(str).toContain('Mochi Hill');
+    expect(str).toContain('Nutmeg Sample');
     // Date range should be readable: "Apr 29 – May 2"
     expect(str).toContain('Apr 29');
     expect(str).toContain('May 2');
@@ -67,12 +67,12 @@ describe('buildIntradayLayout', () => {
     const layout = buildIntradayLayout({
       date: '2026-04-29',
       added: [],
-      cancelled: [boarder('Tula', '2026-04-27T07:00:00Z', '2026-05-01T10:00:00Z')],
+      cancelled: [boarder('Waffles', '2026-04-27T07:00:00Z', '2026-05-01T10:00:00Z')],
       asOfStr: null,
     });
     const str = JSON.stringify(layout);
     expect(str).toContain('Cancelled');
-    expect(str).toContain('Tula');
+    expect(str).toContain('Waffles');
     expect(str).toContain('Apr 27');
     expect(str).toContain('May 1');
     // No "as of" when null
@@ -84,15 +84,15 @@ describe('buildIntradayLayout', () => {
   it('renders both added and cancelled sections when both are present', () => {
     const layout = buildIntradayLayout({
       date: '2026-04-29',
-      added: [boarder('Bronwyn')],
-      cancelled: [boarder('Tula')],
+      added: [boarder('Cinder')],
+      cancelled: [boarder('Waffles')],
       asOfStr: '11:00 AM',
     });
     const str = JSON.stringify(layout);
     expect(str).toContain('Added');
     expect(str).toContain('Cancelled');
-    expect(str).toContain('Bronwyn');
-    expect(str).toContain('Tula');
+    expect(str).toContain('Cinder');
+    expect(str).toContain('Waffles');
   });
 });
 

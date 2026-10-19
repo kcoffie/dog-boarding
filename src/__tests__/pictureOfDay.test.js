@@ -318,11 +318,11 @@ describe('getPictureOfDay diff logic', () => {
 
   it('hash is stable when DB returns same dogs in different order (no false UPDATED!)', async () => {
     // Simulate two DB responses returning the same removed dogs in different order.
-    const fergus = appt({ series_id: 'REM_F', pet_names: ['Fergus'], worker_external_id: 61023 });
+    const gizmo = appt({ series_id: 'REM_F', pet_names: ['Gizmo'], worker_external_id: 61023 });
     const oskar  = appt({ series_id: 'REM_O', pet_names: ['Oskar'],  worker_external_id: 61023 });
 
-    const supaOrder1 = buildSupaMock({ todayRows: [], yestRows: [fergus, oskar], workerRows: [] });
-    const supaOrder2 = buildSupaMock({ todayRows: [], yestRows: [oskar, fergus], workerRows: [] });
+    const supaOrder1 = buildSupaMock({ todayRows: [], yestRows: [gizmo, oskar], workerRows: [] });
+    const supaOrder2 = buildSupaMock({ todayRows: [], yestRows: [oskar, gizmo], workerRows: [] });
 
     const date = parseDateParam(DATE);
     const result1 = await getPictureOfDay(supaOrder1, date);
@@ -430,23 +430,23 @@ describe('getPictureOfDay diff logic', () => {
 
   it('boarders: returns dog objects from boardings table (not daytime_appointments)', async () => {
     const boarderRows = [
-      { booking_status: 'confirmed', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Mochi' } },
-      { booking_status: null,        arrival_datetime: '2026-04-28T00:00:00Z', departure_datetime: '2026-05-01T00:00:00Z', dogs: { name: 'Bronwyn' } },
+      { booking_status: 'confirmed', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Nutmeg' } },
+      { booking_status: null,        arrival_datetime: '2026-04-28T00:00:00Z', departure_datetime: '2026-05-01T00:00:00Z', dogs: { name: 'Cinder' } },
     ];
     const supa = buildSupaMock({ boarderRows });
 
     const result = await getPictureOfDay(supa, parseDateParam(DATE));
 
     expect(result.boarders).toHaveLength(2);
-    expect(result.boarders.map(b => b.name)).toContain('Mochi');
-    expect(result.boarders.map(b => b.name)).toContain('Bronwyn');
+    expect(result.boarders.map(b => b.name)).toContain('Nutmeg');
+    expect(result.boarders.map(b => b.name)).toContain('Cinder');
     expect(result.boarders[0]).toHaveProperty('arrival_datetime');
     expect(result.boarders[0]).toHaveProperty('departure_datetime');
   });
 
   it('boarders: excludes cancelled bookings', async () => {
     const boarderRows = [
-      { booking_status: 'confirmed', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Mochi' } },
+      { booking_status: 'confirmed', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Nutmeg' } },
       { booking_status: 'cancelled', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Ghost' } },
     ];
     const supa = buildSupaMock({ boarderRows });
@@ -454,7 +454,7 @@ describe('getPictureOfDay diff logic', () => {
     const result = await getPictureOfDay(supa, parseDateParam(DATE));
 
     expect(result.boarders).toHaveLength(1);
-    expect(result.boarders[0].name).toBe('Mochi');
+    expect(result.boarders[0].name).toBe('Nutmeg');
   });
 
   it('boarders: deduplicates dogs that appear in multiple boarding rows', async () => {

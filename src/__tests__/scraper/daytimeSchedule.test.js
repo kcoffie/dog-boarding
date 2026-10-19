@@ -308,13 +308,13 @@ describe('parseDaytimeSchedulePage()', () => {
   });
 
   it("decodes &#x27; in pet names to apostrophes", () => {
-    // Mirrors real data: Lilly O&#x27;Brien
+    // Mirrors real data: Daisy O&#x27;Example
     const html = buildPage(
-      buildEvent({ pets: [{ id: 66666, name: "Lilly O&#x27;Brien" }] })
+      buildEvent({ pets: [{ id: 66666, name: "Daisy O&#x27;Example" }] })
     );
     const [appt] = parseDaytimeSchedulePage(html);
 
-    expect(appt.pet_names).toEqual(["Lilly O'Brien"]);
+    expect(appt.pet_names).toEqual(["Daisy O'Example"]);
   });
 
   it('decodes &amp; in client name', () => {
