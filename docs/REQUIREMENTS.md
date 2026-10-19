@@ -1448,6 +1448,23 @@ The repo is public, so tests carry fictional contact details only (#264). CI rej
 
 ---
 
+### REQ-654: Post-merge deploy check
+**Added:** v6.4.0 | **Status:** Complete
+
+A green PR doesn't mean production changed. On 2026-10-19 a merge hit Vercel's daily deploy limit and production silently stayed on the previous commit (#298). After every merge, `npm run check:deploy [sha]` (default `origin/main`) waits for the commit's Vercel status, then checks that production answers.
+
+**Acceptance Criteria:**
+- Only the `Vercel – qboard` commit status counts; other contexts are ignored. When it was posted more than once, the newest one (by `updated_at`) wins
+- No `Vercel – qboard` status yet, or one in state `pending`, means keep waiting (every 20 s by default)
+- State `success` means deployed. Any other state (`failure`, `error`) fails at once, and the message gives the state and Vercel's description (for example "Deployment rate limited — retry in 24 hours.")
+- Still waiting when the timeout runs out (10 min by default) fails, and the message says what it was last waiting on: the last state and description, or that no `Vercel – qboard` status ever arrived
+- Once deployed, production is checked: the home page must return 200, and `/api/roster-image?type=weekend&token=…` must return 200 with content type `image/png`. Each wrong answer is reported on its own line
+- The check exits 1 on any failure, and 0 only when the deploy succeeded and production answered right
+
+**Tests:** `src/__tests__/deployCheck.test.js`
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section

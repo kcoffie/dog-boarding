@@ -31,5 +31,12 @@
     "api/ops-watch.js": {
       "maxDuration": 60
     }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "main": true,
+      "preview/**": true
+    }
   }
 }

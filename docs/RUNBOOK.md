@@ -219,6 +219,11 @@ UPDATE boardings SET sync_status = 'archived' WHERE external_id = '<id>';
 
 ---
 
+## Deploys (#298)
+- **Only `main` deploys.** `vercel.json` `git.deploymentEnabled` turns off Vercel for every other branch, so PRs and Dependabot branches use none of Hobby's 100 deployments a day and show no Vercel check. To get a preview of a UI change, push the branch as `preview/<name>`.
+- **After every merge, run `npm run check:deploy`** (default `origin/main`; or pass a SHA). It waits for the `Vercel – qboard` status, then checks the home page and `/api/roster-image` (200 `image/png`). Exit 1 means production did **not** change or doesn't answer. "Deployment rate limited — retry in 24 hours." means the quota ran out: a rate-limited deploy is never retried, so the next push to `main` after the reset ships everything.
+- **Don't mass-push branches** (history rewrites, bulk rebases). Before `git.deploymentEnabled` that's what used up the quota on 2026-10-19.
+
 ## Vercel env for ops-watch
 - `GH_ACTIONS_TOKEN`: fine-grained PAT, repository `kcoffie/dog-boarding` only, permissions **Actions: Read and write**. Used by `/api/ops-watch` to read workflow runs and dispatch `ops-alert.yml`. When it expires, ops-watch reports "Couldn't check the scheduled workflows".
 - `CRON_SECRET`: Vercel sends it to crons; ops-watch rejects every request without it.
