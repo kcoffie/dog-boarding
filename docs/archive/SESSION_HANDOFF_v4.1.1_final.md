@@ -30,7 +30,7 @@ Branch: `fix/notify-weekdays-only` — changes `* * *` → `* * 1-5` in all 3 no
 ### 3. Add second WhatsApp recipient
 In **Vercel → qboarding → Settings → Environment Variables**, update `NOTIFY_RECIPIENTS`:
 ```
-+18312477375,+1XXXXXXXXXX
++15555550100,+1XXXXXXXXXX
 ```
 Kate had not yet provided the second number at end of session — ask her.
 No code change needed; `notifyWhatsApp.js` already splits on commas.

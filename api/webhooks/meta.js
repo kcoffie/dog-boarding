@@ -23,7 +23,7 @@
  *             "id": "wamid.xxx",
  *             "status": "delivered",
  *             "timestamp": "1712345678",
- *             "recipient_id": "18312477375",
+ *             "recipient_id": "15555550100",
  *             "errors": [{ "code": 131026, "title": "..." }]
  *           }]
  *         }

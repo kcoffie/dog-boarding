@@ -168,7 +168,7 @@ describe('notify-intraday handler', () => {
   it('skips with no_snapshot when no 8:30am snapshot for today', async () => {
     createClient.mockReturnValue(buildSupaMock({ snapshotResult: null }));
     queryBoarders.mockResolvedValue([boarder('Mochi')]);
-    getRecipients.mockReturnValue(['+18312477375']);
+    getRecipients.mockReturnValue(['+15555550100']);
 
     const req = buildReq();
     const res = buildRes();
@@ -187,7 +187,7 @@ describe('notify-intraday handler', () => {
     createClient.mockReturnValue(buildSupaMock({ snapshotResult, intradayResult: null }));
     // Current boarders identical to snapshot → empty delta
     queryBoarders.mockResolvedValue([boarder('Mochi')]);
-    getRecipients.mockReturnValue(['+18312477375']);
+    getRecipients.mockReturnValue(['+15555550100']);
 
     const req = buildReq();
     const res = buildRes();
@@ -214,7 +214,7 @@ describe('notify-intraday handler', () => {
     };
     createClient.mockReturnValue(buildSupaMock({ snapshotResult, intradayResult }));
     queryBoarders.mockResolvedValue(currentBoarders);
-    getRecipients.mockReturnValue(['+18312477375']);
+    getRecipients.mockReturnValue(['+15555550100']);
 
     const req = buildReq();
     const res = buildRes();
@@ -233,8 +233,8 @@ describe('notify-intraday handler', () => {
     createClient.mockReturnValue(buildSupaMock({ snapshotResult, intradayResult: null }));
     // Bronwyn added since 8:30am
     queryBoarders.mockResolvedValue([boarder('Mochi'), boarder('Bronwyn')]);
-    getRecipients.mockReturnValue(['+18312477375']);
-    sendRosterImage.mockResolvedValue([{ to: '+18312477375', status: 'sent', messageId: 'wamid.abc' }]);
+    getRecipients.mockReturnValue(['+15555550100']);
+    sendRosterImage.mockResolvedValue([{ to: '+15555550100', status: 'sent', messageId: 'wamid.abc' }]);
 
     const req = buildReq();
     const res = buildRes();
@@ -254,8 +254,8 @@ describe('notify-intraday handler', () => {
     createClient.mockReturnValue(buildSupaMock({ snapshotResult, intradayResult: null }));
     // Tula cancelled since 8:30am
     queryBoarders.mockResolvedValue([boarder('Mochi')]);
-    getRecipients.mockReturnValue(['+18312477375']);
-    sendRosterImage.mockResolvedValue([{ to: '+18312477375', status: 'sent', messageId: 'wamid.def' }]);
+    getRecipients.mockReturnValue(['+15555550100']);
+    sendRosterImage.mockResolvedValue([{ to: '+15555550100', status: 'sent', messageId: 'wamid.def' }]);
 
     const req = buildReq();
     const res = buildRes();
