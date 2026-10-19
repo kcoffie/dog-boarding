@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 19, 2026, ~15:30 UTC (session 34, end). **WhatsApp is gone:** Meta disabled the account on 10-18. Kate's alerts now go to Telegram (#265, merged), but they don't reach her until she adds the `TELEGRAM_*` secrets. The team roster has **no working channel** until SMS (#260). First job next session: check which secrets Kate added, then prove both alert paths, with her OK for each test message.
+**Last updated:** October 19, 2026, ~18:15 UTC (session 35, end). **Kate's alerts still reach nobody:** the `TELEGRAM_*` secrets and the Vercel variables (`CRON_SECRET`, `GH_ACTIONS_TOKEN`) are not set yet, so every alert fails as "not configured" and ops-watch returns 401. The team roster has **no working channel** until SMS (#260; Twilio registration not started). First job next session: ask Kate what she's set up, then prove both alert paths with her OK for each test message.
 
 ---
 
@@ -19,9 +19,40 @@
 
 ---
 
-## Current State (2026-10-19, end of session 34)
+## Current State (2026-10-19, end of session 35)
 
-### What happened this session
+### Session 35
+1. **The 10-19 red Integration Check was a false positive, fixed (#272, PR #273).**
+   - `C63QhIww` ("Wknd DC 10/24") is a DC-category daycare: `sync_queue` row `done`, in `daytime_appointments`, correctly not a boarding.
+   - The checker's title filter now skips `Wknd DC` / `Weekend DC`, but only without a date range (a range might be a real stay). Never a bare `DC` (#198).
+   - The filter test now imports the real function instead of a copied pattern list. Triage steps are in `docs/job_docs/integration-check.md`.
+   - **Not yet seen green on a scheduled run:** none had fired since the merge by 18:12 UTC.
+2. **27 `sync_queue` rows are pending** after Monday's scan queued 109. Each Integration Check drains 20, so they should clear within two checks. Check `sync_queue` next session.
+3. **Client data scrubbed (#264, PR #274)** from tests, code comments and active docs:
+   - names, a mobile number, a personal email, an address, client, pet and appointment IDs, and an invoice in `SPRINT_PLAN.md`;
+   - `docs/archive/` is left as history;
+   - the values are **still in git history**, and whether to rewrite again is Kate's call.
+   - **New CI check (REQ-653):** `npm run check:test-pii` in the Lint job rejects realistic phone numbers and personal emails in every tracked test file. It runs only in CI, because vitest also runs in Stryker's untracked sandbox where git sees no files.
+4. **#239 slice 2, `syncRunner.js` (PR #276):**
+   - REQ-109 gained a "Shared runners" spec, and 62 tests were written from it.
+   - Scoped mutation 35.67% → **82.45%**.
+   - Two bugs fixed: `cursorAdvancedTo` was a UTC date, and a non-Error throw left the queue item stuck in `processing`.
+   - Silent-failure gaps went to **#275** (design note + architect first): `sync_settings` errors cascade into duplicate rows, `session_cleared` loops silently, and failed enqueues still advance the cursor.
+5. **Mutation on main: 44.94% (3592/7993)**, the same on two runs. Ratchet 37 → **44**. All 11 timeouts are in pre-10-16 files.
+6. **WhatsApp isn't just rejecting sends.** Meta accepts them (a `wamid` comes back), then the webhook marks each one `failed 131031 "Business Account locked"`.
+   - On 10-19 GitHub fired **notify-4am at 17:21 UTC** (6 h late), and `cron_health` recorded `notify` **success** while nothing was delivered.
+   - ops-watch's "4am roster not delivered" rule covers this, but it has never run (no `CRON_SECRET`).
+   - Other windows aren't covered (#257).
+7. **Not done this session:**
+   - The alert-path tests are blocked on Kate's setup: no `TELEGRAM_*` GitHub secrets, and nothing set in Vercel.
+   - There is no ops-watch `cron_health` row after 17:00, as expected (401 without `CRON_SECRET`).
+8. **Kate decides:**
+   - `src/lib/workers.js` publishes five employees' full names with their AGYD IDs: move them to the DB or env?
+   - Whether to rewrite history for the scrubbed values (and the 20 old tags).
+
+## Session 34 (reference)
+
+### What happened in session 34
 1. **Node 22 schedules verified green.** #252 closed.
 2. **History rewrite pushed by Kate.** main is now attribution-free: 388 commits, with trees, authors and dates unchanged.
    - **20 tags were NOT moved** (v3.0.0 → v6.1.0). GitHub's "block command line pushes that expose my email" rejected them, so they still point at the old commits.
@@ -45,6 +76,8 @@
    - On 10-19 nothing fired between 10:00 and 14:39 UTC: notify-4am and notify-7am were dropped, and keepalive has **never** run.
    - Gmail Monitor (hourly) fires only 5–6 times a day.
    - **So #260 must not trigger the roster from GitHub's scheduler.** Options for its design note: Vercel crons (reliable so far, but Hobby fires anywhere in the hour) or an external cron service.
+
+## Current reference (still true after session 35)
 
 ### Telegram alerts (#265, live in code, waiting on secrets)
 - **The bot is `@qap_alert_bot`** (neutral name, Kate's).
@@ -70,23 +103,27 @@
 5. Optional: turn off Cron Jobs on the dormant `dog-boarding` Vercel project, or delete that project. If it ever deploys production, every cron runs twice.
 6. Five Vercel variables show "Needs Attention". All five are secret-looking values stored as type **Config**, so the likely fix is to re-save them as type **Secret** (unconfirmed).
 
-### Production (verified 2026-10-19 15:03 UTC)
-- main `4d6cc25` is deployed. The roster image returns 200 `image/png`. send-question without auth returns 401.
-- The sync queue is at 0. The Vercel crons run nightly, and Integration Check drains the queue 3× a day.
+### Production (verified 2026-10-19 18:15 UTC)
+- main `5cb12fd` is deployed to qboard. The roster image (`/api/roster-image?type=weekend&token=…`) returns 200 `image/png`. send-question without auth returns 401.
+- **The "dormant" `dog-boarding` Vercel project deploys production on every merge to main** (100+ deployments). Its crons are *not* firing: `cron_health_log` shows auth and schedule once a night, and detail twice (cron-detail plus cron-detail-2). If its Cron Jobs were ever enabled, every cron would run twice. Kate's setup step 5 (turn its crons off, or delete the project) still stands.
+- `sync_queue`: 27 pending at 18:12 UTC (see Session 35 item 2).
 
 ### Mutation
-- **CI on main:** 35.61% at the first green run, then 37.83%. Ratchet 37.
-- **Scoped scores this session:**
+- **CI on main:** 44.94% (2026-10-19, two runs). Ratchet 44. The next main run is the first after #276; add it to the score log.
+- **Scoped scores:**
+  - `syncRunner.js`: 82.45%
   - notify/crons: 83.27%
   - `opsWatch.js`: 99.4%
   - `send-question`: 87.9%
   - `ops-watch`: 87.3%
   - `alertKate`: 82%
-- The full-run CI score after #261/#265 shows up on the next main CI run's Mutation job. Add it to the score log.
+  - integration-check daycare filter: 90.6%
+- **Next #239 target:** `pictureOfDay.js` (51.4% on CI).
 
 ### Issues
+- **#275:** sync silent failures (`sync_settings` errors, endless `session_cleared`, failed enqueues). Needs a design note and the architect review, because it changes what alerts.
+- **#264:** closed. The history rewrite is Kate's call.
 - **#260:** the roster over SMS (Twilio Sole Proprietor). Waits on Kate's Twilio registration. Needs a design note and the architect review, and its trigger must not be GitHub's scheduler.
-- **#264:** real client customer data in public test fixtures (`src/__tests__/scraper/fixtures.js`): one full record plus two names with client IDs, referenced by 8 test files. Scrub it. **Kate decides** whether to rewrite history again.
 - **#257:** ops-watch rule for `notify` / `notify-friday-pm` failure rows.
 - **#246:** open. Close it only after a scheduled roster is sent **and** delivered, which now means after #260.
 - **#239:** the backfill. Its comments list the review findings:
@@ -100,18 +137,16 @@
   - Five new ones arrived 10-19 (#266–#270, including vite 8 and vitest 5 majors). After any dependency merge, verify the production image endpoint and the next scheduled run, and keep satori at 0.26.
 
 ## Immediate Next Steps
-0. **A real sync gap, not just missing secrets.** The scheduled Integration Check at 15:07 UTC on 10-19 (run 39275231082) went red with `Missing from DB: C63QhIww` (a weekend daycare booking for 10/24), and its report couldn't be delivered.
-   - Check whether the sync should have imported it (`sync_queue` row, filter rules in `config.js`), and drain or fix it.
-   - Don't dismiss red Integration Check runs as "just the missing Telegram secrets". Read the log first.
-1. **Check Kate's setup** (above): `command gh secret list`, and ask her about Vercel.
-2. **Prove both alert paths, asking Kate before each test message:**
-   - GitHub path: `command gh workflow run cron-health-check.yml`. It only alerts if something's wrong; if all is healthy, use Send-a-Question instead.
-   - Vercel path: one question from the app.
-   - Then the ops-watch dry run: `curl -H "Authorization: Bearer $CRON_SECRET" "https://qboarding.vercel.app/api/ops-watch?dryRun=1"`. Kate runs it, since the secret must stay out of the chat.
-3. **After the next 17:00 UTC:** confirm a `cron_health` row for `ops-watch`, and that its email path works.
-4. **#260 SMS roster:** once Kate has a Twilio account, write the design note (trigger, MMS image via a short-lived signed URL to the stored PNG, Twilio status callbacks into `message_delivery_status`, opt-in wording), then the architect review, then the build.
-5. **#264:** scrub the fixtures (tests keep their meaning; values change consistently).
-6. **#239:** continue with `syncRunner.js` tests from REQUIREMENTS, with mutation scores reported.
+1. **Check the next scheduled Integration Check is green**, and that `sync_queue` pending has drained from 27. If it's red, read the log before blaming the missing Telegram secrets; the triage steps are in `docs/job_docs/integration-check.md`.
+2. **Ask Kate about her setup** (steps below; `command gh secret list -R kcoffie/dog-boarding`, and Vercel). Then **prove both alert paths, asking her before each test message:**
+   - **GitHub path:** `command gh workflow run cron-health-check.yml`. It only alerts when something is wrong; if all is healthy, use Send-a-Question instead.
+   - **Vercel path:** one question from the app.
+   - **ops-watch dry run:** `curl -H "Authorization: Bearer $CRON_SECRET" "https://qboarding.vercel.app/api/ops-watch?dryRun=1"`. Kate runs it.
+   - **After the next 17:00 UTC:** confirm an ops-watch `cron_health` row.
+3. **Add the next main CI mutation score** (the first after #276) to the score log.
+4. **#260 SMS roster:** once Kate has a Twilio account, write the design note (trigger not on GitHub's scheduler, MMS via a short-lived signed URL, status callbacks into `message_delivery_status`, opt-in wording), then the architect review, then the build.
+5. **#275 design note** (sync silent failures), then the architect review, then the fix.
+6. **#239:** `pictureOfDay.js` tests from REQ-610/611, with mutation scores. Also #257 (ops-watch rule for notify failures and undelivered rosters in every window).
 
 ## Open TODOs
 - [ ] #239 backfill (see its comments), #264 fixtures, #257 ops-watch notify-failure rule
