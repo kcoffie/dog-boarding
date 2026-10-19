@@ -36,4 +36,22 @@ export default defineConfig([
       globals: { ...globals.browser, ...globals.node },
     },
   },
+  // react-hooks 7.1 added set-state-in-effect. These files predate it and load data in an effect,
+  // which the rule flags. They're a warning here until rewritten (#239 backfill); new code gets the error.
+  {
+    files: [
+      'src/hooks/useBoardings.js',
+      'src/hooks/useDogs.js',
+      'src/hooks/useEmployees.js',
+      'src/hooks/useInvites.js',
+      'src/hooks/useMessageLog.js',
+      'src/hooks/useNightAssignments.js',
+      'src/hooks/usePayments.js',
+      'src/hooks/useSettings.js',
+      'src/hooks/useSyncHistory.js',
+      'src/hooks/useSyncSettings.js',
+      'src/pages/SettingsPage.jsx',
+    ],
+    rules: { 'react-hooks/set-state-in-effect': 'warn' },
+  },
 ])

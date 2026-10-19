@@ -2,6 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
+// Transform from DB format to app format
+function transformFromDb(dbSettings) {
+  if (!dbSettings) return null;
+  return {
+    id: dbSettings.id,
+    netPercentage: parseFloat(dbSettings.net_percentage),
+    netPercentageHistory: dbSettings.net_percentage_history || [],
+  };
+}
+
 export function useSettings() {
   const { user } = useAuth();
   const [settings, setSettings] = useState(null);
@@ -56,16 +66,6 @@ export function useSettings() {
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
-
-  // Transform from DB format to app format
-  function transformFromDb(dbSettings) {
-    if (!dbSettings) return null;
-    return {
-      id: dbSettings.id,
-      netPercentage: parseFloat(dbSettings.net_percentage),
-      netPercentageHistory: dbSettings.net_percentage_history || [],
-    };
-  }
 
 
   const updateNetPercentage = async (percentage, effectiveDate = null) => {
