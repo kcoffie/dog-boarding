@@ -9,43 +9,60 @@ Every schedule scan re-queues about 30 appointments that didn't change. The queu
 - A week page (`/schedule/days-7/Y/M/D`) shows the Sunday–Saturday week that contains the date.
 - **A boarding stay** (e.g. "10/13-29") is one link repeated on every day it covers, and **every copy has the same timestamp: the stay's start day.** It doesn't drift.
 - **A recurring series** (playgroup "PG:FT", daycare "DC M/T/W/TH", and day visits such as C63QhKpW's "10am - 4pm" on 10/20–22) has **one timestamp per occurrence**. `parseScheduleHtml` keeps the first link per ID, so the stored timestamp is whichever occurrence came first on the pages that scan fetched.
-- That first occurrence changes as days pass, and as the cursor week rotates through the next 8 weeks. In the 18:44 UTC run on 10-19 (39304992997), **all 32 "modified" re-queues were PG series**. 13 moved one day later (10/19 → 10/20), and **19 moved earlier** (12/07 → 12/01), because the cursor page brought an earlier occurrence into view.
+- That first occurrence changes as days pass, and as the cursor week rotates through the next 8 weeks. In the 18:44 UTC run on 10-19 (39304992997), **all 32 "modified" re-queues were PG series**. 11 moved one day later and 2 moved two days later, and **19 moved earlier** (12/07 → 12/01), because the cursor page brought an earlier occurrence into view.
 
 So "the URL changed" is a real edit signal for a stay, and noise for a series.
 
-## What counts as "modified" (the choice)
-A `done` appointment is re-queued when the schedule scan shows that it was edited:
-1. **Its title changed.** The scan's title is compared, trimmed, with the stored `sync_queue.title`. A stored title that's empty or null can't be compared, so it's not an edit. Dates live in titles ("10/19-22"), so a reschedule nearly always changes the title too.
-2. **Its URL timestamp changed and it isn't recurring.** An appointment is **recurring** when the scan saw more than one distinct timestamp for its ID, across every page that run fetched. A stay shows one, a series shows several (a once-a-week series still shows one on this week's page and one on next week's).
+## What counts as "modified" (the choice, revised after the architect review)
+A `done` appointment is re-queued when the scan shows it was edited:
+1. **Its title changed.** Compared trimmed, using the same value the scan stores (`title`, else the pet name). A stored or incoming title that's empty isn't compared. Dates live in titles ("10/19-22"), so this also catches a moved checkout, which the URL never showed.
+2. **Its URL timestamp changed, and the detail step didn't skip it.** When the detail step skips an appointment (REQ-104: same-day, daycare and so on), it now records the reason in `meta.detail_skip`. A URL change on a skipped item is ignored: no re-queue, no write.
 
-A recurring appointment's new URL is not an edit. An item that's pending or processing is never touched (as today). Form items (`resetIfDone`) are unchanged. When an item is re-queued, its stored title and URL are updated, so the same edit re-queues it once, not every scan.
+Every churned item on 10-19 was one the detail step skips (the drain logged `skipped` for all 37). Stays keep B-3 exactly as before. An item is never re-queued over and over: a re-queue stores the new title and URL, and the detail result sets the flag again.
+
+**Measured before building (live pages, 2026-10-19):**
+- 399 appointment IDs across six week pages. **No ID has different titles on different copies**, so the title rule can't churn.
+- Of 191 `done` rows, **6** have a different title now, and all 6 are real edits (for example a checkout moved from 10/23 to 10/24). That's the day-one re-queue wave.
+- The churned series have no `detail_skip` yet. Each is re-queued once more on its next URL change, then flagged.
 
 ## Options considered
-1. **Ignore a timestamp that moved later while the old one is already past.** No new data needed, but it misses the 19 cursor-driven moves to an earlier date. Rejected.
-2. **Fingerprint the schedule `time` text** ("Oct 13, 5:05pm ..."). The text differs from day to day for the same stay ("PM - Oct 24, AM" vs "Oct 18, PM - Oct 24, AM"), so it would churn too. Rejected.
-3. **Recurring detection plus a title change (chosen).** It uses only what the scan already fetches, needs no migration, and makes a stay's start-date move still re-queue.
-4. **Add PG to `nonBoardingPatterns` so series are never queued.** That would cut the volume (every PG item is skipped at detail anyway), but it changes what's treated as a boarding, which is the #198 risk. Not in this change.
+1. **Ignore a timestamp that moved later while the old one is already past.** It misses the 19 cursor-driven moves to an earlier date. Rejected.
+2. **Fingerprint the schedule `time` text.** It differs from day to day for the same stay. Rejected.
+3. **A series is "an ID with more than one timestamp across the scan's pages"** (the first draft). The architect showed that a once-a-week series, or one seen only on the cursor page, shows a single timestamp, so the churn comes back. Rejected.
+4. **Use the detail step's own skip verdict, plus a title change (chosen).** The architect proposed it. There's no timestamp guessing and no #198 risk: the classification is the detail filter's, not new scan patterns.
+5. **Add PG to `nonBoardingPatterns`.** It changes what counts as a boarding (#198). Not in this change.
 
 ## What breaks
-- **A stay rescheduled in place without a title change, after it started** (the start moves while the old start is past): its single timestamp changes, so rule 2 still catches it. Only a *recurring* appointment edited without a title change is missed, and those are daytime items the detail step skips anyway.
-- **A one-off appointment that the scan sees on one page only:** treated as a stay, so it keeps today's behaviour.
-- **A recurring series down to its last visible occurrence:** it now looks like a single appointment, and if that timestamp differs from the stored one it's re-queued once. That's bounded: once per series end, not once per scan.
-- **The first scans after deploy:** stored titles were set at first queue time. An appointment whose title was edited since then is re-queued once. That is a real edit.
+- **A skipped item edited without a title change** isn't re-synced. Today it would be re-synced and skipped again, so nothing is lost.
+- **A stay the detail step skipped by mistake** keeps that verdict until its title changes. The same is true today: the skip is the detail filter's decision either way.
+- **A recurring boarding (one ID across weeks) moved without a title change:** if the detail step saved it, the URL rule still re-queues it.
+- **Proof in production:** `runScheduleSync` now returns `requeuedEdited` and `urlChangesIgnored`, and `cron-schedule` writes both into its `cron_health` row. After deploy, `requeuedEdited` should be close to 0 on most scans.
 
 ## The queue alert (outside GitHub's scheduler)
-ops-watch (`api/ops-watch.js`, a Vercel cron at 17:00 UTC) already checks "oldest pending older than 48 h" and "pending but nothing processed in 36 h". The 48 h rule wouldn't have caught this early: churn keeps re-queued items young, and it takes days for the oldest item to cross 48 h.
-- **Add: queue depth.** A finding when more than **60** items are pending. That is about one day's drain capacity. After this fix a normal day queues about 17 new items, all drained within the day.
-- **Tighten: oldest pending, 48 h → 24 h.** An item queued by the 00:05 UTC scan has three Integration Check drains plus two detail crons before the next day's ops-watch, so pending for over 24 h means it's stuck.
-- Both rules run on Vercel, not GitHub, and alert through `sendAlert` (Telegram) plus the `ops-alert.yml` email, as every ops-watch finding does.
+ops-watch (`api/ops-watch.js`, a Vercel cron at 17:00 UTC) already checks "oldest pending older than 48 h" and "pending but nothing processed in 36 h". The 48 h rule was too slow for this: re-queued items look young, and it takes days for the oldest item to cross 48 h.
+- **Timetable (UTC):** Integration Check at 00:00 (scan + 20), `cron-schedule` at 00:05, the detail crons at 00:10 and 00:15 (1 each), Integration Checks at 08:00 and 16:00 (the 16:00 one often runs late), then ops-watch at 17:00.
+- **Oldest pending, 48 h → 16 h.** An item from the midnight scans that's still pending at 17:00 has missed both detail crons and the 08:00 drain.
+- **New: more than 30 pending.** The Integration Check starts reporting false "Missing from DB" once an item sits behind more than one 20-item drain. After this fix, a normal day queues about 17.
+- Both rules run on Vercel, not GitHub, and alert through `sendAlert` (Telegram) plus the `ops-alert.yml` email.
+- **Day one:** 0 pending now (drained 19:05 UTC), plus the 6-item title wave and one more re-queue per churned series. That's under 30, so no alert is expected.
 
 ## #275 (sync silent failures): shared alert, separate fix
-- **Shared:** the new rules are the outcome check for #275's "endless `session_cleared`" case. That path puts the item back to `pending` without touching `queued_at`, so it ages past 24 h and alerts.
-- **Not shared:** #275's `sync_settings` failures (the cursor reset to today, duplicate rows) don't show up as queue depth. Their fix is to check `error` and fail the run, so `cron_health` goes red, plus not advancing the cursor after failed enqueues. That's different code (the cursor and session cache) and gets its own PR, built against this note's alert section.
+- **Shared:** the 16 h rule catches #275's detail-side `session_cleared` bounce. The item goes back to `pending` without touching `queued_at`, so it ages.
+- **Not covered:** a scanner that keeps returning `session_cleared` (the login form served after `ensureSession` succeeds) enqueues nothing. Then the queue is empty and these rules stay silent. **#275 adds an ops-watch check: "no schedule scan with `found > 0` in about 26 h"**, read from `cron_health`.
+- **Kept separate:** the `sync_settings` error handling and not advancing the cursor after failed enqueues. That's different code; its own PR.
 
 ## Threat
 No new secret, table, service or message recipient. The alert text holds counts and ages only, never client or dog names. Reading AGYD pages to confirm the timestamp behaviour used the existing cached session, read-only.
 
 ## How we'll know it's working
-- **Tests from REQ-109** (B-3 rules above), with the expected re-queue decisions worked out from the 10-19 log shapes by hand, plus a mutation score on `syncQueue.js` and the changed `syncRunner.js` lines.
-- **In production:** the next scans log `0 re-queued modified` for PG series (the `🔄 Re-queued modified` line count in the Integration Check step 0 log). `sync_queue` pending at ops-watch time stays under about 20.
-- **When it isn't working:** ops-watch reports "Sync backlog: N items pending" (over 60) or an oldest item over 24 h.
+- **Tests from REQ-109 and REQ-651** (the rules above), with expected decisions worked out by hand, plus mutation scores on `syncQueue.js` and `opsWatch.js`.
+- **In production:** the schedule `cron_health` row shows `requeuedEdited` near 0 and `urlChangesIgnored` counting the series. `sync_queue` pending at ops-watch time stays under about 20.
+- **When it isn't working:** ops-watch reports "Sync queue deep" (more than 30) or "Sync backlog" (oldest over 16 h).
+
+## Architect review (2026-10-19): proceed with changes, all applied
+1. **The recurring check fails for series seen on one page.** Replaced with the detail-skip flag (option 4).
+2. **Compare titles the way they're stored, and update them on both re-queue paths.** Done. Titles were checked for consistency across copies, and the day-one wave measured at 6.
+3. **Thresholds: more than 30 pending and 16 h**, from the real timetable. Done.
+4. **#275 needs a scanner-outcome check.** Recorded above, built in #275.
+5. **Make the fix observable.** `requeuedEdited` and `urlChangesIgnored` go into the scan result and the `cron_health` row.
+6. **Counts:** the 13 one-day moves were really 11 one-day and 2 two-day moves. Fixed.

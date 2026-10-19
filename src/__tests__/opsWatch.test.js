@@ -22,13 +22,22 @@ const NOW = new Date('2026-10-16T17:00:00Z');
 const hoursAgo = (h, now = NOW) => new Date(now.getTime() - h * 3600e3).toISOString();
 
 describe('queue backlog and sync progress', () => {
-  it('an oldest pending item queued more than 48 h ago is a backlog finding', () => {
-    const f = checkQueue({ pendingCount: 3, oldestPendingAt: hoursAgo(49), lastDoneAt: hoursAgo(1) }, NOW);
-    expect(f).toEqual(['Sync backlog: 3 items pending, oldest queued 49h ago']);
+  it('an oldest pending item queued more than 16 h ago is a backlog finding', () => {
+    const f = checkQueue({ pendingCount: 3, oldestPendingAt: hoursAgo(17), lastDoneAt: hoursAgo(1) }, NOW);
+    expect(f).toEqual(['Sync backlog: 3 items pending, oldest queued 17h ago']);
   });
 
-  it('an oldest pending item queued exactly 48 h ago is not yet a backlog finding', () => {
-    expect(checkQueue({ pendingCount: 3, oldestPendingAt: hoursAgo(48), lastDoneAt: hoursAgo(1) }, NOW)).toEqual([]);
+  it('an oldest pending item queued exactly 16 h ago is not yet a backlog finding', () => {
+    expect(checkQueue({ pendingCount: 3, oldestPendingAt: hoursAgo(16), lastDoneAt: hoursAgo(1) }, NOW)).toEqual([]);
+  });
+
+  it('more than 30 items pending is a queue-depth finding, however young they are', () => {
+    const f = checkQueue({ pendingCount: 31, oldestPendingAt: hoursAgo(1), lastDoneAt: hoursAgo(1) }, NOW);
+    expect(f).toEqual(['Sync queue deep: 31 items pending (limit 30)']);
+  });
+
+  it('exactly 30 items pending is not a queue-depth finding', () => {
+    expect(checkQueue({ pendingCount: 30, oldestPendingAt: hoursAgo(1), lastDoneAt: hoursAgo(1) }, NOW)).toEqual([]);
   });
 
   it('pending items with nothing done in the last 36 h is a stalled-sync finding', () => {

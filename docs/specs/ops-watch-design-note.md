@@ -17,7 +17,7 @@ Every existing check asks whether a job ran, and every one of them runs on GitHu
 ## What it checks (daily, 17:00 UTC = 10:00 PDT / 09:00 PST, after the 8:30 roster)
 | # | Check | Alerts when |
 |---|---|---|
-| 1 | Queue backlog | Oldest `pending` `sync_queue` item is older than 48 h |
+| 1 | Queue backlog | Oldest `pending` `sync_queue` item is older than 48 h (16 h, plus a depth rule of more than 30 pending, since #278) |
 | 2 | Sync is moving | `pending` > 0 and no item reached `done` (`processed_at`) in the last 36 h |
 | 3 | Morning roster went out (Mon–Fri, Pacific) | No `message_log` row with `job_name = 'notify-4am'` and `status = 'sent'` since 00:00 Pacific today |
 | 4 | GitHub workflows alive | Any workflow under `.github/workflows/` is `disabled_inactivity` (reuses `classifyWorkflows`, REQ-650) |
