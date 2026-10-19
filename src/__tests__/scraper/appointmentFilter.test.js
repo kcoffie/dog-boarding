@@ -107,7 +107,7 @@ describe('title filter', () => {
   });
 
   it('does NOT skip "Boarding discounted nights for DC full-time" — DC mid-title is a pricing tier, not daycare', () => {
-    // Regression: C63QghzF (Peanut/Leo Garver, May 1–5 2026). Service name includes
+    // Regression: C63QAAAA (Peanut, May 1–5 2026). Service name includes
     // "DC full-time" as a client tier descriptor. The old /(d\/c|\bdc\b)/i pattern
     // matched the mid-title "DC" and silently dropped this boarding all day.
     const { skip } = applyDetailFilters(

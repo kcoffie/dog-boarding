@@ -319,10 +319,10 @@ describe('getPictureOfDay diff logic', () => {
   it('hash is stable when DB returns same dogs in different order (no false UPDATED!)', async () => {
     // Simulate two DB responses returning the same removed dogs in different order.
     const gizmo = appt({ series_id: 'REM_F', pet_names: ['Gizmo'], worker_external_id: 61023 });
-    const oskar  = appt({ series_id: 'REM_O', pet_names: ['Oskar'],  worker_external_id: 61023 });
+    const taco  = appt({ series_id: 'REM_O', pet_names: ['Taco'],  worker_external_id: 61023 });
 
-    const supaOrder1 = buildSupaMock({ todayRows: [], yestRows: [gizmo, oskar], workerRows: [] });
-    const supaOrder2 = buildSupaMock({ todayRows: [], yestRows: [oskar, gizmo], workerRows: [] });
+    const supaOrder1 = buildSupaMock({ todayRows: [], yestRows: [gizmo, taco], workerRows: [] });
+    const supaOrder2 = buildSupaMock({ todayRows: [], yestRows: [taco, gizmo], workerRows: [] });
 
     const date = parseDateParam(DATE);
     const result1 = await getPictureOfDay(supaOrder1, date);
@@ -332,7 +332,7 @@ describe('getPictureOfDay diff logic', () => {
   });
 
   it('treats null series_id dogs as unchanged (conservative)', async () => {
-    const noSeries = appt({ series_id: null, pet_names: ['Goose'] });
+    const noSeries = appt({ series_id: null, pet_names: ['Bandit'] });
     const supa = buildSupaMock({ todayRows: [noSeries], yestRows: [], workerRows: [] });
 
     const date = parseDateParam(DATE);

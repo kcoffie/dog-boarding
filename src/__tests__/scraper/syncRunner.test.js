@@ -124,8 +124,8 @@ describe('parseScheduleHtml', () => {
     const html = `
       <a href="/schedule/a/C63QgY32/1742342400" class="day-event">
         <span class="day-event-title">Buddy Boarding</span>
-        <span class="event-pet" data-pet="90043">Buddy</span>
-        <div class="event-pet-wrapper" data-pet="90043"></div>
+        <span class="event-pet" data-pet="10008">Buddy</span>
+        <div class="event-pet-wrapper" data-pet="10008"></div>
       </a>
     `;
     const results = parseScheduleHtml(html);
@@ -133,7 +133,7 @@ describe('parseScheduleHtml', () => {
     expect(results[0].id).toBe('C63QgY32');
     expect(results[0].title).toBe('Buddy Boarding');
     expect(results[0].petName).toBe('Buddy');
-    expect(results[0].petIds).toContain('90043');
+    expect(results[0].petIds).toContain('10008');
     expect(results[0].url).toContain('/schedule/a/C63QgY32/');
   });
 
@@ -229,7 +229,7 @@ describe('runScheduleSync', () => {
     const pgHtml = `
       <a href="/schedule/a/C63QgJQ9/1742342400" class="day-event">
         <span class="day-event-title">PG 3/23-30</span>
-        <span class="event-pet" data-pet="90043">Rocket</span>
+        <span class="event-pet" data-pet="10008">Rocket</span>
       </a>
     `;
     authenticatedFetch.mockResolvedValue({
@@ -264,16 +264,16 @@ describe('runScheduleSync', () => {
   });
 
   it('enqueues "Boarding discounted nights for DC full-time" — mid-title DC must not be filtered', async () => {
-    // Regression: C63QghzF (Peanut, Leo Garver, May 1–5 2026). The service name
+    // Regression: C63QAAAA (Peanut, May 1–5 2026). The service name
     // "Boarding discounted nights for DC full-time" contains "DC" as a client tier
     // descriptor. The old /(d\/c|\bdc\b)/i pattern matched the mid-title "DC" word
     // and silently dropped this overnight boarding all day. Fix: anchor to ^(d\/c|dc)\b.
     ensureSession.mockResolvedValue('session=abc');
     setSession.mockReturnValue(undefined);
     const html = `
-      <a href="/schedule/a/C63QghzF/1777629600" class="day-event">
+      <a href="/schedule/a/C63QAAAA/1777629600" class="day-event">
         <span class="day-event-title">Boarding discounted nights for DC full-time</span>
-        <span class="event-pet" data-pet="138053">Peanut</span>
+        <span class="event-pet" data-pet="10006">Peanut</span>
       </a>
     `;
     authenticatedFetch.mockResolvedValue({
@@ -302,7 +302,7 @@ describe('runScheduleSync', () => {
     const result = await runScheduleSync(supabase);
     expect(result.action).toBe('ok');
     expect(result.found).toBe(1);
-    expect(enqueue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ external_id: 'C63QghzF' }));
+    expect(enqueue).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ external_id: 'C63QAAAA' }));
     expect(result.skipped).toBe(0);
   });
 
@@ -316,7 +316,7 @@ describe('runScheduleSync', () => {
     const html = `
       <a href="/schedule/a/C63QgiVF/1777975200" class="day-event">
         <span class="day-event-title">PT: T.W.TH</span>
-        <span class="event-pet" data-pet="168474">Rover</span>
+        <span class="event-pet" data-pet="10007">Rover</span>
       </a>
     `;
     authenticatedFetch.mockResolvedValue({
@@ -392,7 +392,7 @@ describe('runDetailSync', () => {
       source_url: 'https://agirlandyourdog.com/schedule/a/C63QgY32/1742342400',
       title: 'Buddy',
       type: 'appointment',
-      meta: { external_pet_id: '90043' },
+      meta: { external_pet_id: '10008' },
       retry_count: 0,
     });
     fetchAppointmentDetails.mockResolvedValue({
@@ -445,7 +445,7 @@ describe('runDetailSync', () => {
       source_url: 'https://agirlandyourdog.com/schedule/a/C63QgZoi/1742860800',
       title: 'PG FT',
       type: 'appointment',
-      meta: { external_pet_id: '90043' },
+      meta: { external_pet_id: '10008' },
       retry_count: 0,
     });
     fetchAppointmentDetails.mockResolvedValue({

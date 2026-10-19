@@ -301,12 +301,12 @@ describe('qBoardingCard', () => {
   it('sorts boarders alphabetically (case-insensitive)', () => {
     const card = qBoardingCard([boarder('Waffles'), boarder('cinder'), boarder('Nutmeg')], COL_WIDTH);
     const cardStr = JSON.stringify(card);
-    const bronwynIdx = cardStr.indexOf('cinder');
-    const mochiIdx = cardStr.indexOf('Nutmeg');
-    const tulaIdx = cardStr.indexOf('Waffles');
+    const cinderIdx = cardStr.indexOf('cinder');
+    const nutmegIdx = cardStr.indexOf('Nutmeg');
+    const wafflesIdx = cardStr.indexOf('Waffles');
     // cinder < Nutmeg < Waffles alphabetically
-    expect(bronwynIdx).toBeLessThan(mochiIdx);
-    expect(mochiIdx).toBeLessThan(tulaIdx);
+    expect(cinderIdx).toBeLessThan(nutmegIdx);
+    expect(nutmegIdx).toBeLessThan(wafflesIdx);
   });
 
   it('renders compact date range in each dog row', () => {

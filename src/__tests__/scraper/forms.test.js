@@ -15,7 +15,7 @@ import {
 // Fixtures — modelled on the actual external site structure
 // ---------------------------------------------------------------------------
 
-// /pets/90043/forms — Daisy O'Example — 8 submissions for form 7913
+// /pets/10008/forms — Daisy O'Example — 8 submissions for form 7913
 const FORMS_LIST_HTML = `
 <!DOCTYPE html>
 <html>
@@ -31,42 +31,42 @@ const FORMS_LIST_HTML = `
   <div class="dt-row frm-pets">
     <div class="dt-cell">2/12/2026</div>
     <div class="dt-cell">Boarding Information Form</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/215">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/215">View</a></div>
   </div>
   <div class="dt-row frm-pets">
     <div class="dt-cell">1/15/2026</div>
     <div class="dt-cell">Boarding Information Form</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/209">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/209">View</a></div>
   </div>
   <div class="dt-row frm-pets">
     <div class="dt-cell">12/20/2025</div>
     <div class="dt-cell">Boarding Information Form</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/198">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/198">View</a></div>
   </div>
   <div class="dt-row frm-pets">
     <div class="dt-cell">11/5/2025</div>
     <div class="dt-cell">Boarding Information Form</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/187">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/187">View</a></div>
   </div>
   <div class="dt-row frm-pets">
     <div class="dt-cell">10/3/2025</div>
     <div class="dt-cell">Boarding Information Form</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/176">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/176">View</a></div>
   </div>
   <div class="dt-row frm-pets">
     <div class="dt-cell">8/14/2025</div>
     <div class="dt-cell">Boarding Information Form</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/165">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/165">View</a></div>
   </div>
   <div class="dt-row frm-pets">
     <div class="dt-cell">7/1/2025</div>
     <div class="dt-cell">Boarding Information Form</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/154">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/154">View</a></div>
   </div>
   <div class="dt-row frm-pets">
     <div class="dt-cell">5/22/2025</div>
     <div class="dt-cell">Boarding Information Form</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/143">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/143">View</a></div>
   </div>
 </div>
 </body>
@@ -81,22 +81,22 @@ const FORMS_LIST_MIXED_HTML = `
 <div class="forms-list">
   <div class="dt-row frm-pets">
     <div class="dt-cell">2/12/2026</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/215">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/215">View</a></div>
   </div>
   <div class="dt-row frm-pets">
     <div class="dt-cell">1/5/2026</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/11752/view/201">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/11752/view/201">View</a></div>
   </div>
   <div class="dt-row frm-pets">
     <div class="dt-cell">12/20/2025</div>
-    <div class="dt-cell"><a href="/pets/90043/forms/7913/view/198">View</a></div>
+    <div class="dt-cell"><a href="/pets/10008/forms/7913/view/198">View</a></div>
   </div>
 </div>
 </body>
 </html>
 `;
 
-// /pets/90043/forms/7913/view/215 — full detail form
+// /pets/10008/forms/7913/view/215 — full detail form
 const FORM_DETAIL_HTML = `
 <!DOCTYPE html>
 <html>
@@ -165,7 +165,7 @@ describe('parseFormsListPage()', () => {
 
   it('submission URLs contain the correct path', () => {
     const submissions = parseFormsListPage(FORMS_LIST_HTML);
-    expect(submissions[0].submissionUrl).toBe('/pets/90043/forms/7913/view/215');
+    expect(submissions[0].submissionUrl).toBe('/pets/10008/forms/7913/view/215');
     expect(submissions[1].submissionId).toBe(209);
   });
 
@@ -183,9 +183,9 @@ describe('parseFormsListPage()', () => {
 
   it('deduplicates repeated submission IDs', () => {
     const html = `
-      <a href="/pets/90043/forms/7913/view/215">View</a>
-      <a href="/pets/90043/forms/7913/view/215">View again</a>
-      <a href="/pets/90043/forms/7913/view/209">View</a>
+      <a href="/pets/10008/forms/7913/view/215">View</a>
+      <a href="/pets/10008/forms/7913/view/215">View again</a>
+      <a href="/pets/10008/forms/7913/view/209">View</a>
     `;
     const submissions = parseFormsListPage(html);
     expect(submissions).toHaveLength(2);
