@@ -179,8 +179,8 @@ describe('REQ-109: enqueue()', () => {
 
   // B-3: re-sync appointments modified on AGYD after initial sync
   it('B-3: re-queues done item when source_url timestamp changes (rescheduled appointment)', async () => {
-    const oldUrl = 'https://agirlandyourdog.com/schedule/a/C63QghzH/1778666400';
-    const newUrl = 'https://agirlandyourdog.com/schedule/a/C63QghzH/1778752800';
+    const oldUrl = 'https://agirlandyourdog.com/schedule/a/C63QAAAB/1778666400';
+    const newUrl = 'https://agirlandyourdog.com/schedule/a/C63QAAAB/1778752800';
     const supabase = createMockSupabase([makeItem({ id: 'id-done', external_id: 'AAA', status: 'done', source_url: oldUrl })]);
     await enqueue(supabase, { external_id: 'AAA', source_url: newUrl });
     const row = supabase._rows[0];

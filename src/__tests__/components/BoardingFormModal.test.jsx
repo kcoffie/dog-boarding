@@ -30,7 +30,7 @@ describe('REQ-508: BoardingFormModal — View on site link + conditional Print',
   describe('"View on site →" link', () => {
     it('renders link when submission_url is present', () => {
       const formData = {
-        submission_url: 'https://agirlandyourdog.com/pets/90043/forms/7913/view/42',
+        submission_url: 'https://agirlandyourdog.com/pets/10008/forms/7913/view/42',
         form_data: { priorityFields: [{ fieldId: 'f1', label: 'Vet', value: 'Dr. Smith' }], otherFields: [] },
       };
       render(<BoardingFormModal {...baseProps} formData={formData} />);
@@ -61,7 +61,7 @@ describe('REQ-508: BoardingFormModal — View on site link + conditional Print',
 
     it('link has target="_blank" and rel="noopener noreferrer"', () => {
       const formData = {
-        submission_url: 'https://agirlandyourdog.com/pets/90043/forms/7913/view/42',
+        submission_url: 'https://agirlandyourdog.com/pets/10008/forms/7913/view/42',
         form_data: { priorityFields: [], otherFields: [] },
       };
       render(<BoardingFormModal {...baseProps} formData={formData} />);
@@ -72,7 +72,7 @@ describe('REQ-508: BoardingFormModal — View on site link + conditional Print',
 
     it('link has print:hidden class', () => {
       const formData = {
-        submission_url: 'https://agirlandyourdog.com/pets/90043/forms/7913/view/42',
+        submission_url: 'https://agirlandyourdog.com/pets/10008/forms/7913/view/42',
         form_data: { priorityFields: [], otherFields: [] },
       };
       render(<BoardingFormModal {...baseProps} formData={formData} />);

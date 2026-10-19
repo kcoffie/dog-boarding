@@ -363,13 +363,13 @@ describe('sendTextMessage', () => {
     const { fetchMock: fm, metaCalls: mc } = makeFetchMock([metaOk()]);
     vi.stubGlobal('fetch', fm);
 
-    const multiLine = '⚠️ Integration check found issues (3/25/26)\nBoarding:\n• Missing from DB: Tula\n• Missing from DB: Fergus';
+    const multiLine = '⚠️ Integration check found issues (3/25/26)\nBoarding:\n• Missing from DB: Waffles\n• Missing from DB: Gizmo';
     await sendTextMessage(multiLine, ['+15555550100']);
 
     const body = JSON.parse(mc()[0][1].body);
     const paramText = body.template.components[0].parameters[0].text;
     expect(paramText).not.toContain('\n');
-    expect(paramText).toBe('⚠️ Integration check found issues (3/25/26) | Boarding: | • Missing from DB: Tula | • Missing from DB: Fergus');
+    expect(paramText).toBe('⚠️ Integration check found issues (3/25/26) | Boarding: | • Missing from DB: Waffles | • Missing from DB: Gizmo');
   });
 
   it('sanitizes newlines — trims whitespace per line and drops empty lines', async () => {

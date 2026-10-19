@@ -238,8 +238,8 @@ export const mockAppointmentPageWithPricing = `
 <head><title>Boarding (Nights) | A Girl and Your Dog</title></head>
 <body>
   <div id="when-wrapper" data-start_scheduled="1766336400" data-end_scheduled="1766484000"></div>
-  <span class="event-pet">Maverick</span>
-  <span class="event-client">Sasha Basso</span>
+  <span class="event-pet">Rover</span>
+  <span class="event-client">Pat Example</span>
   <fieldset id="confirm-price" class="no-legend">
     <a class="btn toggle-field text quote">Total $750 <i class="fa fa-fw"></i></a>
     <div class="toggle-field-content hidden">
@@ -327,12 +327,12 @@ export const mockPricingDecimalTotal = `
 </fieldset>
 `;
 
-// Multi-pet pricing fixture: 2 pets (Mochi + Marlee), 2 services.
+// Multi-pet pricing fixture: 2 pets (Nutmeg + Pickle), 2 services.
 // The `pets-2` class on the wrapper signals 2 price divs per service.
-// Nights: Mochi @ $55 × 8 = $440, Marlee @ $45 × 8 = $360 → combined $800
-// Days:   Mochi @ $50 × 1 = $50,  Marlee @ $35 × 1 = $35  → combined $85
+// Nights: Nutmeg @ $55 × 8 = $440, Pickle @ $45 × 8 = $360 → combined $800
+// Days:   Nutmeg @ $50 × 1 = $50,  Pickle @ $35 × 1 = $35  → combined $85
 // Total:  $885
-// data-rate values are in cents (÷100). Marlee's day rate is 3500 → $35, not 5000.
+// data-rate values are in cents (÷100). Pickle's day rate is 3500 → $35, not 5000.
 export const mockPricingMultiPet = `
 <fieldset id="confirm-price" class="no-legend">
   <a class="btn toggle-field text quote">Total $885 <i class="fa fa-fw"></i></a>
@@ -351,7 +351,7 @@ export const mockPricingMultiPet = `
 </fieldset>
 `;
 
-// Full appointment page fixture with two pets (Mochi + Marlee).
+// Full appointment page fixture with two pets (Nutmeg + Pickle).
 // Used to test extractAllPetNames and all_pet_names field.
 export const mockAppointmentPageMultiPet = `
 <!DOCTYPE html>
@@ -360,12 +360,12 @@ export const mockAppointmentPageMultiPet = `
 <body>
   <h1>3/6-14</h1>
   <div id="when-wrapper" data-start_scheduled="1772812800" data-end_scheduled="1773504000"></div>
-  <span class="event-client">Tiffany Hill</span>
-  <a class="mobile-contact" data-value="+14153078433">Call</a>
-  <a class="appointment-email" data-emails= "tifhill@gmail.com">Message</a>
-  <div data-address="272 Missouri St, San Francisco, CA, 94107"></div>
-  <a href="/pets/90053" class="event-pet pet-90053" data-pet="90053">Mochi Hill</a>
-  <a href="/pets/201014" class="event-pet pet-201014" data-pet="201014">Marlee Hill</a>
+  <span class="event-client">Robin Sample</span>
+  <a class="mobile-contact" data-value="+15555550142">Call</a>
+  <a class="appointment-email" data-emails= "robin.sample@example.com">Message</a>
+  <div data-address="100 Example St, Springfield, CA, 90000"></div>
+  <a href="/pets/10001" class="event-pet pet-10001" data-pet="10001">Nutmeg Sample</a>
+  <a href="/pets/10002" class="event-pet pet-10002" data-pet="10002">Pickle Sample</a>
   ${mockPricingMultiPet}
 </body>
 </html>
@@ -390,7 +390,7 @@ export const mockPricingNoPriceDivs = `
 // External appointment data with pricing (for mapping tests)
 export const mockExternalAppointmentWithPricing = {
   external_id: 'PRC123',
-  pet_name: 'Maverick',
+  pet_name: 'Rover',
   check_in_datetime: '2026-02-13T00:00:00.000Z',
   check_out_datetime: '2026-02-18T00:00:00.000Z',
   pricing: {
@@ -428,12 +428,12 @@ export const mockExternalAppointmentDcMidPhrase = {
   },
 };
 
-// Multi-pet external appointment (Mochi + Marlee Hill).
+// Multi-pet external appointment (Nutmeg + Pickle Sample).
 // Mirrors what parseAppointmentPage returns for a 2-pet booking.
 export const mockExternalAppointmentMultiPet = {
   external_id: 'MPT123',
-  pet_name: 'Mochi Hill',
-  all_pet_names: ['Mochi Hill', 'Marlee Hill'],
+  pet_name: 'Nutmeg Sample',
+  all_pet_names: ['Nutmeg Sample', 'Pickle Sample'],
   check_in_datetime: '2026-03-06T00:00:00.000Z',
   check_out_datetime: '2026-03-14T00:00:00.000Z',
   pricing: {
@@ -443,8 +443,8 @@ export const mockExternalAppointmentMultiPet = {
       { serviceName: 'Boarding (Days)', rate: 50, qty: 1, amount: 85 },
     ],
     perPetRates: [
-      { nightRate: 55, dayRate: 50 },  // Mochi
-      { nightRate: 45, dayRate: 35 },  // Marlee
+      { nightRate: 55, dayRate: 50 },  // Nutmeg
+      { nightRate: 45, dayRate: 35 },  // Pickle
     ],
   },
 };
@@ -489,14 +489,14 @@ export const mockRequestCanceledPage = `
           <span class="time time-date">Tuesday, March 17, 2026</span>
         </div>
       </div>
-      <div class="cancel_at" data-cancel_by="91854" data-cancel_at="1772565535">Canceled at: 3/3/2026</div>
+      <div class="cancel_at" data-cancel_by="10003" data-cancel_at="1772565535">Canceled at: 3/3/2026</div>
     </div>
     <div class="appt-clients-pets">
-      <div class="event-clients-pets" id="events-clients-pets-91854" data-uid="91854">
-        <a href="/clients/91854" class="event-client">Cathy Price</a>
-        <div class="event-pets pets-count-1" data-pets="77457">
-          <div class="event-pet-wrapper" data-pet="77457">
-            <a href="/pets/77457" class="event-pet pet-77457" data-pet="77457">Olive Price</a>
+      <div class="event-clients-pets" id="events-clients-pets-10003" data-uid="10003">
+        <a href="/clients/10003" class="event-client">Lee Placeholder</a>
+        <div class="event-pets pets-count-1" data-pets="10004">
+          <div class="event-pet-wrapper" data-pet="10004">
+            <a href="/pets/10004" class="event-pet pet-10004" data-pet="10004">Juniper Placeholder</a>
           </div>
         </div>
       </div>
@@ -532,11 +532,11 @@ export const mockPendingRequestPage = `
       </div>
     </div>
     <div class="appt-clients-pets">
-      <div class="event-clients-pets" id="events-clients-pets-91854" data-uid="91854">
-        <a href="/clients/91854" class="event-client">Cathy Price</a>
-        <div class="event-pets pets-count-1" data-pets="77457">
-          <div class="event-pet-wrapper" data-pet="77457">
-            <a href="/pets/77457" class="event-pet pet-77457" data-pet="77457">Olive Price</a>
+      <div class="event-clients-pets" id="events-clients-pets-10003" data-uid="10003">
+        <a href="/clients/10003" class="event-client">Lee Placeholder</a>
+        <div class="event-pets pets-count-1" data-pets="10004">
+          <div class="event-pet-wrapper" data-pet="10004">
+            <a href="/pets/10004" class="event-pet pet-10004" data-pet="10004">Juniper Placeholder</a>
           </div>
         </div>
       </div>

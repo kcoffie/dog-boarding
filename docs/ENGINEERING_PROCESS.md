@@ -38,7 +38,7 @@ Tests are only worth relying on if a broken rule makes one fail. These rules mak
 4. **One rule per test, named as the rule** ("a DC-only title is not a boarding"). The test list then reads as the spec, so Kate can review it without reading code.
 5. **No snapshots.** Never assert a whole object, HTML page or message body against pasted output: it kills mutants (raising the score) while locking in today's bugs. Assert the one value the rule is about.
 6. **Fake only the boundaries.** AGYD HTML, Supabase, Meta's WhatsApp API and Gmail get recorded real response shapes. Never mock the parser, filter, or mapper under test.
-7. **No client data in tests.** Synthetic names and numbers only (the repo is public).
+7. **No client data in tests.** Synthetic names and numbers only (the repo is public). CI's Lint job rejects realistic phone numbers and personal emails in every test file (`npm run check:test-pii`, REQ-653). It can't recognise a real name, so the reviewer checks names.
 
 Every new requirement still gets an `@requirements REQ-XXX` annotation; `npm run check:requirements` enforces that a test exists. Mutation testing checks that it's a good one.
 

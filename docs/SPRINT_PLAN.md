@@ -45,7 +45,7 @@ Current stack (React/Vite on Vercel Hobby + Supabase + GH Actions) is correct fo
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Overnight boarding sync — DC filter fix | ✅ DONE | B-1 — anchor `^(d\/c\|dc)\b`; Peanut (C63QghzF) confirmed in DB May 1 (run 25239049354). |
+| Overnight boarding sync — DC filter fix | ✅ DONE | B-1 — anchor `^(d\/c\|dc)\b`; Peanut (C63QAAAA) confirmed in DB May 1 (run 25239049354). |
 | Integration check false positives — PT + Claude vision | ✅ DONE | B-2 — PR #201 (Fix 1: `^PT\b`) + PR #202 (removed Check 3 entirely). Verified clean run May 4: PASS ✅ 0 issues. |
 | Re-sync appointments modified on AGYD after initial sync | ✅ DONE | B-3 — PR #205. `enqueue()` compares `source_url` on `done` items; re-queues on URL timestamp change. 4 new tests. 1051 tests. |
 | Overnight boarding sync | ✅ LIVE | 3-page scan + cron-detail-2 |
@@ -83,7 +83,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 | #                | Action                                                                                                                                                                                         | Blocks                                               | Priority  |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------- |
 | ~~K-1b confirm~~ | ✅ Done April 2 — image confirmed on phone, v5.4.0 released                                                                                                                                     | —                                                    | —         |
-| ~~K-2~~          | ✅ Done April 3 — Maverick backfilled                                                                                                                                                           | —                                                    | —         |
+| ~~K-2~~          | ✅ Done April 3 — Rover backfilled                                                                                                                                                           | —                                                    | —         |
 | ~~K-3~~          | ✅ Done April 3 — N/C = new client initial eval; PR #161 merged                                                                                                                                 | —                                                    | —         |
 | ~~K-4~~          | ✅ Done April 5 — second number added to `NOTIFY_RECIPIENTS` Vercel env var                                                                                                                   | —                                                    | —         |
 | ~~K-7~~          | ✅ Closed April 21 — publishing not needed. App uses Meta test phone in dev mode (≤5 recipients). Dev mode is the correct long-term model. No registered business required.                    | —                                                    | —         |
@@ -99,7 +99,7 @@ These are not code tickets. They block specific milestones. Track them here so n
 1. **R-1** ✅ Q Boarding 6th box — PR #187 + bug fix PR #189
 2. **J-1** ✅ PR #191 merged — Intraday change notification job. v6.0.0 released.
 3. **P-1** ✅ PR #193 merged — Employee pay daytime follow-on. Bug fix PR #195 (wrong data source). v6.1.0 released. Migration 027 live in Supabase. **All v6 tickets done.**
-4. **B-1** ✅ PR #199 merged — DC filter false positive. Peanut (C63QghzF) confirmed in DB May 1.
+4. **B-1** ✅ PR #199 merged — DC filter false positive. Peanut (C63QAAAA) confirmed in DB May 1.
 5. **B-2** ✅ PR #201 + PR #202 merged May 4 — Fix 1 (`^PT\b`) + removed Check 3 entirely. Verified clean run.
 6. **B-3** ✅ PR #205 merged May 14 — `enqueue()` re-queues `done` items when `source_url` timestamp changes.
 7. **U-1** ✅ PR #206 merged May 16 — Rename "Also worked {date}" → "Day boarding {date}" on night assignment checkbox (`EmployeeDropdown`).
@@ -335,13 +335,13 @@ Color rules (blue takes priority over green/red):
 
 - **Blue `+`** — dog added to today's roster since the previous send (wasn't in 4am, appears in 7am)
 - **Blue strikethrough** — dog removed from today's roster since the previous send (was in 4am, gone in 7am — appointment cancelled)
-- **Blue `+` or blue strikethrough** — dog whose +/- status flipped between sends (e.g., was `– Mabel` red in 4am, now `+ Mabel` in 7am → show as blue `+`)
+- **Blue `+` or blue strikethrough** — dog whose +/- status flipped between sends (e.g., was `– Hazel` red in 4am, now `+ Hazel` in 7am → show as blue `+`)
 - **Green/red (unchanged)** — dog whose state did not change since the previous send
 
 Example from April 7:
 
-- 7am image: Mabel was `– Mabel` (red) in 4am, flipped to `+ Mabel` (green) by 7am → renders **blue `+`**
-- 8:30am image: Mabel unchanged since 7am → renders green `+` (normal). Oskar flipped → renders **blue `+`**
+- 7am image: Hazel was `– Hazel` (red) in 4am, flipped to `+ Hazel` (green) by 7am → renders **blue `+`**
+- 8:30am image: Hazel unchanged since 7am → renders green `+` (normal). Taco flipped → renders **blue `+`**
 
 **4am has no previous send → no blue shown. Falls back to green/red only.**
 
@@ -394,7 +394,7 @@ Example from April 7:
 
 **What:** Once `enqueue()` marks an appointment `done`, it is never re-processed — even if AGYD later reschedules it (date change, title change, etc.). The DB silently retains stale data with no indication anything changed.
 
-**Confirmed instance:** Peanut (C63QghzH, May 14–19 2026). Originally synced May 3 when AGYD had the appointment starting May 13 (`source_url` ends in `/1778666400` = May 13 10:00 UTC). AGYD was subsequently updated to May 14 (`/1778752800`). DB retained May 13 until manually corrected May 14, 2026. Discovered via integration check alert.
+**Confirmed instance:** Peanut (C63QAAAB, May 14–19 2026). Originally synced May 3 when AGYD had the appointment starting May 13 (`source_url` ends in `/1778666400` = May 13 10:00 UTC). AGYD was subsequently updated to May 14 (`/1778752800`). DB retained May 13 until manually corrected May 14, 2026. Discovered via integration check alert.
 
 **Root cause:** `enqueue()` deduplicates on `external_id`. When `status = 'done'`, all calls are silently skipped regardless of whether `source_url` changed. AGYD embeds the scheduled start timestamp directly in the appointment URL — a URL change is a reliable signal that the appointment was rescheduled. This signal exists in the data but is never checked.
 
@@ -403,7 +403,7 @@ Example from April 7:
 In `enqueue()`, when `existing.status === 'done'`, compare the incoming `source_url` against the stored one. If they differ, re-queue the item (same path as `resetIfDone: true`) and update `source_url` to the new URL. No changes needed in `syncRunner.js` — the comparison belongs where the existing entry is already read.
 
 **Logging requirements (Black Box Protocol):**
-- Re-queue path: emit old URL, new URL, and both timestamps decoded to ISO dates so the date shift is human-readable without arithmetic. Example: `[SyncQueue] 🔄 Re-queued modified appointment: C63QghzH (url changed: /1778666400 [2026-05-13] → /1778752800 [2026-05-14])`
+- Re-queue path: emit old URL, new URL, and both timestamps decoded to ISO dates so the date shift is human-readable without arithmetic. Example: `[SyncQueue] 🔄 Re-queued modified appointment: C63QAAAB (url changed: /1778666400 [2026-05-13] → /1778752800 [2026-05-14])`
 - Same-URL skip: update the existing "already queued" log to include the `source_url` so the skip is auditable, not just `status: done`
 - Null `source_url` guard: if `existing.source_url` is null (pre-dates current URL structure), skip the re-queue and log: `[SyncQueue] ⚠️ Can't compare URL for {id} — source_url null, skipping modification check`
 
@@ -437,11 +437,11 @@ In `enqueue()`, when `existing.status === 'done'`, compare the incoming `source_
 
 ### B-1 — DC filter false positive drops "Boarding discounted nights for DC full-time"
 
-**Status:** ✅ DONE — PR #199 merged (session 25, May 1, 2026). Peanut (C63QghzF) confirmed in DB May 1.
+**Status:** ✅ DONE — PR #199 merged (session 25, May 1, 2026). Peanut (C63QAAAA) confirmed in DB May 1.
 
 **What:** The `nonBoardingPatterns` filter `/(d\/c|\bdc\b)/i` matched `DC` as a standalone word mid-title in "Boarding discounted nights for DC full-time". That service name uses "DC full-time" as a client membership tier (full-time daycare client gets discounted boarding rate), not as an appointment type indicator. The appointment was silently dropped in every sync scan all day and never reached the DB.
 
-**Confirmed instance:** Peanut (Leo Garver, client 151589, pet 138053), appointment C63QghzF, May 1–5 2026, $270 ($55×4 nights + $50×1 day), assigned to Charlie (worker 61023). Skipped at 1am, 9am, and 5pm integration checks. Zero WhatsApp notifications sent.
+**Confirmed instance:** one client's May 1–5 2026 boarding, $270 ($55×4 nights + $50×1 day). Skipped at 1am, 9am, and 5pm integration checks. Zero WhatsApp notifications sent.
 
 **Root cause:** All real daycare appointment titles start with "D/C" or "DC" (e.g., "DC full-time", "D/C M/T/W/TH"). The false positive comes from a boarding service whose name references a "DC full-time" membership tier mid-title.
 
@@ -457,11 +457,11 @@ In `enqueue()`, when `existing.status === 'done'`, compare the incoming `source_
 - [x] `/(d\/c|\bdc\b)/i` → `/^(d\/c|dc)\b/i` in config.js
 - [x] SKIP log includes title
 - [x] `appointmentFilter.test.js`: "Boarding discounted nights for DC full-time" → `skip: false`
-- [x] `syncRunner.test.js`: C63QghzF with that title → enqueued, skipped=0
+- [x] `syncRunner.test.js`: C63QAAAA with that title → enqueued, skipped=0
 - [x] Existing DC/D/C skip tests still pass (start-of-title anchor still catches pure daycare titles)
 - [x] 1045 tests, 0 failures
 - [x] PR #199 merged
-- [x] Integration Check run 25239049354 completes → Peanut (C63QghzF) appears in app ← ✅ Verified May 1 (5:32pm PDT): in DB, $270, May 1–5, confirmed.
+- [x] Integration Check run 25239049354 completes → Peanut (C63QAAAA) appears in app ← ✅ Verified May 1 (5:32pm PDT): in DB, $270, May 1–5, confirmed.
 
 ---
 

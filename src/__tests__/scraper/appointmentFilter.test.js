@@ -2,7 +2,7 @@
  * appointmentFilter tests — applyDetailFilters
  *
  * Tests each filter gate independently, then validates real-world cases
- * (Kailin PG boarding passes; PG daycare in both forms is skipped).
+ * (Rocket PG boarding passes; PG daycare in both forms is skipped).
  *
  * @requirements REQ-104
  */
@@ -95,7 +95,7 @@ describe('title filter', () => {
   });
 
   it('skips "PT: T.W.TH" — Part-Time daycare title must not be treated as boarding', () => {
-    // Regression: C63QgiVF (Maverick, May 4 2026). "PT: T.W.TH" is a recurring
+    // Regression: C63QgiVF (Rover, May 4 2026). "PT: T.W.TH" is a recurring
     // Part-Time daycare appointment that uses the /schedule/a/ URL format but is
     // never an overnight stay. Missing ^PT\b caused false "Missing from DB" alerts
     // on every integration check run when the appointment was visible on the schedule.
@@ -107,7 +107,7 @@ describe('title filter', () => {
   });
 
   it('does NOT skip "Boarding discounted nights for DC full-time" — DC mid-title is a pricing tier, not daycare', () => {
-    // Regression: C63QghzF (Peanut/Leo Garver, May 1–5 2026). Service name includes
+    // Regression: C63QAAAA (Peanut, May 1–5 2026). Service name includes
     // "DC full-time" as a client tier descriptor. The old /(d\/c|\bdc\b)/i pattern
     // matched the mid-title "DC" and silently dropped this boarding all day.
     const { skip } = applyDetailFilters(
@@ -241,7 +241,7 @@ describe('date-overlap filter', () => {
 // ─── Real-world cases ─────────────────────────────────────────────────────────
 
 describe('real-world cases', () => {
-  it('Kailin "PG 3/23-30" boarding passes — PG title allowed, has night pricing', () => {
+  it('Rocket "PG 3/23-30" boarding passes — PG title allowed, has night pricing', () => {
     const { skip } = applyDetailFilters(
       validBoarding({
         service_type: 'PG 3/23-30',

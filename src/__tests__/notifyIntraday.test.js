@@ -107,24 +107,24 @@ function buildRes() {
 
 describe('computeIntradayDelta', () => {
   it('dog in current but not snapshot → added', () => {
-    const snapshot = [boarder('Mochi')];
-    const current = [boarder('Mochi'), boarder('Bronwyn')];
+    const snapshot = [boarder('Nutmeg')];
+    const current = [boarder('Nutmeg'), boarder('Cinder')];
     const { added, cancelled } = computeIntradayDelta(snapshot, current);
-    expect(added.map(b => b.name)).toEqual(['Bronwyn']);
+    expect(added.map(b => b.name)).toEqual(['Cinder']);
     expect(cancelled).toHaveLength(0);
   });
 
   it('dog in snapshot but not current → cancelled', () => {
-    const snapshot = [boarder('Mochi'), boarder('Tula')];
-    const current = [boarder('Mochi')];
+    const snapshot = [boarder('Nutmeg'), boarder('Waffles')];
+    const current = [boarder('Nutmeg')];
     const { added, cancelled } = computeIntradayDelta(snapshot, current);
     expect(added).toHaveLength(0);
-    expect(cancelled.map(b => b.name)).toEqual(['Tula']);
+    expect(cancelled.map(b => b.name)).toEqual(['Waffles']);
   });
 
   it('dog in both → neither added nor cancelled', () => {
-    const snapshot = [boarder('Mochi')];
-    const current = [boarder('Mochi')];
+    const snapshot = [boarder('Nutmeg')];
+    const current = [boarder('Nutmeg')];
     const { added, cancelled } = computeIntradayDelta(snapshot, current);
     expect(added).toHaveLength(0);
     expect(cancelled).toHaveLength(0);
@@ -137,8 +137,8 @@ describe('computeIntradayDelta', () => {
 
 describe('hashDelta', () => {
   it('returns the same hash for identical deltas', () => {
-    const added = [boarder('Bronwyn')];
-    const cancelled = [boarder('Tula')];
+    const added = [boarder('Cinder')];
+    const cancelled = [boarder('Waffles')];
     expect(hashDelta(added, cancelled)).toBe(hashDelta(added, cancelled));
   });
 
@@ -149,7 +149,7 @@ describe('hashDelta', () => {
   });
 
   it('returns a different hash for different deltas', () => {
-    expect(hashDelta([boarder('Mochi')], [])).not.toBe(hashDelta([boarder('Bronwyn')], []));
+    expect(hashDelta([boarder('Nutmeg')], [])).not.toBe(hashDelta([boarder('Cinder')], []));
   });
 });
 
@@ -167,7 +167,7 @@ describe('notify-intraday handler', () => {
 
   it('skips with no_snapshot when no 8:30am snapshot for today', async () => {
     createClient.mockReturnValue(buildSupaMock({ snapshotResult: null }));
-    queryBoarders.mockResolvedValue([boarder('Mochi')]);
+    queryBoarders.mockResolvedValue([boarder('Nutmeg')]);
     getRecipients.mockReturnValue(['+15555550100']);
 
     const req = buildReq();
@@ -181,12 +181,12 @@ describe('notify-intraday handler', () => {
   it('skips with no_change_since_830am when delta is empty', async () => {
     const snapshotResult = {
       snapshotDate: TODAY,
-      boarders: [boarder('Mochi')],
+      boarders: [boarder('Nutmeg')],
       capturedAt: '2026-04-30T15:30:00Z',
     };
     createClient.mockReturnValue(buildSupaMock({ snapshotResult, intradayResult: null }));
     // Current boarders identical to snapshot → empty delta
-    queryBoarders.mockResolvedValue([boarder('Mochi')]);
+    queryBoarders.mockResolvedValue([boarder('Nutmeg')]);
     getRecipients.mockReturnValue(['+15555550100']);
 
     const req = buildReq();
@@ -200,13 +200,13 @@ describe('notify-intraday handler', () => {
   it('skips with delta_unchanged when hash matches last intraday send', async () => {
     const snapshotResult = {
       snapshotDate: TODAY,
-      boarders: [boarder('Mochi')],
+      boarders: [boarder('Nutmeg')],
       capturedAt: '2026-04-30T15:30:00Z',
     };
-    // Bronwyn was added vs snapshot
-    const currentBoarders = [boarder('Mochi'), boarder('Bronwyn')];
+    // Cinder was added vs snapshot
+    const currentBoarders = [boarder('Nutmeg'), boarder('Cinder')];
     // Compute the hash that would result from this delta
-    const expectedHash = hashDelta([boarder('Bronwyn')], []);
+    const expectedHash = hashDelta([boarder('Cinder')], []);
 
     const intradayResult = {
       lastDeltaHash: expectedHash,
@@ -227,12 +227,12 @@ describe('notify-intraday handler', () => {
   it('sends when addition detected', async () => {
     const snapshotResult = {
       snapshotDate: TODAY,
-      boarders: [boarder('Mochi')],
+      boarders: [boarder('Nutmeg')],
       capturedAt: '2026-04-30T15:30:00Z',
     };
     createClient.mockReturnValue(buildSupaMock({ snapshotResult, intradayResult: null }));
-    // Bronwyn added since 8:30am
-    queryBoarders.mockResolvedValue([boarder('Mochi'), boarder('Bronwyn')]);
+    // Cinder added since 8:30am
+    queryBoarders.mockResolvedValue([boarder('Nutmeg'), boarder('Cinder')]);
     getRecipients.mockReturnValue(['+15555550100']);
     sendRosterImage.mockResolvedValue([{ to: '+15555550100', status: 'sent', messageId: 'wamid.abc' }]);
 
@@ -248,12 +248,12 @@ describe('notify-intraday handler', () => {
   it('sends when cancellation detected', async () => {
     const snapshotResult = {
       snapshotDate: TODAY,
-      boarders: [boarder('Mochi'), boarder('Tula')],
+      boarders: [boarder('Nutmeg'), boarder('Waffles')],
       capturedAt: '2026-04-30T15:30:00Z',
     };
     createClient.mockReturnValue(buildSupaMock({ snapshotResult, intradayResult: null }));
-    // Tula cancelled since 8:30am
-    queryBoarders.mockResolvedValue([boarder('Mochi')]);
+    // Waffles cancelled since 8:30am
+    queryBoarders.mockResolvedValue([boarder('Nutmeg')]);
     getRecipients.mockReturnValue(['+15555550100']);
     sendRosterImage.mockResolvedValue([{ to: '+15555550100', status: 'sent', messageId: 'wamid.def' }]);
 

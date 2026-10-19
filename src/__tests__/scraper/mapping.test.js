@@ -638,11 +638,11 @@ describe('REQ-103: Data Mapping to App Schema', () => {
 
       it('updates rates on external dog found by name when updateRates is true', async () => {
         const supabase = createMockSupabase();
-        // Dog exists with a different external_id but same name — simulates Mochi Hill scenario
-        supabase._addDog({ external_id: 'OTHER123', name: 'Maverick', night_rate: 0, day_rate: 0, source: 'external' });
+        // Dog exists with a different external_id but same name — simulates Nutmeg Sample scenario
+        supabase._addDog({ external_id: 'OTHER123', name: 'Rover', night_rate: 0, day_rate: 0, source: 'external' });
         const dogData = mapToDog(mockExternalAppointmentWithPricing);
         // dogData.external_id = 'PRC123' ≠ 'OTHER123' → findDogByExternalId returns null
-        // findDogByName finds 'Maverick' → name-match path → rates should be written
+        // findDogByName finds 'Rover' → name-match path → rates should be written
         const result = await upsertDog(supabase, dogData, { updateRates: true });
 
         expect(result.dog.night_rate).toBe(55);
@@ -673,8 +673,8 @@ describe('REQ-103: Data Mapping to App Schema', () => {
       const dogs = supabase._mockData.dogs;
       expect(dogs.length).toBe(2);
       const names = dogs.map(d => d.name);
-      expect(names).toContain('Mochi Hill');
-      expect(names).toContain('Marlee Hill');
+      expect(names).toContain('Nutmeg Sample');
+      expect(names).toContain('Pickle Sample');
     });
 
     it('creates a boarding for each pet with same dates', async () => {
@@ -695,10 +695,10 @@ describe('REQ-103: Data Mapping to App Schema', () => {
 
       await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
 
-      const mochi = supabase._mockData.dogs.find(d => d.name === 'Mochi Hill');
-      const marlee = supabase._mockData.dogs.find(d => d.name === 'Marlee Hill');
-      expect(mochi.night_rate).toBe(55);
-      expect(marlee.night_rate).toBe(45);
+      const nutmeg = supabase._mockData.dogs.find(d => d.name === 'Nutmeg Sample');
+      const pickle = supabase._mockData.dogs.find(d => d.name === 'Pickle Sample');
+      expect(nutmeg.night_rate).toBe(55);
+      expect(pickle.night_rate).toBe(45);
     });
 
     it('stores per-pet day rates on each dog', async () => {
@@ -706,10 +706,10 @@ describe('REQ-103: Data Mapping to App Schema', () => {
 
       await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
 
-      const mochi = supabase._mockData.dogs.find(d => d.name === 'Mochi Hill');
-      const marlee = supabase._mockData.dogs.find(d => d.name === 'Marlee Hill');
-      expect(mochi.day_rate).toBe(50);
-      expect(marlee.day_rate).toBe(35);
+      const nutmeg = supabase._mockData.dogs.find(d => d.name === 'Nutmeg Sample');
+      const pickle = supabase._mockData.dogs.find(d => d.name === 'Pickle Sample');
+      expect(nutmeg.day_rate).toBe(50);
+      expect(pickle.day_rate).toBe(35);
     });
 
     it('stores per-pet night rates on each boarding', async () => {
@@ -718,13 +718,13 @@ describe('REQ-103: Data Mapping to App Schema', () => {
       await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
 
       const dogs = supabase._mockData.dogs;
-      const mochiDog = dogs.find(d => d.name === 'Mochi Hill');
-      const marleeDog = dogs.find(d => d.name === 'Marlee Hill');
+      const nutmegDog = dogs.find(d => d.name === 'Nutmeg Sample');
+      const pickleDog = dogs.find(d => d.name === 'Pickle Sample');
       const boardings = supabase._mockData.boardings;
-      const mochiBoarding = boardings.find(b => b.dog_id === mochiDog.id);
-      const marleeBoarding = boardings.find(b => b.dog_id === marleeDog.id);
-      expect(mochiBoarding.night_rate).toBe(55);
-      expect(marleeBoarding.night_rate).toBe(45);
+      const nutmegBoarding = boardings.find(b => b.dog_id === nutmegDog.id);
+      const pickleBoarding = boardings.find(b => b.dog_id === pickleDog.id);
+      expect(nutmegBoarding.night_rate).toBe(55);
+      expect(pickleBoarding.night_rate).toBe(45);
     });
 
     it('gives secondary boarding a unique external_id suffix', async () => {

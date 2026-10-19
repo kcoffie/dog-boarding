@@ -214,7 +214,7 @@ export function findFormForBoarding(submissions, boarding) {
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} boardingId - UUID of the boarding
- * @param {string} externalPetId - External pet ID (e.g. "90043")
+ * @param {string} externalPetId - External pet ID (e.g. "10008")
  * @param {string} dogName - Dog name for logging
  * @returns {Promise<void>}
  */
