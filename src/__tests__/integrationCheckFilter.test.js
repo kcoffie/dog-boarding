@@ -94,6 +94,8 @@ const REAL_BOARDINGS = [
   'Wknd DC 10/24-26',
   'Dog C — Weekend DC 10/24 - 10/26',
   '10/24-26 Wknd DC',
+  'Wknd DC 10/24–26',      // en dash, as pasted from a phone
+  'Wknd DC 10/24 to 10/26',
 ];
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

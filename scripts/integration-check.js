@@ -105,7 +105,7 @@ const DAYCARE_ONLY_PATTERNS = [
   /^\d+\/\d+$/, // bare date "4/21" — Daycare Add-On Day; real boardings show ranges like "4/21-25"
   // "Wknd DC 10/24" — weekend daycare (#272). A title with a date range still alerts:
   // a hidden boarding is worse than a false alert.
-  /^(?!.*\d+\/\d+\s*-\s*\d).*\b(?:wknd|weekend)\s+d\/?c\b/i,
+  /^(?!.*\d+\/\d+\s*(?:-|–|to)\s*\d).*\b(?:wknd|weekend)\s+d\/?c\b/i,
 ];
 export function isDaycareOnlyTitle(title) {
   return DAYCARE_ONLY_PATTERNS.some(re => re.test(title));
