@@ -18,7 +18,7 @@ export function latestStatus(statuses, context = VERCEL_CONTEXT) {
   let latest = null;
   for (const s of statuses) {
     if (s.context !== context) continue;
-    // Stryker disable next-line EqualityOperator: two statuses with the same timestamp have no order to keep
+    // Stryker disable next-line EqualityOperator: `>=` only changes which of two same-timestamp statuses wins (no order to keep); `<=` is killed by the order test
     if (!latest || s.updated_at > latest.updated_at) latest = s;
   }
   return latest;
@@ -43,7 +43,13 @@ export function deployVerdict(status) {
 export async function waitForDeploy({ getStatuses, sleep, now, timeoutMs = 600_000, intervalMs = 20_000 }) {
   const deadline = now() + timeoutMs;
   for (;;) {
-    const status = latestStatus(await getStatuses());
+    let statuses;
+    try {
+      statuses = await getStatuses();
+    } catch (err) {
+      return { ok: false, message: `could not read the commit's statuses from GitHub: ${err.message}` };
+    }
+    const status = latestStatus(statuses);
     const verdict = deployVerdict(status);
     if (verdict === 'deployed') return { ok: true, message: `deploy ${describe(status)}` };
     if (verdict === 'failed') return { ok: false, message: `deploy ${describe(status)}` };
@@ -67,4 +73,50 @@ export function productionProblems({ home, image }) {
     problems.push(`roster image returned ${image.contentType ?? 'no content type'}, not image/png`);
   }
   return problems;
+}
+
+export const PROD_URL = 'https://qboarding.vercel.app';
+
+/** The production URLs the check reads; the roster image is the endpoint a bad dependency crashed (#246). */
+export function productionUrls(imageToken) {
+  return {
+    home: PROD_URL,
+    image: `${PROD_URL}/api/roster-image?type=weekend&token=${encodeURIComponent(imageToken)}`,
+  };
+}
+
+/**
+ * The whole check: which commit, its deploy, then production. Production isn't asked when the
+ * deploy didn't succeed (it would only describe the previous deploy).
+ * @param {{ sha?: string, getHead: () => Promise<{sha:string, subject:string}>,
+ *           getStatuses: (sha:string) => Promise<Array>, fetchAnswer: (url:string) => Promise<{status:number, contentType:string|null}>,
+ *           imageToken: string, sleep: (ms:number) => Promise<void>, now: () => number,
+ *           timeoutMs?: number, intervalMs?: number }} deps
+ * @returns {Promise<{exitCode: 0|1, lines: string[]}>}
+ */
+export async function runDeployCheck({ sha, getHead, getStatuses, fetchAnswer, imageToken, ...timing }) {
+  const lines = [];
+  let target = sha;
+  if (!target) {
+    try {
+      const head = await getHead();
+      target = head.sha;
+      lines.push(`main is ${head.sha.slice(0, 7)}: ${head.subject}`);
+    } catch (err) {
+      return { exitCode: 1, lines: [`could not read main's head from GitHub: ${err.message}`] };
+    }
+  }
+  const deploy = await waitForDeploy({ getStatuses: () => getStatuses(target), ...timing });
+  lines.push(`${target.slice(0, 7)}: ${deploy.message}`);
+  if (!deploy.ok) return { exitCode: 1, lines };
+
+  const urls = productionUrls(imageToken);
+  let problems;
+  try {
+    problems = productionProblems({ home: await fetchAnswer(urls.home), image: await fetchAnswer(urls.image) });
+  } catch (err) {
+    problems = [`production did not answer: ${err.message}`];
+  }
+  if (problems.length) return { exitCode: 1, lines: [...lines, ...problems] };
+  return { exitCode: 0, lines: [...lines, 'production OK: home page 200, roster image 200 image/png'] };
 }

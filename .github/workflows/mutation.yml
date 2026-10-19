@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '0 13 * * 1'  # Mondays 13:00 UTC, full run
+    - cron: '0 13 * * 1'  # Mondays 13:00 UTC (6am PDT / 5am PST), full run. A red run shows only as GitHub's email; it's code quality, not a client outcome
   workflow_dispatch:
     inputs:
       full:
@@ -20,9 +20,10 @@ on:
         type: boolean
         default: false
 
-# A burst of merges runs once, on the newest commit. The scheduled full run never cancels.
+# A burst of merges runs once, on the newest commit. Scheduled and manual runs get their own group
+# (the run ID), so a merge never cancels a full run that is 40 minutes in.
 concurrency:
-  group: mutation-${{ github.event_name == 'schedule' && 'full' || 'main' }}
+  group: mutation-${{ github.event_name == 'push' && 'push' || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
@@ -48,17 +49,17 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.INCREMENTAL_FILE }}
-          key: stryker-${{ hashFiles('package-lock.json', 'stryker.config.json') }}-${{ github.run_id }}
+          key: stryker-${{ hashFiles('package-lock.json', 'stryker.config.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: stryker-${{ hashFiles('package-lock.json', 'stryker.config.json') }}-
       - name: Stryker
         run: ./node_modules/.bin/stryker run stryker.config.json --concurrency 4 --incremental --incrementalFile "$INCREMENTAL_FILE"
       # Saved even when the ratchet fails: the results are still right, and the next run reuses them.
       - name: Save results
-        if: always() && hashFiles('out/stryker-incremental.json') != ''
+        if: always() && hashFiles(env.INCREMENTAL_FILE) != ''
         uses: actions/cache/save@v4
         with:
           path: ${{ env.INCREMENTAL_FILE }}
-          key: stryker-${{ hashFiles('package-lock.json', 'stryker.config.json') }}-${{ github.run_id }}
+          key: stryker-${{ hashFiles('package-lock.json', 'stryker.config.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { latestStatus, deployVerdict, waitForDeploy, productionProblems } from '../lib/deployCheck.js';
+import { latestStatus, deployVerdict, waitForDeploy, productionProblems, productionUrls, runDeployCheck } from '../lib/deployCheck.js';
 
 const status = (state, description, updated_at = '2026-10-20T20:40:00Z', context = 'Vercel – qboard') =>
   ({ context, state, description, updated_at });
@@ -83,6 +83,11 @@ describe('waitForDeploy', () => {
     expect(await waitForDeploy(fakePolls([[done]]))).toEqual({ ok: true, message: 'deploy success' });
   });
 
+  it('a GitHub error while polling fails with one line naming it', async () => {
+    const r = await waitForDeploy({ ...fakePolls([[]]), getStatuses: async () => { throw new Error('GitHub /commits/abc/statuses returned 502'); } });
+    expect(r).toEqual({ ok: false, message: "could not read the commit's statuses from GitHub: GitHub /commits/abc/statuses returned 502" });
+  });
+
   it('an error status fails at once too', async () => {
     const r = await waitForDeploy(fakePolls([[status('error', 'Build error')]]));
     expect(r).toEqual({ ok: false, message: 'deploy error: Build error' });
@@ -103,7 +108,7 @@ describe('waitForDeploy', () => {
   it('a status that arrives exactly at the deadline still counts', async () => {
     const f = fakePolls([[], [], [status('success', 'Deployment has completed')]]);
     const r = await waitForDeploy({ ...f, timeoutMs: 40_000 });
-    expect(r.ok).toBe(true);
+    expect(r).toEqual({ ok: true, message: 'deploy success: Deployment has completed' });
   });
 });
 
@@ -140,5 +145,87 @@ describe('productionProblems', () => {
   it('each wrong answer is reported on its own line', () => {
     expect(productionProblems({ home: { status: 503 }, image: { status: 401, contentType: 'application/json' } }))
       .toEqual(['home page returned 503', 'roster image returned 401']);
+  });
+});
+
+describe('productionUrls', () => {
+  it('checks the production home page and the weekend roster image with the token URL-encoded', () => {
+    expect(productionUrls('a b&c')).toEqual({
+      home: 'https://qboarding.vercel.app',
+      image: 'https://qboarding.vercel.app/api/roster-image?type=weekend&token=a%20b%26c',
+    });
+  });
+});
+
+describe('runDeployCheck', () => {
+  const HEAD = 'abcdef1234567890';
+  const deployed = [status('success', 'Deployment has completed')];
+  const healthy = { 'https://qboarding.vercel.app': { status: 200, contentType: 'text/html' } };
+  const imageUrl = 'https://qboarding.vercel.app/api/roster-image?type=weekend&token=tok';
+
+  function deps({ statuses = deployed, answers = { ...healthy, [imageUrl]: { status: 200, contentType: 'image/png' } }, sha, getHead } = {}) {
+    const asked = { statusesFor: [], urls: [] };
+    const clock = fakePolls([statuses]);
+    return {
+      asked,
+      sha,
+      getHead: getHead ?? (async () => ({ sha: HEAD, subject: 'fix: something (#1)' })),
+      getStatuses: async (s) => { asked.statusesFor.push(s); return clock.getStatuses(); },
+      fetchAnswer: async (url) => { asked.urls.push(url); return answers[url]; },
+      imageToken: 'tok',
+      sleep: clock.sleep,
+      now: clock.now,
+    };
+  }
+
+  it('with no SHA, checks main\'s head as GitHub reports it and names it with its subject', async () => {
+    const d = deps();
+    const r = await runDeployCheck(d);
+    expect(d.asked.statusesFor[0]).toBe(HEAD);
+    expect(r.lines[0]).toBe('main is abcdef1: fix: something (#1)');
+  });
+
+  it('a given SHA is checked as is, without asking GitHub for main', async () => {
+    const d = deps({ sha: '1111111aaaa', getHead: async () => { throw new Error('must not be called'); } });
+    const r = await runDeployCheck(d);
+    expect(d.asked.statusesFor[0]).toBe('1111111aaaa');
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('exits 0 only when the deploy succeeded and production answered right', async () => {
+    const r = await runDeployCheck(deps());
+    expect(r).toEqual({ exitCode: 0, lines: [
+      'main is abcdef1: fix: something (#1)',
+      'abcdef1: deploy success: Deployment has completed',
+      'production OK: home page 200, roster image 200 image/png',
+    ] });
+  });
+
+  it('a failed deploy exits 1 and production is not asked', async () => {
+    const d = deps({ statuses: [status('failure', 'Deployment rate limited — retry in 24 hours.')] });
+    const r = await runDeployCheck(d);
+    expect(r.exitCode).toBe(1);
+    expect(r.lines[1]).toBe('abcdef1: deploy failure: Deployment rate limited — retry in 24 hours.');
+    expect(d.asked.urls).toEqual([]);
+  });
+
+  it('a deployed commit whose production answers wrong exits 1 with the problem', async () => {
+    const d = deps({ answers: { ...healthy, [imageUrl]: { status: 500, contentType: 'text/plain' } } });
+    const r = await runDeployCheck(d);
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.at(-1)).toBe('roster image returned 500');
+  });
+
+  it('production not answering at all exits 1 with one line', async () => {
+    const d = deps();
+    d.fetchAnswer = async () => { throw new Error('fetch failed'); };
+    const r = await runDeployCheck(d);
+    expect(r.exitCode).toBe(1);
+    expect(r.lines.at(-1)).toBe('production did not answer: fetch failed');
+  });
+
+  it('when GitHub can\'t say what main is, exits 1 with one line', async () => {
+    const r = await runDeployCheck(deps({ getHead: async () => { throw new Error('GitHub /commits/main returned 503'); } }));
+    expect(r).toEqual({ exitCode: 1, lines: ["could not read main's head from GitHub: GitHub /commits/main returned 503"] });
   });
 });
