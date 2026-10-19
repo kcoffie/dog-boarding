@@ -90,6 +90,13 @@ Current patterns:
 
 **NOTE: `pg` is intentionally excluded.** `"PG 3/23-30"` style titles are pack group **boarding** appointments with Boarding (Nights) pricing. PG daycare events are caught downstream by the post-detail filter in `appointmentFilter.js` (see cron-detail section below).
 
+#### Edited appointments (B-3, #205; #278)
+`enqueue()` re-queues an appointment that's already `done` when the scan shows it was edited:
+- **its title changed** (for example "10/18PM-23" → "10/18PM-24am", a moved checkout), or
+- **its URL timestamp changed and the detail step didn't skip it.** A stay's links all carry its start time, so a change means the start moved. A recurring daycare/PG series has one timestamp per visit, so its timestamp changes every few days without any edit. Those are the items the detail step skips (`meta.detail_skip`), so their URL changes are ignored.
+
+A re-queue stores the scan's URL and title, merges meta (keeping a stored `external_pet_id`), and clears `detail_skip`. The `schedule` `cron_health` row reports `requeuedEdited` and `urlChangesIgnored`: `requeuedEdited` should be near 0 on most days. Before #278, every scan re-queued about 30 PG series and the backlog grew without end.
+
 #### Daytime ingestion (bonus pass)
 On the same HTML already fetched, calls `parseDaytimeSchedulePage()` and `upsertDaytimeAppointments()` to keep `daytime_appointments` fresh. No extra HTTP requests.
 
@@ -128,7 +135,7 @@ Loads cached session from `sessionCache.js`. If missing, resets the dequeued ite
 **`appointment` (default):**
 1. Calls `fetchAppointmentDetails(appointmentId, timestamp)` from `extraction.js`
 2. Falls back to the queue item's `title` for `pet_name` if extraction returned empty (prevents "Unknown" dog collapse)
-3. **Calls `applyDetailFilters(details, item.title)` from `appointmentFilter.js`** — applies the same post-detail gates as the browser sync path. If the filter rejects the appointment, marks the queue item `done` and returns `action='skipped'`. The five gates in order:
+3. **Calls `applyDetailFilters(details, item.title)` from `appointmentFilter.js`** — applies the same post-detail gates as the browser sync path. If the filter rejects the appointment, marks the queue item `done` with the reason in `meta.detail_skip` (#278) and returns `action='skipped'`. The five gates in order:
    - Title/service_type — `nonBoardingPatterns` (catches DC, ADD, etc. that slipped past the schedule pre-filter)
    - `booking_status: canceled` — client submitted a request that was never confirmed
    - Pricing — skip when all line items are day services (`dayServicePatterns`)

@@ -292,7 +292,7 @@ describe('REQ-109: enqueue() edit detection (B-3, #278)', () => {
     expect(outcome).toBe('requeued_edited');
   });
 
-  it('a re-queue replaces meta with the scan\'s, clearing detail_skip', async () => {
+  it('a re-queue takes the scan\'s meta over the stored values, clearing detail_skip', async () => {
     const supabase = createMockSupabase([doneItem({ title: 'PG:FT', meta: { detail_skip: 'same_day' } })]);
     await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: 'PG:FT OFF', meta: { external_pet_id: '10002' } });
     expect(supabase._rows[0].meta).toEqual({ external_pet_id: '10002' });
@@ -398,12 +398,48 @@ describe('REQ-109: enqueue() edit detection (B-3, #278)', () => {
     expect([...edited.tables, ...failed.tables, ...fresh.tables]).toEqual(Array(6).fill('sync_queue'));
   });
 
-  it('returns queued for a new item, requeued for a failed one, unchanged for a done one with nothing changed', async () => {
-    const supabase = createMockSupabase([doneItem(), makeItem({ external_id: 'FAILED', status: 'failed' })]);
-    expect(await enqueue(supabase, { external_id: 'NEW', source_url: STAY_URL, title: 'x' })).toBe('queued');
+  it('returns queued for a new item', async () => {
+    expect(await enqueue(createMockSupabase([]), { external_id: 'NEW', source_url: STAY_URL, title: 'x' })).toBe('queued');
+  });
+
+  it('returns requeued for a failed item', async () => {
+    const supabase = createMockSupabase([makeItem({ external_id: 'FAILED', status: 'failed' })]);
     expect(await enqueue(supabase, { external_id: 'FAILED', source_url: STAY_URL })).toBe('requeued');
+  });
+
+  it('returns unchanged for a done item with the same title and URL', async () => {
+    const supabase = createMockSupabase([doneItem()]);
     expect(await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/19-22' })).toBe('unchanged');
   });
+
+  it('a title-change re-queue also stores the scan\'s URL and meta', async () => {
+    const supabase = createMockSupabase([doneItem({ title: '10/19-22', meta: {} })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '10/19-23', meta: { external_pet_id: '10003' } });
+    expect(supabase._rows[0].source_url).toBe(NEXT_DAY_URL);
+    expect(supabase._rows[0].meta).toEqual({ external_pet_id: '10003' });
+  });
+
+  it('a re-queue keeps the stored pet ID when the scan has none, and drops detail_skip', async () => {
+    const supabase = createMockSupabase([doneItem({ title: 'PG:FT', meta: { external_pet_id: '10001', detail_skip: 'same_day' } })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: STAY_URL, title: '10/24-27', meta: {} });
+    expect(supabase._rows[0].meta).toEqual({ external_pet_id: '10001' });
+  });
+
+  it('a URL re-queue with a blank title from the scan keeps the stored title', async () => {
+    const supabase = createMockSupabase([doneItem({ title: '10/19-22' })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '  ' });
+    expect(outcome).toBe('requeued_edited');
+    expect(supabase._rows[0].title).toBe('10/19-22');
+  });
+
+  it('a failed item is re-queued with the scan\'s URL and title', async () => {
+    const supabase = createMockSupabase([doneItem({ status: 'failed', title: '10/19-22' })]);
+    await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '10/19-23' });
+    expect(supabase._rows[0].status).toBe('pending');
+    expect(supabase._rows[0].source_url).toBe(NEXT_DAY_URL);
+    expect(supabase._rows[0].title).toBe('10/19-23');
+  });
+
 });
 
 // ─── dequeueOne() ─────────────────────────────────────────────────────────────

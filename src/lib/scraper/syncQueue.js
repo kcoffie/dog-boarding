@@ -53,17 +53,7 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
       if (edit) {
         const { error } = await supabase
           .from('sync_queue')
-          .update({
-            status: 'pending',
-            retry_count: 0,
-            last_error: null,
-            next_retry_at: null,
-            queued_at: new Date().toISOString(),
-            source_url,
-            title,
-            type,
-            meta,
-          })
+          .update(requeueFields(existing, { source_url, title, type, meta }))
           .eq('id', existing.id);
         if (error) throw error;
         log(`[SyncQueue] 🔄 Re-queued edited appointment: ${external_id} (${edit})`);
@@ -86,17 +76,12 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
       return 'unchanged';
     }
     // Re-queue a failed item, or a done item when the caller confirmed the result isn't stored yet
+    const update = existing.status === 'failed'
+      ? requeueFields(existing, { source_url, title, type, meta })
+      : { status: 'pending', retry_count: 0, last_error: null, next_retry_at: null, queued_at: new Date().toISOString(), type, meta };
     const { error } = await supabase
       .from('sync_queue')
-      .update({
-        status: 'pending',
-        retry_count: 0,
-        last_error: null,
-        next_retry_at: null,
-        queued_at: new Date().toISOString(),
-        type,
-        meta,
-      })
+      .update(update)
       .eq('id', existing.id);
     if (error) throw error;
     log(`[SyncQueue] 🔄 Re-queued ${existing.status} item: ${external_id}`);
@@ -109,6 +94,28 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
   if (error) throw error;
   log(`[SyncQueue] 📥 Queued: ${external_id} (type=${type})`);
   return 'queued';
+}
+
+/**
+ * The update that puts an appointment back to pending with what the scan just saw.
+ * Meta is merged so a stored `external_pet_id` survives a scan copy without one, and `detail_skip`
+ * is dropped so the next detail result decides again. A blank incoming title never replaces a stored one.
+ */
+function requeueFields(existing, { source_url, title, type, meta }) {
+  const merged = { ...(existing.meta || {}), ...meta };
+  delete merged.detail_skip;
+  const fields = {
+    status: 'pending',
+    retry_count: 0,
+    last_error: null,
+    next_retry_at: null,
+    queued_at: new Date().toISOString(),
+    source_url,
+    type,
+    meta: merged,
+  };
+  if ((title || '').trim()) fields.title = title;
+  return fields;
 }
 
 /**
