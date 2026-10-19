@@ -188,16 +188,37 @@ async function getCursorDate(supabase) {
 }
 
 /**
+ * A local calendar date as YYYY-MM-DD (the cursor is a local date, not a UTC instant).
+ *
+ * @param {Date} date
+ * @returns {string}
+ */
+function toLocalIsoDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * An error's text for the queue, first 200 characters. A thrown non-Error (a string,
+ * a Supabase error object) still yields text, so the item is marked failed, not left stuck.
+ *
+ * @param {unknown} err
+ * @returns {string}
+ */
+function errorText(err) {
+  return String(err?.message ?? err).slice(0, 200);
+}
+
+/**
  * Persist the cursor date in sync_settings.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {Date} date
  */
 async function saveCursorDate(supabase, date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  const isoDate = `${y}-${m}-${d}`;
+  const isoDate = toLocalIsoDate(date);
 
   const { data: existing } = await supabase
     .from('sync_settings')
@@ -360,7 +381,7 @@ export async function runScheduleSync(supabase) {
     queued: stats.queued,
     daytimeUpserted: stats.daytimeUpserted,
     daytimeErrors: stats.daytimeErrors,
-    cursorAdvancedTo: nextCursor.toISOString().slice(0, 10),
+    cursorAdvancedTo: toLocalIsoDate(nextCursor),
     queueDepth,
   };
 }
@@ -438,7 +459,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
       console.log(`[SyncRunner:Detail] ✅ Form stored for boarding ${boardingId} — queue depth: ${remaining}`);
       return { action: 'form_stored', externalId: item.external_id, queueDepth: remaining };
     } catch (formErr) {
-      if (formErr.message && formErr.message.includes('Session expired')) {
+      if (formErr?.message && formErr.message.includes('Session expired')) {
         console.log('[SyncRunner:Detail] 🔒 SESSION_EXPIRED during form fetch — clearing session + re-queuing item');
         await clearSession(supabase);
         await supabase
@@ -447,7 +468,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
           .eq('id', item.id);
         return { action: 'session_cleared', reason: 'session_expired' };
       }
-      const msg = formErr.message.slice(0, 200);
+      const msg = errorText(formErr);
       console.error(`[SyncRunner:Detail] ❌ Form fetch failed (retry ${(item.retry_count || 0) + 1}/3): ${msg}`);
       await markFailed(supabase, item.id, msg);
       const remaining = await getQueueDepth(supabase);
@@ -464,7 +485,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   try {
     details = await fetchAppointmentDetails(appointmentId, timestamp);
   } catch (err) {
-    if (err.message && err.message.includes('Session expired')) {
+    if (err?.message && err.message.includes('Session expired')) {
       console.log('[SyncRunner:Detail] 🔒 SESSION_EXPIRED during detail fetch — clearing session + re-queuing item');
       await clearSession(supabase);
       await supabase
@@ -473,7 +494,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
         .eq('id', item.id);
       return { action: 'session_cleared', reason: 'session_expired' };
     }
-    const msg = err.message.slice(0, 200);
+    const msg = errorText(err);
     console.error(`[SyncRunner:Detail] ❌ Fetch failed (retry ${(item.retry_count || 0) + 1}/3): ${msg}`);
     await markFailed(supabase, item.id, msg);
     const remaining = await getQueueDepth(supabase);
@@ -505,7 +526,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
     console.log(`[SyncRunner:Detail] ✅ ${details.pet_name || details.external_id} → ${action} — queue depth: ${remaining}`);
     return { action, externalId: item.external_id, queueDepth: remaining };
   } catch (saveErr) {
-    const msg = saveErr.message.slice(0, 200);
+    const msg = errorText(saveErr);
     console.error(`[SyncRunner:Detail] ❌ Save failed (retry ${(item.retry_count || 0) + 1}/3): ${msg}`);
     await markFailed(supabase, item.id, msg);
     const remaining = await getQueueDepth(supabase);
