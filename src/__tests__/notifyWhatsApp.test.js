@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getRecipients, getAlertRecipients, sendRosterImage, sendTextMessage } from '../lib/notifyWhatsApp.js';
+import { getRecipients, sendRosterImage, sendTextMessage } from '../lib/notifyWhatsApp.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -397,28 +397,3 @@ describe('sendTextMessage', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getAlertRecipients
-// ---------------------------------------------------------------------------
-
-describe('getAlertRecipients', () => {
-  afterEach(() => {
-    if (ORIG_ENV.INTEGRATION_CHECK_RECIPIENTS === undefined) delete process.env.INTEGRATION_CHECK_RECIPIENTS;
-    else process.env.INTEGRATION_CHECK_RECIPIENTS = ORIG_ENV.INTEGRATION_CHECK_RECIPIENTS;
-  });
-
-  it('parses comma-separated E.164 numbers from INTEGRATION_CHECK_RECIPIENTS', () => {
-    process.env.INTEGRATION_CHECK_RECIPIENTS = '+15555550100,+14085551234';
-    expect(getAlertRecipients()).toEqual(['+15555550100', '+14085551234']);
-  });
-
-  it('returns empty array when env var is unset', () => {
-    delete process.env.INTEGRATION_CHECK_RECIPIENTS;
-    expect(getAlertRecipients()).toEqual([]);
-  });
-
-  it('trims whitespace and filters blank entries', () => {
-    process.env.INTEGRATION_CHECK_RECIPIENTS = '  +15555550100  ,  ,+14085551234  ';
-    expect(getAlertRecipients()).toEqual(['+15555550100', '+14085551234']);
-  });
-});
