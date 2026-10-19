@@ -68,9 +68,9 @@
 ## Completed This Session (April 21, session 13)
 
 ### G-6 — Second number receiving ✅ RESOLVED
-- Root cause: typo in `NOTIFY_RECIPIENTS` Vercel env var — `+14159394562` instead of `+14159395462` (digits transposed since April 5)
-- Fix: corrected to `+18312477375,+14159395462` in Vercel
-- DB verified: `***-***-5462` shows `sent` → `delivered` on test send; `***-***-7375` shows `sent` → `delivered` → `read`
+- Root cause: typo in `NOTIFY_RECIPIENTS` Vercel env var — `+14159394562` instead of `+15555550101` (digits transposed since April 5)
+- Fix: corrected to `+15555550100,+15555550101` in Vercel
+- DB verified: `***-***-0101` shows `sent` → `delivered` on test send; `***-***-0100` shows `sent` → `delivered` → `read`
 - Nothing was wrong with Meta setup — pure typo
 
 ### K-7 — Re-scoped: dev mode is the correct long-term model ✅
@@ -100,7 +100,7 @@
 ## Completed This Session (April 8, session 11)
 
 ### G-6 — Second number investigation + partial fix ✅
-- Queried `message_delivery_status` — confirmed zero rows for second number; only `***-***-7375` receiving
+- Queried `message_delivery_status` — confirmed zero rows for second number; only `***-***-0100` receiving
 - Root cause: Meta app is in dev mode (K-7 unpublished) — dev-mode requires each recipient to manually opt in as a test recipient
 - Kate added second number to Meta API Setup → "To" → Add phone number on April 8
 - Second number should receive opt-in confirmation from Meta; next notify run (~4am Apr 9) will confirm delivery
@@ -202,7 +202,7 @@ CREATE TABLE message_log (
   sent_at       timestamptz  NOT NULL DEFAULT now(),
   job_name      text         NOT NULL,   -- 'notify-4am', 'notify-friday-pm', 'cron-health-check', etc.
   message_type  text         NOT NULL,   -- 'image' | 'text'
-  recipient     text         NOT NULL,   -- masked last 4 digits (***-***-7375)
+  recipient     text         NOT NULL,   -- masked last 4 digits (***-***-0100)
   content       text,                   -- text body for 'text' type; null for 'image' type
   image_path    text,                   -- Supabase Storage path for 'image' type; null for 'text' type
   wamid         text,                   -- null if send failed (no wamid assigned by Meta)
@@ -252,8 +252,8 @@ export async function recordMessageLog(supabase, results, jobName, messageType, 
 **Logging required inside `recordMessageLog`:**
 ```
 [MessageLog] recordMessageLog("notify-4am", type=image, 2 results)
-[MessageLog] Writing row — recipient: ***-***-7375, wamid: wamid.xxx, status: sent, image_path: roster-images/notify-4am/2026-04-22T11:00:00.000Z.png
-[MessageLog] Writing row — recipient: ***-***-5462, wamid: wamid.yyy, status: sent, image_path: roster-images/notify-4am/2026-04-22T11:00:00.000Z.png
+[MessageLog] Writing row — recipient: ***-***-0100, wamid: wamid.xxx, status: sent, image_path: roster-images/notify-4am/2026-04-22T11:00:00.000Z.png
+[MessageLog] Writing row — recipient: ***-***-0101, wamid: wamid.yyy, status: sent, image_path: roster-images/notify-4am/2026-04-22T11:00:00.000Z.png
 [MessageLog] Wrote 2 row(s) for job "notify-4am"
 
 // Failure case:

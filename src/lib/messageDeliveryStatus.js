@@ -143,7 +143,7 @@ export async function recordMessageLog(supabase, results, jobName, messageType, 
  * @param {string}      params.wamid
  * @param {string}      params.status         - 'delivered' | 'read' | 'failed'
  * @param {string}      params.statusAt       - ISO timestamp
- * @param {string}      params.recipient      - Already masked, e.g. '***-***-7375'
+ * @param {string}      params.recipient      - Already masked, e.g. '***-***-0100'
  * @param {number|null} params.errorCode
  * @param {string|null} params.errorTitle
  * @param {object}      params.rawPayload     - Full Meta status object for debugging
