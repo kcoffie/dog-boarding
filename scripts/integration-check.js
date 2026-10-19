@@ -85,6 +85,11 @@ function isBoardingTitle(title) {
 //     /schedule/a/ boarding-style links but the sync skips them via pricing: "all day
 //     services (Daycare Add-On Day)". Real overnight boardings always show a date range
 //     like "4/21-25"; a bare date is never an overnight stay.
+//   - Weekend daycare: "Wknd DC 10/24" — October 2026 (#272). Its detail page is
+//     category DC, so the sync never imports it; nonBoardingPatterns misses it
+//     because /^(d\/c|dc)\b/ is anchored to the start of the title. Only "Wknd DC" /
+//     "Weekend DC" is matched, never a bare DC: real boardings can name the
+//     "DC full-time" tier (#198).
 //
 // Two PG patterns are needed:
 //   1. Delimited days — uses \b word boundaries (catches M/T/W/Th, PG FT, etc.)
@@ -98,8 +103,9 @@ const DAYCARE_ONLY_PATTERNS = [
   /\bdaycare\b/i,
   /\bN\/C\b/i,
   /^\d+\/\d+$/, // bare date "4/21" — Daycare Add-On Day; real boardings show ranges like "4/21-25"
+  /\b(?:wknd|weekend)\s+d\/?c\b/i, // "Wknd DC 10/24" — weekend daycare (#272)
 ];
-function isDaycareOnlyTitle(title) {
+export function isDaycareOnlyTitle(title) {
   return DAYCARE_ONLY_PATTERNS.some(re => re.test(title));
 }
 

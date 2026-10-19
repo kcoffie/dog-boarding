@@ -1218,9 +1218,10 @@ An independent GH Actions script verifies that the DB matches the live external 
 - Sends the text report to Kate through `sendAlert` (Telegram, REQ-652); exits 1 when the report was needed but not delivered
 - Exits 0 when the report was delivered or not needed: discrepancies are reported, not fatal
 - Canceled/request-type bookings are a known false positive (not imported); documented in `docs/job_docs/integration-check.md`
+- Daycare-only schedule titles are not boarding candidates: PG day schedules, make-up days, no charge, daycare, N/C, a bare date, and `Wknd DC` / `Weekend DC` (#272). A title that merely names the "DC full-time" tier still is (#198)
 - Step 3 (Claude vision name-check) silently skipped when `ANTHROPIC_API_KEY` has no credits
 
-**Tests:** Manual verification; no unit tests (Playwright + external dependencies)
+**Tests:** `src/__tests__/integrationCheckFilter.test.js` (daycare-only filter), `src/__tests__/integrationCheckReport.test.js` (report and exit code). The Playwright compare itself is verified manually.
 
 ---
 
