@@ -13,7 +13,7 @@ dog-boarding is built by one person directing an AI coding agent, for a real cli
 | Kate's rules | Every commit and PR | `scripts/no-attribution.sh`, run by `.husky/commit-msg` and the `attribution` workflow (each PR's commits and description, re-run on edit) | AI attribution (Co-Authored-By, Claude-Session, session links). Claude Code's per-session reminder asks for these; it is overruled |
 | Kate | Every merge, and every rule about what the client sees | Reads the test **names** and the real counts; merges PRs herself | A change that's correct in code but wrong for the client |
 
-**What blocks a merge.** `main` has a ruleset (the repo is public) requiring Lint, Unit Tests, Requirements Coverage and Build. `no-attribution` isn't a required check until Kate adds it to the ruleset, so today it blocks by rule, not mechanically. Claude never commits to `main`, never calls a PR ready while a check is red (`command gh pr checks`), and Kate merges.
+**What blocks a merge.** `main` has a ruleset (the repo is public) requiring Lint, Unit Tests, Requirements Coverage, Build and `no-attribution`. Claude never commits to `main`. Since 2026-10-16 Claude may open **and squash-merge** PRs, but only when every check is green (`command gh pr checks`) and the `reviewer` agent has run. Repo settings, secrets, and anything that sends a message still need Kate's OK each time.
 
 **Scope: new code.** These gates fire on diffs, so they cover code written from 2026-10-16 on. Code written before that is brought up to the same bar by the backfill in issue #239 (mutation survivors per file, an Ops audit of every job, a reviewer pass per module, security, dependencies). Until that's done, a low score in an old file is a known gap, not a surprise.
 
