@@ -556,6 +556,12 @@ describe('REQ-109 runScheduleSync', () => {
     expect(fetchedUrls()).toEqual([`${SITE}/schedule/days-7/2026/10/19`, `${SITE}/schedule/days-7/2026/10/26`]);
   });
 
+  it('fetches a cursor page exactly 7 days after next week (not "less than 7")', async () => {
+    // 11/2 is 7 days after 10/26 in UTC (CI) and 7 days + 1 h in Pacific (DST ends 11/1): fetched in both.
+    await runScheduleSync(makeDb({ cursor: '2026-11-02' }));
+    expect(fetchedUrls()[2]).toBe(`${SITE}/schedule/days-7/2026/11/2`);
+  });
+
   it('fetches a cursor page exactly 7 days before this week (not "less than 7")', async () => {
     await runScheduleSync(makeDb({ cursor: '2026-10-12' }));
     expect(fetchedUrls()[2]).toBe(`${SITE}/schedule/days-7/2026/10/12`);
@@ -678,6 +684,13 @@ describe('REQ-109 runScheduleSync', () => {
     expect(db.calls.settingsUpdates).toEqual([{ values: { schedule_cursor_date: '2026-11-23' }, col: 'id', val: 'settings-1' }]);
     expect(db.calls.settingsInserts).toEqual([]);
     expect(result.cursorAdvancedTo).toBe('2026-11-23');
+  });
+
+  it('reports cursorAdvancedTo as the saved local date, even late in the evening', async () => {
+    vi.setSystemTime(new Date(2026, 9, 19, 23, 30));
+    const db = makeDb({ cursor: '2026-11-16' });
+    const result = await runScheduleSync(db);
+    expect(result.cursorAdvancedTo).toBe(db.calls.settingsUpdates[0].values.schedule_cursor_date);
   });
 
   it('with no settings row, starts the cursor at today and inserts today + 7 days', async () => {
@@ -931,6 +944,21 @@ describe('REQ-109 runDetailSync', () => {
     expect(markFailed).toHaveBeenCalledWith(db, 'q1', 'upsert conflict');
     expect(markDone).not.toHaveBeenCalled();
     expect(result).toEqual({ action: 'save_failed', error: 'upsert conflict', externalId: 'C63X', queueDepth: 4 });
+  });
+
+  it.each([
+    ['form fetch', () => { dequeueOne.mockResolvedValue(formItem()); fetchAndStoreBoardingForm.mockRejectedValue('form page timeout'); }, 'form_failed'],
+    ['detail fetch', () => { dequeueOne.mockResolvedValue(appointmentItem()); fetchAppointmentDetails.mockRejectedValue('detail timeout'); }, 'failed'],
+    ['save', () => { dequeueOne.mockResolvedValue(appointmentItem()); mapAndSaveAppointment.mockRejectedValue({ code: '23505' }); }, 'save_failed'],
+    ['form fetch, rejected with nothing', () => { dequeueOne.mockResolvedValue(formItem()); fetchAndStoreBoardingForm.mockRejectedValue(undefined); }, 'form_failed'],
+    ['detail fetch, rejected with nothing', () => { dequeueOne.mockResolvedValue(appointmentItem()); fetchAppointmentDetails.mockRejectedValue(undefined); }, 'failed'],
+  ])('a thrown non-Error during the %s still marks the item failed', async (_step, arrange, action) => {
+    arrange();
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(result.action).toBe(action);
+    expect(markFailed).toHaveBeenCalledTimes(1);
+    expect(markFailed.mock.calls[0][1]).toBe('q1');
   });
 
   it('a save error is recorded with its first 200 characters', async () => {

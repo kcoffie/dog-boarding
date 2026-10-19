@@ -688,7 +688,7 @@ cron functions that each complete within the Hobby plan's 10-second limit.
 **Acceptance Criteria:**
 - `cron-auth` always re-authenticates on every run — no skip-if-valid logic (unconditional refresh prevents the race condition where a late-stored session appears valid but expires before morning notify windows)
 - `cron-auth` stores new session cookies and expiry in `sync_settings` after successful auth
-- `cron-schedule` fetches the current week + a rotating cursor week per call
+- `cron-schedule` fetches this week, next week and a rotating cursor week per call (see Shared runners below)
 - `cron-schedule` cursor advances 7 days each call, wraps back to today after 8 weeks (~today+56d)
 - `cron-schedule` filters known non-boarding titles before enqueueing (same patterns as `sync.js`)
 - `cron-detail` picks the oldest pending item from `sync_queue`, fetches the detail page, upserts to DB
@@ -712,8 +712,8 @@ cron functions that each complete within the Hobby plan's 10-second limit.
   - A title matching `nonBoardingPatterns` is skipped (counted in `skipped`). Any other is enqueued with its ID, its absolute URL, its title (else the pet name), and its first pet ID as `meta.external_pet_id` (else no meta)
   - One failed enqueue doesn't stop the others; `queued` counts only the ones that succeeded
   - All the pages' daytime events are upserted in one call; `daytimeUpserted` / `daytimeErrors` report its result
-  - The cursor is saved as cursor + 7 days (`YYYY-MM-DD`): the existing `sync_settings` row is updated, or a row is inserted when none exists. With no cursor stored, the cursor is today
-  - Returns `action: 'ok'` with `pagesScanned`, `found`, `skipped`, `queued`, `cursorAdvancedTo` and the pending `queueDepth`
+  - The cursor is saved as cursor + 7 days (`YYYY-MM-DD`, a local date): the existing `sync_settings` row is updated, or a row is inserted when none exists. With no cursor stored, the cursor is today. A next cursor past today + 56 days wraps back to today; exactly today + 56 is kept
+  - Returns `action: 'ok'` with `pagesScanned`, `found`, `skipped`, `queued`, the pending `queueDepth`, and `cursorAdvancedTo` equal to the saved cursor date
 - *Schedule page parsing (`parseScheduleHtml`):* every `/schedule/a/<id>/<timestamp>` link is one appointment (first one wins for a repeated ID), with trimmed pet, client, time and title text, every `data-pet` ID, and a relative link made absolute. A link without both an ID and a numeric timestamp is ignored
 - *Detail step (`runDetailSync`), one queue item per call:*
   - No session → `session_failed`, before anything is dequeued
@@ -721,9 +721,12 @@ cron functions that each complete within the Hobby plan's 10-second limit.
   - **Form item:** with no `external_pet_id` it is marked done (`skipped`, `no_pet_id`). Otherwise the form is fetched and stored for its boarding and pet → done, `form_stored`
   - **Appointment item:** the appointment ID and timestamp come from the item's URL (if the URL doesn't match, the item's `external_id` and no timestamp). A missing pet name falls back to the queued title. An appointment the detail filters reject (REQ-104) is marked done, `skipped` with the filter's reason, and is not saved. Otherwise it is saved with the item's pet ID → done, and the action is `created`, `updated` (sync, dog or boarding record changed) or `unchanged`
   - **Session expired** during a form or detail fetch → the session is cleared and the item goes back to `pending` (not a retry); returns `session_cleared`
-  - **Any other fetch or save error** → the item is marked failed with the error's first 200 characters (retry/backoff per above); returns `form_failed`, `failed` or `save_failed`
+  - **Any other fetch or save error**, including a thrown value that isn't an `Error` → the item is marked failed with the error's first 200 characters (retry/backoff per above); returns `form_failed`, `failed` or `save_failed`
   - Every processed item reports the pending `queueDepth`
-- *Known gap (#239):* `sync_settings` read and write errors are ignored. A failed cursor save leaves the cursor in place without any alert
+- *Known gaps (#275), none of which alert today:*
+  - `sync_settings` errors are ignored. A failed cursor read resets the cursor to today. A failed row-id read inserts a second row, after which every `.single()` read of the table fails: the cursor stays at today and the session cache breaks
+  - `session_cleared` is recorded as health success and doesn't count a retry, so a login change that keeps serving the login form loops silently
+  - A run whose enqueues all failed still returns `ok` and advances the cursor past that week
 
 **DB schema additions (run migration before first deploy):**
 ```sql
