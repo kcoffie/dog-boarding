@@ -240,7 +240,7 @@ All secrets must be **Repository secrets** (not environment secrets) for workflo
 | `NOTIFY_RECIPIENTS` | notify workflows | E.164, comma-separated |
 | `TELEGRAM_BOT_TOKEN` | integration-check, health-check, gmail-monitor (+ Vercel: ops-watch, send-question) | `@qap_alert_bot` token from @BotFather. Rotate with `/revoke`, then update GitHub **and** Vercel |
 | `TELEGRAM_ALERT_CHAT_ID` | same as above | Kate's private chat with the bot (from `getUpdates` after she messages it once) |
-| `ANTHROPIC_API_KEY` | integration-check | Step 3 vision check — silently skipped if no credits |
+| `ANTHROPIC_API_KEY` | gmail-monitor | Optional one-line summary of each alert email (plain `fetch`, no SDK); skipped if unset |
 | `GMAIL_CLIENT_ID` | gmail-monitor | Google Cloud OAuth2 |
 | `GMAIL_CLIENT_SECRET` | gmail-monitor | Google Cloud OAuth2 |
 | `GMAIL_REFRESH_TOKEN` | gmail-monitor | Long-lived, doesn't expire for personal accounts in test mode |
