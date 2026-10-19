@@ -1,30 +1,15 @@
 /**
- * Regression tests for the integration-check daycare-only false-positive filter.
+ * Regression tests for the integration-check daycare-only false-positive filter (REQ-620).
+ * @requirements REQ-620
  *
- * The `isDaycareOnlyTitle` function lives in scripts/integration-check.js and
- * cannot be imported (it's a standalone script). These tests mirror the exact
- * patterns and validate the confirmed false positives (31 March 2026; +2 April 2026;
- * +1 April 2026 Daycare Add-On Day) plus a set of real boardings that must NOT be filtered.
- *
- * If you change DAYCARE_ONLY_PATTERNS in integration-check.js, update here too.
+ * Tests the real `isDaycareOnlyTitle` exported from scripts/integration-check.js
+ * (main() only runs when the script is executed directly). Covers the confirmed
+ * false positives (31 March 2026; +2 April 2026; +1 April 2026 Daycare Add-On Day;
+ * +1 October 2026 weekend daycare) plus real boardings that must NOT be filtered.
  */
 
 import { describe, it, expect } from 'vitest';
-
-// Mirror of DAYCARE_ONLY_PATTERNS in scripts/integration-check.js
-const DAYCARE_ONLY_PATTERNS = [
-  /\bP\/?G\b.*\b(M|T|W|Th|F|FT|OFF)\b/i,
-  /\bP\/?G[: .]?\s*(?:TH|[MTWF])+\b/i,
-  /make.?up days/i,
-  /no charge/i,
-  /\bdaycare\b/i,
-  /\bN\/C\b/i,
-  /^\d+\/\d+$/, // bare date "4/21" — Daycare Add-On Day; real boardings show ranges like "4/21-25"
-];
-
-function isDaycareOnlyTitle(title) {
-  return DAYCARE_ONLY_PATTERNS.some(re => re.test(title));
-}
+import { isDaycareOnlyTitle } from '../../scripts/integration-check.js';
 
 // ─── Known false positives (must be filtered) ─────────────────────────────────
 
@@ -58,9 +43,11 @@ const FALSE_POSITIVES = [
   'Millie McSpadden — P/G MTWTH',
   'Fergus Stevens — P/G TWTH',
   'Hank Yip — PG:WTH',
+  'PG: TWTH',            // separator, then a space, then run-together days
   // Make-up days
   'Moonbeam — Make up days T.F',
   'Maple — make up days',
+  'Makeup days',
   // No charge
   'Peanut — No charge',
   // Standalone daycare (added April 2026 — PR #159)
@@ -76,6 +63,13 @@ const FALSE_POSITIVES = [
   '4/21',
   '3/5',
   '12/31',
+  // Weekend daycare (added October 2026 — #272)
+  // Detail page is category DC, so the sync skips it; the title doesn't start with DC.
+  'Wknd DC 10/24',
+  'Dog A — Wknd DC 10/24',
+  'Weekend DC 11/1',
+  'wknd d/c 10/31',
+  'Weekend  DC 11/7',     // titles are typed by hand: any run of spaces
 ];
 
 // ─── Real boardings (must NOT be filtered) ────────────────────────────────────
@@ -92,6 +86,16 @@ const REAL_BOARDINGS = [
   '4/21-25',             // bare date WITH range — real boarding (new; guards against over-filtering)
   '4/21-21',             // same-day range format
   '3/5-8',
+  '4/21-4/25',           // range with a month on both ends: ends in d/d but isn't a bare date
+  // A boarding can name the DC full-time tier (#198); only "Wknd/Weekend DC" is daycare
+  'Boarding discounted nights for DC full-time',
+  'Dog B 10/24-26 DC full-time',
+  // A weekend-DC title with a date range might be an overnight stay: keep it a candidate (#272)
+  'Wknd DC 10/24-26',
+  'Dog C — Weekend DC 10/24 - 10/26',
+  '10/24-26 Wknd DC',
+  'Wknd DC 10/24–26',      // en dash, as pasted from a phone
+  'Wknd DC 10/24 to 10/26',
 ];
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
