@@ -69,7 +69,7 @@ WHERE b.external_id = 'C63QgTXx';
 - [ ] Pre-compile `attr()` regexes in `daytimeSchedule.js` — `new RegExp(name + ...)` inside hot loop, called 1,400+ times per parse run
 
 ### v4.3 Features
-- [ ] **Second WhatsApp recipient** — Kate to provide number; add to Vercel `NOTIFY_RECIPIENTS` as `+15550100103,+1XXXXXXXXXX`. No code change needed.
+- [ ] **Second WhatsApp recipient** — Kate to provide number; add to Vercel `NOTIFY_RECIPIENTS` as `+15555550100,+1XXXXXXXXXX`. No code change needed.
 - [ ] **Production WhatsApp sender** — move off Twilio sandbox to registered WhatsApp Business number. Eliminates the "text sandbox within 24hrs" requirement.
 - [ ] **Friday afternoon weekend WhatsApp job** — new GitHub Actions workflow (e.g. `notify-friday-pm.yml`), `window=friday-pm` param, sends Sat–Sun boarding preview. Reuses `api/notify` or gets its own endpoint.
 - [ ] **DST-aware cron scheduling** — currently must manually update UTC cron times each March/November DST transition.

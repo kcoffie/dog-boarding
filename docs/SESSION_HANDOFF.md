@@ -144,7 +144,7 @@ Dependabot majors still open: #174 (vite 8), #219 / #241 (vitest 5), #234 (dev g
 ## Key Facts (Don't Re-Derive)
 
 - **VITE_SYNC_PROXY_TOKEN**: used for `Authorization: Bearer` auth on internal API endpoints (`/api/send-question`, `/api/run-sync`, etc.)
-- **getAlertRecipients()**: returns `INTEGRATION_CHECK_RECIPIENTS` (Kate only — `+15550100103`). NOT `NOTIFY_RECIPIENTS` (full team).
+- **getAlertRecipients()**: returns `INTEGRATION_CHECK_RECIPIENTS` (Kate only). NOT `NOTIFY_RECIPIENTS` (full team).
 - **nightAssignments** in DataContext: `[{ date: 'YYYY-MM-DD', employeeId, workedFollowingDay }]` — top-level in `useData()`
 - **employees** in DataContext: lives at `settings.employees`, NOT top-level
 - **Vercel cron times**: all run at midnight UTC = 5:00 PM PDT (documented correctly in OVERVIEW.md as of this session)

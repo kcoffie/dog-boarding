@@ -40,7 +40,7 @@ describe('recordSentMessages', () => {
   it('inserts one row per successful send result', async () => {
     const supabase = makeSupabase();
     const results = [
-      { to: '***-***-7375', status: 'sent', messageId: 'wamid.aaa' },
+      { to: '***-***-0100', status: 'sent', messageId: 'wamid.aaa' },
       { to: '***-***-1234', status: 'sent', messageId: 'wamid.bbb' },
     ];
 
@@ -50,7 +50,7 @@ describe('recordSentMessages', () => {
     const [rows, opts] = supabase._upsertSpy.mock.calls[0];
     expect(rows).toHaveLength(2);
     expect(rows[0].wamid).toBe('wamid.aaa');
-    expect(rows[0].recipient).toBe('***-***-7375');
+    expect(rows[0].recipient).toBe('***-***-0100');
     expect(rows[0].send_job).toBe('notify-4am');
     expect(rows[0].status).toBe('sent');
     expect(rows[1].wamid).toBe('wamid.bbb');
@@ -60,7 +60,7 @@ describe('recordSentMessages', () => {
   it('skips results with status !== "sent"', async () => {
     const supabase = makeSupabase();
     const results = [
-      { to: '***-***-7375', status: 'failed', error: 'Meta API error' },
+      { to: '***-***-0100', status: 'failed', error: 'Meta API error' },
       { to: '***-***-1234', status: 'sent',   messageId: 'wamid.ccc' },
     ];
 
@@ -74,7 +74,7 @@ describe('recordSentMessages', () => {
   it('skips results where messageId is missing', async () => {
     const supabase = makeSupabase();
     const results = [
-      { to: '***-***-7375', status: 'sent', messageId: undefined },
+      { to: '***-***-0100', status: 'sent', messageId: undefined },
       { to: '***-***-1234', status: 'sent', messageId: 'wamid.ddd' },
     ];
 
@@ -87,7 +87,7 @@ describe('recordSentMessages', () => {
 
   it('does not call supabase when all results are non-sent', async () => {
     const supabase = makeSupabase();
-    const results = [{ to: '***-***-7375', status: 'failed', error: 'err' }];
+    const results = [{ to: '***-***-0100', status: 'failed', error: 'err' }];
 
     await recordSentMessages(supabase, results, 'notify-7am');
 
@@ -104,7 +104,7 @@ describe('recordSentMessages', () => {
 
   it('is non-fatal — swallows DB errors without throwing', async () => {
     const supabase = makeSupabase({ upsertError: { message: 'connection refused' } });
-    const results = [{ to: '***-***-7375', status: 'sent', messageId: 'wamid.eee' }];
+    const results = [{ to: '***-***-0100', status: 'sent', messageId: 'wamid.eee' }];
 
     // Should not throw
     await expect(recordSentMessages(supabase, results, 'integration-check')).resolves.toBeUndefined();
@@ -112,7 +112,7 @@ describe('recordSentMessages', () => {
 
   it('skips DB write when supabase is null', async () => {
     // startup-crash case in integration-check.js
-    const results = [{ to: '***-***-7375', status: 'sent', messageId: 'wamid.fff' }];
+    const results = [{ to: '***-***-0100', status: 'sent', messageId: 'wamid.fff' }];
 
     await expect(recordSentMessages(null, results, 'integration-check')).resolves.toBeUndefined();
   });
@@ -126,8 +126,8 @@ describe('recordMessageLog', () => {
   it('inserts one row per result — records both sent and failed sends', async () => {
     const supabase = makeSupabase();
     const results = [
-      { to: '***-***-7375', status: 'sent',   messageId: 'wamid.aaa' },
-      { to: '***-***-5462', status: 'failed', error: 'Meta API 500' },
+      { to: '***-***-0100', status: 'sent',   messageId: 'wamid.aaa' },
+      { to: '***-***-0101', status: 'failed', error: 'Meta API 500' },
     ];
 
     await recordMessageLog(supabase, results, 'notify-4am', 'text', 'hello world', null);
@@ -136,7 +136,7 @@ describe('recordMessageLog', () => {
     const [rows] = supabase._insertSpy.mock.calls[0];
     expect(rows).toHaveLength(2);
 
-    const sentRow = rows.find(r => r.recipient === '***-***-7375');
+    const sentRow = rows.find(r => r.recipient === '***-***-0100');
     expect(sentRow.status).toBe('sent');
     expect(sentRow.wamid).toBe('wamid.aaa');
     expect(sentRow.job_name).toBe('notify-4am');
@@ -144,14 +144,14 @@ describe('recordMessageLog', () => {
     expect(sentRow.content).toBe('hello world');
     expect(sentRow.image_path).toBeNull();
 
-    const failedRow = rows.find(r => r.recipient === '***-***-5462');
+    const failedRow = rows.find(r => r.recipient === '***-***-0101');
     expect(failedRow.status).toBe('failed');
     expect(failedRow.wamid).toBeNull();
   });
 
   it('records image rows with imagePath and null content', async () => {
     const supabase = makeSupabase();
-    const results = [{ to: '***-***-7375', status: 'sent', messageId: 'wamid.bbb' }];
+    const results = [{ to: '***-***-0100', status: 'sent', messageId: 'wamid.bbb' }];
 
     await recordMessageLog(supabase, results, 'notify-friday-pm', 'image', null, 'roster-images/notify-friday-pm/2026-04-22.png');
 
@@ -164,7 +164,7 @@ describe('recordMessageLog', () => {
 
   it('failed send rows have null wamid even if messageId is present', async () => {
     const supabase = makeSupabase();
-    const results = [{ to: '***-***-7375', status: 'failed', messageId: 'should-be-ignored' }];
+    const results = [{ to: '***-***-0100', status: 'failed', messageId: 'should-be-ignored' }];
 
     await recordMessageLog(supabase, results, 'cron-health-check', 'text', 'alert', null);
 
@@ -175,7 +175,7 @@ describe('recordMessageLog', () => {
 
   it('is non-fatal — swallows DB errors without throwing', async () => {
     const supabase = makeSupabase({ insertError: { message: 'DB unavailable' } });
-    const results = [{ to: '***-***-7375', status: 'sent', messageId: 'wamid.ccc' }];
+    const results = [{ to: '***-***-0100', status: 'sent', messageId: 'wamid.ccc' }];
 
     await expect(
       recordMessageLog(supabase, results, 'gmail-monitor', 'text', 'msg', null)
@@ -183,7 +183,7 @@ describe('recordMessageLog', () => {
   });
 
   it('skips DB write when supabase is null', async () => {
-    const results = [{ to: '***-***-7375', status: 'sent', messageId: 'wamid.ddd' }];
+    const results = [{ to: '***-***-0100', status: 'sent', messageId: 'wamid.ddd' }];
 
     await expect(
       recordMessageLog(null, results, 'integration-check', 'text', 'msg', null)
@@ -215,7 +215,7 @@ describe('upsertDeliveryStatus', () => {
       wamid:       'wamid.aaa',
       status:      'delivered',
       statusAt:    '2026-04-03T04:05:06.000Z',
-      recipient:   '***-***-7375',
+      recipient:   '***-***-0100',
       errorCode:   null,
       errorTitle:  null,
       rawPayload:  { id: 'wamid.aaa', status: 'delivered' },
@@ -226,7 +226,7 @@ describe('upsertDeliveryStatus', () => {
     expect(row.wamid).toBe('wamid.aaa');
     expect(row.status).toBe('delivered');
     expect(row.status_at).toBe('2026-04-03T04:05:06.000Z');
-    expect(row.recipient).toBe('***-***-7375');
+    expect(row.recipient).toBe('***-***-0100');
     expect(row.send_job).toBe('webhook');
     expect(row.error_code).toBeNull();
     expect(row.error_title).toBeNull();
@@ -239,7 +239,7 @@ describe('upsertDeliveryStatus', () => {
       wamid:      'wamid.bbb',
       status:     'failed',
       statusAt:   '2026-04-03T04:05:06.000Z',
-      recipient:  '***-***-7375',
+      recipient:  '***-***-0100',
       errorCode:  131026,
       errorTitle: 'Message undeliverable',
       rawPayload: {},
@@ -254,7 +254,7 @@ describe('upsertDeliveryStatus', () => {
     await expect(
       upsertDeliveryStatus(supabase, {
         wamid: 'wamid.ccc', status: 'unknown_future_status',
-        statusAt: '2026-04-03T04:05:06.000Z', recipient: '***-***-7375',
+        statusAt: '2026-04-03T04:05:06.000Z', recipient: '***-***-0100',
         errorCode: null, errorTitle: null, rawPayload: {},
       })
     ).resolves.toBeUndefined();
@@ -268,7 +268,7 @@ describe('upsertDeliveryStatus', () => {
     await expect(
       upsertDeliveryStatus(supabase, {
         wamid: 'wamid.ddd', status: 'read',
-        statusAt: '2026-04-03T04:05:06.000Z', recipient: '***-***-7375',
+        statusAt: '2026-04-03T04:05:06.000Z', recipient: '***-***-0100',
         errorCode: null, errorTitle: null, rawPayload: {},
       })
     ).rejects.toMatchObject({ message: 'DB write failed' });

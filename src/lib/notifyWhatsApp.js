@@ -35,7 +35,7 @@ const TEMPLATE_LANG = 'en';
 
 /**
  * Mask a phone number for safe logging — shows only last 4 digits.
- * Input: "+15550100103"  Output: "***-***-7375"
+ * Input: "+15555550100"  Output: "***-***-0100"
  *
  * @param {string} number
  * @returns {string}
@@ -47,7 +47,7 @@ function maskNumber(number) {
 
 /**
  * Parse the NOTIFY_RECIPIENTS env var into an array of E.164 phone numbers.
- * Expected format: "+15550100103" or "+15550100103,+14085551234"
+ * Expected format: "+15555550100" or "+15555550100,+14085551234"
  *
  * Error-handling: returns empty array if env var is unset or blank.
  * Each number is trimmed; empty strings are filtered out.

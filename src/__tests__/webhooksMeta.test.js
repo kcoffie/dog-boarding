@@ -216,7 +216,7 @@ describe('POST /api/webhooks/meta', () => {
               id:           'wamid.test001',
               status:       'delivered',
               timestamp:    '1712345678',
-              recipient_id: '15550100103',
+              recipient_id: '15555550100',
               errors:       [],
               ...statusEvent,
             }],
@@ -270,7 +270,7 @@ describe('POST /api/webhooks/meta', () => {
     expect(args.wamid).toBe('wamid.test001');
     expect(args.status).toBe('delivered');
     expect(args.statusAt).toBe(new Date(1712345678 * 1000).toISOString());
-    expect(args.recipient).toBe('***-***-7375');
+    expect(args.recipient).toBe('***-***-0100');
     expect(args.errorCode).toBeNull();
     expect(args.errorTitle).toBeNull();
   });
@@ -324,8 +324,8 @@ describe('POST /api/webhooks/meta', () => {
         changes: [{
           value: {
             statuses: [
-              { id: 'wamid.aaa', status: 'delivered', timestamp: '1712345678', recipient_id: '15550100103', errors: [] },
-              { id: 'wamid.bbb', status: 'read',      timestamp: '1712345700', recipient_id: '15550100103', errors: [] },
+              { id: 'wamid.aaa', status: 'delivered', timestamp: '1712345678', recipient_id: '15555550100', errors: [] },
+              { id: 'wamid.bbb', status: 'read',      timestamp: '1712345700', recipient_id: '15555550100', errors: [] },
             ],
           },
         }],

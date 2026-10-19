@@ -126,7 +126,7 @@ const ORIG_ENV = { ...process.env };
 beforeEach(() => {
   process.env.META_PHONE_NUMBER_ID = 'phone-id-123';
   process.env.META_WHATSAPP_TOKEN = 'token-abc';
-  process.env.NOTIFY_RECIPIENTS = '+15550100103,+14085551234';
+  process.env.NOTIFY_RECIPIENTS = '+15555550100,+14085551234';
 
   // Default fetch mock: Meta calls succeed, logger calls (/api/log) are silenced.
   const { fetchMock } = makeFetchMock();
@@ -148,8 +148,8 @@ afterEach(() => {
 
 describe('getRecipients', () => {
   it('parses comma-separated E.164 numbers from NOTIFY_RECIPIENTS', () => {
-    process.env.NOTIFY_RECIPIENTS = '+15550100103,+14085551234';
-    expect(getRecipients()).toEqual(['+15550100103', '+14085551234']);
+    process.env.NOTIFY_RECIPIENTS = '+15555550100,+14085551234';
+    expect(getRecipients()).toEqual(['+15555550100', '+14085551234']);
   });
 
   it('returns empty array when env var is unset', () => {
@@ -158,8 +158,8 @@ describe('getRecipients', () => {
   });
 
   it('trims whitespace and filters blank entries', () => {
-    process.env.NOTIFY_RECIPIENTS = '  +15550100103  ,  ,+14085551234  ';
-    expect(getRecipients()).toEqual(['+15550100103', '+14085551234']);
+    process.env.NOTIFY_RECIPIENTS = '  +15555550100  ,  ,+14085551234  ';
+    expect(getRecipients()).toEqual(['+15555550100', '+14085551234']);
   });
 });
 
@@ -177,7 +177,7 @@ describe('sendRosterImage', () => {
 
     const results = await sendRosterImage(
       'https://example.com/api/roster-image?token=secret',
-      ['+15550100103'],
+      ['+15555550100'],
     );
 
     // One media upload call
@@ -193,7 +193,7 @@ describe('sendRosterImage', () => {
     expect(msgUrl).toContain('phone-id-123/messages');
     const body = JSON.parse(msgOpts.body);
     expect(body.messaging_product).toBe('whatsapp');
-    expect(body.to).toBe('+15550100103');
+    expect(body.to).toBe('+15555550100');
     expect(body.type).toBe('template');
     expect(body.template.name).toBe('dog_boarding_roster');
     expect(body.template.language.code).toBe('en');
@@ -213,8 +213,8 @@ describe('sendRosterImage', () => {
     const { fetchMock } = makeImageFetchMock();
     vi.stubGlobal('fetch', fetchMock);
 
-    const results = await sendRosterImage('https://example.com/img.png', ['+15550100103']);
-    expect(results[0].to).toBe('***-***-7375');
+    const results = await sendRosterImage('https://example.com/img.png', ['+15555550100']);
+    expect(results[0].to).toBe('***-***-0100');
   });
 
   it('throws when media upload returns non-2xx', async () => {
@@ -224,7 +224,7 @@ describe('sendRosterImage', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      sendRosterImage('https://example.com/img.png', ['+15550100103'])
+      sendRosterImage('https://example.com/img.png', ['+15555550100'])
     ).rejects.toThrow(/Upload failed.*500/);
   });
 
@@ -233,7 +233,7 @@ describe('sendRosterImage', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      sendRosterImage('https://example.com/img.png', ['+15550100103'])
+      sendRosterImage('https://example.com/img.png', ['+15555550100'])
     ).rejects.toThrow(/Image fetch failed/);
   });
 
@@ -243,7 +243,7 @@ describe('sendRosterImage', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const results = await sendRosterImage('https://example.com/img.png', ['+15550100103']);
+    const results = await sendRosterImage('https://example.com/img.png', ['+15555550100']);
     expect(results[0].status).toBe('failed');
     expect(results[0].error).toMatch(/Meta API error 400/);
   });
@@ -255,7 +255,7 @@ describe('sendRosterImage', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const results = await sendRosterImage('https://example.com/img.png', [
-      '+15550100103',
+      '+15555550100',
       '+14085551234',
     ]);
 
@@ -274,7 +274,7 @@ describe('sendRosterImage', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const results = await sendRosterImage('https://example.com/img.png', [
-      '+15550100103',
+      '+15555550100',
       '+14085551234',
     ]);
 
@@ -289,7 +289,7 @@ describe('sendRosterImage', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const results = await sendRosterImage('https://example.com/img.png', [
-      '+15550100103',
+      '+15555550100',
       '+14085551234',
     ]);
 
@@ -323,11 +323,11 @@ describe('sendTextMessage', () => {
     const { fetchMock: fm, metaCalls: mc } = makeFetchMock([metaOk('wamid.txt001')]);
     vi.stubGlobal('fetch', fm);
 
-    const results = await sendTextMessage('⚠️ Alert message', ['+15550100103']);
+    const results = await sendTextMessage('⚠️ Alert message', ['+15555550100']);
 
     expect(mc()).toHaveLength(1);
     const body = JSON.parse(mc()[0][1].body);
-    expect(body.to).toBe('+15550100103');
+    expect(body.to).toBe('+15555550100');
     expect(body.type).toBe('template');
     expect(body.template.name).toBe('dog_boarding_alert');
     expect(body.template.language.code).toBe('en');
@@ -345,7 +345,7 @@ describe('sendTextMessage', () => {
     const { fetchMock: fm, metaCalls: mc } = makeFetchMock();
     vi.stubGlobal('fetch', fm);
 
-    const results = await sendTextMessage('test', ['+15550100103']);
+    const results = await sendTextMessage('test', ['+15555550100']);
     expect(mc()).toHaveLength(0);
     expect(results[0].status).toBe('failed');
   });
@@ -364,7 +364,7 @@ describe('sendTextMessage', () => {
     vi.stubGlobal('fetch', fm);
 
     const multiLine = '⚠️ Integration check found issues (3/25/26)\nBoarding:\n• Missing from DB: Tula\n• Missing from DB: Fergus';
-    await sendTextMessage(multiLine, ['+15550100103']);
+    await sendTextMessage(multiLine, ['+15555550100']);
 
     const body = JSON.parse(mc()[0][1].body);
     const paramText = body.template.components[0].parameters[0].text;
@@ -378,7 +378,7 @@ describe('sendTextMessage', () => {
 
     // Leading/trailing spaces on lines, empty lines in between
     const messy = '  First line  \n\n  Second line  \n\n';
-    await sendTextMessage(messy, ['+15550100103']);
+    await sendTextMessage(messy, ['+15555550100']);
 
     const body = JSON.parse(mc()[0][1].body);
     const paramText = body.template.components[0].parameters[0].text;
@@ -389,7 +389,7 @@ describe('sendTextMessage', () => {
     const { fetchMock: fm, metaCalls: mc } = makeFetchMock([metaOk()]);
     vi.stubGlobal('fetch', fm);
 
-    await sendTextMessage('✅ All good', ['+15550100103']);
+    await sendTextMessage('✅ All good', ['+15555550100']);
 
     const body = JSON.parse(mc()[0][1].body);
     const paramText = body.template.components[0].parameters[0].text;
@@ -408,8 +408,8 @@ describe('getAlertRecipients', () => {
   });
 
   it('parses comma-separated E.164 numbers from INTEGRATION_CHECK_RECIPIENTS', () => {
-    process.env.INTEGRATION_CHECK_RECIPIENTS = '+15550100103,+14085551234';
-    expect(getAlertRecipients()).toEqual(['+15550100103', '+14085551234']);
+    process.env.INTEGRATION_CHECK_RECIPIENTS = '+15555550100,+14085551234';
+    expect(getAlertRecipients()).toEqual(['+15555550100', '+14085551234']);
   });
 
   it('returns empty array when env var is unset', () => {
@@ -418,7 +418,7 @@ describe('getAlertRecipients', () => {
   });
 
   it('trims whitespace and filters blank entries', () => {
-    process.env.INTEGRATION_CHECK_RECIPIENTS = '  +15550100103  ,  ,+14085551234  ';
-    expect(getAlertRecipients()).toEqual(['+15550100103', '+14085551234']);
+    process.env.INTEGRATION_CHECK_RECIPIENTS = '  +15555550100  ,  ,+14085551234  ';
+    expect(getAlertRecipients()).toEqual(['+15555550100', '+14085551234']);
   });
 });

@@ -182,7 +182,7 @@ Every function follows a structured logging convention: log the input, log every
 ```
 [Sync 21:24:48] [SessionCache] ✅ Session valid (~3h remaining)
 [PictureOfDay] Worker Staff Member 4 (189436): +1 added, -5 removed, 5 unchanged
-[NotifyWA] Sent to ***-***-7375 — messageId: wamid.HBgL...
+[NotifyWA] Sent to ***-***-0100 — messageId: wamid.HBgL...
 ```
 
 ### Failure surface

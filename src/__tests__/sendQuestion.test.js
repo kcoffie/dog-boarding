@@ -32,7 +32,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.VITE_SYNC_PROXY_TOKEN = 'test-token';
   sendTextMessage.mockResolvedValue([{ to: '+1***', status: 'sent', messageId: 'wamid.123' }]);
-  getAlertRecipients.mockReturnValue(['+15550100103']);
+  getAlertRecipients.mockReturnValue(['+15555550100']);
 });
 
 describe('REQ-700: Send a Question API', () => {
@@ -44,7 +44,7 @@ describe('REQ-700: Send a Question API', () => {
     const [body, recipients] = sendTextMessage.mock.calls[0];
     expect(body).toContain('charlie');
     expect(body).toContain('Hello');
-    expect(recipients).toEqual(['+15550100103']);
+    expect(recipients).toEqual(['+15555550100']);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ ok: true });
   });
