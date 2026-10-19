@@ -478,15 +478,15 @@ const SITE = 'https://agirlandyourdog.com';
 
 // A Supabase fake that records what the runners write. sync_settings holds at most one row.
 function makeDb({ cursor = null, hasSettingsRow = true } = {}) {
-  const calls = { settingsUpdates: [], settingsInserts: [], queueUpdates: [] };
+  const calls = { settingsSelects: [], settingsUpdates: [], settingsInserts: [], queueUpdates: [] };
   return {
     calls,
     from(table) {
       if (table === 'sync_settings') {
         return {
-          select: () => ({ limit: () => ({ single: () => Promise.resolve({
+          select: (cols) => { calls.settingsSelects.push(cols); return { limit: () => ({ single: () => Promise.resolve({
             data: hasSettingsRow ? { id: 'settings-1', schedule_cursor_date: cursor } : null, error: null,
-          }) }) }),
+          }) }) }; },
           update: (values) => ({ eq: (col, val) => { calls.settingsUpdates.push({ values, col, val }); return Promise.resolve({ error: null }); } }),
           insert: (values) => { calls.settingsInserts.push(values); return Promise.resolve({ error: null }); },
         };
@@ -546,6 +546,11 @@ describe('REQ-109 runScheduleSync', () => {
     expect(fetchedUrls()).toEqual([`${SITE}/schedule/days-7/2026/10/19`, `${SITE}/schedule/days-7/2026/10/26`]);
   });
 
+  it('leaves out a cursor page less than 7 days before this week', async () => {
+    await runScheduleSync(makeDb({ cursor: '2026-10-15' }));
+    expect(fetchedUrls()).toEqual([`${SITE}/schedule/days-7/2026/10/19`, `${SITE}/schedule/days-7/2026/10/26`]);
+  });
+
   it('leaves out the cursor page when the cursor is less than 7 days from next week', async () => {
     await runScheduleSync(makeDb({ cursor: '2026-10-30' }));
     expect(fetchedUrls()).toEqual([`${SITE}/schedule/days-7/2026/10/19`, `${SITE}/schedule/days-7/2026/10/26`]);
@@ -560,7 +565,13 @@ describe('REQ-109 runScheduleSync', () => {
     ensureSession.mockRejectedValue(new Error('no credentials'));
     const result = await runScheduleSync(makeDb());
     expect(result.action).toBe('session_failed');
+    expect(result.cursorAdvancedTo).toBe('');
     expect(authenticatedFetch).not.toHaveBeenCalled();
+  });
+
+  it('fetches with the session ensureSession returned', async () => {
+    await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(setSession).toHaveBeenCalledWith('session=abc');
   });
 
   it('a login page clears the session, enqueues nothing and leaves the cursor', async () => {
@@ -568,6 +579,8 @@ describe('REQ-109 runScheduleSync', () => {
     const db = makeDb({ cursor: '2026-11-16' });
     const result = await runScheduleSync(db);
     expect(result.action).toBe('session_cleared');
+    expect(result.reason).toBe('session_expired');
+    expect(result.cursorAdvancedTo).toBe('');
     expect(clearSession).toHaveBeenCalledWith(db);
     expect(enqueue).not.toHaveBeenCalled();
     expect(db.calls.settingsUpdates).toEqual([]);
@@ -575,6 +588,12 @@ describe('REQ-109 runScheduleSync', () => {
 
   it('a page with "login" but no "password" is a schedule, not a login form', async () => {
     authenticatedFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('<a href="/login">log out</a>') });
+    const result = await runScheduleSync(makeDb());
+    expect(result.action).toBe('ok');
+  });
+
+  it('a page with "password" but no "login" is a schedule, not a login form', async () => {
+    authenticatedFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('<p>reset password</p>') });
     const result = await runScheduleSync(makeDb());
     expect(result.action).toBe('ok');
   });
@@ -600,6 +619,13 @@ describe('REQ-109 runScheduleSync', () => {
     expect(enqueue.mock.calls.map(([, item]) => item.external_id)).toEqual(['STAY']);
   });
 
+  it('a non-boarding title with leading spaces is still skipped', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'DAYCARE', title: '  DC FT' }) });
+    const result = await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(result.skipped).toBe(1);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
   it('enqueues the ID, absolute URL, title and first pet ID', async () => {
     servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'STAY', ts: '1792836000', title: '10/24-27', pet: 'Dog A', petId: '10001' }) });
     const db = makeDb({ cursor: '2026-10-19' });
@@ -618,6 +644,12 @@ describe('REQ-109 runScheduleSync', () => {
     const [, item] = enqueue.mock.calls[0];
     expect(item.title).toBe('Dog A');
     expect(item.meta).toEqual({});
+  });
+
+  it('an appointment with no title and no pet name is queued with an empty title', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'STAY' }) });
+    await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(enqueue.mock.calls[0][1].title).toBe('');
   });
 
   it('one failed enqueue does not stop the others, and only successes count as queued', async () => {
@@ -655,10 +687,28 @@ describe('REQ-109 runScheduleSync', () => {
     expect(db.calls.settingsUpdates).toEqual([]);
   });
 
-  it('a cursor date is padded to YYYY-MM-DD', async () => {
-    const db = makeDb({ cursor: '2026-12-01' });
+  it('a cursor date is zero-padded to YYYY-MM-DD', async () => {
+    const db = makeDb({ cursor: '2026-09-01' });
     await runScheduleSync(db);
-    expect(db.calls.settingsUpdates[0].values.schedule_cursor_date).toBe('2026-12-08');
+    expect(db.calls.settingsUpdates[0].values.schedule_cursor_date).toBe('2026-09-08');
+  });
+
+  it('a cursor landing exactly on today + 56 days is kept, not wrapped', async () => {
+    const db = makeDb({ cursor: '2026-12-07' });
+    await runScheduleSync(db);
+    expect(db.calls.settingsUpdates[0].values.schedule_cursor_date).toBe('2026-12-14');
+  });
+
+  it('a cursor past today + 56 days wraps back to today', async () => {
+    const db = makeDb({ cursor: '2026-12-08' });
+    await runScheduleSync(db);
+    expect(db.calls.settingsUpdates[0].values.schedule_cursor_date).toBe('2026-10-19');
+  });
+
+  it('reads the cursor column and the row id from sync_settings', async () => {
+    const db = makeDb({ cursor: '2026-10-19' });
+    await runScheduleSync(db);
+    expect(db.calls.settingsSelects).toEqual(['schedule_cursor_date', 'id']);
   });
 
   it('returns ok with the pending queue depth', async () => {
@@ -681,15 +731,28 @@ describe('REQ-109 parseScheduleHtml', () => {
     expect(appt.url).toBe('https://other.example.com/schedule/a/X/123');
   });
 
+  it('reads a link whose href comes after other attributes', () => {
+    const [appt] = parseScheduleHtml('<a class="day-event" data-x="1" href="/schedule/a/X/123">x</a>');
+    expect(appt.id).toBe('X');
+  });
+
   it('ignores a link without a numeric timestamp', () => {
     expect(parseScheduleHtml(link({ id: 'X', href: '/schedule/a/X/edit' }))).toEqual([]);
   });
 
-  it('reads trimmed client and time text', () => {
-    const html = '<a href="/schedule/a/X/1"><span class="day-event-time"> 9:00 AM </span><span class="event-client"> Pat Example </span></a>';
+  it('reads each field from its own class, trimmed', () => {
+    const html = '<a href="/schedule/a/X/1"><span class="other">noise</span><span class="event-client"> Pat Example </span>'
+      + '<span class="day-event-title"> 10/24-27 </span><span class="day-event-time"> 9:00 AM </span></a>';
     const [appt] = parseScheduleHtml(html);
     expect(appt.time).toBe('9:00 AM');
+    expect(appt.title).toBe('10/24-27');
     expect(appt.clientName).toBe('Pat Example');
+  });
+
+  it('a field missing from the link is an empty string', () => {
+    const [appt] = parseScheduleHtml('<a href="/schedule/a/X/1"><span class="event-pet">Dog A</span></a>');
+    expect(appt.time).toBe('');
+    expect(appt.title).toBe('');
   });
 
   it('collects every data-pet ID in a link', () => {
@@ -729,6 +792,12 @@ describe('REQ-109 runDetailSync', () => {
     expect(dequeueOne).not.toHaveBeenCalled();
   });
 
+  it('processes the item with the session ensureSession returned', async () => {
+    dequeueOne.mockResolvedValue(null);
+    await runDetailSync(makeDb());
+    expect(setSession).toHaveBeenCalledWith('session=abc');
+  });
+
   it('a form item with no pet ID is marked done and skipped as no_pet_id', async () => {
     dequeueOne.mockResolvedValue(formItem({ meta: { boarding_id: 'b1' } }));
     const db = makeDb();
@@ -745,6 +814,13 @@ describe('REQ-109 runDetailSync', () => {
     expect(fetchAndStoreBoardingForm).toHaveBeenCalledWith(db, 'b1', '10001', 'Dog A');
     expect(markDone).toHaveBeenCalledWith(db, 'q1');
     expect(result).toEqual({ action: 'form_stored', externalId: 'form-b1', queueDepth: 4 });
+  });
+
+  it('an untitled form item is fetched with an empty title', async () => {
+    dequeueOne.mockResolvedValue(formItem({ title: null }));
+    const db = makeDb();
+    await runDetailSync(db);
+    expect(fetchAndStoreBoardingForm).toHaveBeenCalledWith(db, 'b1', '10001', '');
   });
 
   it('an expired session during a form fetch clears the session and puts the item back to pending', async () => {
@@ -766,6 +842,14 @@ describe('REQ-109 runDetailSync', () => {
     expect(markFailed).toHaveBeenCalledWith(db, 'q1', 'form page 500');
     expect(result).toEqual({ action: 'form_failed', error: 'form page 500', externalId: 'form-b1', queueDepth: 4 });
     expect(markDone).not.toHaveBeenCalled();
+  });
+
+  it('a form error is recorded with its first 200 characters', async () => {
+    dequeueOne.mockResolvedValue(formItem());
+    fetchAndStoreBoardingForm.mockRejectedValue(new Error('f'.repeat(250)));
+    const db = makeDb();
+    await runDetailSync(db);
+    expect(markFailed).toHaveBeenCalledWith(db, 'q1', 'f'.repeat(200));
   });
 
   it("an item with no type is an appointment, fetched by the ID and timestamp in its URL", async () => {
@@ -847,5 +931,14 @@ describe('REQ-109 runDetailSync', () => {
     expect(markFailed).toHaveBeenCalledWith(db, 'q1', 'upsert conflict');
     expect(markDone).not.toHaveBeenCalled();
     expect(result).toEqual({ action: 'save_failed', error: 'upsert conflict', externalId: 'C63X', queueDepth: 4 });
+  });
+
+  it('a save error is recorded with its first 200 characters', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    mapAndSaveAppointment.mockRejectedValue(new Error('s'.repeat(250)));
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(markFailed).toHaveBeenCalledWith(db, 'q1', 's'.repeat(200));
+    expect(result.error).toBe('s'.repeat(200));
   });
 });
