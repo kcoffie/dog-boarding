@@ -261,6 +261,16 @@ describe('runOpsWatch', () => {
     expect(r.ok).toBe(false);
   });
 
+  it("one check that couldn't run makes the run not ok, even next to normal findings delivered on both channels", async () => {
+    const d = deps({
+      loadQueueStats: async () => { throw new Error('db down'); },
+      fetchImage: async () => ({ status: 500, contentType: 'text/plain' }),
+    });
+    const r = await runOpsWatch(d);
+    expect(r.findings).toEqual(["Couldn't check the sync queue: db down", 'Roster image broken: HTTP 500 (text/plain)']);
+    expect(r.ok).toBe(false);
+  });
+
   it('a finding is cut to 200 characters', async () => {
     const d = deps({ loadQueueStats: async () => { throw new Error('x'.repeat(500)); } });
     const r = await runOpsWatch(d);

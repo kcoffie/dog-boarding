@@ -66,11 +66,16 @@ const KNOWN_SENDERS = [
 
 // Gmail search query — cast a wide net by sender, then filter by subject in code.
 // Using 'is:unread' ensures we only process new emails each run.
-const GMAIL_QUERY = [
+// Our own "Run failed: Gmail Monitor" emails are left out here (not just skipped in code): they stay
+// unread, and while alerts fail every hourly run adds one, which would push an undelivered email out
+// of the result window and lose it (REQ-652).
+export const GMAIL_QUERY = [
   'from:(notifications@github.com OR notifications@vercel.com)',
   'OR from:(@supabase.com)',
   'is:unread',
+  '-subject:"Gmail Monitor"',
 ].join(' ');
+export const GMAIL_MAX_RESULTS = 50;
 
 // ---------------------------------------------------------------------------
 // Client factories
@@ -184,7 +189,7 @@ async function getAccessToken() {
  * @returns {Promise<string[]>} - List of message IDs
  */
 async function searchGmail(accessToken) {
-  const params = new URLSearchParams({ q: GMAIL_QUERY, maxResults: '20' });
+  const params = new URLSearchParams({ q: GMAIL_QUERY, maxResults: String(GMAIL_MAX_RESULTS) });
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`;
 
   const response = await fetch(url, {
@@ -424,20 +429,25 @@ async function buildAlertMessage(email, senderConfig) {
 // Main
 // ---------------------------------------------------------------------------
 
-async function main() {
+// The I/O main() uses (Supabase, the Gmail API); tests pass fakes.
+const defaultDeps = { getSupabase, getAccessToken, searchGmail, fetchMessage, isAlreadyProcessed, buildAlertMessage };
+
+/** Runs one scan. Returns the process exit code: 1 when any matched email's alert wasn't delivered. */
+export async function main(deps = defaultDeps) {
+  const d = { ...defaultDeps, ...deps };
   console.log('[GmailMonitor] === Gmail monitor starting ===');
 
-  const supabase = getSupabase();
+  const supabase = d.getSupabase();
 
   // Step 1: Get Gmail access token
-  const accessToken = await getAccessToken();
+  const accessToken = await d.getAccessToken();
 
   // Step 2: Search for unread emails from known senders
-  const messageIds = await searchGmail(accessToken);
+  const messageIds = await d.searchGmail(accessToken);
 
   if (messageIds.length === 0) {
     console.log('[GmailMonitor] No unread emails from known senders — done');
-    process.exit(0);
+    return 0;
   }
 
   // Step 3: Process each message
@@ -448,7 +458,7 @@ async function main() {
   for (const id of messageIds) {
     let email;
     try {
-      email = await fetchMessage(accessToken, id);
+      email = await d.fetchMessage(accessToken, id);
     } catch (err) {
       console.error('[GmailMonitor] Could not fetch message %s: %s', id, err.message);
       continue;
@@ -464,7 +474,7 @@ async function main() {
     }
 
     // Dedup check
-    const alreadyDone = await isAlreadyProcessed(supabase, id);
+    const alreadyDone = await d.isAlreadyProcessed(supabase, id);
     if (alreadyDone) {
       console.log('[GmailMonitor] Already processed %s — skipping', id);
       skipped++;
@@ -472,19 +482,19 @@ async function main() {
     }
 
     // Build and send alert
-    const message = await buildAlertMessage(email, senderConfig);
+    const message = await d.buildAlertMessage(email, senderConfig);
     console.log('[GmailMonitor] Sending alert for %s:\n%s', id, message);
     if (await forwardEmail(supabase, email, message)) alertsSent++;
     else undelivered++;
   }
 
   console.log('[GmailMonitor] === Done === (%d alert(s) sent, %d undelivered, %d skipped)', alertsSent, undelivered, skipped);
-  process.exit(undelivered > 0 ? 1 : 0);
+  return undelivered > 0 ? 1 : 0;
 }
 
 // Only run main() when executed directly — not when imported by tests.
 if (process.argv[1]?.endsWith('gmail-monitor.js')) {
-  main().catch(err => {
+  main().then(code => process.exit(code)).catch(err => {
     if (err.code === 'GMAIL_INVALID_GRANT') {
       // Known recoverable state — token revoked (e.g. new country login, password change).
       // Exit 0 so the workflow does not fail and generate its own "run failed" alert email.

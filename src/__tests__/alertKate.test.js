@@ -36,10 +36,17 @@ describe('REQ-652: sendAlert', () => {
     expect(results).toStrictEqual([{ to: 'telegram', status: 'sent' }]);
   });
 
-  it('gives up after the timeout instead of hanging', async () => {
+  it('gives up after 15 seconds instead of hanging', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
     await sendAlert('x');
-    expect(fetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    expect(timeout).toHaveBeenCalledWith(15000);
+    expect(fetch.mock.calls[0][1].signal).toBe(timeout.mock.results[0].value);
     expect(ALERT_TIMEOUT_MS).toBe(15000);
+  });
+
+  it('an alert with no text sends an empty message, not "undefined"', async () => {
+    await sendAlert(undefined);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).text).toBe('');
   });
 
   it('without a bot token, fails as not configured and makes no request', async () => {

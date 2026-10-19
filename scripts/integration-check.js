@@ -404,6 +404,24 @@ async function sendAlertMessage(message, supabase = null) {
   return alertAndLog(supabase, 'integration-check', message);
 }
 
+/**
+ * Send the report when it's needed and return the run's exit code (REQ-620, REQ-652):
+ * 0 when no report was needed or it was delivered (data issues are the report's content, not a job
+ * failure), 1 when it was needed but not delivered.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient|null} supabase
+ * @param {string} message
+ * @param {boolean} needed - false only for a passing run 2 or 3 of the day
+ * @returns {Promise<0|1>}
+ */
+export async function sendReport(supabase, message, needed) {
+  if (!needed) {
+    console.log('[IntegCheck] Check passed on run 2/3 — no report (no news is good news)');
+    return 0;
+  }
+  return exitCodeAfterAlert(await sendAlertMessage(message, supabase));
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -476,7 +494,7 @@ async function main() {
   if (!cookieString) {
     const msg = `⚠️ Integration check skipped (${today})\nNo valid session cached. Run cron-auth first.`;
     console.log('[IntegCheck]', msg);
-    process.exit(exitCodeAfterAlert(await sendAlertMessage(msg, supabase)));
+    process.exit(await sendReport(supabase, msg, true));
   }
 
   // Step 2: Playwright
@@ -523,19 +541,15 @@ async function main() {
   }
 
   console.log('[IntegCheck] === Final report ===\n%s', message);
-  let delivered = null;
-  if (alwaysSend || !passed) {
-    delivered = await sendAlertMessage(message, supabase);
-  } else {
-    console.log('[IntegCheck] Run 2/3 — check passed, suppressing the report (no news is good news)');
-  }
-
-  console.log('[IntegCheck] === Done === (%d issue(s))', allIssues.length);
-  // Data issues are the report's content, not a job failure (exit 0); an undelivered report is (exit 1).
-  process.exit(exitCodeAfterAlert(delivered));
+  const code = await sendReport(supabase, message, alwaysSend || !passed);
+  console.log('[IntegCheck] === Done === (%d issue(s), exit %d)', allIssues.length, code);
+  process.exit(code);
 }
 
-main().catch(err => {
-  console.error('[IntegCheck] Unhandled error:', err.message, err.stack);
-  process.exit(1);
-});
+// Only run main() when executed directly — not when imported by tests.
+if (process.argv[1]?.endsWith('integration-check.js')) {
+  main().catch(err => {
+    console.error('[IntegCheck] Unhandled error:', err.message, err.stack);
+    process.exit(1);
+  });
+}
