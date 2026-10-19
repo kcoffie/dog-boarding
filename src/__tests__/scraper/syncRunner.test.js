@@ -464,7 +464,9 @@ describe('runDetailSync', () => {
     const result = await runDetailSync(makeMockSupabase());
     expect(result.action).toBe('skipped');
     expect(result.reason).toMatch(/same_day/);
-    expect(markDone).toHaveBeenCalledWith(expect.anything(), 'queue-pg-daycare');
+    expect(markDone).toHaveBeenCalledWith(expect.anything(), 'queue-pg-daycare', {
+      meta: { external_pet_id: '10008', detail_skip: result.reason },
+    });
     expect(mapAndSaveAppointment).not.toHaveBeenCalled();
   });
 });

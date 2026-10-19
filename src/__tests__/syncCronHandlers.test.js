@@ -53,7 +53,7 @@ beforeEach(() => {
   writeCronHealth.mockImplementation(async () => {});
   resetStuck.mockImplementation(async () => 0);
   authenticate.mockResolvedValue({ success: true, cookies: 'sid=abc' });
-  runScheduleSync.mockResolvedValue({ action: 'scanned', pagesScanned: 3, found: 12, skipped: 7, queued: 5, cursorAdvancedTo: '2026-11-02', queueDepth: 9 });
+  runScheduleSync.mockResolvedValue({ action: 'scanned', pagesScanned: 3, found: 12, skipped: 7, queued: 5, requeuedEdited: 2, urlChangesIgnored: 4, cursorAdvancedTo: '2026-11-02', queueDepth: 9 });
   runDetailSync.mockResolvedValue({ action: 'created', externalId: 'EXT1', queueDepth: 4 });
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(NOW));
@@ -200,13 +200,13 @@ describe('REQ-109: cron-schedule', () => {
     const res = await call(cronSchedule);
     expect(res.code).toBe(200);
     expect(writes('schedule').at(-1)).toStrictEqual(['success', {
-      pagesScanned: 3, found: 12, skipped: 7, queued: 5, cursorAdvancedTo: '2026-11-02', queueDepth: 9,
+      pagesScanned: 3, found: 12, skipped: 7, queued: 5, requeuedEdited: 2, urlChangesIgnored: 4, cursorAdvancedTo: '2026-11-02', queueDepth: 9,
     }, null]);
   });
 
   it('returns the scan result to the caller', async () => {
     const res = await call(cronSchedule);
-    expect(res.body).toStrictEqual({ ok: true, action: 'scanned', pagesScanned: 3, found: 12, skipped: 7, queued: 5, cursorAdvancedTo: '2026-11-02', queueDepth: 9 });
+    expect(res.body).toStrictEqual({ ok: true, action: 'scanned', pagesScanned: 3, found: 12, skipped: 7, queued: 5, requeuedEdited: 2, urlChangesIgnored: 4, cursorAdvancedTo: '2026-11-02', queueDepth: 9 });
   });
 
   it('a failed session is recorded as a failure with its reason, without failing the HTTP call', async () => {

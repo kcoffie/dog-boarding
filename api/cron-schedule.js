@@ -66,6 +66,8 @@ export default async function handler(req, res) {
       found: result.found,
       skipped: result.skipped,
       queued: result.queued,
+      requeuedEdited: result.requeuedEdited,
+      urlChangesIgnored: result.urlChangesIgnored,
       cursorAdvancedTo: result.cursorAdvancedTo,
       queueDepth: result.queueDepth,
     }, null);

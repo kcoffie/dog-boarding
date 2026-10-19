@@ -286,7 +286,7 @@ export async function runScheduleSync(supabase) {
   const today = new Date();
   console.log(`[SyncRunner:Schedule] 📅 Cursor: ${cursorDate.toDateString()}`);
 
-  const stats = { pagesScanned: 0, found: 0, skipped: 0, queued: 0, daytimeUpserted: 0, daytimeErrors: 0 };
+  const stats = { pagesScanned: 0, found: 0, skipped: 0, queued: 0, requeuedEdited: 0, urlChangesIgnored: 0, daytimeUpserted: 0, daytimeErrors: 0 };
 
   const datesToFetch = [today];
   const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -343,19 +343,21 @@ export async function runScheduleSync(supabase) {
 
     console.log(`[SyncRunner:Schedule] 📥 ENQUEUE ${appt.id} title="${appt.title}"`);
     try {
-      await enqueue(supabase, {
+      const outcome = await enqueue(supabase, {
         external_id: appt.id,
         source_url: appt.url,
         title: appt.title || appt.petName || '',
         meta: appt.petIds?.[0] ? { external_pet_id: appt.petIds[0] } : {},
       });
       stats.queued++;
+      if (outcome === 'requeued_edited') stats.requeuedEdited++;
+      if (outcome === 'url_change_ignored') stats.urlChangesIgnored++;
     } catch (err) {
       console.error(`[SyncRunner:Schedule] ⚠️ Enqueue failed for ${appt.id}: ${err.message}`);
     }
   }
 
-  console.log(`[SyncRunner:Schedule] 🐕 ${stats.found} found, ${stats.skipped} skipped, ${stats.queued} queued`);
+  console.log(`[SyncRunner:Schedule] 🐕 ${stats.found} found, ${stats.skipped} skipped, ${stats.queued} queued (${stats.requeuedEdited} re-queued as edited, ${stats.urlChangesIgnored} URL changes ignored on skipped items)`);
 
   const daytimeResult = await upsertDaytimeAppointments(supabase, allDaytimeAppts);
   stats.daytimeUpserted = daytimeResult.upserted;
@@ -379,6 +381,8 @@ export async function runScheduleSync(supabase) {
     found: stats.found,
     skipped: stats.skipped,
     queued: stats.queued,
+    requeuedEdited: stats.requeuedEdited,
+    urlChangesIgnored: stats.urlChangesIgnored,
     daytimeUpserted: stats.daytimeUpserted,
     daytimeErrors: stats.daytimeErrors,
     cursorAdvancedTo: toLocalIsoDate(nextCursor),
@@ -508,7 +512,8 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   const { skip: shouldSkip, reason: skipReason } = applyDetailFilters(details, item.title);
   if (shouldSkip) {
     console.log(`[SyncRunner:Detail] ⏭️ SKIP ${item.external_id} — ${skipReason}`);
-    await markDone(supabase, item.id);
+    // Recorded so later URL changes on this item aren't taken as edits (#278, syncQueue.enqueue)
+    await markDone(supabase, item.id, { meta: { ...(item.meta || {}), detail_skip: skipReason } });
     const remaining = await getQueueDepth(supabase);
     return { action: 'skipped', reason: skipReason, externalId: item.external_id, queueDepth: remaining };
   }
