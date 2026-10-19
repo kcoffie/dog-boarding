@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 16, 2026, 23:50 UTC (session 33, end). Production recovered and is watched again. Two steps wait on Kate: `GH_ACTIONS_TOKEN` in Vercel, and pushing the history rewrite. First job next session: confirm the schedules run green on Node 22.
+**Last updated:** October 19, 2026, ~15:30 UTC (session 34, end). **WhatsApp is gone:** Meta disabled the account on 10-18. Kate's alerts now go to Telegram (#265, merged), but they don't reach her until she adds the `TELEGRAM_*` secrets. The team roster has **no working channel** until SMS (#260). First job next session: check which secrets Kate added, then prove both alert paths, with her OK for each test message.
 
 ---
 
@@ -7,96 +7,114 @@
 
 1. **Read this file to the end, then `docs/ENGINEERING_PROCESS.md`** (team gates). Check the baseline before changing anything: `git status`, `npm run test:run`, open PRs and issues.
 2. **Kate's rules:**
-   - Work on branches and never commit to `main`. Commit and push each green chunk; Kate merges.
+   - Work on branches and never commit to `main`. Commit and push each green chunk. Claude may open and squash-merge PRs once every check is green **and** the reviewer agent has run.
    - Use `type: description (#issue)` commits. Never add AI attribution: no Co-Authored-By, no Claude-Session, no session links. The hook and CI reject them, and they overrule Claude Code's per-session reminder.
    - Tests must catch bugs, not just exist. Follow the good-tests rules and report the mutation score, not just "N tests pass".
    - Give options as one line each with real counts, then one recommendation.
-   - Ask before sending any WhatsApp message, re-enabling workflows, adding secrets or changing repo settings.
-3. **Shell:** `gh` is aliased to `history | grep`, so always type `command gh …`.
+   - Ask before sending any message to anyone (Telegram test alerts, SMS, WhatsApp), re-enabling workflows, adding secrets or changing repo settings.
+   - Messages must never be tied to the client's (Charlie's) business. The app is Kate's alone, and Kate has no registered business.
+3. **Shell:** `gh` is aliased to `history | grep`, so always type `command gh …`. Production is **`https://qboarding.vercel.app`** (Vercel project `qboard`; the `dog-boarding` Vercel project is a dormant duplicate). Claude can't read Vercel env or logs (no CLI; Hobby logs keep 1 h). Use Kate's Chrome, the Supabase tables, or ask Kate.
 4. **Gates:** run the `architect` agent on the design note before a new job, service, secret or table. Run the `reviewer` agent before every PR. A new scheduled job ships with its failure alert, and that alert must run outside the job's own scheduler.
 5. **New code only:** the gates cover code written from 2026-10-16 on. Bringing older code up to the same bar is #239.
 
 ---
 
-## Session 34 (2026-10-18, Sunday)
-- **Node 22 schedules are green:** 21 of 21 runs since #253. #252 closed. GitHub is firing Gmail Monitor (hourly) only 5–6 times a day and hours late; in August it fired 23 a day. That's the GitHub scheduler, not our code.
-- **ops-watch has never run:** there's no `cron_health` row for `ops-watch`. Cron Health Check reported this to Kate on 10-17 and 10-18 (the watcher works). Likely cause: `CRON_SECRET` is missing in Vercel, so every call gets 401. That also means the older crons are running only because they fail open, so **don't ship the fail-closed fix until `CRON_SECRET` is confirmed set**. Asked Kate.
-- **Production checks:**
-  - sync queue at 0 (Integration Check drains it 3× a day; the Vercel detail crons do 2 items a day)
-  - roster image 200 `image/png` (it takes `?token=`, not a bearer header)
-- **History rewrite NOT pushed yet.** Rebuilt and verified on 10-18 (388 commits, main `af1e510`). **Merge freeze** until Kate pushes, then rebuild if main moved.
-- **#239 slice 1: PR #256** (open, waits for the freeze to end). 114 tests for notify plus the sync crons; scoped mutation 0% → 83.27%. Ratchet 35 → 37. CI scores on main logged.
-- **New: #255.** A notify send where every recipient fails still returns 200 and stores the hash, so 7am and 8:30 skip. Needs Kate's REQ decision.
-- **Monday 10-19:** confirm the 4am roster was sent **and delivered**, then close #246.
-- **#239 next:** `syncRunner.js` (229 survived or uncovered), `pictureOfDay.js` (195), then `sync-proxy.js`.
+## Current State (2026-10-19, end of session 34)
 
-## Current State (2026-10-16, end of session 33)
+### What happened this session
+1. **Node 22 schedules verified green.** #252 closed.
+2. **History rewrite pushed by Kate.** main is now attribution-free: 388 commits, with trees, authors and dates unchanged.
+   - **20 tags were NOT moved** (v3.0.0 → v6.1.0). GitHub's "block command line pushes that expose my email" rejected them, so they still point at the old commits.
+   - Fix (Kate): untick that setting at github.com/settings/emails, run `git push --force origin --tags` from a fresh `scripts/prepare-history-rewrite.sh` build, then tick it again.
+   - The rewrite closed open PRs (#256 → replaced by #261; #258 → #262).
+3. **Merged:**
 
-### Production
-- **WhatsApp works.** The Friday roster was sent by hand at 22:58 UTC: `delivered` to both recipients and `read` by Kate. K-8 isn't blocking.
-- **Sync caught up.** The 880-item queue was drained to 0 by `scripts/drain-queue.js`: 835 skipped, 39 boardings created, 1 updated, 17 forms.
-- **All 10 workflows are active, and schedules resumed.** The first one fired at 23:34 UTC (Gmail Monitor). That run **failed**: supabase-js 2.117 (from #240) needs Node 22 and the workflows ran Node 20. **Fixed in #253** (#252): every workflow is now on Node 22. **Not yet seen green:** the next Gmail Monitor run (around 00:15 UTC) is the first one on Node 22.
-- **Image crash fixed (#246 / #247).** satori 0.35 crashed every image function on Vercel. It's pinned at 0.26.0 and the production weekend image is verified at 200 `image/png`.
-- **ops-watch is live (#250, REQ-651).** Vercel cron, daily 17:00–17:59 UTC. Requests without `CRON_SECRET` get 401 (verified). **It needs `GH_ACTIONS_TOKEN` in Vercel.** Until then it alerts "Couldn't check the scheduled workflows".
-- **Expected false alarm:** tonight's 00:30 UTC Cron Health Check will say "ops-watch has never run". Its first run is 2026-10-17 17:00–17:59 UTC.
+   | PR | What |
+   |---|---|
+   | #261 | 114 tests for `api/notify.js` + the sync crons. Scoped mutation 0% → 83%. CI score log, ratchet 35 → 37 |
+   | #262 | #255 fixed: a notify send that reaches nobody fails (500), stores no hash, and the next window resends |
+   | #263 | Real phone numbers replaced with fictional ones (they're still in git history) |
+   | #265 | **Kate's alerts over Telegram** (#259, REQ-652). Details below |
 
-### Merged in session 33
-| PR | What |
-|---|---|
-| #240 | 20 Dependabot updates combined (#225 superseded) |
-| #242 | Team gates: attribution hook and required check, reviewer/architect agents, ENGINEERING_PROCESS, CONTRIBUTING, Stryker ratchet 35 |
-| #244 | Weekly keep-alive (REQ-650). Best effort: GitHub doesn't document that the enable call resets the timer |
-| #247 | satori pinned to 0.26.0 (image crash) |
-| #248 | `scripts/drain-queue.js` plus a RUNBOOK note |
-| #249 | CI mutation job on Node 22 |
-| #250 | ops-watch, plus cron-health-check watching it back |
-| #251 | Session handoff |
-| #253 | All workflows on Node 22 (supabase-js) |
+4. **ops-watch has never run.** `CRON_SECRET` and `GH_ACTIONS_TOKEN` were never set in Vercel; ops-watch fails closed and returns 401. Verified in Kate's Vercel: neither the qboard project, the Shared tab, nor the dog-boarding project has them. The older sync crons only run because they skip the secret check when it's unset (fail open).
+5. **Meta disabled the WhatsApp Business account** (the test account, unverified, "policy issues") on 2026-10-18. Every WhatsApp send now fails: the roster and all alerts.
+   - **Kate's decision: end users get SMS (or WhatsApp), never Telegram.**
+   - **The plan for end users:** Kate has no registered business, so the roster moves to **Twilio SMS/MMS under a Sole Proprietor 10DLC registration** (#260). Twilio's published fees at the time: $4.50 brand, $15 vetting, $2/month.
+   - **The plan for Kate's own alerts:** they moved to Telegram (#265).
+6. **GitHub's scheduler is unreliable:**
+   - On 10-19 nothing fired between 10:00 and 14:39 UTC: notify-4am and notify-7am were dropped, and keepalive has **never** run.
+   - Gmail Monitor (hourly) fires only 5–6 times a day.
+   - **So #260 must not trigger the roster from GitHub's scheduler.** Options for its design note: Vercel crons (reliable so far, but Hobby fires anywhere in the hour) or an external cron service.
 
-Ruleset: `no-attribution` is now required. 29 shipped issues were closed. Tracking issues #235, #236 and #237 are done.
+### Telegram alerts (#265, live in code, waiting on secrets)
+- **The bot is `@qap_alert_bot`** (neutral name, Kate's).
+- **`sendAlert()` / `alertAndLog()` in `src/lib/alertKate.js`:**
+  - One attempt, 15 s timeout. It never throws, and no error or log line contains the token.
+  - Every attempt is written to `message_log`.
+- **A failed alert is never silent:**
+  - cron-health-check, integration-check and gmail-monitor **exit 1** (red run → GitHub emails Kate).
+  - gmail-monitor marks an email processed only after delivery, and its search excludes its own failure emails.
+  - send-question returns **502** instead of "Sent!".
+  - ops-watch reports failed alert rows from the last 24 h.
+- **Kate's decisions:**
+  - Client data in alert text going to Telegram is OK.
+  - An hourly red gmail-monitor while Telegram is down is OK.
+  - ops-watch's "no 4am roster" finding stays on until #260.
+- **Until the secrets exist, every alert fails as "not configured" and those runs go red.** That's loud, and intended.
+
+### Kate's setup steps (check what's done: `command gh secret list -R kcoffie/dog-boarding`)
+1. In @BotFather: `/setjoingroups` → `@qap_alert_bot` → Disable. Then send the bot any message.
+2. Chat ID: copy the bot token, then run `! curl -s "https://api.telegram.org/bot$(pbpaste)/getUpdates" | grep -o '"chat":{"id":[0-9-]*' | head -1`
+3. GitHub secrets: `! pbpaste | command gh secret set TELEGRAM_BOT_TOKEN -R kcoffie/dog-boarding`, then the same for `TELEGRAM_ALERT_CHAT_ID`.
+4. Vercel **qboard → Production**, type **Secret**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID`, `CRON_SECRET` (random, e.g. `openssl rand -hex 32`), `GH_ACTIONS_TOKEN` (fine-grained PAT, this repo only, Actions read and write). Then **redeploy**.
+5. Optional: turn off Cron Jobs on the dormant `dog-boarding` Vercel project, or delete that project. If it ever deploys production, every cron runs twice.
+6. Five Vercel variables show "Needs Attention". All five are secret-looking values stored as type **Config**, so the likely fix is to re-save them as type **Secret** (unconfirmed).
+
+### Production (verified 2026-10-19 15:03 UTC)
+- main `4d6cc25` is deployed. The roster image returns 200 `image/png`. send-question without auth returns 401.
+- The sync queue is at 0. The Vercel crons run nightly, and Integration Check drains the queue 3× a day.
 
 ### Mutation
-Baseline **35.25% (2648 / 7512)**, ratchet 35. New code: `workflowHealth.js` 100%, `opsWatch.js` 99.33%, `api/ops-watch.js` 82.74%. CI's `mutation` job on main runs on Node 22 since #249. **Check its first green run and add the CI score to the score log** in ENGINEERING_PROCESS.
-
-### History rewrite (Kate approved; Kate must push)
-110 old commits on main carry Claude attribution lines. Claude can't force-push main (blocked by the permission classifier), so: `sh scripts/prepare-history-rewrite.sh <empty scratch dir>` builds the rewrite in a fresh clone and verifies it:
-- same commit count, and every commit's tree, author, dates and subject unchanged
-- no attribution left
-- dependabot co-authors kept
-- a backup bundle saved to `~/projs/qap/_salvage/`
-
-It then prints the exact push command for Kate. **Rebuild right before Kate pushes**: any merge to main makes an older build's `--force-with-lease` refuse (safely). After the push:
-- every clone needs `git fetch && git reset --hard origin/main` while on main
-- SHAs quoted in old docs and comments stop resolving
-- 80+ stale remote branches still hold the old history (deleting them is Kate's call)
+- **CI on main:** 35.61% at the first green run, then 37.83%. Ratchet 37.
+- **Scoped scores this session:**
+  - notify/crons: 83.27%
+  - `opsWatch.js`: 99.4%
+  - `send-question`: 87.9%
+  - `ops-watch`: 87.3%
+  - `alertKate`: 82%
+- The full-run CI score after #261/#265 shows up on the next main CI run's Mutation job. Add it to the score log.
 
 ### Issues
-Open:
-- #239 (backfill: existing code up to the gates bar; findings are in its comments)
-- #238 (deps; close it once the majors are triaged)
-- #246 (close it after a scheduled roster renders)
-- #252 (close it after green Node 22 scheduled runs)
-- #145
-- 15 January backlog items (#6–#24)
-
-Dependabot majors still open: #174 (vite 8), #219 / #241 (vitest 5), #234 (dev group). **Keep satori at 0.26** until a newer version is proven in a Vercel deploy.
+- **#260:** the roster over SMS (Twilio Sole Proprietor). Waits on Kate's Twilio registration. Needs a design note and the architect review, and its trigger must not be GitHub's scheduler.
+- **#264:** real client customer data in public test fixtures (`src/__tests__/scraper/fixtures.js`): one full record plus two names with client IDs, referenced by 8 test files. Scrub it. **Kate decides** whether to rewrite history again.
+- **#257:** ops-watch rule for `notify` / `notify-friday-pm` failure rows.
+- **#246:** open. Close it only after a scheduled roster is sent **and** delivered, which now means after #260.
+- **#239:** the backfill. Its comments list the review findings:
+  - send-question auth is weak; the `VITE_` token ships to browsers
+  - gmail-monitor exits 0 on a revoked Gmail grant
+  - make the older crons fail closed on `CRON_SECRET` (**only after Kate confirms it's set**)
+  - next mutation targets: `syncRunner.js`, then `pictureOfDay.js`
+- **#238, #145:** dependencies. Five new Dependabot PRs arrived 10-19 (#266–#270, including vite 8 and vitest 5 majors). After any dependency merge, verify the production image endpoint and the next scheduled run, and keep satori at 0.26.
 
 ## Immediate Next Steps
-1. **Verify the schedules on Node 22:** `command gh run list --event schedule --limit 8`. Gmail Monitor, Integration Check and Cron Health Check should be green since #253. If one fails, read `--log-failed` and fix it like #253. Then close #252.
-2. **Kate:** create a fine-grained PAT (repo `kcoffie/dog-boarding` only, **Actions: Read and write**), set it as `GH_ACTIONS_TOKEN` in Vercel → Production, and confirm `CRON_SECRET` is set there. Check with `curl -H "Authorization: Bearer $CRON_SECRET" "https://qboarding.vercel.app/api/ops-watch?dryRun=1"`. The next agent can't read Vercel env; ask Kate.
-3. **After 2026-10-17 17:00–17:59 UTC:** confirm ops-watch ran (`cron_health` row `ops-watch`) and what it reported.
-4. **Monday 2026-10-19:** confirm the 4am roster was sent **and delivered** (`message_log` job `notify-4am`, then `message_delivery_status`). If yes, close #246.
-5. **History rewrite:** if Kate hasn't pushed yet, rebuild with `scripts/prepare-history-rewrite.sh` and give her the printed command. Don't merge anything between the rebuild and her push.
-6. **Kate (delete guard):** `rm ~/projs/qap/dog-boarding/docs/MEMORY.md ~/projs/qap/nah.bak && rm -rf ~/projs/qap/dog-boarding/.stryker-tmp`.
-7. Start #239: tests for `api/notify.js` and the sync crons first (0% mutation score; they're what the client feels).
+1. **Check Kate's setup** (above): `command gh secret list`, and ask her about Vercel.
+2. **Prove both alert paths, asking Kate before each test message:**
+   - GitHub path: `command gh workflow run cron-health-check.yml`. It only alerts if something's wrong; if all is healthy, use Send-a-Question instead.
+   - Vercel path: one question from the app.
+   - Then the ops-watch dry run: `curl -H "Authorization: Bearer $CRON_SECRET" "https://qboarding.vercel.app/api/ops-watch?dryRun=1"`. Kate runs it, since the secret must stay out of the chat.
+3. **After the next 17:00 UTC:** confirm a `cron_health` row for `ops-watch`, and that its email path works.
+4. **#260 SMS roster:** once Kate has a Twilio account, write the design note (trigger, MMS image via a short-lived signed URL to the stored PNG, Twilio status callbacks into `message_delivery_status`, opt-in wording), then the architect review, then the build.
+5. **#264:** scrub the fixtures (tests keep their meaning; values change consistently).
+6. **#239:** continue with `syncRunner.js` tests from REQUIREMENTS, with mutation scores reported.
 
 ## Open TODOs
-- [ ] #239 backfill (mutation gaps, Ops audit of every job, `CRON_SECRET` fail-open in older crons, majors incl. satori)
+- [ ] #239 backfill (see its comments), #264 fixtures, #257 ops-watch notify-failure rule
+- [ ] 20 old tags still on the pre-rewrite history (Kate)
 - [ ] `mutate:changed` (80% on changed lines) as a PR check
 - [ ] A PR check that `thresholds.break` never goes down (the reviewer enforces it for now)
-- [ ] keep-alive: confirm after 60 days (around 2026-12-15) that the timer really reset. ops-watch reports it if not.
+- [ ] keep-alive has never run on GitHub's scheduler. ops-watch's workflow-age check reports it once `GH_ACTIONS_TOKEN` is set.
+- [ ] Remove `INTEGRATION_CHECK_RECIPIENTS` and the stale `TWILIO_*` GitHub secrets (Kate; no code uses them now)
 - [ ] Delete merged stale remote branches (Kate's call)
-- [ ] Old worktrees for merged branches live in the session scratchpad (temporary). Nothing is unpushed.
 
 ---
 
@@ -148,7 +166,7 @@ Dependabot majors still open: #174 (vite 8), #219 / #241 (vitest 5), #234 (dev g
 - **nightAssignments** in DataContext: `[{ date: 'YYYY-MM-DD', employeeId, workedFollowingDay }]` — top-level in `useData()`
 - **employees** in DataContext: lives at `settings.employees`, NOT top-level
 - **Vercel cron times**: all run at midnight UTC = 5:00 PM PDT (documented correctly in OVERVIEW.md as of this session)
-- **K-8 open**: Replace Meta test phone number before ~July 2, 2026
+- **K-8 closed by events:** Meta disabled the test WhatsApp account on 2026-10-18. The roster moves to SMS (#260), and Kate's alerts are on Telegram (#265).
 
 ---
 
