@@ -66,7 +66,7 @@ const FALSE_POSITIVES = [
   // Weekend daycare (added October 2026 — #272)
   // Detail page is category DC, so the sync skips it; the title doesn't start with DC.
   'Wknd DC 10/24',
-  'Biscuit — Wknd DC 10/24',
+  'Dog A — Wknd DC 10/24',
   'Weekend DC 11/1',
   'wknd d/c 10/31',
   'Weekend  DC 11/7',     // titles are typed by hand: any run of spaces
@@ -89,7 +89,11 @@ const REAL_BOARDINGS = [
   '4/21-4/25',           // range with a month on both ends: ends in d/d but isn't a bare date
   // A boarding can name the DC full-time tier (#198); only "Wknd/Weekend DC" is daycare
   'Boarding discounted nights for DC full-time',
-  'Max 10/24-26 DC full-time',
+  'Dog B 10/24-26 DC full-time',
+  // A weekend-DC title with a date range might be an overnight stay: keep it a candidate (#272)
+  'Wknd DC 10/24-26',
+  'Dog C — Weekend DC 10/24 - 10/26',
+  '10/24-26 Wknd DC',
 ];
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

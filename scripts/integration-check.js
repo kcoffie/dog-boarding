@@ -88,7 +88,7 @@ function isBoardingTitle(title) {
 //   - Weekend daycare: "Wknd DC 10/24" — October 2026 (#272). Its detail page is
 //     category DC, so the sync never imports it; nonBoardingPatterns misses it
 //     because /^(d\/c|dc)\b/ is anchored to the start of the title. Only "Wknd DC" /
-//     "Weekend DC" is matched, never a bare DC: real boardings can name the
+//     "Weekend DC" without a date range is matched, never a bare DC: real boardings can name the
 //     "DC full-time" tier (#198).
 //
 // Two PG patterns are needed:
@@ -103,7 +103,9 @@ const DAYCARE_ONLY_PATTERNS = [
   /\bdaycare\b/i,
   /\bN\/C\b/i,
   /^\d+\/\d+$/, // bare date "4/21" — Daycare Add-On Day; real boardings show ranges like "4/21-25"
-  /\b(?:wknd|weekend)\s+d\/?c\b/i, // "Wknd DC 10/24" — weekend daycare (#272)
+  // "Wknd DC 10/24" — weekend daycare (#272). A title with a date range still alerts:
+  // a hidden boarding is worse than a false alert.
+  /^(?!.*\d+\/\d+\s*-\s*\d).*\b(?:wknd|weekend)\s+d\/?c\b/i,
 ];
 export function isDaycareOnlyTitle(title) {
   return DAYCARE_ONLY_PATTERNS.some(re => re.test(title));
