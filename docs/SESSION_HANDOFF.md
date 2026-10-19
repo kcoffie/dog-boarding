@@ -122,7 +122,7 @@
 - `sync_queue`: 0 pending after the manual drain at about 19:05 UTC. It refills on every scan (#278).
 
 ### Mutation
-- **CI on main:** 44.94% (2026-10-19, two runs). Ratchet 44. The next main run is the first after #276; add it to the score log.
+- **CI on main:** 47.02% (3760/7996), the first two runs after #276 (2026-10-19). Ratchet 47.
 - **Scoped scores:**
   - `syncRunner.js`: 82.45%
   - notify/crons: 83.27%
@@ -160,7 +160,7 @@
    - Write a design note: what counts as "modified", plus a queue-depth / oldest-pending alert.
    - Then the architect review, then the fix with tests from REQUIREMENTS (REQ-109 / B-3) and mutation scores.
 4. **#275 (sync silent failures):** a design note, then the architect review. It can share a note with #278, since both touch the same alerting.
-5. **Add the next main CI mutation score** (the first after #276) to the score log.
+5. ~~Add the next main CI mutation score to the score log~~ (done in session 36: 47.02%, ratchet 47).
 6. **#260 SMS roster:** once Kate has a Twilio account, write the design note (trigger not on GitHub's scheduler, MMS via a short-lived signed URL, status callbacks into `message_delivery_status`, opt-in wording), then the architect review, then the build.
 7. **#239:** `pictureOfDay.js` tests from REQ-610/611, with mutation scores. Also #257 (ops-watch rule for notify failures and undelivered rosters in every window).
 
