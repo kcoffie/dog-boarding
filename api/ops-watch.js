@@ -53,7 +53,7 @@ function makeDeps(supabase) {
 
     async loadRosterRows() {
       const since = new Date(Date.now() - 48 * 3600e3).toISOString();
-      const sent = await must(supabase.from('message_log').select('wamid, sent_at')
+      const sent = await must(supabase.from('message_log').select('wamid, sent_at, recipient')
         .eq('job_name', 'notify-4am').eq('status', 'sent').gte('sent_at', since));
       const wamids = sent.map((m) => m.wamid).filter(Boolean);
       if (wamids.length === 0) return { sent, deliveredWamids: [] };
