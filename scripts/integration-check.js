@@ -42,6 +42,7 @@ import { createClient } from '@supabase/supabase-js';
 import { alertAndLog, exitCodeAfterAlert } from '../src/lib/alertKate.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
+import { readSettingsRow } from '../src/lib/scraper/syncSettingsRow.js';
 import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
 
 const BASE_URL = 'https://agirlandyourdog.com';
@@ -133,13 +134,7 @@ function getSupabase() {
 async function loadSession(supabase) {
   console.log('[IntegCheck] Loading session cookies from sync_settings...');
 
-  const { data, error } = await supabase
-    .from('sync_settings')
-    .select('session_cookies, session_expires_at')
-    .limit(1)
-    .maybeSingle(); // .single() logs HTTP 406 to Supabase console on 0 rows even when caught
-
-  if (error) throw error;
+  const data = await readSettingsRow(supabase, 'session_cookies, session_expires_at');
 
   if (!data?.session_cookies) {
     console.log('[IntegCheck] No session_cookies found in DB');
@@ -461,14 +456,15 @@ async function main() {
   try {
     const scheduleResult = await runScheduleSync(supabase);
     console.log(
-      '[IntegCheck] Step 0 schedule: action=%s pagesScanned=%d queued=%d queueDepth=%d',
+      '[IntegCheck] Step 0 schedule: action=%s pagesScanned=%d queued=%d queueDepth=%d failedEnqueues=%d',
       scheduleResult.action,
       scheduleResult.pagesScanned,
       scheduleResult.queued,
       scheduleResult.queueDepth,
+      scheduleResult.failedEnqueues ?? 0,
     );
 
-    if (scheduleResult.action === 'ok' || scheduleResult.action === 'session_cleared') {
+    if (['ok', 'enqueue_failed', 'session_cleared'].includes(scheduleResult.action)) {
       // Drain the detail queue. Reset stuck items once before the loop, then skip
       // on subsequent iterations to avoid 20 redundant DB queries (Gap 3 fix).
       const MAX_DETAIL_ITERATIONS = 20;

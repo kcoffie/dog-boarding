@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   checkQueue,
+  checkScheduleScan,
   checkRoster,
   checkWorkflowRuns,
   checkImage,
@@ -64,6 +65,53 @@ describe('queue backlog and sync progress', () => {
   });
 });
 
+describe('schedule scan outcome (#275)', () => {
+  const row = (over = {}) => ({ last_ran_at: hoursAgo(16), status: 'success', result: { found: 227 }, error_msg: null, ...over });
+
+  it('a scan that succeeded 16 h ago and found appointments is not a finding', () => {
+    expect(checkScheduleScan(row(), NOW)).toEqual([]);
+  });
+
+  it('no schedule row at all is a finding', () => {
+    expect(checkScheduleScan(null, NOW)).toEqual(['Schedule scan has never recorded a run']);
+  });
+
+  it('a last run more than 26 h ago is a finding', () => {
+    expect(checkScheduleScan(row({ last_ran_at: hoursAgo(27) }), NOW)).toEqual(['Schedule scan: last run 27h ago (limit 26h)']);
+  });
+
+  it('a last run exactly 26 h ago is not yet stale', () => {
+    expect(checkScheduleScan(row({ last_ran_at: hoursAgo(26) }), NOW)).toEqual([]);
+  });
+
+  it('a scan still marked started is hung or killed', () => {
+    expect(checkScheduleScan(row({ status: 'started', result: { action: 'running' } }), NOW))
+      .toEqual(['Schedule scan started 16h ago and never finished (hung or killed)']);
+  });
+
+  it('a failed scan names its error', () => {
+    expect(checkScheduleScan(row({ status: 'failure', result: null, error_msg: 'sync_settings read failed: timeout' }), NOW))
+      .toEqual(['Schedule scan failed: sync_settings read failed: timeout']);
+  });
+
+  it('a failed scan with no error text still reports', () => {
+    expect(checkScheduleScan(row({ status: 'failure', result: null, error_msg: null }), NOW)).toEqual(['Schedule scan failed: no error recorded']);
+  });
+
+  it('a scan that got the login page is a finding even though it recorded success', () => {
+    expect(checkScheduleScan(row({ result: { action: 'session_cleared', reason: 'session_expired' } }), NOW))
+      .toEqual(['Schedule scan got the login page and scanned nothing (session cleared)']);
+  });
+
+  it('a successful scan that found nothing is a finding', () => {
+    expect(checkScheduleScan(row({ result: { found: 0 } }), NOW)).toEqual(['Schedule scan found no appointments']);
+  });
+
+  it('a successful scan with no result recorded is not mistaken for found = 0', () => {
+    expect(checkScheduleScan(row({ result: null }), NOW)).toEqual([]);
+  });
+});
+
 describe('morning roster', () => {
   const sentToday = { wamid: 'w1', sent_at: '2026-10-16T11:00:05Z' }; // 04:00 PDT today
 
@@ -77,6 +125,17 @@ describe('morning roster', () => {
 
   it('a roster sent but never delivered is a different finding', () => {
     expect(checkRoster({ sent: [sentToday], deliveredWamids: [] }, NOW))
+      .toEqual(['Morning roster sent but not delivered to anyone (1 sends, no delivery receipt)']);
+  });
+
+  it('a roster sent to Telegram today counts as delivered: Telegram accepting it is the receipt (REQ-655)', () => {
+    const telegram = { wamid: null, sent_at: '2026-10-16T11:00:05Z', recipient: 'telegram' };
+    expect(checkRoster({ sent: [telegram], deliveredWamids: [] }, NOW)).toEqual([]);
+  });
+
+  it('a WhatsApp send with no receipt is still not delivered, whatever its wamid', () => {
+    const unknown = { wamid: 'unknown', sent_at: '2026-10-16T11:00:05Z', recipient: '***-***-0100' };
+    expect(checkRoster({ sent: [unknown], deliveredWamids: [] }, NOW))
       .toEqual(['Morning roster sent but not delivered to anyone (1 sends, no delivery receipt)']);
   });
 
@@ -196,6 +255,7 @@ describe('runOpsWatch', () => {
       sent,
       now: () => NOW,
       loadQueueStats: async () => ({ pendingCount: 0, oldestPendingAt: null, lastDoneAt: hoursAgo(5) }),
+      loadScheduleHealth: async () => ({ last_ran_at: hoursAgo(16), status: 'success', result: { found: 227 }, error_msg: null }),
       loadRosterRows: async () => ({ sent: [{ wamid: 'w1', sent_at: '2026-10-16T11:00:05Z' }], deliveredWamids: ['w1'] }),
       loadLastSuccess: async () => ({
         'gmail-monitor.yml': hoursAgo(1),
@@ -247,9 +307,10 @@ describe('runOpsWatch', () => {
 
   it("each check that can't run is named", async () => {
     const boom = async () => { throw new Error('x'); };
-    const r = await runOpsWatch(deps({ loadQueueStats: boom, loadRosterRows: boom, loadLastSuccess: boom, fetchImage: boom, loadFailedAlerts: boom }));
+    const r = await runOpsWatch(deps({ loadQueueStats: boom, loadScheduleHealth: boom, loadRosterRows: boom, loadLastSuccess: boom, fetchImage: boom, loadFailedAlerts: boom }));
     expect(r.findings).toEqual([
       "Couldn't check the sync queue: x",
+      "Couldn't check the schedule scan: x",
       "Couldn't check the morning roster: x",
       "Couldn't check the scheduled workflows: x",
       "Couldn't check the roster image: x",
@@ -326,8 +387,8 @@ describe('REQ-652: undelivered alerts', () => {
     expect(checkFailedAlerts(rows)).toEqual(['Alerts not delivered in the last 24h: 3 (gmail-monitor, send-question)']);
   });
 
-  it('the alert jobs watched are the four that alert Kate', () => {
-    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question']);
+  it('the alert jobs watched are the five that alert Kate (REQ-655 adds the refresh alert)', () => {
+    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert']);
   });
 
   it('runOpsWatch reports failed alerts from the alert log', async () => {
@@ -335,6 +396,7 @@ describe('REQ-652: undelivered alerts', () => {
     const r = await runOpsWatch({
       now: () => NOW,
       loadQueueStats: async () => ({ pendingCount: 0, oldestPendingAt: null, lastDoneAt: hoursAgo(5) }),
+      loadScheduleHealth: async () => ({ last_ran_at: hoursAgo(16), status: 'success', result: { found: 227 }, error_msg: null }),
       loadRosterRows: async () => ({ sent: [{ wamid: 'w1', sent_at: '2026-10-16T11:00:05Z' }], deliveredWamids: ['w1'] }),
       loadLastSuccess: async () => ({
         'gmail-monitor.yml': hoursAgo(1), 'integration-check.yml': hoursAgo(9), 'cron-health-check.yml': hoursAgo(17),

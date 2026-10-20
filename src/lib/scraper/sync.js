@@ -14,6 +14,7 @@ import { reconcileArchivedAppointments } from './reconcile.js';
 import { fetchAndStoreBoardingForm } from './forms.js';
 import { dequeueOne, markDone, markFailed } from './syncQueue.js';
 import { syncLogger, logSyncStart, logSyncEnd } from './logger.js';
+import { readSettingsRow } from './syncSettingsRow.js';
 
 // Use timestamped logging
 const syncLog = syncLogger.log;
@@ -109,13 +110,10 @@ export async function updateSyncLog(supabase, logId, updates) {
  */
 export async function getSyncSettings(supabase) {
   syncLog('[Sync] Getting sync settings...');
-  const { data, error } = await supabase
-    .from('sync_settings')
-    .select('*')
-    .limit(1)
-    .single();
-
-  if (error && error.code !== 'PGRST116') {
+  let data;
+  try {
+    data = await readSettingsRow(supabase, '*');
+  } catch (error) {
     syncError('[Sync] getSyncSettings error:', error);
     throw error;
   }

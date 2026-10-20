@@ -62,7 +62,7 @@ import { fetchAndStoreBoardingForm } from '../../lib/scraper/forms.js';
 function makeMockSupabase() {
   return {
     from: () => ({
-      select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+      select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
       update: () => ({ eq: () => Promise.resolve({ error: null }) }),
       insert: () => Promise.resolve({ error: null }),
     }),
@@ -175,7 +175,7 @@ describe('runScheduleSync', () => {
     // supabase mock needs to support getCursorDate (single) and clearSession calls
     const supabase = {
       from: () => ({
-        select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+        select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
         update: () => ({ eq: () => Promise.resolve({ error: null }) }),
         insert: () => Promise.resolve({ error: null }),
         delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
@@ -200,16 +200,16 @@ describe('runScheduleSync', () => {
         if (table === 'sync_settings') {
           return {
             select: () => ({
-              limit: () => ({
-                single: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }),
-              }),
+              order: () => ({ limit: () => ({
+                maybeSingle: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }),
+              }) }),
             }),
             update: () => ({ eq: () => Promise.resolve({ error: null }) }),
             insert: () => Promise.resolve({ error: null }),
           };
         }
         return {
-          select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+          select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
           insert: () => Promise.resolve({ error: null }),
         };
@@ -243,13 +243,13 @@ describe('runScheduleSync', () => {
       from: (table) => {
         if (table === 'sync_settings') {
           return {
-            select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }) }) }),
+            select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }) }) }) }),
             update: () => ({ eq: () => Promise.resolve({ error: null }) }),
             insert: () => Promise.resolve({ error: null }),
           };
         }
         return {
-          select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+          select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
           insert: () => Promise.resolve({ error: null }),
         };
@@ -287,13 +287,13 @@ describe('runScheduleSync', () => {
       from: (table) => {
         if (table === 'sync_settings') {
           return {
-            select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }) }) }),
+            select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }) }) }) }),
             update: () => ({ eq: () => Promise.resolve({ error: null }) }),
             insert: () => Promise.resolve({ error: null }),
           };
         }
         return {
-          select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+          select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
           insert: () => Promise.resolve({ error: null }),
         };
@@ -330,13 +330,13 @@ describe('runScheduleSync', () => {
       from: (table) => {
         if (table === 'sync_settings') {
           return {
-            select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }) }) }),
+            select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: { id: '1', schedule_cursor_date: '2026-03-01' }, error: null }) }) }) }),
             update: () => ({ eq: () => Promise.resolve({ error: null }) }),
             insert: () => Promise.resolve({ error: null }),
           };
         }
         return {
-          select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+          select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
           insert: () => Promise.resolve({ error: null }),
         };
@@ -426,7 +426,7 @@ describe('runDetailSync', () => {
 
     const supabase = {
       from: () => ({
-        select: () => ({ limit: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+        select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
         update: () => ({ eq: () => Promise.resolve({ error: null }) }),
         insert: () => Promise.resolve({ error: null }),
       }),
@@ -512,18 +512,22 @@ describe('runDetailSync', () => {
 const SITE = 'https://agirlandyourdog.com';
 
 // A Supabase fake that records what the runners write. sync_settings holds at most one row.
-function makeDb({ cursor = null, hasSettingsRow = true } = {}) {
-  const calls = { settingsSelects: [], settingsUpdates: [], settingsInserts: [], queueUpdates: [] };
+function makeDb({ cursor = null, hasSettingsRow = true, readError = null, writeError = null } = {}) {
+  const calls = { settingsSelects: [], settingsOrders: [], settingsUpdates: [], settingsInserts: [], queueUpdates: [] };
   return {
     calls,
     from(table) {
       if (table === 'sync_settings') {
         return {
-          select: (cols) => { calls.settingsSelects.push(cols); return { limit: () => ({ single: () => Promise.resolve({
-            data: hasSettingsRow ? { id: 'settings-1', schedule_cursor_date: cursor } : null, error: null,
-          }) }) }; },
-          update: (values) => ({ eq: (col, val) => { calls.settingsUpdates.push({ values, col, val }); return Promise.resolve({ error: null }); } }),
-          insert: (values) => { calls.settingsInserts.push(values); return Promise.resolve({ error: null }); },
+          select: (cols) => {
+            calls.settingsSelects.push(cols);
+            return { order: (col, opts) => { calls.settingsOrders.push([col, opts]); return { limit: () => ({ maybeSingle: () => Promise.resolve(
+              readError ? { data: null, error: { message: readError } }
+                : { data: hasSettingsRow ? { id: 'settings-1', schedule_cursor_date: cursor } : null, error: null },
+            ) }) }; } };
+          },
+          update: (values) => ({ eq: (col, val) => { calls.settingsUpdates.push({ values, col, val }); return Promise.resolve({ error: writeError ? { message: writeError } : null }); } }),
+          insert: (values) => { calls.settingsInserts.push(values); return Promise.resolve({ error: writeError ? { message: writeError } : null }); },
         };
       }
       if (table === 'sync_queue') {
@@ -613,6 +617,55 @@ describe('REQ-109 runScheduleSync', () => {
   it('fetches with the session ensureSession returned', async () => {
     await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
     expect(setSession).toHaveBeenCalledWith('session=abc');
+  });
+
+  it('a failed cursor read fails the scan before anything is fetched or queued (#275)', async () => {
+    const db = makeDb({ readError: 'timeout' });
+    await expect(runScheduleSync(db)).rejects.toThrow('sync_settings read failed: timeout');
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(db.calls.settingsInserts).toEqual([]);
+  });
+
+  it('a failed cursor write fails the scan (#275)', async () => {
+    await expect(runScheduleSync(makeDb({ cursor: '2026-10-19', writeError: 'disk full' })))
+      .rejects.toThrow('sync_settings cursor write failed: disk full');
+  });
+
+  it('every sync_settings read takes the lowest id, so a duplicate row can\'t split the cursor (#275)', async () => {
+    const db = makeDb({ cursor: '2026-10-19' });
+    await runScheduleSync(db);
+    expect(db.calls.settingsOrders.length).toBeGreaterThan(0);
+    expect(db.calls.settingsOrders.every(([col, opts]) => col === 'id' && opts.ascending === true)).toBe(true);
+  });
+
+  it('a failed enqueue makes the scan enqueue_failed, naming the ID, and the cursor still moves (#275)', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'GOOD', title: '10/24-27' }) + link({ id: 'BAD', title: '10/25-28' }) });
+    enqueue.mockImplementation(async (_db, item) => { if (item.external_id === 'BAD') throw new Error('insert failed'); return 'queued'; });
+    const db = makeDb({ cursor: '2026-10-19' });
+    const result = await runScheduleSync(db);
+    expect(result.action).toBe('enqueue_failed');
+    expect(result.failedEnqueues).toBe(1);
+    expect(result.failedEnqueueIds).toEqual(['BAD']);
+    expect(result.queued).toBe(1);
+    expect(result.cursorAdvancedTo).toBe('2026-10-26');
+    expect(db.calls.settingsUpdates.map((u) => u.values.schedule_cursor_date)).toEqual(['2026-10-26']);
+  });
+
+  it('enqueue_failed names at most the first 5 failed IDs but counts them all', async () => {
+    const ids = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7'];
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: ids.map((id) => link({ id, title: '10/24-27' })).join('') });
+    enqueue.mockRejectedValue(new Error('down'));
+    const result = await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(result.failedEnqueues).toBe(7);
+    expect(result.failedEnqueueIds).toEqual(['F1', 'F2', 'F3', 'F4', 'F5']);
+  });
+
+  it('a scan with no failed enqueue is ok and carries no failure fields', async () => {
+    servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'GOOD', title: '10/24-27' }) });
+    const result = await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
+    expect(result.action).toBe('ok');
+    expect('failedEnqueues' in result).toBe(false);
   });
 
   it('a login page clears the session, enqueues nothing and leaves the cursor', async () => {
