@@ -103,7 +103,7 @@ If adoption stalls, ask which step costs more than it's worth, and fix or drop t
 
 - **Fix:** a dog with no rate fails silently (it counts as $0 toward the night's pay).
 - **Maybe fix:** let Charlie or her admin correct which dogs were there by hand, for a missed, odd or late booking.
-- **Fix:** a pay breakdown for each employee: what they're being paid and how it was calculated. It's one image (the roster image is already rendered the same way) that prints cleanly and can be sent to a phone. Decide who sends it: Charlie from her own phone (share the image), or the app. If the app sends it, that's a message tied to Charlie's business, which Kate's rules forbid, so default to Charlie sending it.
+- **Fix:** a pay breakdown for each employee: what they're being paid and how it was calculated. It's one image (the roster image is already rendered the same way) that prints cleanly and can be sent to a phone. **Charlie sends it from her own phone** (Kate, 2026-10-20). The app never sends it: that would be a message tied to Charlie's business. So the breakdown doesn't depend on #260.
 - **Maybe:** notify Charlie when her admin adds or changes boarding info.
 - **Maybe:** a clear answer to "something looks wrong at 9pm, what do I do?" (Send a Question exists; make it obvious, and say what happens next).
 
@@ -114,4 +114,6 @@ If adoption stalls, ask which step costs more than it's worth, and fix or drop t
 3. **The breakdown:** printable, to hand out in person, **and** shareable, so the same picture can be sent to a phone.
 4. **Who decides a criterion is met:** Kate, in consultation with Charlie.
 
-Still open: who sends the breakdown to a phone (see TODOs), and what staff may see once they have accounts.
+5. **Who sends the breakdown to a phone:** Charlie, from her own phone. The app never sends it.
+
+Still open: what staff may see once they have accounts.
