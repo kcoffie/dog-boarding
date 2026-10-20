@@ -1,7 +1,7 @@
 # UAT plan: payroll and the daily views (draft, 2026-10-20)
 
 **Status:** draft for Kate. Not yet shared with Charlie.
-**Replaces:** sprint plan item G-5 ("no defined client acceptance criteria"). Builds on #13 (Charlie's request for a repeatable UAT process).
+**Replaces:** sprint plan item G-5 ("no defined client acceptance criteria"). Builds on #13 (Kate's repeatable UAT process).
 
 ## Why this matters
 
@@ -21,8 +21,8 @@ The app is only worth building if Charlie uses it to run her week. UAT isn't "do
 | Her step | In the app today | Gap (see TODOs below) |
 |---|---|---|
 | 1. Who stayed which night | Matrix: an employee dropdown per night, "N/A" for nights she or the family stay (REQ-033) | Entered by hand. Is that more work than today? |
-| 2. Which dogs were there | Synced nightly from the booking site | A missed, odd or late booking means a wrong number, and it can't be corrected by hand |
-| 3. What to pay | Sum of each dog's night rate × net % (REQ-032, REQ-040, REQ-203) | A dog with no rate on the booking site counts as $0, silently |
+| 2. Which dogs were there | Synced nightly from the booking site | A missed, odd or late booking means a wrong number. Boardings can be edited by hand (REQ-020 to REQ-022), **but the next sync silently overwrites the edit**, and a deleted synced boarding comes back |
+| 3. What to pay | Sum of each dog's night rate × net % (REQ-032, REQ-040, REQ-203) | A dog with no rate on the booking site counts as $0, silently. Workaround until fixed: set the dog's own night rate (REQ-011), which the formula falls back to |
 | 4. Tell the employee, with the calculation | Nothing | No breakdown to share |
 | 5. Pay | Outside the app | None |
 | 6. Log it | Mark as paid, payment history (REQ-041 to REQ-044) | None known |
@@ -30,9 +30,10 @@ The app is only worth building if Charlie uses it to run her week. UAT isn't "do
 ## Before UAT starts
 
 Decisions and setup for Kate:
-1. **Who gets accounts.** Today every signed-in user can see and change everything, including everyone's pay (REQ-005; #6 asks for admin-only areas). Before anyone other than Charlie and her admin signs in, decide what staff may see. **Create the admin's account** in Supabase (Authentication → Users → Invite), since there's no self sign-up (#301).
-2. **Which gaps to close first.** At least the silent $0 rate, so that the first numbers she sees can be trusted. Ideally the shareable breakdown too, because she'll ask for it first.
-3. **The pay period.** Read it off her spreadsheet in step 1. The side by side runs on her real periods.
+1. **Who gets accounts.** Today every signed-in user can see and change everything, including everyone's pay (REQ-005; #6 asks for admin-only areas). Check the current user list first. Before anyone other than Charlie and her admin signs in, decide what staff may see. **Create the admin's account** in Supabase (Authentication → Users → Add user, with a password, or Send invitation). Supabase sign-up is off (Kate, 2026-10-20), so the app can't create accounts. Dry-run the invite with a spare address of your own first: the app has no special handling for an invite link, so the admin may arrive signed in with no password (#23, #24).
+2. **Warn them about two traps.** Settings → Invite Users still makes invite codes, but nothing can redeem them (#307), so don't use it. And a boarding edited by hand is overwritten by the next sync, so report a wrong dog or night (Send a Question) rather than fixing it in the app.
+3. **Which gaps to close first.** At least the silent $0 rate, so that the first numbers she sees can be trusted. Ideally the shareable breakdown too, because she'll ask for it first.
+4. **The pay period.** Read it off her spreadsheet in step 1. The side by side runs on her real periods.
 
 Say up front what isn't live: the staff roster stopped when WhatsApp locked the account, and it comes back with SMS (#260). UAT judges payroll and the views, not that.
 
@@ -80,10 +81,10 @@ Three questions, always the same, written down in her words:
 2. **Fix:** what don't you like? What got in the way, or was confusing or wrong?
 3. **Wish:** what else would you want it to do?
 
-Each answer becomes an issue, filed with the repo's UAT Feedback or UAT Bug issue template. Then:
+Each answer becomes an issue, filed with the repo's "UAT Feedback" or "UAT Bug Report" issue template. Then:
 - Kate ships at least one of her asks within a week, and tells her which one.
-- The January issues (#6 to #24) are triaged with her in the first check-in: keep, change, or close. #11 (sign-up code in the URL) is already moot, because self sign-up is gone (#301).
-- Per #13: she gives the issue number, answers the clarifying questions, and the work gets a requirement and a test, with nothing in production changing until she says it's ready.
+- The January issues (#6 to #24) are triaged with her in the first check-in: keep, change, or close. #11 (sign-up code in the URL) is moot: Supabase sign-up is off, and the invite-code page goes with #301. Close it once #301 merges.
+- Per #13: each piece of work starts from an issue number, its clarifying questions get answered, and it gets a requirement and a test. Nothing in production changes until Kate (in consultation with Charlie) says it's ready.
 
 ## How we'll know it's used
 
@@ -96,13 +97,13 @@ If adoption stalls, ask which step costs more than it's worth, and fix or drop t
 
 ## Timing
 
-- November, before the holiday peak. Don't ask for her attention in the busiest boarding weeks.
-- Week 1: watch first, plus the pre-UAT fixes. Weeks 2 to 5: two pay periods side by side with a check-in after each. Then four periods to measure adoption.
+- November, avoiding Thanksgiving week (Nov 26) and the December peak. Don't ask for her attention in the busiest boarding weeks.
+- Week 1: watch first, plus the pre-UAT fixes. Then two pay periods side by side with a check-in after each, then four periods to measure adoption. Size the weeks once step 1 shows how long her pay period is.
 
 ## TODOs from this plan (Kate, 2026-10-20)
 
 - **Fix:** a dog with no rate fails silently (it counts as $0 toward the night's pay).
-- **Maybe fix:** let Charlie or her admin correct which dogs were there by hand, for a missed, odd or late booking.
+- **Fix (was maybe):** a correction by hand (a missed, odd or late booking) must survive the next sync. Today the sync silently overwrites edits to synced boardings and re-creates deleted ones (`src/lib/scraper/mapping.js`).
 - **Fix:** a pay breakdown for each employee: what they're being paid and how it was calculated. It's one image (the roster image is already rendered the same way) that prints cleanly and can be sent to a phone. **Charlie sends it from her own phone** (Kate, 2026-10-20). The app never sends it: that would be a message tied to Charlie's business. So the breakdown doesn't depend on #260.
 - **Maybe:** notify Charlie when her admin adds or changes boarding info.
 - **Maybe:** a clear answer to "something looks wrong at 9pm, what do I do?" (Send a Question exists; make it obvious, and say what happens next).
@@ -113,7 +114,6 @@ If adoption stalls, ask which step costs more than it's worth, and fix or drop t
 2. **The admin's account:** none in this app yet. Kate creates it before UAT.
 3. **The breakdown:** printable, to hand out in person, **and** shareable, so the same picture can be sent to a phone.
 4. **Who decides a criterion is met:** Kate, in consultation with Charlie.
-
 5. **Who sends the breakdown to a phone:** Charlie, from her own phone. The app never sends it.
 
 Still open: what staff may see once they have accounts.
