@@ -54,12 +54,16 @@ export async function fetchRosterPng(imageUrl, fetchFn = fetch) {
   try {
     res = await fetchFn(imageUrl, { signal: AbortSignal.timeout(ROSTER_FETCH_TIMEOUT_MS) });
   } catch (err) {
+    // No `cause` on purpose: fetch's error can carry the token-bearing URL (REQ-655).
+    // eslint-disable-next-line preserve-caught-error
     throw new Error(`Roster image fetch: ${failureKind(err)}`);
   }
   if (!res.ok) throw new Error(`Roster image fetch failed: HTTP ${res.status}`);
   try {
     return Buffer.from(await res.arrayBuffer()); // the body can still break or time out mid-read
   } catch (err) {
+    // No `cause` on purpose: fetch's error can carry the token-bearing URL (REQ-655).
+    // eslint-disable-next-line preserve-caught-error
     throw new Error(`Roster image fetch: ${failureKind(err)}`);
   }
 }
