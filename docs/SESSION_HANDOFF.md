@@ -125,9 +125,9 @@ Deploy/CI budget (#298/#300: Vercel builds only `main` and `preview/**`; `npm ru
 - [ ] #301: Kate adds `INTERNAL_API_TOKEN`; push, PR, merge after 03:00 UTC, rotate (Next Steps 3)
 - [ ] #294, #299
 - [ ] UAT: Kate reviews `docs/UAT_PLAN.md` decisions, creates the admin account, runs "watch first" with Charlie and her admin; triage #6–#24 at the first check-in
-- [ ] Fix: a dog with no rate fails silently (counts as $0 toward the night's pay)
-- [ ] Fix: a correction by hand (missed, odd or late booking) must survive the next sync; today the sync silently overwrites edited boardings and re-creates deleted ones
-- [ ] Fix: a pay breakdown image per employee, printable and sendable to a phone (what they're paid, and how it was calculated). Charlie sends it from her phone; the app never does (Kate, 2026-10-20)
+- [ ] #312 a dog with no rate counts as $0, silently (before UAT)
+- [ ] #313 a correction by hand must survive the next sync
+- [ ] #314 pay breakdown image per employee (Charlie sends it; the app never does)
 - [ ] Maybe: notify Charlie when her admin adds or changes boarding info
 - [ ] Maybe: a clear "something looks wrong at 9pm" path (Send a Question, made obvious, with what happens next)
 - [ ] #307 invite-code management; close #11 after #301
@@ -136,7 +136,7 @@ Deploy/CI budget (#298/#300: Vercel builds only `main` and `preview/**`; `npm ru
 - [ ] #239 backfill: parked until UAT (Kate revisits)
 - [ ] #257, #293, #295
 - [ ] #285 vitest 5: wait for stryker-js #6214; #284 vite 8
-- [ ] Integration Check: skip same-day-visit candidates (`C63QhKpW` pattern), like N/C evals
+- [ ] #315 Integration Check: skip same-day-visit candidates
 - [ ] `mutate:changed` PR check (80% on changed lines)
 - [ ] Kate: delete the `META_*` Vercel vars with #260; optionally delete the disconnected `dog-boarding` Vercel project; remove the stale `INTEGRATION_CHECK_RECIPIENTS`/`TWILIO_*` GitHub secrets; `GH_ACTIONS_TOKEN` expires 2027-10-19
 
