@@ -1,0 +1,69 @@
+# Mutation score (Stryker) on main. Fails when the score drops below thresholds.break in
+# stryker.config.json (the ratchet). See docs/ENGINEERING_PROCESS.md.
+#
+# Incremental (#298): the last run's results are cached, and only mutants in changed source or
+# test files run again. A full run happens when package-lock.json or stryker.config.json changes
+# (the cache key), every Monday, or by hand (workflow_dispatch, full = true). Incremental mode
+# can't see changes outside the mutated and test files (fixtures, out-of-scope helpers), so the
+# weekly full run is what catches drift there.
+name: Mutation
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 13 * * 1'  # Mondays 13:00 UTC (6am PDT / 5am PST), full run. A red run shows only as GitHub's email; it's code quality, not a client outcome
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Ignore cached results and run every mutant'
+        type: boolean
+        default: false
+
+# A burst of merges runs once, on the newest commit. Scheduled and manual runs get their own group
+# (the run ID), so a merge never cancels a full run that is 40 minutes in.
+concurrency:
+  group: mutation-${{ github.event_name == 'push' && 'push' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+env:
+  VITE_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+  VITE_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+  VITE_ENVIRONMENT: test
+  INCREMENTAL_FILE: out/stryker-incremental.json
+
+jobs:
+  mutation:
+    name: Mutation (ratchet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'  # Stryker 10 requires Node >= 22
+          cache: 'npm'
+      - run: npm ci
+      - name: Restore last results
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.full)
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.INCREMENTAL_FILE }}
+          key: stryker-${{ hashFiles('package-lock.json', 'stryker.config.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: stryker-${{ hashFiles('package-lock.json', 'stryker.config.json') }}-
+      - name: Stryker
+        run: ./node_modules/.bin/stryker run stryker.config.json --concurrency 4 --incremental --incrementalFile "$INCREMENTAL_FILE"
+      # Saved even when the ratchet fails: the results are still right, and the next run reuses them.
+      - name: Save results
+        if: always() && hashFiles(env.INCREMENTAL_FILE) != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.INCREMENTAL_FILE }}
+          key: stryker-${{ hashFiles('package-lock.json', 'stryker.config.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: out/
+          retention-days: 30

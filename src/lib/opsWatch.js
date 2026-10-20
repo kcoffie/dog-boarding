@@ -98,6 +98,27 @@ export function checkImage({ status, contentType }) {
   return [`Roster image broken: HTTP ${status} (${contentType})`];
 }
 
+const SCAN_MAX_AGE_HOURS = 26;
+
+/**
+ * The nightly schedule scan (`cron-schedule`) did its job: it finished, succeeded, got past the login
+ * page and found appointments (#275). A working scan always finds some: 126–373 over 60 days.
+ * @param {{ last_ran_at: string, status: string, result: Object|null, error_msg: string|null }|null} row
+ *   the `schedule` row of `cron_health`
+ */
+export function checkScheduleScan(row, now) {
+  if (!row) return ['Schedule scan has never recorded a run'];
+  const h = Math.round(hoursSince(row.last_ran_at, now));
+  if (hoursSince(row.last_ran_at, now) > SCAN_MAX_AGE_HOURS) {
+    return [`Schedule scan: last run ${h}h ago (limit ${SCAN_MAX_AGE_HOURS}h)`];
+  }
+  if (row.status === 'started') return [`Schedule scan started ${h}h ago and never finished (hung or killed)`];
+  if (row.status === 'failure') return [`Schedule scan failed: ${row.error_msg || 'no error recorded'}`];
+  if (row.result?.action === 'session_cleared') return ['Schedule scan got the login page and scanned nothing (session cleared)'];
+  if (row.result?.found === 0) return ['Schedule scan found no appointments'];
+  return [];
+}
+
 /** Jobs whose alerts go to Kate; a failed message_log row for any of them is a finding (REQ-652). */
 export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert'];
 
@@ -121,6 +142,7 @@ export async function runOpsWatch(d) {
 
   const checks = [
     ['the sync queue', async () => checkQueue(await d.loadQueueStats(), now)],
+    ['the schedule scan', async () => checkScheduleScan(await d.loadScheduleHealth(), now)],
     ['the morning roster', async () => checkRoster(await d.loadRosterRows(), now)],
     ['the scheduled workflows', async () => checkWorkflowRuns(await d.loadLastSuccess(), now)],
     ['the roster image', async () => checkImage(await d.fetchImage())],

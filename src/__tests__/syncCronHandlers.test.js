@@ -196,6 +196,18 @@ describe('REQ-109: cron-schedule', () => {
     expect(order.slice(0, 2)).toEqual(['started', 'scan']);
   });
 
+  it('a scan whose enqueues failed is recorded as failure, keeping its counts (#275)', async () => {
+    runScheduleSync.mockResolvedValue({
+      action: 'enqueue_failed', failedEnqueues: 2, failedEnqueueIds: ['A', 'B'],
+      pagesScanned: 3, found: 12, skipped: 7, queued: 3, requeuedEdited: 0, urlChangesIgnored: 1, cursorAdvancedTo: '2026-11-02', queueDepth: 9,
+    });
+    await call(cronSchedule);
+    expect(writes('schedule').at(-1)).toStrictEqual(['failure', {
+      action: 'enqueue_failed', failedEnqueues: 2, failedEnqueueIds: ['A', 'B'],
+      pagesScanned: 3, found: 12, skipped: 7, queued: 3, requeuedEdited: 0, urlChangesIgnored: 1, cursorAdvancedTo: '2026-11-02', queueDepth: 9,
+    }, '2 enqueue(s) failed']);
+  });
+
   it('records the scan stats on success', async () => {
     const res = await call(cronSchedule);
     expect(res.code).toBe(200);

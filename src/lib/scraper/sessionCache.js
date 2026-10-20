@@ -15,6 +15,7 @@
 
 import { authenticate } from './auth.js';
 import { syncLogger } from './logger.js';
+import { readSettingsRow } from './syncSettingsRow.js';
 
 const log = syncLogger.log;
 const logError = syncLogger.error;
@@ -27,16 +28,7 @@ const logError = syncLogger.error;
  * @returns {Promise<string|null>}
  */
 export async function getSession(supabase) {
-  const { data, error } = await supabase
-    .from('sync_settings')
-    .select('session_cookies, session_expires_at')
-    .limit(1)
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null; // no rows — not an error
-    throw error;
-  }
+  const data = await readSettingsRow(supabase, 'session_cookies, session_expires_at');
 
   if (!data?.session_cookies || !data?.session_expires_at) return null;
 
@@ -62,12 +54,9 @@ export async function getSession(supabase) {
 export async function storeSession(supabase, cookies, expiryMs = 24 * 60 * 60 * 1000) {
   const expiresAt = new Date(Date.now() + expiryMs).toISOString();
 
-  // sync_settings is a single-row table; read the row id before writing.
-  const { data: existing } = await supabase
-    .from('sync_settings')
-    .select('id')
-    .limit(1)
-    .single();
+  // sync_settings is a single-row table; read the row id before writing. A failed read throws, so
+  // it can never insert a second row (#275).
+  const existing = await readSettingsRow(supabase, 'id');
 
   let error;
   if (existing) {
@@ -93,11 +82,7 @@ export async function storeSession(supabase, cookies, expiryMs = 24 * 60 * 60 * 
  * @returns {Promise<void>}
  */
 export async function clearSession(supabase) {
-  const { data: existing } = await supabase
-    .from('sync_settings')
-    .select('id')
-    .limit(1)
-    .single();
+  const existing = await readSettingsRow(supabase, 'id');
 
   if (!existing) return;
 
@@ -154,8 +139,15 @@ export async function ensureSession(supabase) {
   }
 
   const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-  await storeSession(supabase, result.cookies, SESSION_TTL_MS);
-  log('[SessionCache] ✅ ensureSession: session refreshed and cached');
+  // The login worked, so a failed cache write mustn't fail the caller: it would turn into a
+  // "notify refresh issue" for the roster path (#275). cron-auth calls storeSession directly
+  // and still fails loudly.
+  try {
+    await storeSession(supabase, result.cookies, SESSION_TTL_MS);
+    log('[SessionCache] ✅ ensureSession: session refreshed and cached');
+  } catch (err) {
+    logError(`[SessionCache] ⚠️ ensureSession: logged in but couldn't cache the session: ${err.message}`);
+  }
   return result.cookies;
 }
 

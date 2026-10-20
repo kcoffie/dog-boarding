@@ -732,10 +732,12 @@ cron functions that each complete within the Hobby plan's 10-second limit.
   - **Session expired** during a form or detail fetch → the session is cleared and the item goes back to `pending` (not a retry); returns `session_cleared`
   - **Any other fetch or save error**, including a thrown value that isn't an `Error` → the item is marked failed with the error's first 200 characters (retry/backoff per above); returns `form_failed`, `failed` or `save_failed`
   - Every processed item reports the pending `queueDepth`
-- *Known gaps (#275), none of which alert today:*
-  - `sync_settings` errors are ignored. A failed cursor read resets the cursor to today. A failed row-id read inserts a second row, after which every `.single()` read of the table fails: the cursor stays at today and the session cache breaks
-  - `session_cleared` is recorded as health success and doesn't count a retry, so a login change that keeps serving the login form loops silently
-  - A run whose enqueues all failed still returns `ok` and advances the cursor past that week
+- *`sync_settings` access (#275).* Every reader and writer (cursor, session cache, browser sync settings, integration-check) reads the row through `readSettingsRow`: `order('id')`, `limit(1)`, `maybeSingle()`. So if a duplicate row ever appears, they all use the lowest id, rather than splitting the cursor and session across rows (`.limit(1).single()` returns an arbitrary row, it doesn't error)
+  - A read error throws `sync_settings read failed: …`. An empty table is "no row" (cursor = today, no cached session). A writer never inserts after a failed read
+  - A failed cursor write throws `sync_settings cursor write failed: …`. Either throw fails the scan, so `cron-schedule` records `failure`
+  - `ensureSession`: when a fresh login succeeds but the session can't be cached, it logs the error and still returns the cookies. `cron-auth` calls `storeSession` itself, so a cache failure stays red there
+- *Failed enqueues (#275).* A scan where any enqueue threw returns `action: 'enqueue_failed'`, with `failedEnqueues` (the count) and `failedEnqueueIds` (the first 5), plus the usual counts. `cron-schedule` records it as `failure` with error `N enqueue(s) failed` and the counts in `result`. The cursor still advances: at about 4 scans a day it cycles in about 2 days, and one item that always fails mustn't freeze it. An insert that hits the unique key (`23505`, a concurrent scan queued it first) returns `unchanged`, not a failure. Integration Check step 0 drains after `enqueue_failed` as after `ok`
+- *Still true:* `session_cleared` is recorded as health success (a single expired session is routine; `cron-auth` re-logs in daily). A persisting one is reported by ops-watch's schedule-scan rule (REQ-651) and its 16 h oldest-pending rule
 
 **DB schema additions (run migration before first deploy):**
 ```sql
@@ -924,13 +926,14 @@ page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hob
 - All cron handlers (`cron-auth`, `cron-schedule`, `cron-detail`, `cron-detail-2`, `notify`) call `writeCronHealth` on completion
   - Success path: writes run stats as `result` JSON (e.g. queued count, pages scanned)
   - Catch block: writes `status = 'failure'` and `error_msg`
+- `cron-health-check` alerts on 2 consecutive failed **runs**: it skips the `started` rows each run logs first, so a failure, started, failure, started log counts as 2 in a row (#275). The alert includes the latest `error_msg`
 - Settings page shows a "Cron Health" card with 3 rows (Auth / Schedule / Detail):
   - Last ran timestamp displayed as relative time ("3 hours ago") and absolute datetime on hover
   - Green badge for `success`, red badge for `failure`
   - Result summary (e.g. "12 queued, 2 pages scanned")
   - "Never" shown if cron has not run yet
 
-**Tests:** `src/__tests__/scraper/cronHealth.test.js` (helper), `src/__tests__/syncCronHandlers.test.js` and `src/__tests__/notifyHandler.test.js` (each handler records success/failure); the Settings card is manual
+**Tests:** `src/__tests__/scraper/cronHealth.test.js` (helper), `src/__tests__/cronHealthCheck.test.js` (consecutive failures), `src/__tests__/syncCronHandlers.test.js` and `src/__tests__/notifyHandler.test.js` (each handler records success/failure); the Settings card is manual
 
 ---
 
@@ -1404,6 +1407,7 @@ A daily Vercel cron (`/api/ops-watch`, 17:00 UTC) checks the outcomes the client
 - The endpoint requires `Authorization: Bearer $CRON_SECRET` and rejects every request when `CRON_SECRET` is unset (fails closed)
 - Each run is recorded in `cron_health` as `ops-watch`: `success` when every check ran and the alert (if any) went out, otherwise `failure`
 - `cron-health-check` reports `ops-watch` when its last run is more than 26 h old
+- **Schedule scan (#275):** one finding, from the `schedule` row of `cron_health`, in this order: no row; last run more than 26 h ago; still `started` (hung or killed); `failure` (with its error); `result.action` is `session_cleared`; `result.found` is 0. A successful scan with no recorded `result` isn't treated as found = 0
 
 **Tests:** `src/__tests__/opsWatch.test.js`
 
@@ -1445,6 +1449,25 @@ The repo is public, so tests carry fictional contact details only (#264). CI rej
 - `check:test-pii` fails when git finds no test files, so it can never pass on empty input
 
 **Tests:** `src/__tests__/noTestPii.test.js`
+
+---
+
+### REQ-654: Post-merge deploy check
+**Added:** v6.4.0 | **Status:** Complete
+
+A green PR doesn't mean production changed. On 2026-10-19 a merge hit Vercel's daily deploy limit and production silently stayed on the previous commit (#298). After every merge, `npm run check:deploy [sha]` waits for the commit's Vercel status, then checks that production answers.
+
+**Acceptance Criteria:**
+- With no SHA given, the commit checked is main's current head **as GitHub reports it** (a local `origin/main` is stale until fetched and would re-check the previous, already-deployed commit). The output names that commit's short SHA and subject. If GitHub can't be asked, the check fails with one line saying so
+- Only qboard's commit status counts: context `Vercel` (since the duplicate project was disconnected, Vercel posts it unnamed) or `Vercel – qboard` (as it was with two projects). Other contexts (`Vercel – dog-boarding`, `codecov`) are ignored. When it was posted more than once, the newest one (by `updated_at`) wins
+- No qboard status yet, or one in state `pending`, means keep waiting (every 20 s by default)
+- State `success` means deployed. Any other state (`failure`, `error`) fails at once, and the message gives the state and Vercel's description (for example "Deployment rate limited — retry in 24 hours.")
+- Still waiting when the timeout runs out (10 min by default) fails, and the message says what it was last waiting on: the last state and description, or that no Vercel status ever arrived (`no Vercel status`)
+- A GitHub error while polling the statuses fails the check with one line naming the error (no stack trace)
+- Only once deployed is production checked (before that it would describe the previous deploy): the home page (`https://qboarding.vercel.app`) must return 200, and `/api/roster-image?type=weekend&token=…` (token URL-encoded) must return 200 with content type `image/png`. Each wrong answer is reported on its own line. Production not answering at all is a failure too
+- The check exits 1 on any failure, and 0 only when the deploy succeeded and production answered right
+
+**Tests:** `src/__tests__/deployCheck.test.js`
 
 ---
 

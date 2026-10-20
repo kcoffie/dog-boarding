@@ -95,6 +95,7 @@ The alert message will say which cron missed a run or had consecutive failures (
 ### "Ops watch sent an alert" (WhatsApp "Q Boarding ops watch", or a GitHub email from "Ops alert")
 
 `/api/ops-watch` runs on Vercel once a day, some time between 17:00 and 17:59 UTC (Hobby cron precision) and checks outcomes, not just whether jobs ran. Every line of the alert is one finding:
+- **Schedule scan … (failed / hung / got the login page / found no appointments / last run Nh ago):** the nightly `cron-schedule` didn't do its job (#275). `SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'schedule';` For `sync_settings read failed`, check Supabase. For `N enqueue(s) failed`, `result.failedEnqueueIds` names them. For the login page, check AGYD's login (cron-auth's row). One night's miss is caught up by the next scans.
 - **Sync backlog / Sync queue deep / Sync stalled:** the detail queue isn't draining (oldest pending over 16 h, more than 30 pending, or nothing processed in 36 h). If `requeuedEdited` in the `schedule` `cron_health` row is large, unchanged appointments are being re-queued again (#278). See "Queue is backed up". To drain by hand: `node scripts/drain-queue.js` with `.env.local` loaded (sends nothing, about 7–10 s per item).
 - **No morning roster / not delivered:** check today's `notify-4am` run in Actions and the `message_delivery_status` rows. "Not delivered" with Meta errors usually means a token or template problem.
 - **Workflow X: last success Nh ago:** open that workflow in Actions. If it's disabled, enable it. If it's failing, read the error (an expired Gmail token is a common one).
@@ -226,6 +227,12 @@ UPDATE boardings SET sync_status = 'archived' WHERE external_id = '<id>';
 ```
 
 ---
+
+## Deploys (#298)
+- **Only `main` deploys**, for every branch whose head contains #298. Vercel reads `git.deploymentEnabled` from the pushed commit's `vercel.json`, so a branch cut before #298 still builds on every push until it is rebased onto main. PRs and Dependabot branches then use none of Hobby's deployments and show no Vercel check. To get a preview of a UI change, push the branch as `preview/<name>`.
+- **After every merge, run `npm run check:deploy`.** With no argument it checks main's head as GitHub reports it (not your local `origin/main`); or pass a SHA. It waits for qboard's Vercel status (context `Vercel`; `Vercel – qboard` on older commits), then checks the home page and `/api/roster-image` (200 `image/png`). Exit 1 means production did **not** change or doesn't answer.
+- **Rate limits.** "retry in 24 hours" means the daily quota (100) ran out. A rate-limited deploy is never retried, so the next push to `main` after the reset ships everything. "retry in 5 minutes" is the short burst limit: push to main again (or redeploy) after 5 minutes.
+- **Don't mass-push old branches** (history rewrites, bulk rebases): branches without #298 still build. That's what used up the quota on 2026-10-19.
 
 ## Vercel env for ops-watch
 - `GH_ACTIONS_TOKEN`: fine-grained PAT, repository `kcoffie/dog-boarding` only, permissions **Actions: Read and write**. Used by `/api/ops-watch` to read workflow runs and dispatch `ops-alert.yml`. When it expires, ops-watch reports "Couldn't check the scheduled workflows".

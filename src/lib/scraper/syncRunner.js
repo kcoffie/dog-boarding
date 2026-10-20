@@ -44,6 +44,7 @@ import { authenticatedFetch } from './auth.js';
 import { ensureSession, clearSession } from './sessionCache.js';
 import { SCRAPER_CONFIG } from './config.js';
 import { applyDetailFilters } from './appointmentFilter.js';
+import { readSettingsRow } from './syncSettingsRow.js';
 import { enqueue, dequeueOne, markDone, markFailed, resetStuck as resetStuckItems, getQueueDepth } from './syncQueue.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from './daytimeSchedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
@@ -174,12 +175,7 @@ export function parseScheduleHtml(html) {
  * @returns {Promise<Date>}
  */
 async function getCursorDate(supabase) {
-  const { data } = await supabase
-    .from('sync_settings')
-    .select('schedule_cursor_date')
-    .limit(1)
-    .single();
-
+  const data = await readSettingsRow(supabase, 'schedule_cursor_date');
   if (data?.schedule_cursor_date) {
     const [y, mo, d] = data.schedule_cursor_date.split('-').map(Number);
     return new Date(y, mo - 1, d);
@@ -219,23 +215,12 @@ function errorText(err) {
  */
 async function saveCursorDate(supabase, date) {
   const isoDate = toLocalIsoDate(date);
+  const existing = await readSettingsRow(supabase, 'id');
 
-  const { data: existing } = await supabase
-    .from('sync_settings')
-    .select('id')
-    .limit(1)
-    .single();
-
-  if (existing) {
-    await supabase
-      .from('sync_settings')
-      .update({ schedule_cursor_date: isoDate })
-      .eq('id', existing.id);
-  } else {
-    await supabase
-      .from('sync_settings')
-      .insert({ schedule_cursor_date: isoDate });
-  }
+  const { error } = existing
+    ? await supabase.from('sync_settings').update({ schedule_cursor_date: isoDate }).eq('id', existing.id)
+    : await supabase.from('sync_settings').insert({ schedule_cursor_date: isoDate });
+  if (error) throw new Error(`sync_settings cursor write failed: ${error.message}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +239,8 @@ async function saveCursorDate(supabase, date) {
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  *   Must use the service role key — reads session_cookies from sync_settings.
  * @returns {Promise<{
- *   action: 'ok'|'session_failed'|'session_cleared',
+ *   action: 'ok'|'enqueue_failed'|'session_failed'|'session_cleared',
+ *   reason?: string, failedEnqueues?: number, failedEnqueueIds?: string[],
  *   pagesScanned: number,
  *   found: number,
  *   skipped: number,
@@ -287,6 +273,7 @@ export async function runScheduleSync(supabase) {
   console.log(`[SyncRunner:Schedule] 📅 Cursor: ${cursorDate.toDateString()}`);
 
   const stats = { pagesScanned: 0, found: 0, skipped: 0, queued: 0, requeuedEdited: 0, urlChangesIgnored: 0, daytimeUpserted: 0, daytimeErrors: 0 };
+  const failedEnqueueIds = [];
 
   const datesToFetch = [today];
   const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -354,6 +341,7 @@ export async function runScheduleSync(supabase) {
       if (outcome === 'url_change_ignored') stats.urlChangesIgnored++;
     } catch (err) {
       console.error(`[SyncRunner:Schedule] ⚠️ Enqueue failed for ${appt.id}: ${err.message}`);
+      failedEnqueueIds.push(appt.id);
     }
   }
 
@@ -375,8 +363,14 @@ export async function runScheduleSync(supabase) {
   const queueDepth = await getQueueDepth(supabase);
   console.log(`[SyncRunner:Schedule] 📊 Queue depth after scan: ${queueDepth} pending`);
 
+  // A failed enqueue makes the run red (#275), but the cursor still moves: the cursor cycles in
+  // about 2 days at 4 scans a day, and one item that always fails mustn't freeze it.
+  const failed = failedEnqueueIds.length > 0
+    ? { failedEnqueues: failedEnqueueIds.length, failedEnqueueIds: failedEnqueueIds.slice(0, 5) }
+    : {};
   return {
-    action: 'ok',
+    action: failedEnqueueIds.length > 0 ? 'enqueue_failed' : 'ok',
+    ...failed,
     pagesScanned: stats.pagesScanned,
     found: stats.found,
     skipped: stats.skipped,

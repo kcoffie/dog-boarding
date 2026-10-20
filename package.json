@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage",
     "check:requirements": "node scripts/check-requirements.js",
     "check:test-pii": "sh scripts/no-test-pii.sh --tracked-tests",
+    "check:deploy": "node --env-file-if-exists=.env.local scripts/check-deploy.js",
     "seed": "node scripts/seed-test-data.js",
     "reset-db": "node scripts/reset-test-data.js",
     "seed:staging": "VITE_ENVIRONMENT=staging node scripts/seed-test-data.js",

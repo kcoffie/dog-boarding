@@ -77,16 +77,16 @@ async function loadCronHealth(supabase) {
 }
 
 /**
- * For a given cron, return the last 2 log entries (newest first).
+ * For a given cron, return its recent log entries (newest first), 'started' rows included.
  * Used to distinguish transient vs. consecutive failures.
  */
-async function loadRecentLog(supabase, cronName) {
+export async function loadRecentLog(supabase, cronName) {
   const { data, error } = await supabase
     .from('cron_health_log')
-    .select('status, ran_at')
+    .select('status, ran_at, error_msg')
     .eq('cron_name', cronName)
     .order('ran_at', { ascending: false })
-    .limit(2);
+    .limit(6); // every run logs 'started' before its result, so 2 runs take 4 rows
 
   if (error) throw error;
   return data || [];
@@ -182,8 +182,9 @@ export function checkHungCron(cronName, healthRow, nowMs) {
 export function checkConsecutiveFailures(cronName, healthRow, recentLog) {
   if (!healthRow || healthRow.status !== 'failure') return null;
 
-  // cron_health shows 'failure'. Check the last 2 log entries.
-  const failures = recentLog.filter(r => r.status === 'failure');
+  // cron_health shows 'failure'. Check the last 2 finished runs: each run logs 'started' first,
+  // so without skipping those the last two rows are always [failure, started] (#275).
+  const failures = recentLog.filter(r => r.status !== 'started').slice(0, 2).filter(r => r.status === 'failure');
   const consecutiveFails = failures.length >= 2;
 
   if (consecutiveFails) {
