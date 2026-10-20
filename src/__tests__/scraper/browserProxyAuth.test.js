@@ -39,7 +39,7 @@ describe('REQ-656: browser → sync-proxy auth', () => {
     await authenticate();
     const [url, init] = fetchFn.mock.calls[0];
     expect(url).toBe('/api/sync-proxy');
-    expect(init.headers.Authorization).toBe('Bearer jwt-1');
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json', Authorization: 'Bearer jwt-1' });
   });
 
   it('every proxied fetch reads the session again, so a refreshed token is used', async () => {
@@ -58,5 +58,12 @@ describe('REQ-656: browser → sync-proxy auth', () => {
     fetchFn.mockResolvedValue({ json: async () => ({ success: false, error: 'Unauthorized' }) });
     await authenticate();
     expect(fetchFn.mock.calls[0][1].headers.Authorization).toBeUndefined();
+  });
+
+  it('a getSession answer without data sends no Authorization header (and does not throw)', async () => {
+    getSession.mockResolvedValue({});
+    fetchFn.mockResolvedValue({ json: async () => ({ success: false, error: 'Unauthorized' }) });
+    await authenticate();
+    expect(fetchFn.mock.calls[0][1].headers).toEqual({ 'Content-Type': 'application/json' });
   });
 });

@@ -57,9 +57,11 @@ describe('REQ-656: sync-proxy needs a signed-in user', () => {
     expect(bookingSiteCalls()[0][1].method).toBe('GET');
   });
 
-  it('no Authorization header → 401, and the booking site is never called', async () => {
+  it('no Authorization header → 401 JSON "Unauthorized", and the booking site is never called', async () => {
     const res = await handler(proxyRequest({ action: 'fetch', url: '/schedule' }, null));
     expect(res.status).toBe(401);
+    expect(res.headers.get('content-type')).toBe('application/json');
+    expect(await res.json()).toEqual({ error: 'Unauthorized' });
     expect(bookingSiteCalls()).toHaveLength(0);
   });
 
@@ -96,7 +98,8 @@ describe('REQ-656: sync-proxy only reads', () => {
   it('a fetch with method POST → 400 "Only GET is allowed", and the booking site is never called', async () => {
     const res = await handler(proxyRequest({ action: 'fetch', url: '/schedule', method: 'POST' }));
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe('Only GET is allowed');
+    expect(res.headers.get('content-type')).toBe('application/json');
+    expect(await res.json()).toEqual({ success: false, error: 'Only GET is allowed' });
     expect(bookingSiteCalls()).toHaveLength(0);
   });
 

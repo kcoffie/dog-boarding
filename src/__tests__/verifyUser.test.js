@@ -59,6 +59,8 @@ describe('verifyUser', () => {
     const fetchFn = answers(200, USER);
     expect((await verifyUser(JWT, { env: ENV, fetchFn })).status).toBe(401);
     expect((await verifyUser('Bearer ', { env: ENV, fetchFn })).status).toBe(401);
+    expect((await verifyUser(`Basic Bearer ${JWT}`, { env: ENV, fetchFn })).status).toBe(401);
+    expect((await verifyUser(`Bearer ${JWT} extra`, { env: ENV, fetchFn })).status).toBe(401);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -69,6 +71,11 @@ describe('verifyUser', () => {
 
   it('a 403 from Supabase is a 401', async () => {
     expect((await verifyUser(`Bearer ${JWT}`, { env: ENV, fetchFn: answers(403, {}) })).status).toBe(401);
+  });
+
+  it('a non-200 answer is a 401 even if its body carries a user id', async () => {
+    const result = await verifyUser(`Bearer ${JWT}`, { env: ENV, fetchFn: answers(401, USER) });
+    expect(result).toEqual({ ok: false, status: 401, error: 'Unauthorized' });
   });
 
   it('a Supabase outage (5xx) is a 503, never a pass', async () => {
@@ -83,11 +90,15 @@ describe('verifyUser', () => {
 
   it('a 200 whose body is not JSON is a 503', async () => {
     const fetchFn = vi.fn(async () => ({ status: 200, json: async () => { throw new SyntaxError('bad json'); } }));
-    expect((await verifyUser(`Bearer ${JWT}`, { env: ENV, fetchFn })).status).toBe(503);
+    expect(await verifyUser(`Bearer ${JWT}`, { env: ENV, fetchFn })).toEqual({ ok: false, status: 503, error: 'Sign-in check unavailable' });
   });
 
   it('a 200 without a user id is a 401', async () => {
-    expect((await verifyUser(`Bearer ${JWT}`, { env: ENV, fetchFn: answers(200, {}) })).status).toBe(401);
+    expect(await verifyUser(`Bearer ${JWT}`, { env: ENV, fetchFn: answers(200, {}) })).toEqual({ ok: false, status: 401, error: 'Unauthorized' });
+  });
+
+  it('a 200 whose body is null is a 401', async () => {
+    expect(await verifyUser(`Bearer ${JWT}`, { env: ENV, fetchFn: answers(200, null) })).toEqual({ ok: false, status: 401, error: 'Unauthorized' });
   });
 
   it('a user without an email passes with email null', async () => {
