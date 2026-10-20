@@ -33,12 +33,12 @@
 ## 2. "Merged" isn't "deployed": check production after every merge
 **What happened.** A merge's PR checks were green; production didn't change, and nothing said so. It was noticed only by reading the commit status on `main` by hand.
 
-**Fix.** `npm run check:deploy [sha]` (REQ-654) polls the commit's `Vercel – <project>` status:
+**Fix.** `npm run check:deploy [sha]` (REQ-654) polls the commit's Vercel status:
 - `success` → it checks the home page is 200 and one real API endpoint returns what it should (here, the roster image: 200 `image/png`).
 - `failure`/`error` → it fails at once with Vercel's description.
 - No status or still `pending` → it times out after 10 min, saying what it was last waiting for.
 
-With no SHA it asks GitHub for main's head: a local `origin/main` is stale until fetched, and would happily re-check the previous, already-deployed commit and print "OK". (The fresh-context reviewer caught that; it's the exact failure the check exists for.) The rules and the wiring (which commit, skip production when the deploy failed, exit codes) are a pure module with tests: 100% mutation score, counting 3 timeouts that are genuine infinite loops. The script only does the network calls. The newest status wins, because Vercel posts `pending` and then `success` on the same commit.
+With no SHA it asks GitHub for main's head: a local `origin/main` is stale until fetched, and would happily re-check the previous, already-deployed commit and print "OK". (The fresh-context reviewer caught that; it's the exact failure the check exists for.) The rules and the wiring (which commit, skip production when the deploy failed, exit codes) are a pure module with tests: 100% mutation score, counting 3 timeouts that are genuine infinite loops. The script only does the network calls. The newest status wins, because Vercel posts `pending` and then `success` on the same commit. **The status's name depends on how many Vercel projects are connected:** with two it was `Vercel – qboard`; after disconnecting the duplicate it became plain `Vercel`. A check that matches one exact name silently times out after such a change, so match both.
 
 **Still open:** the check is manual, so a failed deploy is still silent if nobody runs it. The next step is to run it on every push to `main` and alert on failure (#299).
 

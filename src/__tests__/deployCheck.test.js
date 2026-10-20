@@ -27,6 +27,16 @@ function fakePolls(answers) {
 }
 
 describe('latestStatus', () => {
+  it('the plain "Vercel" status (one project connected) counts', () => {
+    expect(latestStatus([status('success', 'Deployment has completed', '2026-10-20T02:47:43Z', 'Vercel')]).description).toBe('Deployment has completed');
+  });
+
+  it('the newest of "Vercel" and "Vercel – qboard" wins', () => {
+    const older = status('failure', 'rate limited', '2026-10-19T20:48:16Z', 'Vercel – qboard');
+    const newer = status('success', 'Deployment has completed', '2026-10-20T02:47:43Z', 'Vercel');
+    expect(latestStatus([older, newer]).state).toBe('success');
+  });
+
   it('only the Vercel – qboard status counts; other contexts are ignored', () => {
     const s = latestStatus([status('failure', 'other', '2026-10-20T21:00:00Z', 'Vercel – dog-boarding'), status('success', 'ours')]);
     expect(s.description).toBe('ours');
@@ -102,7 +112,7 @@ describe('waitForDeploy', () => {
 
   it('no Vercel status ever arriving times out and says so', async () => {
     const r = await waitForDeploy({ ...fakePolls([[]]), timeoutMs: 60_000, intervalMs: 30_000 });
-    expect(r).toEqual({ ok: false, message: 'timed out after 60 s, no "Vercel – qboard" status' });
+    expect(r).toEqual({ ok: false, message: 'timed out after 60 s, no Vercel status' });
   });
 
   it('a status that arrives exactly at the deadline still counts', async () => {

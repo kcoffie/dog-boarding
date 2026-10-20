@@ -8,16 +8,20 @@
  * @requirements REQ-654
  */
 
-export const VERCEL_CONTEXT = 'Vercel – qboard';
+/**
+ * The qboard project's commit status. With two Vercel projects on the repo it was "Vercel – qboard";
+ * since the duplicate was disconnected (2026-10-19) Vercel posts plain "Vercel". Both count.
+ */
+export const VERCEL_CONTEXTS = ['Vercel', 'Vercel – qboard'];
 
 /**
- * The newest status for one context, or null when Vercel hasn't reported on the commit yet.
+ * The newest qboard status, or null when Vercel hasn't reported on the commit yet.
  * @param {Array<{context:string,state:string,description?:string,updated_at:string}>} statuses
  */
-export function latestStatus(statuses, context = VERCEL_CONTEXT) {
+export function latestStatus(statuses, contexts = VERCEL_CONTEXTS) {
   let latest = null;
   for (const s of statuses) {
-    if (s.context !== context) continue;
+    if (!contexts.includes(s.context)) continue;
     // Stryker disable next-line EqualityOperator: `>=` only changes which of two same-timestamp statuses wins (no order to keep); `<=` is killed by the order test
     if (!latest || s.updated_at > latest.updated_at) latest = s;
   }
@@ -54,7 +58,7 @@ export async function waitForDeploy({ getStatuses, sleep, now, timeoutMs = 600_0
     if (verdict === 'deployed') return { ok: true, message: `deploy ${describe(status)}` };
     if (verdict === 'failed') return { ok: false, message: `deploy ${describe(status)}` };
     if (now() >= deadline) {
-      const last = status ? `still ${describe(status)}` : `no "${VERCEL_CONTEXT}" status`;
+      const last = status ? `still ${describe(status)}` : 'no Vercel status';
       return { ok: false, message: `timed out after ${Math.round(timeoutMs / 1000)} s, ${last}` };
     }
     await sleep(intervalMs);
