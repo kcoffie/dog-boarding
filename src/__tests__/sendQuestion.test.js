@@ -7,7 +7,7 @@
  * alertDelivered and verifyUser stay real.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../src/lib/alertKate.js', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -65,6 +65,10 @@ beforeEach(() => {
   recordMessageLog.mockImplementation(async () => {});
 });
 
+afterEach(() => {
+  delete process.env.INTERNAL_API_TOKEN;
+});
+
 describe('REQ-700: Send a Question API', () => {
   it('a valid question goes to Kate as "Question from <signed-in email>:" plus the trimmed text, and the user is told ok', async () => {
     const res = await call({ body: { message: '  Is Biscuit staying Friday?  ' } });
@@ -80,7 +84,7 @@ describe('REQ-700: Send a Question API', () => {
   });
 
   it('a message that is not text → 400, no send', async () => {
-    const res = await call({ body: { message: 42} });
+    const res = await call({ body: { message: 42 } });
     expect(res.status).toHaveBeenCalledWith(400);
     expect(sendAlert).not.toHaveBeenCalled();
   });
@@ -90,6 +94,12 @@ describe('REQ-700: Send a Question API', () => {
     await handler({ method: 'POST', headers: {}, body: { message: 'Hello' } }, res);
     expect(res.status).toHaveBeenCalledWith(401);
     expect(sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('a verified user without an email is named by their user id', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 200, json: async () => ({ id: 'user-9' }) })));
+    await call({ body: { message: 'Hello' } });
+    expect(sendAlert).toHaveBeenCalledWith('Question from user-9:\nHello');
   });
 
   it('the sender is the verified user, never a username in the body (REQ-656)', async () => {
@@ -116,7 +126,6 @@ describe('REQ-700: Send a Question API', () => {
     const res = await call({ token: 'server-token' });
     expect(res.status).toHaveBeenCalledWith(401);
     expect(sendAlert).not.toHaveBeenCalled();
-    delete process.env.INTERNAL_API_TOKEN;
   });
 
   it("when Supabase's sign-in check is down → 503, no send", async () => {
@@ -135,7 +144,7 @@ describe('REQ-700: Send a Question API', () => {
   });
 
   it('empty message → 400, no send', async () => {
-    const res = await call({ body: { message: '   '} });
+    const res = await call({ body: { message: '   ' } });
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ ok: false, error: 'Message is required' });
     expect(sendAlert).not.toHaveBeenCalled();

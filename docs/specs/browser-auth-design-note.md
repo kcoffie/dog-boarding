@@ -72,8 +72,8 @@
 7. Remove the invite-code signup page and route. The `invite_codes` table can stay.
 8. **Rotation order (Kate does it in the evening, after the code is merged and live). It's built so the 4am roster never hits a 401:**
    1. Add `INTERNAL_API_TOKEN` (new value from `openssl rand -hex 32`) in **Vercel** (Production, Sensitive), **GitHub secrets** and **`.env.local`** before merging. The code reads only the new name, so all three must exist first (`check:deploy` reads it from `.env.local` in step 2). Keep the old `VITE_SYNC_PROXY_TOKEN` everywhere until step 5.
-   2. Merge. `npm run check:deploy`.
-   3. `curl` `/api/roster-image?type=weekend&token=NEW` → 200, and the old `VITE_SYNC_PROXY_TOKEN` value → 401.
+   2. Merge **after the last intraday run of the day (03:00 UTC) has finished**, and on a Friday after friday-pm (22:00 UTC) has run: GitHub starts these late, and a run in the minute between merge and live deploy gets 401. Then `npm run check:deploy`. **If it fails, redeploy or revert the merge on main before 11:00 UTC.** Never leave main ahead of production overnight: the workflows on main send the new name, and old production code expects the old one, so the 4am roster would get 401.
+   3. `curl` `/api/roster-image?type=weekend&token=NEW` → 200, and the old `VITE_SYNC_PROXY_TOKEN` value → 401. Also `curl -X POST /api/sync-proxy -H "Authorization: Bearer OLD" -d '{"action":"authenticate"}'` → 401 (the action that returns the booking-site session).
    4. Dispatch `notify-intraday.yml` → 200 `channel_telegram` (proves the workflow secret without sending).
    5. Delete `VITE_SYNC_PROXY_TOKEN` from Vercel, GitHub and `.env.local`. No redeploy is needed: no code reads it, and a local build with it set (2026-10-20) bundled neither the old nor the new value.
 9. **Check it worked:** neither the old nor the new value appears anywhere in the deployed JS (`curl` the bundle and grep). Send a Question works signed in, and gets 401 signed out. Manual sync works.

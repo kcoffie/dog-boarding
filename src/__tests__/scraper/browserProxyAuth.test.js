@@ -53,6 +53,19 @@ describe('REQ-656: browser → sync-proxy auth', () => {
     expect(getSession).toHaveBeenCalledTimes(2);
   });
 
+  it('a proxied page fetch posts { action: fetch, url, cookies, method: GET } to /api/sync-proxy', async () => {
+    getSession.mockResolvedValue(session('jwt-1'));
+    fetchFn
+      .mockResolvedValueOnce({ json: async () => ({ success: true, cookies: 'sid=1' }) })
+      .mockResolvedValueOnce({ json: async () => ({ success: true, status: 200, html: '<p>ok</p>' }) });
+    await authenticate();
+    await authenticatedFetch('https://agirlandyourdog.com/schedule');
+    const [url, init] = fetchFn.mock.calls[1];
+    expect(url).toBe('/api/sync-proxy');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ action: 'fetch', url: 'https://agirlandyourdog.com/schedule', cookies: 'sid=1', method: 'GET' });
+  });
+
   it('signed out, no Authorization header is sent (the proxy then answers 401)', async () => {
     getSession.mockResolvedValue(session(null));
     fetchFn.mockResolvedValue({ json: async () => ({ success: false, error: 'Unauthorized' }) });

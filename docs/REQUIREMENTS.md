@@ -1499,6 +1499,7 @@ The proxy token was built into the public JavaScript bundle (`VITE_` prefix), so
 - The jobs' endpoints (`notify`, `notify-intraday`, `roster-image`, `intraday-image`), ops-watch's image check, the notify workflows and `check:deploy` use `INTERNAL_API_TOKEN`. Unset, those endpoints answer 401
 - No browser code reads a token through `import.meta.env`; no secret has a `VITE_` prefix
 - `api/run-sync.js` (an unused token-guarded full sync) is gone
+- Known cost: a manual sync makes one sign-in check per proxied page (hundreds in a long historical sync). A slow or throttled Supabase answers 503 partway through; the sync stops rather than passing unchecked
 
 **Tests:** `src/__tests__/verifyUser.test.js`, `src/__tests__/sendQuestion.test.js`, `src/__tests__/syncProxyAuth.test.js`, `src/__tests__/scraper/browserProxyAuth.test.js`, `src/__tests__/cronAuthNodeImport.test.js`
 
