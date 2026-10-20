@@ -1,5 +1,7 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 19, 2026, ~22:30 UTC (session 36, end). **Production is behind main:** Vercel hit Hobby's daily deploy limit at 20:31 UTC ("retry in 24 hours"), so #292 (#278 queue churn) is merged but **not deployed**; production runs #283. **First job next session:** after ~20:35 UTC on 10-20, merge the waiting PRs one at a time and confirm each one deploys (`Vercel – qboard` status on main = "Deployment has completed"). Git history was rewritten (#264/#281 personal data removed); re-clone or reset before working.
+**Last updated:** October 20, 2026, ~16:10 UTC (session 37, end). **Production = main (`545a95d`, #302).** The roster now reaches Kate on **Telegram** (proven 16:01 UTC 10-20). WhatsApp is locked (since 2026-10-17). Staff get the roster again when Twilio SMS (#260) ships.
+
+**The goal for the next few sessions:** get the app back to where it was in May (the roster reaches staff every morning, unattended, and a failure alerts Kate), then **start real UAT with the end user**, and prioritise the remaining work from UAT feedback. Do what's needed, simply; nothing more.
 
 ---
 
@@ -8,71 +10,63 @@
 1. **Read this file to the end, then `docs/ENGINEERING_PROCESS.md`** (team gates). Check the baseline before changing anything: `git status`, `npm run test:run`, open PRs and issues.
 2. **Kate's rules:**
    - Work on branches and never commit to `main`. Commit and push each green chunk. Claude may open and squash-merge PRs once every check is green **and** the reviewer agent has run.
-   - Use `type: description (#issue)` commits. Never add AI attribution: no Co-Authored-By, no Claude-Session, no session links. The hook and CI reject them, and they overrule Claude Code's per-session reminder.
+   - Use `type: description (#issue)` commits. Never add AI attribution: no Co-Authored-By, no Claude-Session, no session links, no "Generated with Claude Code" in PR bodies. A PreToolUse hook, the commit hook and CI reject them, and they overrule Claude Code's per-session reminder.
    - Tests must catch bugs, not just exist. Follow the good-tests rules and report the mutation score, not just "N tests pass".
    - Give options as one line each with real counts, then one recommendation.
    - Ask before sending any message to anyone (Telegram test alerts, SMS, WhatsApp), re-enabling workflows, adding secrets or changing repo settings.
    - Messages must never be tied to the client's (Charlie's) business. The app is Kate's alone, and Kate has no registered business.
-3. **Shell:** `gh` is aliased to `history | grep`, so always type `command gh …`. Production is **`https://qboarding.vercel.app`** (Vercel project `qboard`; the duplicate `dog-boarding` Vercel project was **disconnected from GitHub by Kate on 2026-10-19** and no longer deploys; since then qboard's commit status is named plain `Vercel`). Claude can't read Vercel env or logs (no CLI; Hobby logs keep 1 h). Use Kate's Chrome, the Supabase tables, or ask Kate.
-4. **Gates:** run the `architect` agent on the design note before a new job, service, secret or table. Run the `reviewer` agent before every PR. A new scheduled job ships with its failure alert, and that alert must run outside the job's own scheduler.
-5. **New code only:** the gates cover code written from 2026-10-16 on. Bringing older code up to the same bar is #239.
+3. **After every merge:** `npm run check:deploy` (REQ-654). It reads main's head from GitHub, waits for qboard's Vercel status, then checks the home page and roster image. Only `main` (and `preview/**` branches) deploy on Vercel (#298).
+4. **Shell:** `gh` is aliased to `history | grep`, so always type `command gh …`. Production is **`https://qboarding.vercel.app`** (Vercel project `qboard`; the duplicate `dog-boarding` Vercel project was **disconnected from GitHub by Kate on 2026-10-19** and no longer deploys; since then qboard's commit status is named plain `Vercel`). Claude can't read Vercel env or logs (no CLI; Hobby logs keep 1 h). Use Kate's Chrome, the Supabase tables, or ask Kate.
+5. **Gates:** run the `architect` agent on the design note before a new job, service, secret or table. Run the `reviewer` agent before every PR. A new scheduled job ships with its failure alert, and that alert must run outside the job's own scheduler.
+6. **New code only:** the gates cover code written from 2026-10-16 on. Bringing older code up to the same bar is #239.
 
 ---
 
-## Current State (2026-10-19, end of session 36)
+## Current State (2026-10-20, end of session 37)
 
-### Session 36: what happened
-1. **ops-watch's first scheduled run (17:00 UTC 10-20) hasn't happened yet.** There's no `ops-watch` row in `cron_health`. Check it first thing (Immediate Next Steps 2).
-2. **Integration Check:** no runs after 10-19 19:00 UTC by session end. `sync_queue` had 0 pending, done 3529.
-   - **`C63QhKpW` ("10/19-22") is an evaluation, not a stay.** On the live schedule it's three separate 10am–4pm day visits on 10/20–22, and its detail page is an Initial Evaluation. The check will report it "Missing from DB" until 10/22; ignore it.
-   - Kate confirmed `C63QhKs0` and `C63QhKph` are evaluations. Their "N/C Eval" titles are already filtered.
-3. **Mutation on main after #276: 47.02% (3760/7996).** Ratchet 44 → 47 (PR #280).
-4. **#278 queue churn: merged as PR #292, NOT deployed** (see the header).
-   - **Root cause, read from live AGYD week pages:**
-     - A boarding stay's links all carry its start timestamp.
-     - A recurring daycare/PG series carries one timestamp per visit, so its first visible timestamp moves with the date and the rotating cursor week.
-     - All 32 "modified" re-queues on 10-19 were PG series.
-   - **New rule (REQ-109):**
-     - A done item is re-queued when its title changed, or its URL changed and the detail step didn't skip it. The detail step now records `meta.detail_skip`.
-     - Re-queues merge meta, keep the pet ID, never blank a title, and store the scan's URL and title (failed items too).
-   - **Measured:** 6 of 191 done rows have real title edits, so expect a 6-item wave on deploy.
-   - **ops-watch:** oldest pending 48 h → **16 h**, and new: **more than 30 pending**.
-   - The `schedule` cron_health row now has `requeuedEdited` (should be near 0) and `urlChangesIgnored`.
-5. **#275 sync silent failures: PR #296, open, green except Vercel (quota).** Reviewer done; findings fixed.
-   - `readSettingsRow` (`order('id')`) for every `sync_settings` reader. Read and write errors fail the scan.
-   - `enqueue_failed` is red, but the cursor still advances; a 23505 race counts as unchanged.
-   - `ensureSession` keeps fresh cookies when caching fails.
-   - New ops-watch schedule-scan rule.
-   - **Fixed a real bug:** `cron-health-check` never alerted on 2 consecutive failures, because the `started` rows sat between them, and it never read `error_msg`.
-6. **Worker names out of the public repo (#281, PR #282, merged).** Names live only in the Supabase `workers` table. `workers.js` holds the UIDs and column order.
-7. **Dependencies:**
-   - **#283 merged** (minor bumps, jest-dom 7, Anthropic SDK removed). satori stays at 0.26.0, and Dependabot now ignores it (#246).
-   - **#285 (vitest 5) is a DRAFT, on hold:** vitest 5 makes Stryker run 0 tests per mutant (stryker-js #6210, fix #6214 unreleased).
-   - **vite 8 is blocked by a Babel peer conflict:** #284.
-   - **New Dependabot majors #286 (vite-plugin-pwa 2), #289 (jsdom 30), #288 (lint-staged 17) and #287 (eslint 10)** were reviewed and are safe. Merge them one at a time in that order; their lockfiles conflict, so let Dependabot rebase in between.
-8. **History rewrite done (Kate pushed 2026-10-19):**
-   - Client names, phone numbers, emails, the street address and the 5 staff names were removed from all history, tags and branches. **One client surname was missed** (in the Session 31 table here; replaced 2026-10-20, but still in history). Kate decides whether to scrub again.
-   - Kept: dog names and AGYD IDs (they collide with ordinary text).
-   - Backups in `a local backup folder (ask Kate)`: `dog-boarding-before-content-rewrite.bundle`, plus `dog-boarding-deleted-branches-2026-10-19.bundle`.
-   - GitHub's `refs/pull/*` still hold old commits; only GitHub Support can purge them.
-   - The script and values list were in a session scratchpad; they may be gone, and must never be committed.
-9. **70 stale remote branches deleted** (all backed up in the bundle above). Only main and the open-PR branches remain.
-10. **#260 SMS roster: design note PR #291 (docs, architect reviewed).**
-    - The Twilio account is still a **trial**; A2P registration needs an upgrade, which is Kate's payment.
-    - The architect found **the roster and intraday images say "Q Boarding"** (the client's name). That must change before any SMS goes out.
-    - The notify refresh alert goes to staff today, not to Kate.
-    - Decisions for Kate are at the end of the note.
-11. **Follow-ups filed:** #293 (re-login retry), #294 (`checkHungCron` never called; the 00:30 health check can race Vercel's cron jitter), #295 (`sync_settings` schema vs migrations).
+### Session 37: what happened
+1. **Deploy and CI budget (#298, PR #300, merged).** Lessons for other projects: `docs/LESSONS_DEPLOY_AND_CI_BUDGET.md`.
+   - **Vercel builds only `main` and `preview/**`** (`vercel.json` `git.deploymentEnabled`). An ignored build step wouldn't have helped: canceled builds still count toward the 100/day quota.
+   - **`npm run check:deploy [sha]`** runs after every merge. Since the duplicate project was disconnected, qboard's commit status is plain `Vercel` (it used to be `Vercel – qboard`); the check accepts both.
+   - **Mutation runs in `.github/workflows/mutation.yml`.** It's incremental (cached results), with a full run when `package-lock`/`stryker.config` change, Mondays 13:00 UTC, or by hand. Burst merges cancel older runs (seen working: 3 cancelled, 1 kept).
+   - **Dependabot:** monthly; all dev dependencies in one PR; Actions grouped; vitest 5 and vite 8 majors held in `ignore`. It already closed #286–#289 and opened **#304** and **#303**.
+2. **Roster to Kate on Telegram (part of #260, PR #302, merged, REQ-655).**
+   - Vercel env **`ROSTER_CHANNEL=telegram`** is set and **required** (no default; unset or a typo → every notify run returns 500).
+   - The roster goes to `TELEGRAM_ALERT_CHAT_ID` only. Staff numbers aren't used. **Intraday is off** on telegram (`channel_telegram`).
+   - The image is rendered once, stored, then the same bytes are sent. No URL or token appears in any error.
+   - The refresh alert goes through `alertAndLog`.
+   - ops-watch counts a Telegram `notify-4am` row as delivered.
+   - **Verified:**
+     - the intraday dispatch → `skipped: channel_telegram`;
+     - a manual `notify-4am` at 16:01 UTC → `{"to":"telegram","status":"sent"}`. Kate got it.
+   - The scheduled 4am ran at 15:34 UTC (GitHub ran it 4.5 h late) **before** the deploy, on old code: WhatsApp, `131031` locked, nothing delivered.
+   - **Switching to Twilio** needs #260's full build (#291's reviewed design). The setting is only the cutover and the fallback.
+3. **Merged and deployed:** #300, #297 (session 36 handoff; a missed client surname was removed from the file; Kate chose to leave it in history), #296 (#275 sync silent failures), #302. Each was confirmed with `check:deploy`.
+4. **Security (Kate, 2026-10-20):**
+   - **Supabase sign-up was open** (`disable_signup: false`, `mailer_autoconfirm: true`; the invite code was checked only in the browser). **Kate turned it off** (verified via `/auth/v1/settings`).
+   - She checked the user list: no strangers.
+   - Vercel Deployment Protection is Standard.
+   - New staff accounts are added by Kate in Supabase.
+5. **#301 (filed):** `VITE_SYNC_PROXY_TOKEN` is built into the public JS bundle and guards internal endpoints. The architect reviewed a design; the result is on a **LOCAL-ONLY branch `fix/301-browser-auth`** (commit `21b70c7`, deliberately not pushed: it describes how the still-valid token can be abused). Read `docs/specs/browser-auth-design-note.md` there. The plan:
+   - Supabase user JWT on `send-question` and `sync-proxy`.
+   - Rename the server token to `INTERNAL_API_TOKEN`.
+   - Delete `run-sync`; GET-only proxy; remove the invite-code page.
+   - Kate rotates the token in the documented order.
+6. **WhatsApp timeline (from the tables):** last delivery 08-24, when GitHub disabled the schedules. Then the friday-pm roster delivered on **Fri 10-16 22:58 UTC** (Kate's "Friday" message) and a cron-health alert at 10-17 04:49. **Locked from 10-17 11:53 UTC.**
+7. **#304 (dev dependencies, 9 updates):**
+   - Lint was red from `@eslint/js` 10. I pushed `d5f4e94`, which drops two dead initialisers in `extraction.js`.
+   - Locally: lint clean, 1505 tests pass, build OK. Stryker on vitest 4.1.12: 3.77 tests per mutant (OK).
+   - **Not merged:** it needs green CI plus a reviewer run, then `check:deploy`.
+   - **#303** (Actions: upload-artifact 7, cache 6): green, needs a reviewer run.
+8. **Follow-ups filed:** #299 (alert when a merge doesn't reach production; needs the architect gate), #301.
 
-### Session 35 (reference)
-- The 10-19 false positive "Wknd DC" was fixed (#272/#273).
-- Client data was scrubbed from tests (#264/#274, CI check REQ-653).
-- syncRunner tests (#276).
-- Telegram alerts were proven end to end.
-- `GH_ACTIONS_TOKEN` expires 2027-10-19.
-- Meta marks every WhatsApp send `failed 131031 Business Account locked`.
+### Production (checked 2026-10-20 ~16:05 UTC)
+- main `545a95d` (#302) is live: home 200, roster image 200 `image/png`.
+- `sync_queue`: 0 pending, 0 failed.
+- **The 00:05 UTC 10-21 `schedule` run is the first on #292's queue-churn fix** (everything deployed 15:30–16:00 UTC 10-20).
+- The Mutation run on `545a95d` (full, seeds the cache) was still running at handoff.
 
-## Current reference (still true after session 36)
+## Current reference (still true after session 37)
 
 ### Telegram alerts (#265, live, proven 2026-10-19)
 - **The bot is `@qap_alert_bot`** (neutral name, Kate's).
@@ -87,7 +81,7 @@
 - **Kate's decisions:**
   - Client data in alert text going to Telegram is OK.
   - An hourly red gmail-monitor while Telegram is down is OK.
-  - ops-watch's "no 4am roster" finding stays on until #260.
+  - The roster comes to Kate on Telegram until Twilio (2026-10-19). ops-watch's "no 4am roster" finding now reads Telegram sends.
 - **The secrets have existed since 2026-10-19, and both paths are proven** (Session 35 item 7). If they're ever removed, every alert fails as "not configured" and those runs go red, which is loud and intended.
 
 ### Kate's setup steps (steps 1–4 done 2026-10-19; kept for reference if the bot or token changes)
@@ -96,74 +90,63 @@
 3. GitHub secrets: `! pbpaste | command gh secret set TELEGRAM_BOT_TOKEN -R kcoffie/dog-boarding`, then the same for `TELEGRAM_ALERT_CHAT_ID`.
 4. Vercel **qboard → Production**, type **Secret**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID`, `CRON_SECRET` (random, e.g. `openssl rand -hex 32`), `GH_ACTIONS_TOKEN` (fine-grained PAT, this repo only, Actions read and write). Then **redeploy**.
 5. ~~Turn off the duplicate `dog-boarding` Vercel project~~: done 2026-10-19, disconnected from GitHub. Delete it later if nothing misses it.
-6. Five Vercel variables show "Needs Attention". All five are secret-looking values stored as type **Config**, so the likely fix is to re-save them as type **Secret** (unconfirmed).
-
-### Production (checked 2026-10-19 ~21:30 UTC)
-- **qboard is serving #283 (8b6ca60's code).** The roster image returns 200 `image/png` and the home page 200.
-- **Every deploy since 20:31 UTC failed with "Deployment rate limited — retry in 24 hours"**, including main (db4ae3d = #292). The cause was PR churn plus the history rewrite's 78 force-pushed branches, built on 2 projects.
-- A rate-limited deploy is **not retried**. The next push to main after the reset deploys everything.
-- **Always confirm a merge deployed:** `command gh api repos/kcoffie/dog-boarding/commits/<sha>/statuses --jq '.[]|select(.context=="Vercel – qboard")|.state+" "+.description'`.
+6. Vercel "Needs Attention" on `SUPABASE_SERVICE_ROLE_KEY`, `EXTERNAL_SITE_PASSWORD` and the three `META_*` variables: leave them (Kate, 2026-10-19). Delete the `META_*` ones together with the WhatsApp code in #260.
 
 ### Mutation
-- **CI on main:** 47.94% after #292 (2026-10-19). Ratchet 47. The run after #296 goes in the score log.
+- **CI on main:** 47.94% after #292 (2026-10-19), ratchet 47. The next score (after #296 and #302) comes from the first `mutation.yml` run on `545a95d`. Log it, and raise the ratchet if it goes up.
 - **Scoped, local, TZ=UTC:**
-  - `opsWatch.js` 100%
-  - `syncSettingsRow.js` 100%
+  - `rosterChannel.js`, `opsWatch.js`, `syncSettingsRow.js`, `deployCheck.js`: 100%
   - `cron-schedule.js` 98.7%
   - `syncRunner.js` 83.6%
+  - `notify.js` 81.2%
   - `sessionCache.js` 71.8%
-  - `syncQueue.js` 69.3% (the rest is log text and older functions)
-  - notify/crons 83.27%
+  - `syncQueue.js` 69.3%
+  - `notify-intraday.js` 66.9%
   - `send-question` 87.9%
   - `alertKate` 82%
-- **Never bump vitest to 5** until the Stryker runner ships #6214. Check "tests per mutant" > 0 after any test-runner change.
-- **Next #239 target:** `pictureOfDay.js` (51.13% in CI: 135 survived, 59 no coverage).
+- **Never bump vitest to 5** until the Stryker runner ships #6214 (it's held in Dependabot's `ignore`). Check "tests per mutant" > 0 after any test-runner change.
+- **#239 `pictureOfDay.js`** (51.13% in CI) is **parked by Kate until UAT starts**. Revisit then.
 
 ### Issues
-- **#296 (#275):** open, ready to merge after the deploy reset.
-- **#291 (#260 note):** open, docs.
-- **#286–#289:** open Dependabot majors, reviewed.
-- **#285:** draft, on hold (vitest 5).
-- **#284:** vite 8 peer conflict.
-- **#260:** SMS roster, blocked on Kate's Twilio upgrade, registration and decisions.
-- **#257:** ops-watch rule for notify failures in every window.
-- **#246:** close only after a scheduled roster is sent **and** delivered (after #260).
-- **#239:** backfill. Next is `pictureOfDay.js` tests from REQ-610/611.
-- **#293, #294, #295:** follow-ups from #275.
-- **#238:** dependency triage; #145 (eslint 10, now in #287 and safe on its own).
+- **#304 / #303:** Dependabot groups, waiting for a reviewer run plus merge (see Session 37 item 7).
+- **#301:** browser token. The local branch `fix/301-browser-auth` holds the design; build it next.
+- **#260:** Twilio SMS roster. **Kate starts the Twilio upgrade (A2P needs a paid account).** PR #291 holds the reviewed design and Kate's open decisions.
+- **#299:** deploy-failure alert. **#294:** `checkHungCron` never called. Both are small; Kate OK'd them after #301.
+- **#257:** ops-watch notify-failure rule (fold into #260).
+- **#293, #295:** follow-ups from #275 (low).
+- **#285** (vitest 5 draft) and **#284** (vite 8): parked.
+- **#246:** close once a scheduled roster is delivered to staff (after #260).
+- **January issues #6–#24:** triage with the end user at UAT, not before.
 
 ## Immediate Next Steps
-1. **Sync first.** History was rewritten, so on an old clone run `git fetch --prune && git checkout main && git reset --hard origin/main`.
-2. **ops-watch's first scheduled run (17:00 UTC 10-20):** confirm a `cron_health` row for `ops-watch` and that Kate got its findings on Telegram.
-   - Expect "no 4am roster delivered" until #260.
-   - It runs #283's code, so the old thresholds apply.
-   - No row means checking Vercel logs (Hobby keeps 1 h), or Kate re-runs the dry-run curl.
-3. **After the deploy limit resets (~20:35 UTC 10-20)**, merge one at a time, confirming each `Vercel – qboard` deploy completes:
-   - **#296** (#275). This also deploys #278. Before merging, update the branch (`command gh pr update-branch 296`) and wait for green.
-   - **#286 → #289 → #288 → #287.** Comment `@dependabot rebase` on the next one after each merge.
-   - **#291** (the docs note).
-   - After the first deploy, check:
-     - the roster image endpoint;
-     - the next `schedule` cron_health row: `requeuedEdited` near 0, `urlChangesIgnored` > 0, `found` > 0;
-     - `sync_queue` pending under 30.
-4. **Read every Integration Check run since 10-19 19:00 UTC.** For red runs, read the log before assuming. Expect `C63QhKpW` until 10/22 (an evaluation).
-5. **Add the main Mutation score** after #296 to the score log (#292's is in: 47.94%), and raise the ratchet if it goes up.
-6. **#239:** `pictureOfDay.js` tests from REQ-610/611, with mutation scores. Also #257.
-7. **#260** once Kate has upgraded Twilio and decided the note's points (the image label replacing "Q Boarding", opt-in method, trigger). Fold the architect's changes into the note's body before building.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. The #301 work is on the local branch `fix/301-browser-auth`. Don't push it until the fix is ready, and rebase it on main first.
+2. **Check last night's run and this morning's:**
+   - the `schedule` cron_health row: `requeuedEdited` near 0, `urlChangesIgnored` > 0, `found` > 0;
+   - `sync_queue` pending < 30;
+   - ops-watch's 17:00 UTC row, and that its findings reached Kate on Telegram;
+   - the next scheduled `notify-4am` sent `{"to":"telegram","status":"sent"}`.
+
+   cron_health columns are `cron_name, last_ran_at, status, result, error_msg, updated_at` (no `started_at`).
+3. **Every Integration Check run since the last session:** read each red one's log before assuming. `C63QhKpW` is an evaluation until 10/22.
+4. **Mutation:** log the `545a95d` score; raise the ratchet if it went up.
+5. **#304, then #303:** run the reviewer, wait for green, squash-merge one at a time, `npm run check:deploy` after each. #304 changes build tools (vite, vite-plugin-pwa), so also check the next scheduled roster.
+6. **#301:** build to the design note on `fix/301-browser-auth` (architect done). Then the reviewer, then a PR. **Kate adds `INTERNAL_API_TOKEN` to Vercel and GitHub before the merge.** Rotate in the note's order, in the evening.
+7. **Then #294 and #299** (small).
+8. **UAT:** with Kate, write 3–5 acceptance criteria with the end user (sprint plan G-5 / #13). Then triage the January issues with them.
+9. **#260** once Kate has upgraded Twilio and decided #291's points (the image label replacing "Q Boarding", opt-in, trigger). Fold the architect's changes into the note before building.
 
 ## Open TODOs
-- [ ] Merge queue above (#296, #286–#289, #291) once Vercel deploys again
-- [ ] #239 backfill (`pictureOfDay.js` next), #257, #293, #294, #295
-- [ ] #285 vitest 5: wait for stryker-js #6214 in a vitest-runner release
-- [ ] #284 vite 8 + plugin-react 6 (Babel peer conflict)
-- [ ] `@eslint/js` 10 (after #287): fix 2 `no-useless-assignment` errors in `src/lib/scraper/extraction.js:77-78` first
-- [ ] Kate: Twilio upgrade + Sole Proprietor registration; #291's decisions
-- [ ] Kate: optionally delete the disconnected `dog-boarding` Vercel project
-- [ ] Kate: `GH_ACTIONS_TOKEN` expires 2027-10-19 (calendar reminder)
-- [ ] Kate: remove `INTEGRATION_CHECK_RECIPIENTS` and the stale `TWILIO_*` GitHub secrets
-- [ ] Kate (optional): ask GitHub Support to purge cached PR refs (`refs/pull/*`) holding pre-rewrite commits
-- [ ] `mutate:changed` (80% on changed lines) as a PR check; a PR check that `thresholds.break` never goes down
-- [ ] Integration Check: skip candidates whose schedule entries are same-day visits (`C63QhKpW` pattern), like N/C evals
+- [ ] #304, #303 (Dependabot groups)
+- [ ] #301 browser token (local branch), then Kate's token rotation
+- [ ] #294, #299
+- [ ] UAT acceptance criteria with the end user; triage #6–#24 at UAT
+- [ ] #260 Twilio (Kate: upgrade + A2P; #291 decisions)
+- [ ] #239 backfill: parked until UAT (Kate revisits)
+- [ ] #257, #293, #295
+- [ ] #285 vitest 5: wait for stryker-js #6214; #284 vite 8
+- [ ] Integration Check: skip same-day-visit candidates (`C63QhKpW` pattern), like N/C evals
+- [ ] `mutate:changed` PR check (80% on changed lines)
+- [ ] Kate: delete the `META_*` Vercel vars with #260; optionally delete the disconnected `dog-boarding` Vercel project; remove the stale `INTEGRATION_CHECK_RECIPIENTS`/`TWILIO_*` GitHub secrets; `GH_ACTIONS_TOKEN` expires 2027-10-19
 
 ---
 
