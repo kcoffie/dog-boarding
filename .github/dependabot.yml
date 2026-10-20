@@ -1,11 +1,15 @@
 version: 2
 updates:
-  # npm dependencies
+  # npm dependencies. Monthly, few PRs (#298): every PR is a rebase, a CI run and a merge to watch.
+  # - All dev dependencies, majors included, come as one PR: one lockfile, where separate PRs
+  #   conflict and have to be rebased one after another. Build tools (vite, vite-plugin-pwa,
+  #   tailwind) are dev dependencies but shape the bundle, so run `npm run check:deploy` after merging.
+  # - Production minor and patch updates come as one PR.
+  # - Production majors come one per PR, so each one can be checked in production on its own.
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "09:00"
       timezone: "America/Chicago"
     open-pull-requests-limit: 5
@@ -17,11 +21,23 @@ updates:
       # satori is pinned at 0.26.0: 0.35+ crashes the roster image functions on Vercel (#246).
       # Upgrade by hand, and check /api/roster-image in production after.
       - dependency-name: "satori"
+      # Held majors. Each would turn the whole dev-dependency PR red, so they wait here until
+      # their issue is fixed, then come off this list.
+      # vitest 5: Stryker runs 0 tests per mutant until stryker-js #6214 ships (#285).
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/*"
+        update-types: ["version-update:semver-major"]
+      # vite 8 + @vitejs/plugin-react 6: Babel peer conflict (#284).
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
     groups:
-      # Group minor and patch updates together
       development:
         dependency-type: "development"
         update-types:
+          - "major"
           - "minor"
           - "patch"
       production:
@@ -30,14 +46,17 @@ updates:
           - "minor"
           - "patch"
 
-  # GitHub Actions
+  # GitHub Actions: monthly, one PR.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
     labels:
       - "dependencies"
       - "github-actions"
     commit-message:
       prefix: "chore(ci):"
+    groups:
+      actions:
+        patterns:
+          - "*"
