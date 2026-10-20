@@ -123,7 +123,8 @@ Deploy/CI budget (#298/#300: Vercel builds only `main` and `preview/**`; `npm ru
 
 ## Open TODOs
 - [ ] #301: Kate adds `INTERNAL_API_TOKEN`; push, PR, merge after 03:00 UTC, rotate (Next Steps 3)
-- [ ] #294, #299
+- [ ] **#318 sync redesign (top priority, Kate 2026-10-20):** findings in `docs/specs/sync-redesign-findings.md` (branch `docs/sync-redesign`). Research → design note → architect → Kate decides → build. Covers #316, #317 (high), #311, #294 (parked into it)
+- [ ] #299
 - [ ] UAT: Kate reviews `docs/UAT_PLAN.md` decisions, creates the admin account, runs "watch first" with Charlie and her admin; triage #6–#24 at the first check-in
 - [ ] #312 a dog with no rate counts as $0, silently (before UAT)
 - [ ] #313 a correction by hand must survive the next sync
