@@ -36,7 +36,15 @@ SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'notify';
 
 ## Failure playbook
 
-### "I didn't get a WhatsApp this morning"
+### "I didn't get the roster this morning"
+
+**Since 2026-10-20 the roster comes to Kate's Telegram** (`ROSTER_CHANNEL=telegram`, REQ-655). The WhatsApp steps further down are kept for reference only.
+- **500 `ROSTER_CHANNEL is not set…` or `is "…"`:** set `ROSTER_CHANNEL` in Vercel (qboard → Production) to `telegram`, then redeploy (env changes apply only after a deploy).
+- **500 `Roster image fetch failed: HTTP …`:** the image endpoint is broken. Check `/api/roster-image?type=weekend&token=…` (see "Roster image broken").
+- **500 `No recipient received the roster (1 of 1 sends failed): Telegram sendPhoto …`:** Telegram refused it. `400 … chat not found` means `TELEGRAM_ALERT_CHAT_ID` is wrong; `401` means `TELEGRAM_BOT_TOKEN` is wrong. No hash was stored, so the next window sends again.
+- **Switching channels:** change `ROSTER_CHANNEL` in the evening and redeploy. The 7am/8:30am hash gate compares against what was already sent that day, so a mid-morning switch sends nothing new until the roster changes.
+
+**WhatsApp (before 2026-10-17, reference)**
 
 **Step 1: Check GitHub Actions**
 
@@ -87,6 +95,7 @@ The alert message will say which cron missed a run or had consecutive failures (
 ### "Ops watch sent an alert" (WhatsApp "Q Boarding ops watch", or a GitHub email from "Ops alert")
 
 `/api/ops-watch` runs on Vercel once a day, some time between 17:00 and 17:59 UTC (Hobby cron precision) and checks outcomes, not just whether jobs ran. Every line of the alert is one finding:
+- **Schedule scan … (failed / hung / got the login page / found no appointments / last run Nh ago):** the nightly `cron-schedule` didn't do its job (#275). `SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'schedule';` For `sync_settings read failed`, check Supabase. For `N enqueue(s) failed`, `result.failedEnqueueIds` names them. For the login page, check AGYD's login (cron-auth's row). One night's miss is caught up by the next scans.
 - **Sync backlog / Sync queue deep / Sync stalled:** the detail queue isn't draining (oldest pending over 16 h, more than 30 pending, or nothing processed in 36 h). If `requeuedEdited` in the `schedule` `cron_health` row is large, unchanged appointments are being re-queued again (#278). See "Queue is backed up". To drain by hand: `node scripts/drain-queue.js` with `.env.local` loaded (sends nothing, about 7–10 s per item).
 - **No morning roster / not delivered:** check today's `notify-4am` run in Actions and the `message_delivery_status` rows. "Not delivered" with Meta errors usually means a token or template problem.
 - **Workflow X: last success Nh ago:** open that workflow in Actions. If it's disabled, enable it. If it's failing, read the error (an expired Gmail token is a common one).
@@ -244,6 +253,7 @@ All secrets must be **Repository secrets** (not environment secrets) for workflo
 | `META_PHONE_NUMBER_ID` | notify workflows | From Meta app dashboard |
 | `META_WHATSAPP_TOKEN` | notify workflows | System user token — never expires |
 | `NOTIFY_RECIPIENTS` | notify workflows | E.164, comma-separated |
+| `ROSTER_CHANNEL` | Vercel env (not a secret) | Required. `telegram` = roster to Kate only, intraday off (REQ-655) |
 | `TELEGRAM_BOT_TOKEN` | integration-check, health-check, gmail-monitor (+ Vercel: ops-watch, send-question) | `@qap_alert_bot` token from @BotFather. Rotate with `/revoke`, then update GitHub **and** Vercel |
 | `TELEGRAM_ALERT_CHAT_ID` | same as above | Kate's private chat with the bot (from `getUpdates` after she messages it once) |
 | `ANTHROPIC_API_KEY` | gmail-monitor | Optional one-line summary of each alert email (plain `fetch`, no SDK); skipped if unset |

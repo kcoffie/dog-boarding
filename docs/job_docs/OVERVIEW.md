@@ -110,7 +110,7 @@ Five jobs run back-to-back each evening with 5-minute gaps to ensure each step c
 
 **What it checks:**
 - Did each cron run since midnight UTC? (checks `cron_health.last_ran_at`)
-- Does `cron_health_log` show 2 consecutive failures for any cron?
+- Does `cron_health_log` show 2 consecutive failed runs for any cron? (`started` rows are skipped: each run logs one before its result, #275)
 
 **File:** `scripts/cron-health-check.js` | **Workflow:** `.github/workflows/cron-health-check.yml`
 

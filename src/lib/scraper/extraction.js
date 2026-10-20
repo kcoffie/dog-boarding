@@ -74,8 +74,8 @@ export function parseAppointmentPage(html, sourceUrl = '') {
   // fall back to the system timestamps.
   // Fallback: use system timestamps for appointments without dates in the title
   // (e.g. "Boarding (Nights)").
-  let checkInDatetime  = null;
-  let checkOutDatetime = null;
+  let checkInDatetime;
+  let checkOutDatetime;
   const timestamps = extractScheduledTimestamps(html);
   const parsedDates = parseServiceTypeDates(serviceType);
   if (parsedDates) {

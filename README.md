@@ -104,10 +104,10 @@ Everything runs without human intervention. Times in **PDT (UTC−7)** — the U
 | 5:30 PM | Daily | GitHub Actions | `cron-health-check` | Queries `cron_health` for gaps or 2+ consecutive failures → WhatsApp alert if found |
 | Every :15 | Hourly | GitHub Actions | `gmail-monitor` | Scans Gmail for GH Actions / Vercel / Supabase failure emails → WhatsApp alert if found |
 | 1:00 AM · 9:00 AM · 5:00 PM | Daily | GitHub Actions | `integration-check` | Playwright scrapes AGYD live schedule; compares against DB → WhatsApp pass/fail report |
-| 4:00 AM | Mon–Fri | GitHub Actions | `notify-4am` | Sends daily roster image to all recipients via WhatsApp (always fires) |
+| 4:00 AM | Mon–Fri | GitHub Actions | `notify-4am` | Sends the daily roster image on `ROSTER_CHANNEL` (Telegram to Kate since 2026-10-20; WhatsApp before) (always fires) |
 | 7:00 AM | Mon–Fri | GitHub Actions | `notify-7am` | Sends roster image only if roster changed since 4am send |
 | 8:30 AM | Mon–Fri | GitHub Actions | `notify-830am` | Sends roster image only if roster changed since 7am send |
-| 3:00 PM | Fri only | GitHub Actions | `notify-friday-pm` | Sends weekend boarding preview image via WhatsApp (always fires) |
+| 3:00 PM | Fri only | GitHub Actions | `notify-friday-pm` | Sends the weekend boarding preview image on `ROSTER_CHANNEL` (always fires) |
 
 All GitHub Actions workflows also support `workflow_dispatch` for on-demand manual triggering. Deep reference for each job: [`docs/job_docs/`](docs/job_docs/).
 

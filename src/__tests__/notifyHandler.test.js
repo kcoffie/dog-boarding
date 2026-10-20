@@ -1,22 +1,21 @@
 /**
  * /api/notify handler: the weekday roster windows and the Friday weekend preview.
- * @requirements REQ-611, REQ-612, REQ-630, REQ-641, REQ-401
+ * @requirements REQ-611, REQ-612, REQ-630, REQ-641, REQ-401, REQ-655
  *
  * Expected values come from REQUIREMENTS, not from running the handler.
- * Boundaries faked: Supabase (cron_health reads + image storage), Meta WhatsApp sends,
- * the AGYD daytime refresh, the DB roster read (getPictureOfDay), and fetch (image store).
- * The send gate (shouldSendNotification) and date parsing stay real.
+ * Boundaries faked: Supabase (cron_health reads + image storage), the channel send (sendRoster),
+ * Kate's alert (alertAndLog), the AGYD daytime refresh, the DB roster read (getPictureOfDay), and
+ * fetch (the roster image render). The send gate, the channel setting and date parsing stay real.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@supabase/supabase-js', () => ({ createClient: vi.fn() }));
-vi.mock('../lib/notifyWhatsApp.js', () => ({
-  sendRosterImage: vi.fn(),
-  sendTextMessage: vi.fn(),
-  getRecipients: vi.fn(),
+vi.mock('../lib/rosterChannel.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  sendRoster: vi.fn(),
 }));
+vi.mock('../lib/alertKate.js', () => ({ alertAndLog: vi.fn() }));
 vi.mock('../lib/messageDeliveryStatus.js', () => ({
-  recordSentMessages: vi.fn(async () => {}),
   recordMessageLog: vi.fn(async () => {}),
 }));
 vi.mock('../lib/notifyHelpers.js', () => ({ refreshDaytimeSchedule: vi.fn() }));
@@ -27,8 +26,9 @@ vi.mock('../lib/pictureOfDay.js', async (importOriginal) => ({
 vi.mock('../../api/_cronHealth.js', () => ({ writeCronHealth: vi.fn(async () => {}) }));
 
 const { createClient } = await import('@supabase/supabase-js');
-const { sendRosterImage, sendTextMessage, getRecipients } = await import('../lib/notifyWhatsApp.js');
-const { recordSentMessages, recordMessageLog } = await import('../lib/messageDeliveryStatus.js');
+const { sendRoster } = await import('../lib/rosterChannel.js');
+const { alertAndLog } = await import('../lib/alertKate.js');
+const { recordMessageLog } = await import('../lib/messageDeliveryStatus.js');
 const { refreshDaytimeSchedule } = await import('../lib/notifyHelpers.js');
 const { getPictureOfDay, hashPicture } = await import('../lib/pictureOfDay.js');
 const { writeCronHealth } = await import('../../api/_cronHealth.js');
@@ -40,7 +40,8 @@ const { default: handler } = await import('../../api/notify.js');
 
 const TOKEN = 'test-token';
 const TODAY = '2026-10-19'; // Monday, Pacific
-const RECIPIENTS = ['+10000000001', '+10000000002'];
+const PNG = Uint8Array.from([137, 80, 78, 71, 1, 2, 3, 4]); // the rendered roster's bytes
+const SENT = [{ to: 'telegram', status: 'sent' }];
 
 let cronRows; // cron_health rows by cron_name, returned by .maybeSingle(); { error } or { throws } to fail
 let upload;
@@ -96,7 +97,9 @@ function call(query, { method = 'GET', headers = { host: 'qb.example.com' } } = 
 }
 
 const healthWrites = (name) => writeCronHealth.mock.calls.filter(c => c[1] === name);
-const sentImageUrl = () => sendRosterImage.mock.calls[0][0];
+// fetch also carries the test logger's /api/log posts; only the roster render counts here.
+const imageFetches = () => globalThis.fetch.mock.calls.map(c => String(c[0])).filter(u => u.includes('/api/roster-image'));
+const sentImageUrl = () => imageFetches()[0];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -104,18 +107,17 @@ beforeEach(() => {
   upload = vi.fn(async () => ({ error: null }));
   bucket = null;
   writeCronHealth.mockImplementation(async () => {});
-  recordSentMessages.mockImplementation(async () => {});
   recordMessageLog.mockImplementation(async () => {});
   process.env.VITE_SYNC_PROXY_TOKEN = TOKEN;
   process.env.VITE_SUPABASE_URL = 'https://db.example.com';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
+  process.env.ROSTER_CHANNEL = 'telegram';
   createClient.mockImplementation(fakeSupabase);
-  getRecipients.mockReturnValue(RECIPIENTS);
-  sendRosterImage.mockImplementation(async (_url, to) => to.map((_, i) => ({ to: `***-${i}`, status: 'sent', messageId: `w${i}` })));
-  sendTextMessage.mockImplementation(async (_text, to) => to.map((_, i) => ({ to: `***-${i}`, status: 'sent', messageId: `t${i}` })));
+  sendRoster.mockResolvedValue(SENT);
+  alertAndLog.mockResolvedValue(true);
   refreshDaytimeSchedule.mockResolvedValue({ refreshed: true, rowCount: 5 });
   getPictureOfDay.mockResolvedValue(picture());
-  globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8) }));
+  globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, arrayBuffer: async () => PNG.buffer.slice(0) }));
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-19T11:00:00Z')); // Monday 4:00 PDT
 });
@@ -130,28 +132,28 @@ describe('access and input', () => {
     const res = await call({ window: '4am', token: 'nope' });
     expect(res.code).toBe(401);
     expect(res.body).toStrictEqual({ error: 'Unauthorized' });
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 
   it('with no token configured on the server, every request is rejected (fails closed)', async () => {
     delete process.env.VITE_SYNC_PROXY_TOKEN;
     const res = await call({ window: '4am', token: '' });
     expect(res.code).toBe(401);
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 
   it('only GET is accepted', async () => {
     const res = await call({ window: '4am' }, { method: 'POST' });
     expect(res.code).toBe(405);
     expect(res.body).toStrictEqual({ error: 'Method not allowed' });
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 
   it('an unknown window is rejected and nothing is sent', async () => {
     const res = await call({ window: '830am' });
     expect(res.code).toBe(400);
     expect(res.body.error).toBe('Invalid window: "830am". Must be one of: 4am, 7am, 8:30am, friday-pm');
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 
   it('the handler runs on the Node.js runtime (Vercel), not edge', async () => {
@@ -168,7 +170,7 @@ describe('access and input', () => {
     const res = await call({ window: '4am', date: '10/19/2026' });
     expect(res.code).toBe(400);
     expect(res.body.error).toMatch(/10\/19\/2026/);
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 });
 
@@ -181,7 +183,7 @@ describe('REQ-612: send gate', () => {
     sentEarlier(picture());
     const res = await call({ window: '4am' });
     expect(res.body.action).toBe('sent');
-    expect(sendRosterImage).toHaveBeenCalledTimes(1);
+    expect(sendRoster).toHaveBeenCalledTimes(1);
   });
 
   it('7am skips when the roster is unchanged since the last send today', async () => {
@@ -189,14 +191,14 @@ describe('REQ-612: send gate', () => {
     const res = await call({ window: '7am' });
     expect(res.code).toBe(200);
     expect(res.body).toStrictEqual({ ok: true, action: 'skipped', reason: 'no_change', window: '7am', date: TODAY });
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 
   it('8:30am skips when the roster is unchanged since the last send today', async () => {
     sentEarlier(picture());
     const res = await call({ window: '8:30am' });
     expect(res.body.action).toBe('skipped');
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 
   it('7am sends when a dog was added to a worker since the last send', async () => {
@@ -251,7 +253,7 @@ describe('REQ-612: send gate', () => {
     expect(result.lastHash).toBe(hashPicture(data));
     expect(result.lastDate).toBe(TODAY);
     expect(result.window).toBe('4am');
-    expect(result.recipients).toStrictEqual(['***-0', '***-1']);
+    expect(result.recipients).toStrictEqual(['telegram']);
   });
 
   it('a skipped window does not overwrite the stored hash', async () => {
@@ -266,16 +268,34 @@ describe('REQ-612: send gate', () => {
 // ---------------------------------------------------------------------------
 
 describe('REQ-611: weekday roster send', () => {
-  it('the roster goes to every NOTIFY_RECIPIENTS number', async () => {
-    await call({ window: '4am' });
-    expect(sendRosterImage.mock.calls[0][1]).toEqual(RECIPIENTS);
+  it('the roster goes out once, on the configured channel, captioned with its window', async () => {
+    await call({ window: '7am' });
+    expect(sendRoster).toHaveBeenCalledTimes(1);
+    const [[{ channel, caption }]] = sendRoster.mock.calls;
+    expect(channel).toBe('telegram');
+    expect(caption).toBe('Roster 7am');
   });
 
-  it('with no recipients configured, nothing is sent and the run says why', async () => {
-    getRecipients.mockReturnValue([]);
+  it('the image is rendered once, and the bytes sent are the bytes stored', async () => {
+    await call({ window: '4am' });
+    expect(imageFetches()).toHaveLength(1);
+    expect([...sendRoster.mock.calls[0][0].png]).toEqual([...PNG]);
+    expect([...upload.mock.calls[0][1]]).toEqual([...PNG]);
+  });
+
+  it('the image is stored before it is sent', async () => {
+    const order = [];
+    upload.mockImplementation(async () => { order.push('store'); return { error: null }; });
+    sendRoster.mockImplementation(async () => { order.push('send'); return SENT; });
+    await call({ window: '4am' });
+    expect(order).toEqual(['store', 'send']);
+  });
+
+  it('staff numbers in NOTIFY_RECIPIENTS play no part: the send happens with or without them', async () => {
+    process.env.NOTIFY_RECIPIENTS = '';
     const res = await call({ window: '4am' });
-    expect(res.body).toStrictEqual({ ok: true, action: 'skipped', reason: 'no_recipients' });
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(res.body.action).toBe('sent');
+    expect(Object.keys(sendRoster.mock.calls[0][0]).sort()).toEqual(['caption', 'channel', 'png']);
   });
 
   it('the daytime schedule is refreshed live before the roster is built', async () => {
@@ -346,12 +366,12 @@ describe('REQ-611: weekday roster send', () => {
     getPictureOfDay.mockResolvedValue(picture({ workers: 0 }));
     const res = await call({ window: '4am' });
     expect(res.body).toStrictEqual({ ok: true, action: 'skipped', reason: 'no_data' });
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 
-  it('each send is recorded for delivery tracking under its window job name', async () => {
+  it('each send is recorded in the message log under its window job name', async () => {
     await call({ window: '8:30am' });
-    expect(recordSentMessages.mock.calls[0][2]).toBe('notify-8:30am');
+    expect(recordMessageLog.mock.calls[0][1]).toEqual(SENT);
     expect(recordMessageLog.mock.calls[0][2]).toBe('notify-8:30am');
     expect(recordMessageLog.mock.calls[0][3]).toBe('image');
   });
@@ -364,24 +384,27 @@ describe('REQ-611: weekday roster send', () => {
     expect(recordMessageLog.mock.calls[0][5]).toBe('roster-images/notify-4am/2026-10-19T11-00-00.000Z.png');
   });
 
-  it('when the image cannot be fetched for storage, the send still counts and the log has no image path', async () => {
-    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 500, arrayBuffer: async () => new ArrayBuffer(8) }));
+  it('when the image cannot be rendered, nothing is sent: 500 naming the HTTP status, failure recorded, hash not stored', async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 500, arrayBuffer: async () => new ArrayBuffer(0) }));
     const res = await call({ window: '4am' });
-    expect(res.body.action).toBe('sent');
-    expect(upload).not.toHaveBeenCalled();
-    expect(recordMessageLog.mock.calls[0][5]).toBeNull();
+    expect(res.code).toBe(500);
+    expect(res.body).toStrictEqual({ error: 'Roster image fetch failed: HTTP 500' });
+    expect(sendRoster).not.toHaveBeenCalled();
+    expect(healthWrites('notify').map(w => w[2])).toEqual(['failure']);
   });
 
-  it('when the image fetch throws, the send still counts and the log has no image path', async () => {
-    globalThis.fetch = vi.fn(async () => { throw new Error('offline'); });
+  it('when the image fetch throws, the error names no URL (the URL carries the token)', async () => {
+    globalThis.fetch = vi.fn(async (url) => { throw new Error(`request to ${url} failed`); });
     const res = await call({ window: '4am' });
-    expect(res.body.action).toBe('sent');
-    expect(recordMessageLog.mock.calls[0][5]).toBeNull();
+    expect(res.code).toBe(500);
+    expect(res.body).toStrictEqual({ error: 'Roster image fetch: network error' });
+    expect(JSON.stringify(healthWrites('notify'))).not.toContain(TOKEN);
   });
 
-  it('when the image upload fails, the log has no image path', async () => {
+  it('when the image upload fails, the roster is still sent and the log has no image path', async () => {
     upload.mockResolvedValue({ error: { message: 'bucket missing' } });
-    await call({ window: '4am' });
+    const res = await call({ window: '4am' });
+    expect(res.body.action).toBe('sent');
     expect(recordMessageLog.mock.calls[0][5]).toBeNull();
   });
 
@@ -391,8 +414,7 @@ describe('REQ-611: weekday roster send', () => {
     expect(recordMessageLog.mock.calls[0][5]).toBeNull();
   });
 
-  it('a failure to record delivery tracking does not fail the send', async () => {
-    recordSentMessages.mockRejectedValueOnce(new Error('x'));
+  it('a failure to write the message log does not fail the send', async () => {
     recordMessageLog.mockRejectedValueOnce(new Error('y'));
     const res = await call({ window: '4am' });
     expect(res.code).toBe(200);
@@ -400,10 +422,10 @@ describe('REQ-611: weekday roster send', () => {
   });
 
   it('the response counts sent and failed recipients separately', async () => {
-    sendRosterImage.mockResolvedValue([
-      { to: '***-0', status: 'sent', messageId: 'w0' },
-      { to: '***-1', status: 'sent', messageId: 'w1' },
-      { to: '***-2', status: 'failed', error: 'bad number' },
+    sendRoster.mockResolvedValue([
+      { to: 'a', status: 'sent' },
+      { to: 'b', status: 'sent' },
+      { to: 'c', status: 'failed', error: 'bad number' },
     ]);
     const res = await call({ window: '4am' });
     expect(res.body.ok).toBe(true);
@@ -412,20 +434,32 @@ describe('REQ-611: weekday roster send', () => {
   });
 
   it('a send that reached no recipient is a failure: 500, failure recorded, hash not stored (#255)', async () => {
-    sendRosterImage.mockResolvedValue([
+    sendRoster.mockResolvedValue([
       { to: '***-0', status: 'failed', error: 'x' },
       { to: '***-1', status: 'failed', error: 'y' },
     ]);
     const res = await call({ window: '4am' });
     expect(res.code).toBe(500);
-    expect(res.body).toStrictEqual({ error: 'No recipient received the roster (2 of 2 sends failed)' });
+    expect(res.body).toStrictEqual({ error: 'No recipient received the roster (2 of 2 sends failed): x; y' });
     const writes = healthWrites('notify');
     expect(writes).toHaveLength(1);
-    expect(writes[0].slice(2)).toStrictEqual(['failure', null, 'No recipient received the roster (2 of 2 sends failed)']);
+    expect(writes[0].slice(2)).toStrictEqual(['failure', null, 'No recipient received the roster (2 of 2 sends failed): x; y']);
+  });
+
+  it('when no one was reached, results without a reason are left out of the error', async () => {
+    sendRoster.mockResolvedValue([{ to: 'a', status: 'failed' }, { to: 'b', status: 'failed', error: 'y' }]);
+    const res = await call({ window: '4am' });
+    expect(res.body).toStrictEqual({ error: 'No recipient received the roster (2 of 2 sends failed): y' });
+  });
+
+  it('when no one was reached and no reason was given, the error ends at the count', async () => {
+    sendRoster.mockResolvedValue([{ to: 'telegram', status: 'failed' }]);
+    const res = await call({ window: '4am' });
+    expect(res.body).toStrictEqual({ error: 'No recipient received the roster (1 of 1 sends failed)' });
   });
 
   it('a send that reached at least one recipient counts as sent and stores the hash (#255)', async () => {
-    sendRosterImage.mockResolvedValue([
+    sendRoster.mockResolvedValue([
       { to: '***-0', status: 'failed', error: 'x' },
       { to: '***-1', status: 'sent', messageId: 'w1' },
     ]);
@@ -439,7 +473,7 @@ describe('REQ-611: weekday roster send', () => {
   it('after a window that reached nobody, the next window sends the same roster again (#255)', async () => {
     sentEarlier(picture({ dogs: ['S1'] })); // 4am reached the team
     getPictureOfDay.mockResolvedValue(picture({ dogs: ['S1', 'S2'] })); // roster changed before 7am
-    sendRosterImage.mockResolvedValueOnce([{ to: '***-0', status: 'failed', error: 'x' }]);
+    sendRoster.mockResolvedValueOnce([{ to: '***-0', status: 'failed', error: 'x' }]);
     expect((await call({ window: '7am' })).code).toBe(500);
     const [last] = healthWrites('notify').slice(-1);
     cronRows.notify = { result: last[3] }; // what the 7am run left in cron_health
@@ -447,10 +481,10 @@ describe('REQ-611: weekday roster send', () => {
     expect(res.body.action).toBe('sent');
   });
 
-  it('a send that reached no recipient is still recorded for delivery tracking (#255)', async () => {
-    sendRosterImage.mockResolvedValue([{ to: '***-0', status: 'failed', error: 'x' }]);
+  it('a send that reached no recipient is still written to the message log (#255)', async () => {
+    sendRoster.mockResolvedValue([{ to: 'telegram', status: 'failed', error: 'x' }]);
     await call({ window: '4am' });
-    expect(recordSentMessages.mock.calls[0][2]).toBe('notify-4am');
+    expect(recordMessageLog.mock.calls[0][1]).toEqual([{ to: 'telegram', status: 'failed', error: 'x' }]);
     expect(recordMessageLog.mock.calls[0][2]).toBe('notify-4am');
   });
 
@@ -491,12 +525,12 @@ describe('8:30am boarders baseline (intraday job)', () => {
 // ---------------------------------------------------------------------------
 
 describe('REQ-641: refresh alert', () => {
-  it('a refresh warning sends a text alert naming the day, window and warning', async () => {
+  it("a refresh warning alerts Kate (not staff) as notify-refresh-alert, naming the day, window and warning", async () => {
     refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
     await call({ window: '4am' });
-    const [[text, to]] = sendTextMessage.mock.calls;
+    const [[, job, text]] = alertAndLog.mock.calls;
+    expect(job).toBe('notify-refresh-alert');
     expect(text).toBe('⚠️ Notify refresh issue (2026-10-19, 4am)\nsession expired');
-    expect(to).toEqual(RECIPIENTS);
   });
 
   it('the alert is recorded so later windows the same day stay quiet', async () => {
@@ -506,51 +540,57 @@ describe('REQ-641: refresh alert', () => {
     expect(status).toBe('success');
     expect(result.alertDate).toBe(TODAY);
     expect(result.window).toBe('4am');
-    expect(recordSentMessages.mock.calls[0][2]).toBe('notify-refresh-alert');
-    expect(recordMessageLog.mock.calls[0].slice(2, 6)).toStrictEqual([
-      'notify-refresh-alert', 'text', '⚠️ Notify refresh issue (2026-10-19, 4am)\nsession expired', null,
-    ]);
+  });
+
+  it('an alert that was not delivered is not recorded, so the next window tries again', async () => {
+    refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
+    alertAndLog.mockResolvedValue(false);
+    await call({ window: '4am' });
+    expect(healthWrites('notify-refresh-alert')).toHaveLength(0);
   });
 
   it('when the earlier-alert state cannot be read, the alert is sent anyway', async () => {
     refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
     cronRows['notify-refresh-alert'] = { throws: 'db down' };
     await call({ window: '7am' });
-    expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(alertAndLog).toHaveBeenCalledTimes(1);
   });
 
   it('a second refresh warning on the same day sends no second alert', async () => {
     refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
     cronRows['notify-refresh-alert'] = { result: { alertDate: TODAY, window: '4am' } };
     await call({ window: '7am' });
-    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(alertAndLog).not.toHaveBeenCalled();
   });
 
   it("yesterday's alert does not silence today's", async () => {
     refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
     cronRows['notify-refresh-alert'] = { result: { alertDate: '2026-10-16', window: '4am' } };
     await call({ window: '7am' });
-    expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(alertAndLog).toHaveBeenCalledTimes(1);
   });
 
   it('a clean refresh sends no alert', async () => {
     await call({ window: '4am' });
-    expect(sendTextMessage).not.toHaveBeenCalled();
+    expect(alertAndLog).not.toHaveBeenCalled();
+  });
+
+  it('an undelivered refresh alert leaves the run green and the roster sent (ops-watch reports the failed alert row)', async () => {
+    refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
+    alertAndLog.mockResolvedValue(false);
+    const res = await call({ window: '4am' });
+    expect(res.code).toBe(200);
+    expect(res.body.action).toBe('sent');
+    expect(sendRoster).toHaveBeenCalledTimes(1);
   });
 
   it('a failing alert send does not stop the roster send', async () => {
     refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
-    sendTextMessage.mockRejectedValue(new Error('meta down'));
+    alertAndLog.mockRejectedValue(new Error('telegram down'));
     const res = await call({ window: '4am' });
     expect(res.body.action).toBe('sent');
   });
 
-  it('with no recipients, no alert is attempted', async () => {
-    refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
-    getRecipients.mockReturnValue([]);
-    await call({ window: '4am' });
-    expect(sendTextMessage).not.toHaveBeenCalled();
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -580,7 +620,7 @@ describe('REQ-401: failure recording', () => {
     const res = await call({ window: '4am' });
     expect(res.code).toBe(500);
     expect(res.body).toStrictEqual({ error: 'Supabase env vars not configured' });
-    expect(sendRosterImage).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 });
 
@@ -610,16 +650,20 @@ describe('REQ-630: friday-pm', () => {
     expect(new URL(sentImageUrl()).origin).toBe('https://qb.example.com');
   });
 
-  it('goes to every NOTIFY_RECIPIENTS number', async () => {
+  it('goes out on the configured channel as the weekend roster, with the stored bytes', async () => {
     await call({ window: 'friday-pm' });
-    expect(sendRosterImage.mock.calls[0][1]).toEqual(RECIPIENTS);
+    const [[{ channel, caption, png }]] = sendRoster.mock.calls;
+    expect(channel).toBe('telegram');
+    expect(caption).toBe('Weekend roster');
+    expect([...png]).toEqual([...PNG]);
+    expect([...upload.mock.calls[0][1]]).toEqual([...PNG]);
   });
 
   it('records a notify-friday-pm success in cron_health', async () => {
     await call({ window: 'friday-pm' });
     const [[, , status, result]] = healthWrites('notify-friday-pm');
     expect(status).toBe('success');
-    expect(result.recipients).toEqual(['***-0', '***-1']);
+    expect(result.recipients).toEqual(['telegram']);
   });
 
   it('leaves the weekday hash state alone', async () => {
@@ -628,36 +672,29 @@ describe('REQ-630: friday-pm', () => {
     expect(getPictureOfDay).not.toHaveBeenCalled();
   });
 
-  it('records delivery tracking and the stored image under notify-friday-pm', async () => {
+  it('records the message log and the stored image under notify-friday-pm', async () => {
     await call({ window: 'friday-pm' });
-    expect(recordSentMessages.mock.calls[0][2]).toBe('notify-friday-pm');
     expect(recordMessageLog.mock.calls[0][2]).toBe('notify-friday-pm');
     expect(recordMessageLog.mock.calls[0][3]).toBe('image');
     expect(recordMessageLog.mock.calls[0][5]).toBe('roster-images/notify-friday-pm/2026-10-19T11-00-00.000Z.png');
   });
 
-  it('with no recipients, nothing is sent and the run says why', async () => {
-    getRecipients.mockReturnValue([]);
-    const res = await call({ window: 'friday-pm' });
-    expect(res.body).toStrictEqual({ ok: true, action: 'skipped', reason: 'no_recipients', window: 'friday-pm' });
-    expect(sendRosterImage).not.toHaveBeenCalled();
-  });
-
-  it('a send error returns 500 and records a notify-friday-pm failure', async () => {
-    sendRosterImage.mockRejectedValue(new Error('media upload failed'));
+  it('an image that cannot be rendered returns 500 and records a notify-friday-pm failure', async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 502, arrayBuffer: async () => new ArrayBuffer(0) }));
     const res = await call({ window: 'friday-pm' });
     expect(res.code).toBe(500);
-    expect(res.body).toStrictEqual({ error: 'media upload failed' });
+    expect(res.body).toStrictEqual({ error: 'Roster image fetch failed: HTTP 502' });
     const [[, , status, , msg]] = healthWrites('notify-friday-pm');
     expect(status).toBe('failure');
-    expect(msg).toBe('media upload failed');
+    expect(msg).toBe('Roster image fetch failed: HTTP 502');
+    expect(sendRoster).not.toHaveBeenCalled();
   });
 
   it('the response counts sent and failed recipients separately', async () => {
-    sendRosterImage.mockResolvedValue([
-      { to: '***-0', status: 'sent', messageId: 'w0' },
-      { to: '***-1', status: 'sent', messageId: 'w1' },
-      { to: '***-2', status: 'failed', error: 'y' },
+    sendRoster.mockResolvedValue([
+      { to: 'a', status: 'sent' },
+      { to: 'b', status: 'sent' },
+      { to: 'c', status: 'failed', error: 'y' },
     ]);
     const res = await call({ window: 'friday-pm' });
     expect(res.body.ok).toBe(true);
@@ -666,17 +703,17 @@ describe('REQ-630: friday-pm', () => {
   });
 
   it('a send that reached no recipient returns 500 and records a notify-friday-pm failure (#255)', async () => {
-    sendRosterImage.mockResolvedValue([{ to: '***-0', status: 'failed', error: 'x' }]);
+    sendRoster.mockResolvedValue([{ to: '***-0', status: 'failed', error: 'x' }]);
     const res = await call({ window: 'friday-pm' });
     expect(res.code).toBe(500);
-    expect(res.body).toStrictEqual({ error: 'No recipient received the roster (1 of 1 sends failed)' });
+    expect(res.body).toStrictEqual({ error: 'No recipient received the roster (1 of 1 sends failed): x' });
     const writes = healthWrites('notify-friday-pm');
     expect(writes).toHaveLength(1);
-    expect(writes[0].slice(2)).toStrictEqual(['failure', null, 'No recipient received the roster (1 of 1 sends failed)']);
+    expect(writes[0].slice(2)).toStrictEqual(['failure', null, 'No recipient received the roster (1 of 1 sends failed): x']);
   });
 
   it('a send that reached at least one recipient records success (#255)', async () => {
-    sendRosterImage.mockResolvedValue([
+    sendRoster.mockResolvedValue([
       { to: '***-0', status: 'failed', error: 'x' },
       { to: '***-1', status: 'sent', messageId: 'w1' },
     ]);
@@ -685,16 +722,62 @@ describe('REQ-630: friday-pm', () => {
     expect(healthWrites('notify-friday-pm')[0][2]).toBe('success');
   });
 
-  it('a send that reached no recipient is still recorded for delivery tracking (#255)', async () => {
-    sendRosterImage.mockResolvedValue([{ to: '***-0', status: 'failed', error: 'x' }]);
+  it('a send that reached no recipient is still written to the message log (#255)', async () => {
+    sendRoster.mockResolvedValue([{ to: 'telegram', status: 'failed', error: 'x' }]);
     await call({ window: 'friday-pm' });
-    expect(recordSentMessages.mock.calls[0][2]).toBe('notify-friday-pm');
     expect(recordMessageLog.mock.calls[0][2]).toBe('notify-friday-pm');
   });
 
+  it('an image fetch error names no URL in the 500 body or the notify-friday-pm failure (the URL carries the token)', async () => {
+    globalThis.fetch = vi.fn(async (url) => { throw new Error(`request to ${url} failed`); });
+    const res = await call({ window: 'friday-pm' });
+    expect(res.code).toBe(500);
+    expect(res.body).toStrictEqual({ error: 'Roster image fetch: network error' });
+    expect(JSON.stringify(healthWrites('notify-friday-pm'))).not.toContain(TOKEN);
+  });
+
   it('the recorded failure message is cut to 500 characters', async () => {
-    sendRosterImage.mockRejectedValue(new Error('z'.repeat(600)));
+    sendRoster.mockResolvedValue([{ to: 'telegram', status: 'failed', error: 'z'.repeat(600) }]);
     await call({ window: 'friday-pm' });
     expect(healthWrites('notify-friday-pm')[0][4]).toHaveLength(500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REQ-655: the roster channel setting
+// ---------------------------------------------------------------------------
+
+describe('REQ-655: ROSTER_CHANNEL', () => {
+  it('unset fails the run before any work: 500 naming the problem, notify failure recorded', async () => {
+    delete process.env.ROSTER_CHANNEL;
+    const res = await call({ window: '4am' });
+    expect(res.code).toBe(500);
+    expect(res.body).toStrictEqual({ error: 'ROSTER_CHANNEL is not set; expected one of: telegram' });
+    expect(healthWrites('notify')[0].slice(2)).toStrictEqual(['failure', null, 'ROSTER_CHANNEL is not set; expected one of: telegram']);
+    expect(refreshDaytimeSchedule).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
+  });
+
+  it('an unknown value fails even a 7am window that would have skipped as unchanged', async () => {
+    process.env.ROSTER_CHANNEL = 'whatsapp';
+    sentEarlier(picture());
+    const res = await call({ window: '7am' });
+    expect(res.code).toBe(500);
+    expect(res.body).toStrictEqual({ error: 'ROSTER_CHANNEL is "whatsapp"; expected one of: telegram' });
+  });
+
+  it('a bad value on friday-pm records the failure under notify-friday-pm', async () => {
+    process.env.ROSTER_CHANNEL = 'sms';
+    const res = await call({ window: 'friday-pm' });
+    expect(res.code).toBe(500);
+    expect(healthWrites('notify-friday-pm')[0].slice(2)).toStrictEqual(['failure', null, 'ROSTER_CHANNEL is "sms"; expected one of: telegram']);
+  });
+
+  it('when even the failure record cannot be written, the run still returns the 500', async () => {
+    delete process.env.ROSTER_CHANNEL;
+    delete process.env.VITE_SUPABASE_URL;
+    const res = await call({ window: '4am' });
+    expect(res.code).toBe(500);
+    expect(res.body.error).toBe('ROSTER_CHANNEL is not set; expected one of: telegram');
   });
 });

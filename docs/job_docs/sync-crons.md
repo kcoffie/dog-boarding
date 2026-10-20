@@ -184,7 +184,7 @@ ORDER BY ran_at DESC
 LIMIT 20;
 ```
 
-`status` is `success` or `failure`. `success` means no unhandled error — read the `result` JSON for the actual action. For `cron-auth`, `result.action` should always be `'refreshed'` (the old `'skipped'` value was the bug).
+`status` is `started`, `success` or `failure` (each run logs `started` first). `success` means the run did its job — read the `result` JSON for the actual action. A schedule scan is also `failure` when a `sync_settings` read or write failed (`sync_settings read failed` / `cursor write failed`) or when any enqueue failed (`result.action = 'enqueue_failed'`, with `failedEnqueues` and the first 5 `failedEnqueueIds`); the cursor still advances (#275). ops-watch (17:00 UTC) reports a schedule scan that failed, hung, got the login page, found nothing, or hasn't run in 26 h. For `cron-auth`, `result.action` should always be `'refreshed'` (the old `'skipped'` value was the bug).
 
 ---
 

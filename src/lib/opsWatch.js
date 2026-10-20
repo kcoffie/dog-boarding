@@ -56,8 +56,10 @@ export function checkQueue(q, now) {
 }
 
 /**
- * @param {{ sent: Array<{wamid:string, sent_at:string}>, deliveredWamids: string[] }} r
+ * @param {{ sent: Array<{wamid:string, sent_at:string, recipient:string}>, deliveredWamids: string[] }} r
  *   notify-4am rows with status 'sent' (any recent ones), and wamids with a delivered/read webhook row.
+ *   A Telegram send (recipient 'telegram', REQ-655) has no webhook: the Bot API accepting it for
+ *   Kate's chat is its delivery.
  */
 export function checkRoster({ sent, deliveredWamids }, now) {
   const today = pacific(now);
@@ -65,7 +67,7 @@ export function checkRoster({ sent, deliveredWamids }, now) {
   const todays = sent.filter((m) => pacific(new Date(m.sent_at)).day === today.day);
   if (todays.length === 0) return [`No morning roster sent today (${today.day})`];
   const delivered = new Set(deliveredWamids);
-  if (!todays.some((m) => delivered.has(m.wamid))) {
+  if (!todays.some((m) => m.recipient === 'telegram' || delivered.has(m.wamid))) {
     return [`Morning roster sent but not delivered to anyone (${todays.length} sends, no delivery receipt)`];
   }
   return [];
@@ -96,8 +98,29 @@ export function checkImage({ status, contentType }) {
   return [`Roster image broken: HTTP ${status} (${contentType})`];
 }
 
+const SCAN_MAX_AGE_HOURS = 26;
+
+/**
+ * The nightly schedule scan (`cron-schedule`) did its job: it finished, succeeded, got past the login
+ * page and found appointments (#275). A working scan always finds some: 126–373 over 60 days.
+ * @param {{ last_ran_at: string, status: string, result: Object|null, error_msg: string|null }|null} row
+ *   the `schedule` row of `cron_health`
+ */
+export function checkScheduleScan(row, now) {
+  if (!row) return ['Schedule scan has never recorded a run'];
+  const h = Math.round(hoursSince(row.last_ran_at, now));
+  if (hoursSince(row.last_ran_at, now) > SCAN_MAX_AGE_HOURS) {
+    return [`Schedule scan: last run ${h}h ago (limit ${SCAN_MAX_AGE_HOURS}h)`];
+  }
+  if (row.status === 'started') return [`Schedule scan started ${h}h ago and never finished (hung or killed)`];
+  if (row.status === 'failure') return [`Schedule scan failed: ${row.error_msg || 'no error recorded'}`];
+  if (row.result?.action === 'session_cleared') return ['Schedule scan got the login page and scanned nothing (session cleared)'];
+  if (row.result?.found === 0) return ['Schedule scan found no appointments'];
+  return [];
+}
+
 /** Jobs whose alerts go to Kate; a failed message_log row for any of them is a finding (REQ-652). */
-export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question'];
+export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert'];
 
 /**
  * @param {Array<{job_name: string}>} failedRows  message_log rows with status 'failed' for ALERT_JOBS
@@ -119,6 +142,7 @@ export async function runOpsWatch(d) {
 
   const checks = [
     ['the sync queue', async () => checkQueue(await d.loadQueueStats(), now)],
+    ['the schedule scan', async () => checkScheduleScan(await d.loadScheduleHealth(), now)],
     ['the morning roster', async () => checkRoster(await d.loadRosterRows(), now)],
     ['the scheduled workflows', async () => checkWorkflowRuns(await d.loadLastSuccess(), now)],
     ['the roster image', async () => checkImage(await d.fetchImage())],

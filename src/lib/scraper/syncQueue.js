@@ -91,6 +91,11 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
   const { error } = await supabase
     .from('sync_queue')
     .insert({ external_id, source_url, title, status: 'pending', type, meta });
+  // 23505: another scan (cron-schedule and an Integration Check can overlap) queued it first.
+  if (error?.code === '23505') {
+    log(`[SyncQueue] ⏭️ Already queued by a concurrent scan: ${external_id}`);
+    return 'unchanged';
+  }
   if (error) throw error;
   log(`[SyncQueue] 📥 Queued: ${external_id} (type=${type})`);
   return 'queued';

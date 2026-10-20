@@ -40,6 +40,11 @@ const createMockSupabase = (initialRow = null, { failSelect = false, failUpdate 
         return builder;
       },
       limit: () => builder,
+      order: () => builder,
+      maybeSingle: () => {
+        if (failSelect) return Promise.resolve({ data: null, error: { code: 'DB_ERROR', message: 'Select failed' } });
+        return Promise.resolve({ data: row ? { ...row } : null, error: null });
+      },
       single: () => {
         if (failSelect) return Promise.resolve({ data: null, error: { code: 'DB_ERROR', message: 'Select failed' } });
         if (!row) return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'No rows' } });
@@ -119,6 +124,12 @@ describe('REQ-109: storeSession()', () => {
     const supabase = createMockSupabase(null);
     await storeSession(supabase, 'fresh-cookie=xyz', 60 * 60 * 1000);
     expect(supabase._getRow().session_cookies).toBe('fresh-cookie=xyz');
+  });
+
+  it('a failed read of the row id throws and never inserts a second row (#275)', async () => {
+    const supabase = createMockSupabase(null, { failSelect: true });
+    await expect(storeSession(supabase, 'cookie=a', 60 * 60 * 1000)).rejects.toThrow('sync_settings read failed: Select failed');
+    expect(supabase._getRow()).toBeNull();
   });
 
   it('sets session_expires_at approximately expiryMs from now', async () => {
@@ -222,6 +233,18 @@ describe('REQ-109: ensureSession()', () => {
     expect(mockAuthenticate).not.toHaveBeenCalled();
   });
 
+  it('a fresh login whose session can\'t be cached still returns the cookies (#275)', async () => {
+    const supabase = createMockSupabase(null, { failInsert: true });
+    mockAuthenticate.mockResolvedValue({ success: true, cookies: 'fresh-cookie=xyz' });
+    expect(await ensureSession(supabase)).toBe('fresh-cookie=xyz');
+  });
+
+  it('a failed read of the cached session is thrown, not taken as "no session"', async () => {
+    const supabase = createMockSupabase(null, { failSelect: true });
+    await expect(ensureSession(supabase)).rejects.toThrow('sync_settings read failed');
+    expect(mockAuthenticate).not.toHaveBeenCalled();
+  });
+
   it('re-auth path: calls authenticate and stores session when cache is empty', async () => {
     const supabase = createMockSupabase(null);
     mockAuthenticate.mockResolvedValue({ success: true, cookies: 'fresh-cookie=xyz' });
@@ -297,3 +320,63 @@ describe('REQ-109: ensureSession()', () => {
     expect(stored).toBeLessThanOrEqual(after + TWENTY_FOUR_HOURS_MS);
   });
 });
+
+// ─── What the session cache asks Supabase for (#275) ─────────────────────────
+
+describe('REQ-109: session cache queries', () => {
+  // Records every call; the settings row is { id: 7 } with a session expiring in an hour.
+  function recordingDb(row = { id: 7, session_cookies: 'c=1', session_expires_at: new Date(Date.now() + 3600e3).toISOString() }) {
+    const calls = [];
+    const chain = (table) => {
+      const c = {
+        select: (cols) => { calls.push(['select', table, cols]); return c; },
+        order: () => c, limit: () => c,
+        maybeSingle: () => Promise.resolve({ data: row, error: null }),
+        update: (values) => ({ eq: (col, val) => { calls.push(['update', table, Object.keys(values).sort(), col, val]); return Promise.resolve({ error: null }); } }),
+        insert: () => { calls.push(['insert', table]); return Promise.resolve({ error: null }); },
+      };
+      return c;
+    };
+    return { calls, from: (t) => chain(t) };
+  }
+
+  it('getSession reads the cookies and expiry of the sync_settings row', async () => {
+    const db = recordingDb();
+    expect(await getSession(db)).toBe('c=1');
+    expect(db.calls).toEqual([['select', 'sync_settings', 'session_cookies, session_expires_at']]);
+  });
+
+  it('storeSession reads the row id and updates that row of sync_settings', async () => {
+    const db = recordingDb({ id: 7 });
+    await storeSession(db, 'c=2', 3600e3);
+    expect(db.calls).toEqual([
+      ['select', 'sync_settings', 'id'],
+      ['update', 'sync_settings', ['session_cookies', 'session_expires_at'], 'id', 7],
+    ]);
+  });
+
+  it('clearSession reads the row id and clears that row of sync_settings', async () => {
+    const db = recordingDb({ id: 7 });
+    await clearSession(db);
+    expect(db.calls).toEqual([
+      ['select', 'sync_settings', 'id'],
+      ['update', 'sync_settings', ['session_cookies', 'session_expires_at'], 'id', 7],
+    ]);
+  });
+
+  it('a session expiring this very millisecond is already expired', async () => {
+    const now = new Date('2026-10-19T12:00:00Z');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
+    try {
+      expect(await getSession(recordingDb({ id: 7, session_cookies: 'c=1', session_expires_at: now.toISOString() }))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a row with cookies but no expiry is no session', async () => {
+    expect(await getSession(recordingDb({ id: 7, session_cookies: 'c=1', session_expires_at: null }))).toBeNull();
+  });
+});
+

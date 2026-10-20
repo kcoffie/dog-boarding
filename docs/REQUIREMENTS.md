@@ -732,10 +732,12 @@ cron functions that each complete within the Hobby plan's 10-second limit.
   - **Session expired** during a form or detail fetch → the session is cleared and the item goes back to `pending` (not a retry); returns `session_cleared`
   - **Any other fetch or save error**, including a thrown value that isn't an `Error` → the item is marked failed with the error's first 200 characters (retry/backoff per above); returns `form_failed`, `failed` or `save_failed`
   - Every processed item reports the pending `queueDepth`
-- *Known gaps (#275), none of which alert today:*
-  - `sync_settings` errors are ignored. A failed cursor read resets the cursor to today. A failed row-id read inserts a second row, after which every `.single()` read of the table fails: the cursor stays at today and the session cache breaks
-  - `session_cleared` is recorded as health success and doesn't count a retry, so a login change that keeps serving the login form loops silently
-  - A run whose enqueues all failed still returns `ok` and advances the cursor past that week
+- *`sync_settings` access (#275).* Every reader and writer (cursor, session cache, browser sync settings, integration-check) reads the row through `readSettingsRow`: `order('id')`, `limit(1)`, `maybeSingle()`. So if a duplicate row ever appears, they all use the lowest id, rather than splitting the cursor and session across rows (`.limit(1).single()` returns an arbitrary row, it doesn't error)
+  - A read error throws `sync_settings read failed: …`. An empty table is "no row" (cursor = today, no cached session). A writer never inserts after a failed read
+  - A failed cursor write throws `sync_settings cursor write failed: …`. Either throw fails the scan, so `cron-schedule` records `failure`
+  - `ensureSession`: when a fresh login succeeds but the session can't be cached, it logs the error and still returns the cookies. `cron-auth` calls `storeSession` itself, so a cache failure stays red there
+- *Failed enqueues (#275).* A scan where any enqueue threw returns `action: 'enqueue_failed'`, with `failedEnqueues` (the count) and `failedEnqueueIds` (the first 5), plus the usual counts. `cron-schedule` records it as `failure` with error `N enqueue(s) failed` and the counts in `result`. The cursor still advances: at about 4 scans a day it cycles in about 2 days, and one item that always fails mustn't freeze it. An insert that hits the unique key (`23505`, a concurrent scan queued it first) returns `unchanged`, not a failure. Integration Check step 0 drains after `enqueue_failed` as after `ok`
+- *Still true:* `session_cleared` is recorded as health success (a single expired session is routine; `cron-auth` re-logs in daily). A persisting one is reported by ops-watch's schedule-scan rule (REQ-651) and its 16 h oldest-pending rule
 
 **DB schema additions (run migration before first deploy):**
 ```sql
@@ -924,13 +926,14 @@ page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hob
 - All cron handlers (`cron-auth`, `cron-schedule`, `cron-detail`, `cron-detail-2`, `notify`) call `writeCronHealth` on completion
   - Success path: writes run stats as `result` JSON (e.g. queued count, pages scanned)
   - Catch block: writes `status = 'failure'` and `error_msg`
+- `cron-health-check` alerts on 2 consecutive failed **runs**: it skips the `started` rows each run logs first, so a failure, started, failure, started log counts as 2 in a row (#275). The alert includes the latest `error_msg`
 - Settings page shows a "Cron Health" card with 3 rows (Auth / Schedule / Detail):
   - Last ran timestamp displayed as relative time ("3 hours ago") and absolute datetime on hover
   - Green badge for `success`, red badge for `failure`
   - Result summary (e.g. "12 queued, 2 pages scanned")
   - "Never" shown if cron has not run yet
 
-**Tests:** `src/__tests__/scraper/cronHealth.test.js` (helper), `src/__tests__/syncCronHandlers.test.js` and `src/__tests__/notifyHandler.test.js` (each handler records success/failure); the Settings card is manual
+**Tests:** `src/__tests__/scraper/cronHealth.test.js` (helper), `src/__tests__/cronHealthCheck.test.js` (consecutive failures), `src/__tests__/syncCronHandlers.test.js` and `src/__tests__/notifyHandler.test.js` (each handler records success/failure); the Settings card is manual
 
 ---
 
@@ -1404,6 +1407,7 @@ A daily Vercel cron (`/api/ops-watch`, 17:00 UTC) checks the outcomes the client
 - The endpoint requires `Authorization: Bearer $CRON_SECRET` and rejects every request when `CRON_SECRET` is unset (fails closed)
 - Each run is recorded in `cron_health` as `ops-watch`: `success` when every check ran and the alert (if any) went out, otherwise `failure`
 - `cron-health-check` reports `ops-watch` when its last run is more than 26 h old
+- **Schedule scan (#275):** one finding, from the `schedule` row of `cron_health`, in this order: no row; last run more than 26 h ago; still `started` (hung or killed); `failure` (with its error); `result.action` is `session_cleared`; `result.found` is 0. A successful scan with no recorded `result` isn't treated as found = 0
 
 **Tests:** `src/__tests__/opsWatch.test.js`
 
@@ -1464,6 +1468,25 @@ A green PR doesn't mean production changed. On 2026-10-19 a merge hit Vercel's d
 - The check exits 1 on any failure, and 0 only when the deploy succeeded and production answered right
 
 **Tests:** `src/__tests__/deployCheck.test.js`
+
+---
+
+### REQ-655: Roster channel (Telegram to Kate until Twilio)
+**Added:** v6.4.0 | **Status:** Complete
+
+Meta locked the WhatsApp Business Account on 2026-10-17, so the roster reached no one. Until Twilio SMS (#260) is approved, the roster goes to Kate only, on Telegram, chosen by one Vercel setting so the cutover to Twilio is one change. Design: `docs/specs/roster-channel-design-note.md`.
+
+**Acceptance Criteria:**
+- `ROSTER_CHANNEL` is required. The only value today is `telegram`. Unset or any other value fails `/api/notify` and `/api/notify-intraday` before any work: 500 with `ROSTER_CHANNEL is not set; expected one of: telegram` (or `is "<value>"`), and a failure in cron_health (`notify`, `notify-friday-pm` or `notify-intraday`). An unchanged 7am/8:30am window doesn't hide a bad value
+- On `telegram`, the roster goes to `TELEGRAM_ALERT_CHAT_ID` only. Staff numbers (`NOTIFY_RECIPIENTS`) play no part, and an empty `NOTIFY_RECIPIENTS` doesn't skip the send
+- The image is rendered once. Those bytes are stored (before the send) and sent as a Telegram photo. Captions: `Roster 4am` / `Roster 7am` / `Roster 8:30am`, `Weekend roster`, `Roster update`
+- An image that can't be rendered fails the run (500, cron_health failure, hash not stored) with `Roster image fetch failed: HTTP <status>`, `Roster image fetch: timed out` or `Roster image fetch: network error`. No error, result, log line or response ever contains the image URL, the proxy token or the bot token
+- A Telegram send that fails is a result `{ to: 'telegram', status: 'failed', error }`, where the error is `Telegram sendPhoto <error_code>: <description>`, `Telegram sendPhoto: timed out`/`network error`, or `Telegram not configured (…)`. A send that reached no one fails the run, with the reasons in the error, and stores no hash
+- Hourly intraday images are for staff, so they're off on `telegram`: the run skips with reason `channel_telegram` before reading anything. On a channel where they're on, a send that reached no one fails the run and stores no delta hash (the next hour retries)
+- The refresh alert goes to Kate through `alertAndLog` (job `notify-refresh-alert`). Only a delivered alert is recorded for the day's dedup, and an undelivered one is an ops-watch "alerts not delivered" finding
+- ops-watch's morning roster check counts a `notify-4am` `message_log` row with recipient `telegram` and status `sent` as delivered (the Bot API accepted it for Kate's chat)
+
+**Tests:** `src/__tests__/rosterChannel.test.js`, `src/__tests__/notifyHandler.test.js`, `src/__tests__/notifyIntraday.test.js`, `src/__tests__/opsWatch.test.js`
 
 ---
 
