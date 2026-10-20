@@ -1,6 +1,7 @@
 /**
- * Intraday boarding change notification — sends a delta WhatsApp image when
- * overnight boarders tonight have changed since the 8:30am baseline.
+ * Intraday boarding change notification — sends a delta image when overnight
+ * boarders tonight have changed since the 8:30am baseline. It goes to staff only,
+ * so it is off while ROSTER_CHANNEL is telegram (Kate only, REQ-655).
  *
  * GET /api/notify-intraday?token=SECRET
  *
@@ -14,16 +15,13 @@
  *   'boarders-snapshot'  — written by notify.js at 8:30am; read here
  *   'notify-intraday'    — written here after each send; read for delta hash gate
  *
- * @requirements REQ-J1
+ * @requirements REQ-J1, REQ-655
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { queryBoarders } from '../src/lib/pictureOfDay.js';
-import {
-  sendRosterImage,
-  getRecipients,
-} from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
+import { readRosterChannel, intradayEnabled, fetchRosterPng, sendRoster } from '../src/lib/rosterChannel.js';
+import { recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
 import { writeCronHealth } from './_cronHealth.js';
 
 export const config = { runtime: 'nodejs' };
@@ -157,6 +155,20 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // --- Channel: required, checked before any work ---
+  const { channel, error: channelError } = readRosterChannel(process.env.ROSTER_CHANNEL);
+  if (channelError) {
+    console.error(`[NotifyIntraday] ${channelError}`);
+    try {
+      await writeCronHealth(getSupabase(), 'notify-intraday', 'failure', null, channelError);
+    } catch { /* ignore — the 500 below is the signal */ }
+    return res.status(500).json({ error: channelError });
+  }
+  if (!intradayEnabled(channel)) {
+    console.log(`[NotifyIntraday] Off while ROSTER_CHANNEL is ${channel} (Kate only) — skipping`);
+    return res.status(200).json({ ok: true, action: 'skipped', reason: `channel_${channel}` });
+  }
+
   const jobRunAt = new Date().toISOString();
 
   // Compute today's date in Pacific time — same pattern as notify.js.
@@ -207,50 +219,37 @@ export default async function handler(req, res) {
     const imageUrl = `${protocol}://${host}/api/intraday-image?date=${todayStr}&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}`;
     console.log(`[NotifyIntraday] Image URL: ${protocol}://${host}/api/intraday-image?date=${todayStr}&token=***&ts=${encodeURIComponent(jobRunAt)}`);
 
-    // --- Get recipients ---
-    const recipients = getRecipients();
-    if (recipients.length === 0) {
-      console.warn('[NotifyIntraday] NOTIFY_RECIPIENTS not configured — send skipped');
-      return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_recipients' });
-    }
-
-    // --- Send ---
-    console.log(`[NotifyIntraday] Sending to ${recipients.length} recipient(s) — added: ${added.length}, cancelled: ${cancelled.length}`);
-    const sendResults = await sendRosterImage(imageUrl, recipients);
-
-    // --- Record delivery observability (non-fatal) ---
-    await recordSentMessages(supabase, sendResults, 'notify-intraday').catch(err =>
-      console.warn(`[NotifyIntraday] Failed to record delivery status: ${err.message}`)
-    );
-
-    // --- Store intraday image + record message log (non-fatal) ---
-    // Reuse storeRosterImage pattern: fetch the PNG and upload to Supabase Storage.
+    // --- Render once, store, send the same bytes ---
+    const png = await fetchRosterPng(imageUrl);
     let imagePath = null;
     try {
-      const imgResp = await fetch(imageUrl);
-      if (imgResp.ok) {
-        const buf = Buffer.from(await imgResp.arrayBuffer());
-        const safeTs = jobRunAt.replace(/:/g, '-');
-        const pathInBucket = `notify-intraday/${safeTs}.png`;
-        const { error: uploadErr } = await supabase.storage
-          .from('roster-images')
-          .upload(pathInBucket, buf, { contentType: 'image/png', upsert: true });
-        if (!uploadErr) {
-          imagePath = `roster-images/${pathInBucket}`;
-          console.log(`[NotifyIntraday] Image stored at ${imagePath}`);
-        } else {
-          console.warn(`[NotifyIntraday] Image upload failed: ${uploadErr.message}`);
-        }
+      const safeTs = jobRunAt.replace(/:/g, '-');
+      const pathInBucket = `notify-intraday/${safeTs}.png`;
+      const { error: uploadErr } = await supabase.storage
+        .from('roster-images')
+        .upload(pathInBucket, png, { contentType: 'image/png', upsert: true });
+      if (!uploadErr) {
+        imagePath = `roster-images/${pathInBucket}`;
+        console.log(`[NotifyIntraday] Image stored at ${imagePath}`);
       } else {
-        console.warn(`[NotifyIntraday] Image fetch failed (HTTP ${imgResp.status})`);
+        console.warn(`[NotifyIntraday] Image upload failed: ${uploadErr.message}`);
       }
     } catch (err) {
       console.warn(`[NotifyIntraday] Image store error: ${err.message}`);
     }
 
+    console.log(`[NotifyIntraday] Sending on ${channel} — added: ${added.length}, cancelled: ${cancelled.length}`);
+    const sendResults = await sendRoster({ channel, png, caption: 'Roster update' });
+
     await recordMessageLog(supabase, sendResults, 'notify-intraday', 'image', null, imagePath).catch(err =>
       console.warn(`[NotifyIntraday] Failed to record message_log: ${err.message}`)
     );
+
+    // A send that reached no one fails the run before the hash is stored, so the next hour retries (#255).
+    if (!sendResults.some(r => r.status === 'sent')) {
+      const why = sendResults.map(r => r.error).filter(Boolean).join('; ');
+      throw new Error(`No recipient received the roster update${why ? `: ${why}` : ''}`);
+    }
 
     // --- Persist intraday state ---
     await writeCronHealth(supabase, 'notify-intraday', 'success', {

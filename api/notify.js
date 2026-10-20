@@ -1,5 +1,5 @@
 /**
- * Notification orchestrator — sends the daily roster image via WhatsApp.
+ * Notification orchestrator — sends the daily roster image on the ROSTER_CHANNEL (REQ-655).
  *
  * GET /api/notify?window=4am&token=SECRET[&date=YYYY-MM-DD]
  *
@@ -13,13 +13,11 @@
  * cron_health table (cron_name='notify') under result.lastHash + lastDate.
  * Subsequent sends within the same calendar date compare against this hash.
  *
- * Image URL: constructed from the request's own Host header — works for any
- * deployment URL (production, preview, local). Twilio fetches the image from
- * our own /api/roster-image endpoint at delivery time.
+ * Image: rendered by our own /api/roster-image (URL built from the request's Host header), fetched
+ * once, stored, and those same bytes are sent. The URL carries the token, so it never goes to the
+ * channel or into an error.
  *
- * Runs on Node.js runtime — required by the Meta fetch calls and Supabase client.
- *
- * @requirements REQ-v4.1, REQ-v5.0-M0
+ * @requirements REQ-v4.1, REQ-v5.0-M0, REQ-655
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -28,12 +26,9 @@ import {
   parseDateParam,
   shouldSendNotification,
 } from '../src/lib/pictureOfDay.js';
-import {
-  sendRosterImage,
-  sendTextMessage,
-  getRecipients,
-} from '../src/lib/notifyWhatsApp.js';
-import { recordSentMessages, recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
+import { readRosterChannel, fetchRosterPng, sendRoster } from '../src/lib/rosterChannel.js';
+import { alertAndLog } from '../src/lib/alertKate.js';
+import { recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
 import { writeCronHealth } from './_cronHealth.js';
 import { refreshDaytimeSchedule } from '../src/lib/notifyHelpers.js';
 
@@ -48,16 +43,14 @@ const VALID_WINDOWS = ['4am', '7am', '8:30am', 'friday-pm'];
 // ---------------------------------------------------------------------------
 
 /**
- * Send a plain-text WhatsApp alert when the daytime schedule refresh fails or
+ * Alert Kate (Telegram, alertAndLog) when the daytime schedule refresh fails or
  * returns no events. Non-fatal — errors are caught and logged.
  *
  * Deduplication: only fires once per calendar date. Subsequent windows (7am,
  * 8:30am) with the same root cause are suppressed so a single session failure
- * doesn't generate 3 identical WhatsApp alerts. The send is recorded in
- * cron_health under 'notify-refresh-alert' with the date as a key.
- *
- * Sends to NOTIFY_RECIPIENTS (same as the roster) so the alert is visible
- * alongside the morning image and can be investigated before the next window.
+ * doesn't generate 3 identical alerts. A delivered alert is recorded in
+ * cron_health under 'notify-refresh-alert' with the date as a key; an undelivered
+ * one isn't, so the next window tries again (and ops-watch reports the failed row).
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} warning
@@ -82,21 +75,9 @@ async function sendRefreshAlert(supabase, warning, dateStr, notifyWindow) {
     console.warn(`[Notify/RefreshAlert] Could not read dedup state: ${err.message} — sending alert`);
   }
 
-  const recipients = getRecipients();
-  if (recipients.length === 0) return;
-
   const body = `⚠️ Notify refresh issue (${dateStr}, ${notifyWindow})\n${warning}`;
-  const refreshResults = await sendTextMessage(body, recipients).catch(err => {
-    console.warn(`[Notify/RefreshAlert] sendTextMessage failed: ${err.message}`);
-    return [];
-  });
-  await recordSentMessages(supabase, refreshResults, 'notify-refresh-alert').catch(err =>
-    console.warn(`[Notify/RefreshAlert] Failed to record delivery status: ${err.message}`)
-  );
-  console.log(`[Notify] Recording message_log — job: notify-refresh-alert, content length: ${body.length} chars`);
-  await recordMessageLog(supabase, refreshResults, 'notify-refresh-alert', 'text', body, null).catch(err =>
-    console.warn(`[Notify/RefreshAlert] Failed to record message_log: ${err.message}`)
-  );
+  const delivered = await alertAndLog(supabase, 'notify-refresh-alert', body);
+  if (!delivered) return;
 
   // Record that we sent the alert for this date (non-fatal)
   await writeCronHealth(supabase, 'notify-refresh-alert', 'success', {
@@ -114,12 +95,13 @@ async function sendRefreshAlert(supabase, warning, dateStr, notifyWindow) {
  * handler's catch, which records the cron_health failure and returns 500, so the workflow
  * run goes red and no hash is stored (the next window sends again).
  *
- * @param {Array<{status: string}>} sendResults - From sendRosterImage
+ * @param {Array<{status: string, error?: string}>} sendResults - From sendRoster
  */
 function assertSomeoneReached(sendResults) {
   const sentCount = sendResults.filter(r => r.status === 'sent').length;
   if (sentCount === 0) {
-    throw new Error(`No recipient received the roster (${sendResults.length} of ${sendResults.length} sends failed)`);
+    const why = sendResults.map(r => r.error).filter(Boolean).join('; ');
+    throw new Error(`No recipient received the roster (${sendResults.length} of ${sendResults.length} sends failed)${why ? `: ${why}` : ''}`);
   }
 }
 
@@ -131,36 +113,18 @@ function getSupabase() {
 }
 
 /**
- * Fetch the roster image PNG from imageUrl and upload it to Supabase Storage.
+ * Upload the roster PNG (the bytes that are sent) to Supabase Storage.
  * Returns the storage path (e.g. 'roster-images/notify-4am/2026-04-22T11:00:00.000Z.png')
- * or null if the fetch or upload fails. Non-fatal — failures are logged and swallowed
+ * or null if the upload fails. Non-fatal — failures are logged and swallowed
  * so the caller can still record the message_log row with a null image_path.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @param {string} imageUrl  - Full URL to /api/roster-image (auth token included)
+ * @param {Buffer} buffer    - The roster PNG
  * @param {string} jobName   - e.g. 'notify-4am', 'notify-friday-pm'
  * @param {string} jobRunAt  - ISO timestamp captured at handler entry
  * @returns {Promise<string|null>}
  */
-async function storeRosterImage(supabase, imageUrl, jobName, jobRunAt) {
-  const logHost = new URL(imageUrl).host;
-  console.log(`[ImageStore] Fetching image for storage — host: ${logHost}, job: ${jobName}`);
-
-  let buffer;
-  try {
-    const response = await fetch(imageUrl);
-    if (!response.ok) {
-      console.warn(`[ImageStore] Image fetch failed (HTTP ${response.status}) — skipping storage, message_log row will have null image_path`);
-      return null;
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    buffer = Buffer.from(arrayBuffer);
-    console.log(`[ImageStore] Fetched ${buffer.length} bytes`);
-  } catch (err) {
-    console.warn(`[ImageStore] Image fetch error: ${err.message} — skipping storage, message_log row will have null image_path`);
-    return null;
-  }
-
+async function storeRosterImage(supabase, buffer, jobName, jobRunAt) {
   // Safe filename: replace colons in the ISO timestamp so all storage backends accept it
   const safeTimestamp = jobRunAt.replace(/:/g, '-');
   const pathInBucket = `${jobName}/${safeTimestamp}.png`;
@@ -252,7 +216,7 @@ async function storeBoardersSnapshot(supabase, boarders, dateStr) {
  * @param {string} hash
  * @param {string} dateStr - YYYY-MM-DD of the picture that was sent
  * @param {string} window  - '4am' | '7am' | '8:30am'
- * @param {Array} sendResults - From sendRosterImage
+ * @param {Array} sendResults - From sendRoster
  */
 async function persistSentState(supabase, hash, dateStr, window, sendResults, workers) {
   await writeCronHealth(supabase, 'notify', 'success', {
@@ -290,6 +254,16 @@ export default async function handler(req, res) {
     });
   }
 
+  // --- Channel: required, checked before any work so a skipped window can't hide a bad value ---
+  const { channel, error: channelError } = readRosterChannel(process.env.ROSTER_CHANNEL);
+  if (channelError) {
+    console.error(`[Notify] ${channelError}`);
+    try {
+      await writeCronHealth(getSupabase(), window === 'friday-pm' ? 'notify-friday-pm' : 'notify', 'failure', null, channelError);
+    } catch { /* ignore — the 500 below is the signal */ }
+    return res.status(500).json({ error: channelError });
+  }
+
   // Capture job run time now — passed to roster-image.js via ts param so the image
   // can display "as of [time], [day] [M/D]" reflecting when this notify job executed.
   const jobRunAt = new Date().toISOString();
@@ -302,19 +276,11 @@ export default async function handler(req, res) {
       const imageUrl = `${protocol}://${host}/api/roster-image?type=weekend&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}`;
       console.log(`[Notify] friday-pm — image URL: ${protocol}://${host}/api/roster-image?type=weekend&token=***&ts=${encodeURIComponent(jobRunAt)}`);
 
-      const recipients = getRecipients();
-      if (recipients.length === 0) {
-        console.warn('[Notify] NOTIFY_RECIPIENTS not configured — send skipped');
-        return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_recipients', window });
-      }
-
       const supabase = getSupabase();
-      console.log(`[Notify] Sending weekend roster to ${recipients.length} recipient(s)`);
-      const sendResults = await sendRosterImage(imageUrl, recipients);
-      await recordSentMessages(supabase, sendResults, 'notify-friday-pm').catch(err =>
-        console.warn(`[Notify] Failed to record delivery status (friday-pm): ${err.message}`)
-      );
-      const fridayImagePath = await storeRosterImage(supabase, imageUrl, 'notify-friday-pm', jobRunAt);
+      const png = await fetchRosterPng(imageUrl);
+      const fridayImagePath = await storeRosterImage(supabase, png, 'notify-friday-pm', jobRunAt);
+      console.log(`[Notify] Sending weekend roster on ${channel}`);
+      const sendResults = await sendRoster({ channel, png, caption: 'Weekend roster' });
       console.log(`[Notify] Storing roster image and recording message_log — job: notify-friday-pm, imagePath: ${fridayImagePath ?? 'null'}`);
       await recordMessageLog(supabase, sendResults, 'notify-friday-pm', 'image', null, fridayImagePath).catch(err =>
         console.warn(`[Notify] Failed to record message_log (friday-pm): ${err.message}`)
@@ -449,24 +415,13 @@ export default async function handler(req, res) {
     }
     console.log(`[Notify] Image URL: ${protocol}://${host}/api/roster-image?date=${dateStr}&token=***&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}${lastSnapshot ? '&lastSnapshot=<snapshot>' : ''}`);
 
-    // --- Get recipients ---
-    const recipients = getRecipients();
-    if (recipients.length === 0) {
-      console.warn('[Notify] NOTIFY_RECIPIENTS not configured — send skipped');
-      return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_recipients' });
-    }
+    // --- Render once, store, send the same bytes ---
+    const png = await fetchRosterPng(imageUrl);
+    const imagePath = await storeRosterImage(supabase, png, `notify-${window}`, jobRunAt);
+    console.log(`[Notify] Sending ${window} roster on ${channel}`);
+    const sendResults = await sendRoster({ channel, png, caption: `Roster ${window}` });
 
-    // --- Send ---
-    console.log(`[Notify] Sending to ${recipients.length} recipient(s)`);
-    const sendResults = await sendRosterImage(imageUrl, recipients);
-
-    // --- Record wamids for delivery observability (non-fatal) ---
-    await recordSentMessages(supabase, sendResults, `notify-${window}`).catch(err =>
-      console.warn(`[Notify] Failed to record delivery status (${window}): ${err.message}`)
-    );
-
-    // --- Store roster image + record message log (non-fatal) ---
-    const imagePath = await storeRosterImage(supabase, imageUrl, `notify-${window}`, jobRunAt);
+    // --- Record message log (non-fatal) ---
     console.log(`[Notify] Storing roster image and recording message_log — job: notify-${window}, imagePath: ${imagePath ?? 'null'}`);
     await recordMessageLog(supabase, sendResults, `notify-${window}`, 'image', null, imagePath).catch(err =>
       console.warn(`[Notify] Failed to record message_log (${window}): ${err.message}`)

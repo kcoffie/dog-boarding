@@ -1471,6 +1471,25 @@ A green PR doesn't mean production changed. On 2026-10-19 a merge hit Vercel's d
 
 ---
 
+### REQ-655: Roster channel (Telegram to Kate until Twilio)
+**Added:** v6.4.0 | **Status:** Complete
+
+Meta locked the WhatsApp Business Account on 2026-10-17, so the roster reached no one. Until Twilio SMS (#260) is approved, the roster goes to Kate only, on Telegram, chosen by one Vercel setting so the cutover to Twilio is one change. Design: `docs/specs/roster-channel-design-note.md`.
+
+**Acceptance Criteria:**
+- `ROSTER_CHANNEL` is required. The only value today is `telegram`. Unset or any other value fails `/api/notify` and `/api/notify-intraday` before any work: 500 with `ROSTER_CHANNEL is not set; expected one of: telegram` (or `is "<value>"`), and a failure in cron_health (`notify`, `notify-friday-pm` or `notify-intraday`). An unchanged 7am/8:30am window doesn't hide a bad value
+- On `telegram`, the roster goes to `TELEGRAM_ALERT_CHAT_ID` only. Staff numbers (`NOTIFY_RECIPIENTS`) play no part, and an empty `NOTIFY_RECIPIENTS` doesn't skip the send
+- The image is rendered once. Those bytes are stored (before the send) and sent as a Telegram photo. Captions: `Roster 4am` / `Roster 7am` / `Roster 8:30am`, `Weekend roster`, `Roster update`
+- An image that can't be rendered fails the run (500, cron_health failure, hash not stored) with `Roster image fetch failed: HTTP <status>`, `Roster image fetch: timed out` or `Roster image fetch: network error`. No error, result, log line or response ever contains the image URL, the proxy token or the bot token
+- A Telegram send that fails is a result `{ to: 'telegram', status: 'failed', error }`, where the error is `Telegram sendPhoto <error_code>: <description>`, `Telegram sendPhoto: timed out`/`network error`, or `Telegram not configured (…)`. A send that reached no one fails the run, with the reasons in the error, and stores no hash
+- Hourly intraday images are for staff, so they're off on `telegram`: the run skips with reason `channel_telegram` before reading anything. On a channel where they're on, a send that reached no one fails the run and stores no delta hash (the next hour retries)
+- The refresh alert goes to Kate through `alertAndLog` (job `notify-refresh-alert`). Only a delivered alert is recorded for the day's dedup, and an undelivered one is an ops-watch "alerts not delivered" finding
+- ops-watch's morning roster check counts a `notify-4am` `message_log` row with recipient `telegram` and status `sent` as delivered (the Bot API accepted it for Kate's chat)
+
+**Tests:** `src/__tests__/rosterChannel.test.js`, `src/__tests__/notifyHandler.test.js`, `src/__tests__/notifyIntraday.test.js`, `src/__tests__/opsWatch.test.js`
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section

@@ -141,6 +141,14 @@ describe('what the rules are given', () => {
     expect(res.body.findings).toEqual(['Morning roster sent but not delivered to anyone (1 sends, no delivery receipt)']);
   });
 
+  it("the roster query reads each row's recipient, so a Telegram send can count as delivered", async () => {
+    results.message_log = [{ data: [{ wamid: null, sent_at: new Date().toISOString(), recipient: 'telegram' }], error: null }];
+    const res = await call(AUTH, { dryRun: '1' });
+    const selects = calls.filter(([t, m]) => t === 'message_log' && m === 'select').map(([, , cols]) => cols);
+    expect(selects[0]).toBe('wamid, sent_at, recipient');
+    expect(res.body.findings).toEqual([]);
+  });
+
   it('only delivered or read webhook rows count as delivered', async () => {
     await call(AUTH, { dryRun: '1' });
     const inFilters = calls.filter(([t, m]) => t === 'message_delivery_status' && m === 'in').map(([, , ...a]) => a);
@@ -223,12 +231,12 @@ describe("REQ-652: Kate's alert channel", () => {
     expect(writeCronHealth.mock.calls[0][2]).toBe('failure');
   });
 
-  it('failed alerts are read from message_log: status failed, the four alert jobs, the last 24 hours', async () => {
+  it('failed alerts are read from message_log: status failed, the five alert jobs, the last 24 hours', async () => {
     await call(AUTH, { dryRun: '1' });
     const q = calls.filter(([t]) => t === 'message_log').map(([, m, ...a]) => [m, ...a]);
     expect(q.slice(-4)).toEqual([
       ['select', 'job_name'], ['eq', 'status', 'failed'],
-      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question']],
+      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert']],
       ['gte', 'sent_at', '2026-10-15T17:00:00.000Z'],
     ]);
   });

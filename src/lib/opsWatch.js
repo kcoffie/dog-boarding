@@ -56,8 +56,10 @@ export function checkQueue(q, now) {
 }
 
 /**
- * @param {{ sent: Array<{wamid:string, sent_at:string}>, deliveredWamids: string[] }} r
+ * @param {{ sent: Array<{wamid:string, sent_at:string, recipient:string}>, deliveredWamids: string[] }} r
  *   notify-4am rows with status 'sent' (any recent ones), and wamids with a delivered/read webhook row.
+ *   A Telegram send (recipient 'telegram', REQ-655) has no webhook: the Bot API accepting it for
+ *   Kate's chat is its delivery.
  */
 export function checkRoster({ sent, deliveredWamids }, now) {
   const today = pacific(now);
@@ -65,7 +67,7 @@ export function checkRoster({ sent, deliveredWamids }, now) {
   const todays = sent.filter((m) => pacific(new Date(m.sent_at)).day === today.day);
   if (todays.length === 0) return [`No morning roster sent today (${today.day})`];
   const delivered = new Set(deliveredWamids);
-  if (!todays.some((m) => delivered.has(m.wamid))) {
+  if (!todays.some((m) => m.recipient === 'telegram' || delivered.has(m.wamid))) {
     return [`Morning roster sent but not delivered to anyone (${todays.length} sends, no delivery receipt)`];
   }
   return [];
@@ -118,7 +120,7 @@ export function checkScheduleScan(row, now) {
 }
 
 /** Jobs whose alerts go to Kate; a failed message_log row for any of them is a finding (REQ-652). */
-export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question'];
+export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert'];
 
 /**
  * @param {Array<{job_name: string}>} failedRows  message_log rows with status 'failed' for ALERT_JOBS

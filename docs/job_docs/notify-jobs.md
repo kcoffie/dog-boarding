@@ -1,9 +1,20 @@
-# Notify Jobs (WhatsApp Roster)
+# Notify Jobs (Roster)
 
 **Status:** Live (weekdays + Friday PM + hourly intraday, PDT schedule — update UTC times each DST transition)
-**Last reviewed:** May 1, 2026
+**Last reviewed:** October 19, 2026 (channel switch, REQ-655)
 
 ---
+
+## Where the roster goes (REQ-655, since 2026-10-20)
+
+Meta locked the WhatsApp account on 2026-10-17, so nothing below goes to WhatsApp any more. The Vercel env var **`ROSTER_CHANNEL`** picks the channel, and it is required: unset or a typo makes every notify run return 500 and go red.
+
+- **`telegram` (now):** every roster goes to **Kate only** (`TELEGRAM_ALERT_CHAT_ID`, the alert bot), as a photo captioned `Roster 4am`, `Roster 7am`, `Roster 8:30am` or `Weekend roster`. `NOTIFY_RECIPIENTS` (staff) is not used. **Hourly intraday is off** (it skips with `channel_telegram`).
+- **`twilio` (after #260 ships and A2P is approved):** staff by SMS/MMS, and intraday back on. Setting the value is the cutover, and setting it back to `telegram` is the fallback, but `twilio` only works once #260's code is deployed.
+- The image is rendered once by `/api/roster-image` (or `/api/intraday-image`), stored in `roster-images`, and those bytes are sent. A render failure fails the run.
+- The refresh alert goes to Kate through `alertAndLog` (job `notify-refresh-alert`), whatever the channel.
+
+Below, "WhatsApp" describes the pre-2026-10-17 behaviour; the windows, hashes and gates are unchanged.
 
 ## What They Do
 

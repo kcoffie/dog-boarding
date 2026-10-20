@@ -128,6 +128,17 @@ describe('morning roster', () => {
       .toEqual(['Morning roster sent but not delivered to anyone (1 sends, no delivery receipt)']);
   });
 
+  it('a roster sent to Telegram today counts as delivered: Telegram accepting it is the receipt (REQ-655)', () => {
+    const telegram = { wamid: null, sent_at: '2026-10-16T11:00:05Z', recipient: 'telegram' };
+    expect(checkRoster({ sent: [telegram], deliveredWamids: [] }, NOW)).toEqual([]);
+  });
+
+  it('a WhatsApp send with no receipt is still not delivered, whatever its wamid', () => {
+    const unknown = { wamid: 'unknown', sent_at: '2026-10-16T11:00:05Z', recipient: '***-***-0100' };
+    expect(checkRoster({ sent: [unknown], deliveredWamids: [] }, NOW))
+      .toEqual(['Morning roster sent but not delivered to anyone (1 sends, no delivery receipt)']);
+  });
+
   it('one delivered wamid out of two recipients is enough', () => {
     const sent = [sentToday, { wamid: 'w2', sent_at: '2026-10-16T11:00:05Z' }];
     expect(checkRoster({ sent, deliveredWamids: ['w2'] }, NOW)).toEqual([]);
@@ -376,8 +387,8 @@ describe('REQ-652: undelivered alerts', () => {
     expect(checkFailedAlerts(rows)).toEqual(['Alerts not delivered in the last 24h: 3 (gmail-monitor, send-question)']);
   });
 
-  it('the alert jobs watched are the four that alert Kate', () => {
-    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question']);
+  it('the alert jobs watched are the five that alert Kate (REQ-655 adds the refresh alert)', () => {
+    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert']);
   });
 
   it('runOpsWatch reports failed alerts from the alert log', async () => {
