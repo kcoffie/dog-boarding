@@ -141,7 +141,12 @@
 - [ ] #304, #303 (Dependabot groups)
 - [ ] #301 browser token (local branch), then Kate's token rotation
 - [ ] #294, #299
-- [ ] UAT acceptance criteria with the end user; triage #6–#24 at UAT
+- [ ] UAT: plan drafted in `docs/UAT_PLAN.md` (Kate to review, then run "watch first" with Charlie and her admin); triage #6–#24 at the first check-in
+- [ ] Fix: a dog with no rate fails silently (counts as $0 toward the night's pay)
+- [ ] Maybe fix: correct which dogs were there by hand (missed, odd or late booking)
+- [ ] Fix: a shareable pay breakdown for the employee (what they're paid, and how it was calculated)
+- [ ] Maybe: notify Charlie when her admin adds or changes boarding info
+- [ ] Maybe: a clear "something looks wrong at 9pm" path (Send a Question, made obvious, with what happens next)
 - [ ] #260 Twilio (Kate: upgrade + A2P; #291 decisions)
 - [ ] #239 backfill: parked until UAT (Kate revisits)
 - [ ] #257, #293, #295
