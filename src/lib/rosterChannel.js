@@ -57,7 +57,11 @@ export async function fetchRosterPng(imageUrl, fetchFn = fetch) {
     throw new Error(`Roster image fetch: ${failureKind(err)}`);
   }
   if (!res.ok) throw new Error(`Roster image fetch failed: HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  try {
+    return Buffer.from(await res.arrayBuffer()); // the body can still break or time out mid-read
+  } catch (err) {
+    throw new Error(`Roster image fetch: ${failureKind(err)}`);
+  }
 }
 
 /**

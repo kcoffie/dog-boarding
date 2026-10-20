@@ -355,7 +355,7 @@ describe('notify-intraday handler', () => {
     createClient.mockReturnValue(buildSupaMock({ snapshotResult, intradayResult: null }));
     // Cinder added since 8:30am
     queryBoarders.mockResolvedValue([boarder('Nutmeg'), boarder('Cinder')]);
-    
+
 
     const req = buildReq();
     const res = buildRes();
@@ -375,7 +375,7 @@ describe('notify-intraday handler', () => {
     createClient.mockReturnValue(buildSupaMock({ snapshotResult, intradayResult: null }));
     // Waffles cancelled since 8:30am
     queryBoarders.mockResolvedValue([boarder('Nutmeg')]);
-    
+
 
     const req = buildReq();
     const res = buildRes();

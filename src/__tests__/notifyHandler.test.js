@@ -575,6 +575,15 @@ describe('REQ-641: refresh alert', () => {
     expect(alertAndLog).not.toHaveBeenCalled();
   });
 
+  it('an undelivered refresh alert leaves the run green and the roster sent (ops-watch reports the failed alert row)', async () => {
+    refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
+    alertAndLog.mockResolvedValue(false);
+    const res = await call({ window: '4am' });
+    expect(res.code).toBe(200);
+    expect(res.body.action).toBe('sent');
+    expect(sendRoster).toHaveBeenCalledTimes(1);
+  });
+
   it('a failing alert send does not stop the roster send', async () => {
     refreshDaytimeSchedule.mockResolvedValue({ refreshed: false, rowCount: 0, warning: 'session expired' });
     alertAndLog.mockRejectedValue(new Error('telegram down'));
@@ -717,6 +726,14 @@ describe('REQ-630: friday-pm', () => {
     sendRoster.mockResolvedValue([{ to: 'telegram', status: 'failed', error: 'x' }]);
     await call({ window: 'friday-pm' });
     expect(recordMessageLog.mock.calls[0][2]).toBe('notify-friday-pm');
+  });
+
+  it('an image fetch error names no URL in the 500 body or the notify-friday-pm failure (the URL carries the token)', async () => {
+    globalThis.fetch = vi.fn(async (url) => { throw new Error(`request to ${url} failed`); });
+    const res = await call({ window: 'friday-pm' });
+    expect(res.code).toBe(500);
+    expect(res.body).toStrictEqual({ error: 'Roster image fetch: network error' });
+    expect(JSON.stringify(healthWrites('notify-friday-pm'))).not.toContain(TOKEN);
   });
 
   it('the recorded failure message is cut to 500 characters', async () => {

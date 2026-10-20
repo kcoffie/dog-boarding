@@ -71,6 +71,16 @@ describe('fetchRosterPng', () => {
     await expect(fetchRosterPng(IMAGE_URL, fetchFn)).rejects.toThrow(/^Roster image fetch: network error$/);
   });
 
+  it('a body that breaks mid-read fails as a network error, without the URL', async () => {
+    const fetchFn = vi.fn(async (url) => ({ ok: true, status: 200, arrayBuffer: async () => { throw new TypeError(`terminated reading ${url}`); } }));
+    await expect(fetchRosterPng(IMAGE_URL, fetchFn)).rejects.toThrow(/^Roster image fetch: network error$/);
+  });
+
+  it('a body that times out mid-read says so', async () => {
+    const fetchFn = vi.fn(async () => ({ ok: true, status: 200, arrayBuffer: async () => { throw new DOMException('aborted', 'TimeoutError'); } }));
+    await expect(fetchRosterPng(IMAGE_URL, fetchFn)).rejects.toThrow(/^Roster image fetch: timed out$/);
+  });
+
   it('a timeout says so', async () => {
     const fetchFn = vi.fn(async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); });
     await expect(fetchRosterPng(IMAGE_URL, fetchFn)).rejects.toThrow(/^Roster image fetch: timed out$/);

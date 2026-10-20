@@ -1,7 +1,7 @@
 # Notify Jobs (Roster)
 
 **Status:** Live (weekdays + Friday PM + hourly intraday, PDT schedule — update UTC times each DST transition)
-**Last reviewed:** May 1, 2026
+**Last reviewed:** October 19, 2026 (channel switch, REQ-655)
 
 ---
 
