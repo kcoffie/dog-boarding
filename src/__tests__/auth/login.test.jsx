@@ -22,7 +22,7 @@ const renderLoginPage = () => {
 };
 
 /**
- * @requirements REQ-002
+ * @requirements REQ-002, REQ-001
  */
 describe('REQ-002: User Login', () => {
   beforeEach(() => {
@@ -180,12 +180,11 @@ describe('REQ-002: User Login', () => {
     expect(forgotLink).toHaveAttribute('href', '/forgot-password');
   });
 
-  it('has link to signup page', () => {
+  it('offers no self sign-up: there is no link to /signup (REQ-001)', () => {
     renderLoginPage();
 
-    const signupLink = screen.getByRole('link', { name: /create account/i });
-    expect(signupLink).toBeInTheDocument();
-    expect(signupLink).toHaveAttribute('href', '/signup');
+    expect(screen.queryByRole('link', { name: /create account/i })).toBeNull();
+    expect(document.querySelector('a[href="/signup"]')).toBeNull();
   });
 
   it('clears error when resubmitting form', async () => {

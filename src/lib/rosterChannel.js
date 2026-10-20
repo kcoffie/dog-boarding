@@ -8,7 +8,7 @@
  * `twilio`. The channel owns its recipients: the Telegram path sends to TELEGRAM_ALERT_CHAT_ID and
  * never sees NOTIFY_RECIPIENTS (staff numbers).
  *
- * The roster image URL carries VITE_SYNC_PROXY_TOKEN and the Telegram API URL carries the bot token,
+ * The roster image URL carries INTERNAL_API_TOKEN and the Telegram API URL carries the bot token,
  * and the notify workflows print the handler's error body in public Actions logs. So no error or
  * result here ever includes a URL or a raw fetch error message: fixed text plus Telegram's own
  * error_code and description only.

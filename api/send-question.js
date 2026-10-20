@@ -7,16 +7,17 @@
  * Each attempt is written to message_log (job 'send-question') so ops-watch can
  * report failures.
  *
- * Auth:    Authorization: Bearer {VITE_SYNC_PROXY_TOKEN}
- * Body:    { message: string, username: string }
+ * Auth:    Authorization: Bearer {the signed-in user's Supabase access token} (REQ-656)
+ * Body:    { message: string }. The sender is the verified user's email, never the body.
  * Returns: { ok: true } | { ok: false, error: string }
  *
- * @requirements REQ-700, REQ-652
+ * @requirements REQ-700, REQ-652, REQ-656
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { sendAlert, alertDelivered } from '../src/lib/alertKate.js';
 import { recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
+import { verifyUser } from '../src/lib/verifyUser.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -27,15 +28,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  const proxyToken = process.env.VITE_SYNC_PROXY_TOKEN;
-  if (proxyToken) {
-    const authHeader = req.headers['authorization'] || '';
-    if (authHeader !== `Bearer ${proxyToken}`) {
-      return res.status(401).json({ ok: false, error: 'Unauthorized' });
-    }
+  const auth = await verifyUser(req.headers['authorization']);
+  if (!auth.ok) {
+    return res.status(auth.status).json({ ok: false, error: auth.error });
   }
 
-  const { message, username } = req.body || {};
+  const { message } = req.body || {};
 
   if (!message || typeof message !== 'string' || message.trim().length === 0) {
     return res.status(400).json({ ok: false, error: 'Message is required' });
@@ -45,10 +43,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: `Message must be ${MAX_MESSAGE_LENGTH} characters or fewer` });
   }
 
-  const sender = typeof username === 'string' && username.trim() ? username.trim() : 'unknown';
+  const sender = auth.user.email ?? auth.user.id;
   const body = `Question from ${sender}:\n${message.trim()}`;
 
-  console.log(`[SendQuestion] user=${sender} chars=${message.trim().length}`);
+  console.log(`[SendQuestion] user=${auth.user.id} chars=${message.trim().length}`);
 
   try {
     const results = await sendAlert(body);

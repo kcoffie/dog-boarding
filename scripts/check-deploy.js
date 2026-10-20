@@ -4,7 +4,7 @@
  * current head on GitHub (not the local origin/main, which is stale until you fetch).
  * The rules live in src/lib/deployCheck.js; this file only talks to GitHub and Vercel.
  *
- * Env (from .env.local): VITE_SYNC_PROXY_TOKEN for the roster image. GITHUB_TOKEN is optional
+ * Env (from .env.local): INTERNAL_API_TOKEN for the roster image. GITHUB_TOKEN is optional
  * (the repo is public; a token only raises GitHub's rate limit).
  * Exit 1 when the deploy failed or timed out, or production answered wrong.
  */
@@ -13,9 +13,9 @@ import { runDeployCheck } from '../src/lib/deployCheck.js';
 
 const REPO = 'kcoffie/dog-boarding';
 
-const imageToken = process.env.VITE_SYNC_PROXY_TOKEN;
+const imageToken = process.env.INTERNAL_API_TOKEN;
 if (!imageToken) {
-  console.error('[check-deploy] Missing VITE_SYNC_PROXY_TOKEN (run from the repo root with .env.local present)');
+  console.error('[check-deploy] Missing INTERNAL_API_TOKEN (run from the repo root with .env.local present)');
   process.exit(1);
 }
 

@@ -6,7 +6,7 @@
  * `?dryRun=1` returns the findings without alerting or writing cron_health.
  *
  * Env: VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET, GH_ACTIONS_TOKEN (fine-grained,
- * this repo only, Actions read + write), VITE_SYNC_PROXY_TOKEN (roster image), TELEGRAM_BOT_TOKEN and
+ * this repo only, Actions read + write), INTERNAL_API_TOKEN (roster image), TELEGRAM_BOT_TOKEN and
  * TELEGRAM_ALERT_CHAT_ID (Kate's alert channel, REQ-652). Optional: GITHUB_REPO (default kcoffie/dog-boarding).
  */
 import { createClient } from '@supabase/supabase-js';
@@ -87,7 +87,7 @@ function makeDeps(supabase) {
     },
 
     async fetchImage() {
-      const token = encodeURIComponent(process.env.VITE_SYNC_PROXY_TOKEN ?? '');
+      const token = encodeURIComponent(process.env.INTERNAL_API_TOKEN ?? '');
       const res = await fetch(`${APP_URL}/api/roster-image?type=weekend&token=${token}`, {
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });

@@ -19,7 +19,7 @@ jobs:
       - name: Send intraday boarding change notification if delta changed
         run: |
           RESPONSE=$(curl -s -o /tmp/intraday_response.json -w "%{http_code}" \
-            "${{ secrets.APP_URL }}/api/notify-intraday?token=${{ secrets.VITE_SYNC_PROXY_TOKEN }}")
+            "${{ secrets.APP_URL }}/api/notify-intraday?token=${{ secrets.INTERNAL_API_TOKEN }}")
           echo "HTTP status: $RESPONSE"
           cat /tmp/intraday_response.json
           if [ "$RESPONSE" != "200" ]; then

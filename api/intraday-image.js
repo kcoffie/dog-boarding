@@ -325,7 +325,7 @@ export default async function handler(req, res) {
 
   // Token auth — timingSafeEqual prevents timing attacks.
   const providedToken = req.query.token ?? '';
-  const expectedToken = process.env.VITE_SYNC_PROXY_TOKEN ?? '';
+  const expectedToken = process.env.INTERNAL_API_TOKEN ?? '';
   const tokenValid =
     expectedToken.length > 0 &&
     providedToken.length === expectedToken.length &&

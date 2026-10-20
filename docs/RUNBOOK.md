@@ -237,7 +237,7 @@ UPDATE boardings SET sync_status = 'archived' WHERE external_id = '<id>';
 ## Vercel env for ops-watch
 - `GH_ACTIONS_TOKEN`: fine-grained PAT, repository `kcoffie/dog-boarding` only, permissions **Actions: Read and write**. Used by `/api/ops-watch` to read workflow runs and dispatch `ops-alert.yml`. When it expires, ops-watch reports "Couldn't check the scheduled workflows".
 - `CRON_SECRET`: Vercel sends it to crons; ops-watch rejects every request without it.
-- ops-watch also needs these in **Vercel** env (not just GitHub secrets): `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` (Kate's alert channel, also used by `/api/send-question`), `VITE_SYNC_PROXY_TOKEN` (roster image) and the Supabase keys. Env changes apply only after a redeploy. If `CRON_SECRET` is missing, every ops-watch call gets 401 and `cron-health-check` reports "ops-watch has never run".
+- ops-watch also needs these in **Vercel** env (not just GitHub secrets): `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` (Kate's alert channel, also used by `/api/send-question`), `INTERNAL_API_TOKEN` (roster image) and the Supabase keys. Env changes apply only after a redeploy. If `CRON_SECRET` is missing, every ops-watch call gets 401 and `cron-health-check` reports "ops-watch has never run".
 - Email alerts arrive only if Kate's GitHub notification settings email her about failed Actions runs she triggered (Settings → Notifications → Actions).
 
 ## GitHub Actions secrets reference
@@ -261,4 +261,4 @@ All secrets must be **Repository secrets** (not environment secrets) for workflo
 | `GMAIL_CLIENT_SECRET` | gmail-monitor | Google Cloud OAuth2 |
 | `GMAIL_REFRESH_TOKEN` | gmail-monitor | Long-lived, doesn't expire for personal accounts in test mode |
 | `APP_URL` | notify workflows | `https://qboarding.vercel.app` |
-| `VITE_SYNC_PROXY_TOKEN` | notify workflows | Shared token for gated API endpoints |
+| `INTERNAL_API_TOKEN` | notify workflows | Server-only token for the jobs' endpoints (REQ-656) |

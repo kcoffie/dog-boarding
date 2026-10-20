@@ -150,7 +150,7 @@ export default async function handler(req, res) {
   }
 
   const providedToken = req.query.token || '';
-  const expectedToken = process.env.VITE_SYNC_PROXY_TOKEN || '';
+  const expectedToken = process.env.INTERNAL_API_TOKEN || '';
   if (!expectedToken || providedToken !== expectedToken) {
     return res.status(401).json({ error: 'Unauthorized' });
   }

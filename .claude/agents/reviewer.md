@@ -31,7 +31,7 @@ Start with `git diff main...HEAD` and read the files it touches in full. Find th
 ## Pass 4: security and publishing
 - The repo is public. No keys, tokens, phone numbers, client or dog names, or local paths in code, tests, docs or commits.
 - New secrets: least scope, stored in GitHub/Vercel env only, named in the RUNBOOK secrets reference.
-- `api/` endpoints: auth checked (`VITE_SYNC_PROXY_TOKEN` bearer or Vercel cron header) before doing any work.
+- `api/` endpoints: auth checked before doing any work: `INTERNAL_API_TOKEN` for jobs, a verified Supabase user (`verifyUser`) for browser callers, or the Vercel cron header. No secret may be read through `import.meta.env` or carry a `VITE_` prefix (REQ-656).
 - No `Co-Authored-By` or other AI attribution lines in commits or the PR description.
 
 ## Output

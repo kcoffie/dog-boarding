@@ -295,7 +295,7 @@ describe('roster image', () => {
   });
 
   it('the image is fetched from production with the proxy token, weekend type', async () => {
-    process.env.VITE_SYNC_PROXY_TOKEN = 'p&q';
+    process.env.INTERNAL_API_TOKEN = 'p&q';
     await call(AUTH, { dryRun: '1' });
     const [url, init] = globalThis.fetch.mock.calls.find(([u]) => String(u).includes('roster-image'));
     expect(url).toBe('https://qboarding.vercel.app/api/roster-image?type=weekend&token=p%26q');

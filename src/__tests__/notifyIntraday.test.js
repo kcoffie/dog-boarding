@@ -162,7 +162,7 @@ describe('hashDelta', () => {
 describe('notify-intraday handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.VITE_SYNC_PROXY_TOKEN = 'test-token';
+    process.env.INTERNAL_API_TOKEN = 'test-token';
     process.env.VITE_SUPABASE_URL = 'https://fake.supabase.co';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'fake-key';
     process.env.ROSTER_CHANNEL = 'telegram';

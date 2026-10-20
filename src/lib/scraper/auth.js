@@ -12,10 +12,15 @@ let sessionCookies = null;
 let sessionExpiry = null;
 
 /**
- * Build headers for sync-proxy calls, including the proxy auth token if configured.
+ * Build headers for sync-proxy calls: the signed-in user's Supabase access token (REQ-656).
+ * Browser only. supabase.js is imported here, not at the top, because cron-auth and the other
+ * server jobs import this file and supabase.js throws at load without import.meta.env.
+ * getSession() runs on every call so a long historical sync gets a refreshed token.
  */
-function proxyHeaders() {
-  const token = import.meta.env?.VITE_SYNC_PROXY_TOKEN;
+async function proxyHeaders() {
+  const { supabase } = await import('../supabase.js');
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
   return {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -49,7 +54,7 @@ export async function authenticate(username, password) {
 
       const response = await fetch('/api/sync-proxy', {
         method: 'POST',
-        headers: proxyHeaders(),
+        headers: await proxyHeaders(),
         body: JSON.stringify({ action: 'authenticate' }),
       });
 
@@ -218,7 +223,7 @@ export async function authenticatedFetch(url, options = {}) {
 
     const response = await fetch('/api/sync-proxy', {
       method: 'POST',
-      headers: proxyHeaders(),
+      headers: await proxyHeaders(),
       body: JSON.stringify({
         action: 'fetch',
         url,

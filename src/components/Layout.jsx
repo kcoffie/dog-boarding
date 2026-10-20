@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const MAX_QUESTION_LENGTH = 1000;
 
-function QuestionModal({ username, onClose }) {
+function QuestionModal({ onClose }) {
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState('idle'); // 'idle' | 'sending' | 'sent' | 'error'
   const [errorMsg, setErrorMsg] = useState('');
@@ -14,14 +15,16 @@ function QuestionModal({ username, onClose }) {
     setStatus('sending');
     setErrorMsg('');
     try {
-      const token = import.meta.env.VITE_SYNC_PROXY_TOKEN || '';
+      // The server takes the sender from this signed-in user's token (REQ-656).
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token ?? '';
       const res = await fetch('/api/send-question', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: message.trim(), username }),
+        body: JSON.stringify({ message: message.trim() }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -367,7 +370,6 @@ export default function Layout() {
 
       {showQuestionModal && (
         <QuestionModal
-          username={user?.email?.split('@')[0] || user?.email || 'unknown'}
           onClose={() => setShowQuestionModal(false)}
         />
       )}
