@@ -54,9 +54,11 @@
    - Kate rotates the token in the documented order.
 6. **WhatsApp timeline (from the tables):** last delivery 08-24, when GitHub disabled the schedules. Then the friday-pm roster delivered on **Fri 10-16 22:58 UTC** (Kate's "Friday" message) and a cron-health alert at 10-17 04:49. **Locked from 10-17 11:53 UTC.**
 7. **#304 (dev dependencies, 9 updates):**
-   - Lint was red from `@eslint/js` 10. I pushed `d5f4e94`, which drops two dead initialisers in `extraction.js`.
-   - Locally: lint clean, 1505 tests pass, build OK. Stryker on vitest 4.1.12: 3.77 tests per mutant (OK).
-   - **Not merged:** it needs green CI plus a reviewer run, then `check:deploy`.
+   - eslint 10 raised 4 errors. I fixed them:
+     - `d5f4e94` drops two dead initialisers in `extraction.js`;
+     - `d4e793f` merges main and adds reasoned `preserve-caught-error` disables in `rosterChannel.js` (the caught fetch error is dropped on purpose, because it can carry the token URL).
+   - Locally on that merged state: lint 0 errors, 1585 tests pass. Stryker on vitest 4.1.12: 3.77 tests per mutant (OK).
+   - **Not merged:** check that CI is green on `d4e793f`, run the reviewer, then merge and `check:deploy`.
    - **#303** (Actions: upload-artifact 7, cache 6): green, needs a reviewer run.
 8. **Follow-ups filed:** #299 (alert when a merge doesn't reach production; needs the architect gate), #301.
 
