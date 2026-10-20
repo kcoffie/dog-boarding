@@ -45,7 +45,7 @@ Using GitHub Actions (not Vercel crons) because:
 ## How It Works
 
 ### The four workflows
-Each workflow is a single step: a `curl` to `/api/notify?window={window}&token={VITE_SYNC_PROXY_TOKEN}`. The token gates the endpoint against unauthorized calls. If the HTTP status isn't `200`, the step fails (shows red in GH Actions UI), which surfaces notify failures visibly.
+Each workflow is a single step: a `curl` to `/api/notify?window={window}&token={INTERNAL_API_TOKEN}`. The token gates the endpoint against unauthorized calls. If the HTTP status isn't `200`, the step fails (shows red in GH Actions UI), which surfaces notify failures visibly.
 
 ### The `/api/notify` endpoint (`api/notify.js`)
 
@@ -148,7 +148,7 @@ These are **GitHub Repository secrets** (Settings → Secrets → Actions → Re
 | Secret | Description |
 |---|---|
 | `APP_URL` | Vercel production URL (e.g. `https://qboarding.vercel.app`) |
-| `VITE_SYNC_PROXY_TOKEN` | Token gating `/api/notify` and `/api/roster-image` |
+| `INTERNAL_API_TOKEN` | Server-only token gating `/api/notify` and `/api/roster-image` (REQ-656) |
 
 The notify endpoint itself (running in Vercel) also needs these env vars set in Vercel:
 

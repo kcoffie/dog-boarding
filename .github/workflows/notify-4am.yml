@@ -19,7 +19,7 @@ jobs:
       - name: Send roster image
         run: |
           RESPONSE=$(curl -s -o /tmp/notify_response.json -w "%{http_code}" \
-            "${{ secrets.APP_URL }}/api/notify?window=4am&token=${{ secrets.VITE_SYNC_PROXY_TOKEN }}")
+            "${{ secrets.APP_URL }}/api/notify?window=4am&token=${{ secrets.INTERNAL_API_TOKEN }}")
           echo "HTTP status: $RESPONSE"
           cat /tmp/notify_response.json
           if [ "$RESPONSE" != "200" ]; then

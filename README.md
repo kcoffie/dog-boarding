@@ -247,7 +247,7 @@ npm run test:coverage     # with coverage report
 - **Service role key never in the browser bundle** — used only in Vercel serverless functions and GitHub Actions scripts. The `VITE_` prefix is intentionally absent on sensitive vars — Vite would otherwise bake them into the client bundle.
 
 ### API surface
-- **Token-gated endpoints** (`/api/notify`, `/api/roster-image`, `/api/sync-proxy`) — all require `?token=SECRET` matching `VITE_SYNC_PROXY_TOKEN`
+- **Token-gated endpoints** (`/api/notify`, `/api/notify-intraday`, `/api/roster-image`, `/api/intraday-image`): `?token=SECRET` matching the server-only `INTERNAL_API_TOKEN`. Browser endpoints (`/api/send-question`, `/api/sync-proxy`) need a signed-in Supabase user instead (REQ-656)
 - **Cron endpoints** — Vercel sends `Authorization: Bearer {CRON_SECRET}` with each invocation; handlers verify it
 - **No user input in external URLs** — all external site URLs are constructed from validated internal state (IDs from DB), never from raw user input
 
@@ -334,7 +334,7 @@ docs/
 | `EXTERNAL_SITE_USERNAME` | Login email for agirlandyourdog.com |
 | `EXTERNAL_SITE_PASSWORD` | Login password |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key — bypasses RLS, never expose to browser |
-| `VITE_SYNC_PROXY_TOKEN` | Shared bearer token for gated API endpoints |
+| `INTERNAL_API_TOKEN` | Server-only token for the jobs' endpoints (never `VITE_`-prefixed) |
 | `CRON_SECRET` | Vercel cron authentication header value |
 
 ### WhatsApp notifications

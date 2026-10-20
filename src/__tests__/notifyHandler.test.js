@@ -108,7 +108,7 @@ beforeEach(() => {
   bucket = null;
   writeCronHealth.mockImplementation(async () => {});
   recordMessageLog.mockImplementation(async () => {});
-  process.env.VITE_SYNC_PROXY_TOKEN = TOKEN;
+  process.env.INTERNAL_API_TOKEN = TOKEN;
   process.env.VITE_SUPABASE_URL = 'https://db.example.com';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-key';
   process.env.ROSTER_CHANNEL = 'telegram';
@@ -136,7 +136,7 @@ describe('access and input', () => {
   });
 
   it('with no token configured on the server, every request is rejected (fails closed)', async () => {
-    delete process.env.VITE_SYNC_PROXY_TOKEN;
+    delete process.env.INTERNAL_API_TOKEN;
     const res = await call({ window: '4am', token: '' });
     expect(res.code).toBe(401);
     expect(sendRoster).not.toHaveBeenCalled();

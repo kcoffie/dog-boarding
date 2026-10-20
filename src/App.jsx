@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { DataProvider } from './context/DataContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
@@ -12,7 +12,6 @@ import SyncHistoryPage from './pages/SyncHistoryPage';
 import MessageLogPage from './pages/MessageLogPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoginPage from './pages/auth/LoginPage';
-import SignupPage from './pages/auth/SignupPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -30,7 +29,8 @@ function App() {
 
           {/* Auth routes (public) */}
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
+          {/* No self sign-up: Kate adds accounts in Supabase (REQ-001). Old links land on login. */}
+          <Route path="/signup" element={<Navigate to="/login" replace />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
 

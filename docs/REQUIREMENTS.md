@@ -36,20 +36,16 @@
 
 ## Authentication & Access Control
 
-### REQ-001: Invite-Only Signup
-**Added:** v1.3 | **Status:** Complete
+### REQ-001: No Self Sign-Up
+**Added:** v1.3 | **Changed:** v6.5.0 (#301) | **Status:** Complete
 
-Users can only create accounts with a valid invite code.
+Accounts can't be created from the app. Kate adds staff in Supabase (Authentication → Users → Invite); Supabase sign-up is disabled. The invite-code sign-up page was removed because its code was checked only in the browser.
 
 **Acceptance Criteria:**
-- Signup page requires invite code before showing registration form
-- Invalid codes show error message
-- Expired codes are rejected
-- Used codes cannot be reused
-- Code input converts to uppercase automatically
-- Code length limited to 12 characters
+- The login page has no "Create account" link and no link to `/signup`
+- `/signup` redirects to `/login`
 
-**Tests:** `src/__tests__/auth/invite.test.jsx`
+**Tests:** `src/__tests__/auth/login.test.jsx`, `src/__tests__/auth/signupRoute.test.jsx`
 
 ---
 
@@ -1197,7 +1193,7 @@ The `workers` table stores the known roster of workers with their external UIDs,
 `/api/roster-image` generates a branded PNG showing each worker's dogs for the day, with day-over-day diff indicators.
 
 **Acceptance Criteria:**
-- Token-gated (`VITE_SYNC_PROXY_TOKEN` Bearer header)
+- Token-gated (`?token=` matching the server-only `INTERNAL_API_TOKEN`, REQ-656)
 - Uses `satori` + `resvg` to render JSX → PNG
 - AGYD brand colors: forest green `#4A773C` header, sage `#78A354` headings, charcoal `#333333` body
 - Green `+` for newly added dogs (series not in yesterday's set), red strikethrough for removed dogs
@@ -1341,10 +1337,10 @@ Users can send a question or comment to Kate directly from the nav user dropdown
 **Acceptance Criteria:**
 - "Send a Question" button in the nav user dropdown (desktop) and mobile menu
 - Clicking opens a modal with a "Question / Comment" label, textarea (max 1000 chars), character counter, Send and Cancel buttons
-- On Send, the message is delivered to Kate through her alert channel (`sendAlert`, Telegram — REQ-652) with the sender's username prepended
+- On Send, the message is delivered to Kate through her alert channel (`sendAlert`, Telegram — REQ-652) as `Question from <the signed-in user's email>:`. The sender comes from the verified user, never from the request body
 - Loading state ("Sending…") shown while in-flight; "Sent!" confirmation on success; inline error message on failure
 - Modal auto-closes 1.5 seconds after a successful send
-- `POST /api/send-question`: validates `Authorization: Bearer` token, rejects empty or >1000-char messages, calls `sendAlert`; returns 502 when the message wasn't delivered (REQ-652)
+- `POST /api/send-question`: accepts only a signed-in user (REQ-656), rejects empty or >1000-char messages, calls `sendAlert`; returns 502 when the message wasn't delivered (REQ-652)
 
 **Tests:** `src/__tests__/sendQuestion.test.js`
 
@@ -1487,6 +1483,25 @@ Meta locked the WhatsApp Business Account on 2026-10-17, so the roster reached n
 - ops-watch's morning roster check counts a `notify-4am` `message_log` row with recipient `telegram` and status `sent` as delivered (the Bot API accepted it for Kate's chat)
 
 **Tests:** `src/__tests__/rosterChannel.test.js`, `src/__tests__/notifyHandler.test.js`, `src/__tests__/notifyIntraday.test.js`, `src/__tests__/opsWatch.test.js`
+
+---
+
+### REQ-656: No secret in the browser
+**Added:** v6.5.0 | **Status:** Complete
+
+The proxy token was built into the public JavaScript bundle (`VITE_` prefix), so anyone could call the internal endpoints with it (#301). Browser calls now prove a signed-in user; the jobs use a server-only token. Design: `docs/specs/browser-auth-design-note.md`.
+
+**Acceptance Criteria:**
+- `/api/send-question` and `/api/sync-proxy` accept only a Supabase user access token (`Authorization: Bearer <jwt>`), checked against Supabase's `GET /auth/v1/user` with a 5 s timeout. The server token is not accepted there
+- The check fails closed: missing `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY` → 500 `Server misconfigured`; no or malformed header, a rejected token, or a 200 without a user id → 401 `Unauthorized`; a Supabase 5xx, network error, timeout or unreadable body → 503 `Sign-in check unavailable`. None of these is a pass, and nothing else runs
+- `sync-proxy` fetches only with GET; any other method → 400 `Only GET is allowed`, and the booking site is never called
+- The browser sends the session's access token, read with `getSession()` on every proxy call (so a long sync uses a refreshed token). The server jobs that import the scraper still load under plain Node
+- The jobs' endpoints (`notify`, `notify-intraday`, `roster-image`, `intraday-image`), ops-watch's image check, the notify workflows and `check:deploy` use `INTERNAL_API_TOKEN`. Unset, those endpoints answer 401
+- No browser code reads a token through `import.meta.env`; no secret has a `VITE_` prefix
+- `api/run-sync.js` (an unused token-guarded full sync) is gone
+- Known cost: a manual sync makes one sign-in check per proxied page (hundreds in a long historical sync). A slow or throttled Supabase answers 503 partway through; the sync stops rather than passing unchecked
+
+**Tests:** `src/__tests__/verifyUser.test.js`, `src/__tests__/sendQuestion.test.js`, `src/__tests__/syncProxyAuth.test.js`, `src/__tests__/scraper/browserProxyAuth.test.js`, `src/__tests__/cronAuthNodeImport.test.js`
 
 ---
 

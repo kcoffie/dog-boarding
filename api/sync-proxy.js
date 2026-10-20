@@ -1,8 +1,11 @@
 /**
  * Server-side proxy for external sync operations
  * Bypasses CORS restrictions by making requests from the server
- * @requirements REQ-100, REQ-104
+ * Callers: the browser only, as a signed-in user (REQ-656). Fetches are GET-only.
+ * @requirements REQ-100, REQ-104, REQ-656
  */
+
+import { verifyUser } from '../src/lib/verifyUser.js';
 
 export const config = {
   runtime: 'edge',
@@ -65,17 +68,12 @@ export default async function handler(request) {
     });
   }
 
-  // Validate proxy token (VITE_SYNC_PROXY_TOKEN — intentionally public, browser-readable).
-  // Skipped in local dev when env var is not set.
-  const proxyToken = process.env.VITE_SYNC_PROXY_TOKEN;
-  if (proxyToken) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${proxyToken}`) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+  const auth = await verifyUser(request.headers.get('authorization'));
+  if (!auth.ok) {
+    return new Response(JSON.stringify({ error: auth.error }), {
+      status: auth.status,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   try {
@@ -188,6 +186,14 @@ export default async function handler(request) {
             success: false,
             error: 'URL is required',
           }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Reads only: the sync never writes to the booking site.
+        if (method !== 'GET') {
+          return new Response(JSON.stringify({ success: false, error: 'Only GET is allowed' }), {
             status: 400,
             headers: { 'Content-Type': 'application/json' },
           });

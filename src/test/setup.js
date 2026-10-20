@@ -8,4 +8,7 @@ const localStorageMock = {
   removeItem: vi.fn(),
   clear: vi.fn(),
 };
-Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+// Node-environment tests (// @vitest-environment node) have no window.
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+}
