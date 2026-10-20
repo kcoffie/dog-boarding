@@ -85,6 +85,18 @@ describe('fetchRosterPng', () => {
     const fetchFn = vi.fn(async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); });
     await expect(fetchRosterPng(IMAGE_URL, fetchFn)).rejects.toThrow(/^Roster image fetch: timed out$/);
   });
+
+  it("a network error doesn't carry fetch's error (which holds the token URL) as its cause", async () => {
+    const fetchFn = vi.fn(async (url) => { throw new TypeError(`fetch failed for ${url}`); });
+    const err = await fetchRosterPng(IMAGE_URL, fetchFn).catch((e) => e);
+    expect(err.cause).toBeUndefined();
+  });
+
+  it("a body that breaks mid-read doesn't carry the read error as its cause", async () => {
+    const fetchFn = vi.fn(async (url) => ({ ok: true, status: 200, arrayBuffer: async () => { throw new TypeError(`terminated reading ${url}`); } }));
+    const err = await fetchRosterPng(IMAGE_URL, fetchFn).catch((e) => e);
+    expect(err.cause).toBeUndefined();
+  });
 });
 
 describe('sendRoster on telegram', () => {
