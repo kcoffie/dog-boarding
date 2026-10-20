@@ -71,11 +71,11 @@
 6. Delete `api/run-sync.js`. Nothing calls it, and it's a token-guarded "full production sync" trigger.
 7. Remove the invite-code signup page and route. The `invite_codes` table can stay.
 8. **Rotation order (Kate does it in the evening, after the code is merged and live). It's built so the 4am roster never hits a 401:**
-   1. Add `INTERNAL_API_TOKEN` (new value from `openssl rand -hex 32`) in **Vercel** (Production, Sensitive) **and** **GitHub secrets** before merging. The code reads only the new name, so both must exist first.
+   1. Add `INTERNAL_API_TOKEN` (new value from `openssl rand -hex 32`) in **Vercel** (Production, Sensitive), **GitHub secrets** and **`.env.local`** before merging. The code reads only the new name, so all three must exist first (`check:deploy` reads it from `.env.local` in step 2). Keep the old `VITE_SYNC_PROXY_TOKEN` everywhere until step 5.
    2. Merge. `npm run check:deploy`.
    3. `curl` `/api/roster-image?type=weekend&token=NEW` → 200, and the old `VITE_SYNC_PROXY_TOKEN` value → 401.
    4. Dispatch `notify-intraday.yml` → 200 `channel_telegram` (proves the workflow secret without sending).
-   5. Put the new value in `.env.local`, then delete `VITE_SYNC_PROXY_TOKEN` from Vercel, GitHub and `.env.local`.
+   5. Delete `VITE_SYNC_PROXY_TOKEN` from Vercel, GitHub and `.env.local`, then redeploy so no build sees it again.
 9. **Check it worked:** neither the old nor the new value appears anywhere in the deployed JS (`curl` the bundle and grep). Send a Question works signed in, and gets 401 signed out. Manual sync works.
 
 **Keep this branch local until it's merged.** The design note describes how the still-valid public token can be abused; push it only together with the fix and rotate right after.
