@@ -132,6 +132,7 @@ Deploy/CI budget (#298/#300: Vercel builds only `main` and `preview/**`; `npm ru
 - [ ] Maybe: a clear "something looks wrong at 9pm" path (Send a Question, made obvious, with what happens next)
 - [ ] #307 invite-code management; close #11 after #301
 - [ ] #260 Twilio (Kate: upgrade + A2P; #291 decisions)
+- [ ] #311 Sync History page usable (someday, after UAT starts)
 - [ ] #239 backfill: parked until UAT (Kate revisits)
 - [ ] #257, #293, #295
 - [ ] #285 vitest 5: wait for stryker-js #6214; #284 vite 8
