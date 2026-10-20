@@ -13,7 +13,7 @@
    - Give options as one line each with real counts, then one recommendation.
    - Ask before sending any message to anyone (Telegram test alerts, SMS, WhatsApp), re-enabling workflows, adding secrets or changing repo settings.
    - Messages must never be tied to the client's (Charlie's) business. The app is Kate's alone, and Kate has no registered business.
-3. **Shell:** `gh` is aliased to `history | grep`, so always type `command gh …`. Production is **`https://qboarding.vercel.app`** (Vercel project `qboard`; the duplicate `dog-boarding` Vercel project was **disconnected from GitHub by Kate on 2026-10-19** and no longer deploys; formerly a duplicate that deploys production on every merge, but whose crons don't fire). Claude can't read Vercel env or logs (no CLI; Hobby logs keep 1 h). Use Kate's Chrome, the Supabase tables, or ask Kate.
+3. **Shell:** `gh` is aliased to `history | grep`, so always type `command gh …`. Production is **`https://qboarding.vercel.app`** (Vercel project `qboard`; the duplicate `dog-boarding` Vercel project was **disconnected from GitHub by Kate on 2026-10-19** and no longer deploys; since then qboard's commit status is named plain `Vercel`). Claude can't read Vercel env or logs (no CLI; Hobby logs keep 1 h). Use Kate's Chrome, the Supabase tables, or ask Kate.
 4. **Gates:** run the `architect` agent on the design note before a new job, service, secret or table. Run the `reviewer` agent before every PR. A new scheduled job ships with its failure alert, and that alert must run outside the job's own scheduler.
 5. **New code only:** the gates cover code written from 2026-10-16 on. Bringing older code up to the same bar is #239.
 
@@ -51,11 +51,11 @@
    - **vite 8 is blocked by a Babel peer conflict:** #284.
    - **New Dependabot majors #286 (vite-plugin-pwa 2), #289 (jsdom 30), #288 (lint-staged 17) and #287 (eslint 10)** were reviewed and are safe. Merge them one at a time in that order; their lockfiles conflict, so let Dependabot rebase in between.
 8. **History rewrite done (Kate pushed 2026-10-19):**
-   - Client names, phone numbers, emails, the street address and the 5 staff names were removed from all history, tags and branches.
+   - Client names, phone numbers, emails, the street address and the 5 staff names were removed from all history, tags and branches. **One client surname was missed** (in the Session 31 table here; replaced 2026-10-20, but still in history). Kate decides whether to scrub again.
    - Kept: dog names and AGYD IDs (they collide with ordinary text).
-   - Backups in `~/projs/qap/_salvage/`: `dog-boarding-before-content-rewrite.bundle`, plus `dog-boarding-deleted-branches-2026-10-19.bundle`.
+   - Backups in `a local backup folder (ask Kate)`: `dog-boarding-before-content-rewrite.bundle`, plus `dog-boarding-deleted-branches-2026-10-19.bundle`.
    - GitHub's `refs/pull/*` still hold old commits; only GitHub Support can purge them.
-   - The script and values list were in the session scratchpad (`/private/tmp/...`); they may be gone, and must never be committed.
+   - The script and values list were in a session scratchpad; they may be gone, and must never be committed.
 9. **70 stale remote branches deleted** (all backed up in the bundle above). Only main and the open-PR branches remain.
 10. **#260 SMS roster: design note PR #291 (docs, architect reviewed).**
     - The Twilio account is still a **trial**; A2P registration needs an upgrade, which is Kate's payment.
@@ -105,7 +105,7 @@
 - **Always confirm a merge deployed:** `command gh api repos/kcoffie/dog-boarding/commits/<sha>/statuses --jq '.[]|select(.context=="Vercel – qboard")|.state+" "+.description'`.
 
 ### Mutation
-- **CI on main:** 47.02% (2026-10-19). Ratchet 47. The next main runs (after #292 and #296) go in the score log.
+- **CI on main:** 47.94% after #292 (2026-10-19). Ratchet 47. The run after #296 goes in the score log.
 - **Scoped, local, TZ=UTC:**
   - `opsWatch.js` 100%
   - `syncSettingsRow.js` 100%
@@ -147,7 +147,7 @@
      - the next `schedule` cron_health row: `requeuedEdited` near 0, `urlChangesIgnored` > 0, `found` > 0;
      - `sync_queue` pending under 30.
 4. **Read every Integration Check run since 10-19 19:00 UTC.** For red runs, read the log before assuming. Expect `C63QhKpW` until 10/22 (an evaluation).
-5. **Add the main Mutation scores** after #292 and #296 to the score log, and raise the ratchet if they go up.
+5. **Add the main Mutation score** after #296 to the score log (#292's is in: 47.94%), and raise the ratchet if it goes up.
 6. **#239:** `pictureOfDay.js` tests from REQ-610/611, with mutation scores. Also #257.
 7. **#260** once Kate has upgraded Twilio and decided the note's points (the image label replacing "Q Boarding", opt-in method, trigger). Fold the architect's changes into the note's body before building.
 
@@ -185,7 +185,7 @@
 ### Session 31 Summary (reference)
 | Item | Status |
 |---|---|
-| Integration check alert — "Missing from DB: Rio Prabhakar 6/15-7/3 (C63Qglz7)" | ✅ Diagnosed. Bad booking in AGYD — same-day filter correctly skipped it. Kate confirmed bad entry; B-3 will re-queue on URL timestamp change. No code change needed. |
+| Integration check alert — "Missing from DB: one boarding 6/15-7/3 (C63Qglz7)" | ✅ Diagnosed. Bad booking in AGYD — same-day filter correctly skipped it. Kate confirmed bad entry; B-3 will re-queue on URL timestamp change. No code change needed. |
 | Integration check WINDOW_DAYS=7 too narrow for far-future boardings | ⏸ Deferred. Fix: `WINDOW_DAYS = 7 → 90` in `scripts/integration-check.js`. Kate monitoring. |
 | "Day boarding {date}" label rename — EmployeeDropdown checkbox | ✅ Done. PR #206 merged. |
 
@@ -215,7 +215,7 @@
 - **Alerts to Kate**: `sendAlert()` / `alertAndLog()` in `src/lib/alertKate.js` (Telegram, REQ-652). The team roster uses `NOTIFY_RECIPIENTS` (WhatsApp, moving to SMS in #260).
 - **nightAssignments** in DataContext: `[{ date: 'YYYY-MM-DD', employeeId, workedFollowingDay }]` — top-level in `useData()`
 - **employees** in DataContext: lives at `settings.employees`, NOT top-level
-- **Vercel cron times**: all run at midnight UTC = 5:00 PM PDT (documented correctly in OVERVIEW.md as of this session)
+- **Vercel cron times**: the sync crons run at 00:00–00:15 UTC (5:00–5:15 PM PDT); ops-watch runs at 17:00 UTC
 - **K-8 closed by events:** Meta disabled the test WhatsApp account on 2026-10-18. The roster moves to SMS (#260), and Kate's alerts are on Telegram (#265).
 
 ---
