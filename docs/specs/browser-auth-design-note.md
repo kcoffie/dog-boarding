@@ -75,7 +75,7 @@
    2. Merge. `npm run check:deploy`.
    3. `curl` `/api/roster-image?type=weekend&token=NEW` → 200, and the old `VITE_SYNC_PROXY_TOKEN` value → 401.
    4. Dispatch `notify-intraday.yml` → 200 `channel_telegram` (proves the workflow secret without sending).
-   5. Delete `VITE_SYNC_PROXY_TOKEN` from Vercel, GitHub and `.env.local`, then redeploy so no build sees it again.
+   5. Delete `VITE_SYNC_PROXY_TOKEN` from Vercel, GitHub and `.env.local`. No redeploy is needed: no code reads it, and a local build with it set (2026-10-20) bundled neither the old nor the new value.
 9. **Check it worked:** neither the old nor the new value appears anywhere in the deployed JS (`curl` the bundle and grep). Send a Question works signed in, and gets 401 signed out. Manual sync works.
 
 **Keep this branch local until it's merged.** The design note describes how the still-valid public token can be abused; push it only together with the fix and rotate right after.
