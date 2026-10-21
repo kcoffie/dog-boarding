@@ -24,7 +24,7 @@ These are true today, whichever option is chosen. Each one risks Charlie's accou
 
 ## Options
 1. **Patch the current pieces.** Add reconciliation to `syncRunner`, fix the requeue (P20), make the Integration Check compare both ways. Keeps two engines and the checker-as-syncer (P3), and leaves Sync Now in the tab.
-2. **Everything on Vercel.** Hobby gives 100 crons, each at most once a day, and functions up to 300 s with Fluid compute (on by default; qboard's setting to confirm). A near-term run (~12 pages, ~100 s) fits. A full pass (~10 min) doesn't.
+2. **Everything on Vercel.** Hobby gives 100 crons, each at most once a day, and functions up to 300 s with Fluid compute (on for qboard, Kate confirmed 2026-10-21). A near-term run (~12 pages, ~100 s) fits. A full pass (~10 min) doesn't.
 3. **One engine, two runtimes: near-term on Vercel, full pass on GitHub.** One Node-safe engine (the regex parser, plus `runSync`'s flow and reconciliation). Near-term runs are Vercel crons calling it directly. The daily full pass is a GitHub workflow started on time by a Vercel cron (`workflow_dispatch` with the existing `GH_ACTIONS_TOKEN`). The button starts the full-pass workflow. The Integration Check only checks.
 4. **One engine, all runs on GitHub, all dispatched by Vercel** (the first draft). Same engine as 3. It's one runtime, but today-and-tomorrow freshness then depends on GitHub and the token.
 
@@ -39,8 +39,9 @@ This ships first, on its own, and also protects today's paths:
   - Every path checks it before touching the site, backups included.
   - **Only cron-auth logs in.** Every other path uses the stored session or fails.
   - After a failed login, **nothing logs in again until Kate clears the flag** (Kate, 2026-10-21). She gets one clear alert that says so and how to clear it.
+  - A 429, 403 or challenge trip **also waits for Kate** (the same rule, applied to throttling; to confirm with Kate when #324 is built). `site_blocked_until` is then just when it tripped, not an expiry.
 - **Reconciliation guard:**
-  - Archive only on a positive "gone" signal: a 404, or a 200 that is neither the login page nor an appointment page.
+  - Archive only on a positive "gone" signal: a 404, or a 200 page that matches the booking site's own "not found" marker. A 200 page that's unrecognised (maintenance, error, challenge) is a stop, not an archive. Challenge detection runs first.
   - Skip reconciliation when the schedule found 0 rows, or far fewer than the database expects for the window.
   - Archive at most 3 per run. Above that, archive nothing and alert.
 - **A 0-row schedule fails the run** before reconciliation.
@@ -53,13 +54,13 @@ This ships first, on its own, and also protects today's paths:
 
 - **Skip store:** bookings known not to be boardings aren't re-opened while their ID, title and link stay the same.
 - **Unchanged boardings** aren't re-opened between full passes, except today's and tomorrow's (P4).
-- **Daily budget:** all paths together, about **100–110 requests a day** (forms included). A daily ceiling of 250 in the database stops further runs and alerts.
+- **Daily budget:** all paths together, about **110–120 requests a day** (forms included). A daily ceiling of 250 in the database stops further runs and alerts.
 - **One at a time:** the button refuses while any run is going, or within 15 min of the last. Near-term and full pass don't queue behind each other: a run that finds another running exits and logs "skipped: busy".
 - **Every run writes `sync_logs`** (kind, window, requests, counts, status), so Sync History is real (P11). The button page reads it (#317).
 - **Timezone:** the workflow sets `TZ=America/Los_Angeles`. Window code gets a test under `TZ=UTC`.
 - **Stuck runs:** `abortStuckSync`'s cutoff goes from 30 to 60 min. The first full pass, with an empty skip store, is run once by hand with Kate watching.
 - **Retired after 3 good nights:** `cron-schedule`, `cron-detail`, `cron-detail-2`, booking items in `sync_queue` (form items stay), and the Integration Check's sync-before-compare. `MONITORED_CRONS` and ops-watch's queue checks change in the same PR. `cron-auth` stays as the only path that logs in.
-- **Integration Check:** check only, once a day after the full pass, both ways (P13), each finding reported once (#315).
+- **Integration Check:** check only, once a day, both ways (P13), each finding reported once (#315). Dispatched by Vercel at 08:30 UTC, after the full pass (07:00 + up to 59 min of jitter + ~10 min). It stays a separate run, so the checker never checks its own work.
 - **ADR:** a new ADR supersedes ADR-002 ("sync on Vercel crons").
 
 ## Build order (each a PR with tests written from the REQs and a reviewer pass)

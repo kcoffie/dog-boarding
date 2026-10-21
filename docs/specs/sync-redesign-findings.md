@@ -34,7 +34,7 @@ Two parsers and two flows mean the paths behave differently (reconciliation is o
 | ID | Problem | Evidence | Caught today? |
 |---|---|---|---|
 | P1 | **A booking removed on the booking site stays in the app**, on the roster and in pay. Only Sync Now reconciles | `C63QhHuu` (10/19–10/25): synced 10-16 21:57, never re-checked, on the 10-20 4am roster. #316 | No |
-| P2 | **The Vercel path can't keep up:** 2 detail fetches a day (one run per cron path per day on Hobby; the `api/cron-detail.js` header says a 10 s limit, but with Fluid compute, on by default, Hobby functions get 300 s; qboard's setting to confirm) | `api/cron-detail.js` header; 86 queued on 10-20 were mostly already done | Indirectly: works only because P3's path processes up to 20 per run (60/day); a bigger backlog drains slowly |
+| P2 | **The Vercel path can't keep up:** 2 detail fetches a day (one run per cron path per day on Hobby; the `api/cron-detail.js` header says a 10 s limit, but with Fluid compute, which Kate confirmed is on for qboard, Hobby functions get 300 s) | `api/cron-detail.js` header; 86 queued on 10-20 were mostly already done | Indirectly: works only because P3's path processes up to 20 per run (60/day); a bigger backlog drains slowly |
 | P3 | **The checker is also the main syncer.** Integration Check drains the queue and then checks its own result. One GitHub outage stops both the sync and its alarm | August 2026: GitHub disabled all scheduled workflows for 60 days without a commit | Partly: ops-watch on Vercel checks the schedule cron's result |
 | P4 | **Edits are only seen when the title or link changes.** A changed rate, swapped dog or other detail on a done booking is never re-fetched by paths 1–2 | `describeEdit` in `syncQueue.js` compares URL and title only | No |
 | P5 | **Past weeks are never re-scanned.** Pay looks backwards; a late change to last week is missed | `cron-schedule` scans this week forward; Integration Check's DB side covers the past 7 days to 7 days ahead | No |
@@ -67,7 +67,7 @@ Two parsers and two flows mean the paths behave differently (reconciliation is o
 
 ## 5. Constraints
 
-- **Vercel Hobby:** a short function time limit (the sync crons run on the default; `vercel.json` sets 60 s only for ops-watch; exact limit to verify), each cron path once a day, start time anywhere in the hour, deploy quota (memory: mass pushes block production deploys).
+- **Vercel Hobby:** a function time limit of 300 s (Fluid compute, on for qboard; `vercel.json` sets 60 s for ops-watch), each cron path once a day, start time anywhere in the hour, deploy quota (memory: mass pushes block production deploys).
 - **GitHub Actions:** scheduled runs start late (3–5 h seen on 10-20), and schedules are disabled after 60 days without a commit (`keepalive.yml` mitigates). Jobs can run for hours.
 - **Booking site:** the only source of truth. No API; HTML pages behind a login. A full sync fetches every booking page in the range (476 for one month on 10-20). **Unknown:** rate limits, or whether heavy automated use could lock the account.
 - **Rules:** silence is never success; the watcher runs on a different scheduler from the job; a new job ships with its alert; the repo is public (no client data); messages never tied to Charlie's business; Kate's OK for new secrets and settings.
@@ -128,14 +128,14 @@ Still open: Q4 (how far back to reconcile), Q6 (who wins on a hand edit), Q7–Q
 1. **Freshness by date.** Today, later today and tomorrow matter most: those bookings must be right and mostly up to date. The full sync of 100+ bookings can be slow and less frequent.
 2. **Booking-site load.** Don't re-open bookings already known not to be boardings. Skip bookings that haven't changed, with **one full pass a day** as the minimum.
 3. **Q6, hand edits (half-done until seen in real use):** the app wins until the site changes. A hand edit is a **drift** between the app and the booking site, and the app keeps a list of drifts with two states: (1) the app differs from the site; (2) they differed, and now they match. Acting on those states waits until the case comes up in real use. (#313)
-4. **Q4 (how far back):** waiting on the cost and benefit below.
+4. **Q4 (how far back):** 7 days back, at most once a day (Kate, after the cost and benefit below).
 5. **Public logs:** detailed logs are wanted for debugging but must be private and expire (#323).
 
 **The AI screenshot check was tried before.** Integration Check "Step 3" used Claude vision to compare dog names in the roster image with the database. It ran silently skipped whenever the API key had no credits, and was removed in PR #202 (May 2026, B-2/K-5) after false positives. Today `ANTHROPIC_API_KEY` is used only by gmail-monitor's optional one-line summaries.
 
 **Q4, cost and benefit of looking back.** Today the paths look back different amounts: Sync Now and its reconciliation start at the range's first day (today by default); the `schedule` cron starts at this week's Sunday (0–6 days back); the Integration Check's DB side covers the past 7 days. Looking back one more week costs one schedule page (~5 s) plus one page for each booking in that week that's new, changed or missing. With "skip unchanged" that's a few pages, except in the daily full pass, which re-opens every boarding page in the window (~5–15 boardings a week, at ~8.5 s each). The benefit: a late change (an early pickup, a changed rate, a removed stay) is caught before pay is worked out. Reconciliation can only catch a removed past stay if the past is in its window.
 
-## 7. Direction under consideration (not decided)
+## 7. Direction under consideration (superseded by `docs/specs/sync-redesign-design-note.md`)
 
 One sync engine, one independent watcher, both judged by outcomes:
 1. The server runs the same full sync as the button, including reconciliation, on GitHub Actions (no Vercel function time limit), on a schedule that finishes well before the 4am roster. It writes `sync_logs`, so Sync History is real.
