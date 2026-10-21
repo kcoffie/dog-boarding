@@ -39,6 +39,13 @@ describe('REQ-657: loginToSite', () => {
     expect(db.state.row.session_cookies).toBe('sid=new');
   });
 
+  it('an empty table is not blocked: it logs in and creates the row', async () => {
+    authenticate.mockResolvedValue({ success: true, cookies: 'sid=new' });
+    const db = fakeSiteAccessDb(null);
+    expect((await loginToSite(db, { env: ENV })).ok).toBe(true);
+    expect(db.state.row.session_cookies).toBe('sid=new');
+  });
+
   it('while the breaker is tripped it does not log in', async () => {
     const db = fakeSiteAccessDb({ blocked_at: '2026-10-21T07:05:00Z', blocked_reason: 'it refused the login' });
     const result = await loginToSite(db, { env: ENV });
@@ -66,7 +73,7 @@ describe('REQ-657: loginToSite', () => {
     authenticate.mockResolvedValue({ success: false, error: 'Login answered 429', throttled: true, status: 429 });
     const db = open();
     const result = await loginToSite(db, { env: ENV });
-    expect(result.tripped).toBe(true);
+    expect(result).toEqual({ ok: false, tripped: true, error: 'Authentication failed: Login answered 429' });
     expect(db.state.row.blocked_reason).toBe('it answered 429 (too many requests) on the login page');
     expect(alertAndLog.mock.calls[0][2]).not.toContain('password');
   });

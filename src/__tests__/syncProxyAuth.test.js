@@ -15,7 +15,7 @@ import { fakeSiteAccessDb } from './scraper/fakeSiteAccessDb.js';
 const alertAndLog = vi.fn(async () => true);
 vi.mock('../lib/alertKate.js', () => ({ alertAndLog: (...a) => alertAndLog(...a) }));
 
-const { makeHandler, isSyncUrl } = await import('../../api/sync-proxy.js');
+const { default: defaultHandler, makeHandler, isSyncUrl, config } = await import('../../api/sync-proxy.js');
 
 const STORED = 'sid=stored-session';
 const LATER = '2099-01-01T00:00:00.000Z';
@@ -119,6 +119,10 @@ describe('REQ-656: sync-proxy only reads', () => {
   });
 });
 
+it('stays on the Edge runtime it already ran on', () => {
+  expect(config).toStrictEqual({ runtime: 'edge' });
+});
+
 /** @requirements REQ-657 */
 describe('REQ-657: the session stays on the server', () => {
   it('the stored session is sent to the booking site, not one from the browser', async () => {
@@ -144,11 +148,30 @@ describe('REQ-657: the session stays on the server', () => {
     expect(bookingSiteCalls()).toHaveLength(0);
   });
 
+  it('without the Supabase service key → 500, and the booking site is never called (fails closed)', async () => {
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const res = await defaultHandler(proxyRequest({ action: 'fetch', url: '/schedule' }));
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ success: false, error: 'Server misconfigured: Supabase service key not set' });
+    expect(bookingSiteCalls()).toHaveLength(0);
+  });
+
+  it('a fetch with no URL → 400 "URL is required"', async () => {
+    const res = await handler(proxyRequest({ action: 'fetch' }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ success: false, error: 'URL is required' });
+  });
+
+  it('a page with no redirect comes back with an empty Location', async () => {
+    const res = await handler(proxyRequest({ action: 'fetch', url: '/schedule' }));
+    expect((await res.json()).location).toBe('');
+  });
+
   it('no stored session → 503 noSession, and the booking site is never called', async () => {
     db = fakeSiteAccessDb({ session_cookies: null, session_expires_at: null, blocked_at: null });
     const res = await handler(proxyRequest({ action: 'fetch', url: '/schedule' }));
     expect(res.status).toBe(503);
-    expect((await res.json()).noSession).toBe(true);
+    expect(await res.json()).toEqual({ success: false, noSession: true, error: 'No booking-site session stored (cron-auth signs in at 00:00 UTC)' });
     expect(bookingSiteCalls()).toHaveLength(0);
   });
 
@@ -156,6 +179,7 @@ describe('REQ-657: the session stays on the server', () => {
     db = fakeSiteAccessDb(null, { readError: 'timeout' });
     const res = await handler(proxyRequest({ action: 'fetch', url: '/schedule' }));
     expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ success: false, error: 'site_access read failed: timeout' });
     expect(bookingSiteCalls()).toHaveLength(0);
   });
 });
@@ -166,7 +190,7 @@ describe('REQ-657: sync-proxy obeys the breaker and trips it', () => {
     db = fakeSiteAccessDb({ session_cookies: STORED, session_expires_at: LATER, blocked_at: '2026-10-22T07:05:00Z', blocked_reason: 'it refused the login' });
     const res = await handler(proxyRequest({ action: 'fetch', url: '/schedule' }));
     expect(res.status).toBe(423);
-    expect((await res.json()).blocked).toBe(true);
+    expect(await res.json()).toEqual({ success: false, blocked: true, error: 'Booking site blocked since 2026-10-22T07:05:00Z: it refused the login' });
     expect(bookingSiteCalls()).toHaveLength(0);
   });
 
@@ -239,6 +263,15 @@ describe('REQ-657: sync-proxy fetches only the sync pages and follows no redirec
   });
 
   it.each([
+    'http://[',
+    '/admin/schedule',
+    '/schedule/days-7/2026/10/19/extra',
+    '/x/schedule/days-7/2026/10/19',
+    '/x/schedule/a/ABC/1',
+    '/x/pets/10008/forms',
+    '/pets/10008/forms/extra',
+    '/x/pets/10008/forms/7913/view/143',
+    '/pets/10008/forms/7913/view/143/delete',
     '/login',
     '/logout',
     '/settings',

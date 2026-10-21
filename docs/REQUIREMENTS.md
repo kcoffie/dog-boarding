@@ -758,7 +758,7 @@ CREATE TABLE sync_queue (
 );
 ```
 
-**Tests:** `src/__tests__/scraper/sessionCache.test.js`, `src/__tests__/scraper/syncQueue.test.js`, `src/__tests__/scraper/syncRunner.test.js`, `src/__tests__/syncCronHandlers.test.js`
+**Tests:** `src/__tests__/scraper/syncQueue.test.js`, `src/__tests__/scraper/syncRunner.test.js`, `src/__tests__/syncCronHandlers.test.js`
 
 ---
 
@@ -1296,20 +1296,15 @@ Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arr
 
 ---
 
-### REQ-641: ensureSession Self-Healing
-**Added:** v4.4.1 | **Status:** Complete
+### REQ-641: Roster refresh alert (was: ensureSession self-healing)
+**Added:** v4.4.1 | **Status:** Complete (self-healing login removed by #324, REQ-657)
 
-`ensureSession()` gives `cron-schedule`, `cron-detail`, and `notify` the ability to recover from a missing or expired session without waiting for the next `cron-auth` run.
+`ensureSession()` used to let `cron-schedule`, `cron-detail` and `notify` log in themselves when the session was missing. **Superseded (2026-10-21, #324):** only `cron-auth` and Clear log in; every other path reads the stored session with `getSiteSession` and never logs in (REQ-657). What remains here is the refresh alert.
 
 **Acceptance Criteria:**
-- `ensureSession(supabase, username, password)` exported from `sessionCache.js`
-- If cached session exists and is not expired → return it (fast path, no HTTP call)
-- If session missing or expired → call `authenticate()`, store result, return new session
-- `cron-schedule` and `cron-detail` call `ensureSession` instead of `getSession`
-- `notify.js` calls `ensureSession` in its daytime refresh path
-- `sendRefreshAlert` deduplicates: only 1 WhatsApp alert per day (checks `lastAlertDate` in cron_health result)
+- `sendRefreshAlert` deduplicates: only 1 alert per day (checks `lastAlertDate` in cron_health result)
 
-**Tests:** `src/__tests__/scraper/sessionCache.test.js` (8 new tests), `src/__tests__/notifyHandler.test.js` (refresh alert dedup)
+**Tests:** `src/__tests__/notifyHandler.test.js` (refresh alert dedup)
 
 ---
 

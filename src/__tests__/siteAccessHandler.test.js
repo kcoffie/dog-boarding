@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fakeSiteAccessDb } from './scraper/fakeSiteAccessDb.js';
-import { makeHandler } from '../../api/site-access.js';
+import defaultHandler, { makeHandler, config } from '../../api/site-access.js';
 
 const USER = { id: 'user-1', email: 'kate@example.com' };
 const BLOCKED = { session_cookies: 'sid=secret-cookie', session_expires_at: '2099-01-01T00:00:00Z', blocked_at: '2026-10-22T00:05:00.000Z', blocked_reason: 'it refused the login' };
@@ -34,16 +34,44 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
+it('runs on the Node.js runtime (it logs in with the server credentials)', () => {
+  expect(config).toStrictEqual({ runtime: 'nodejs' });
+});
+
 describe('REQ-656: only a signed-in user', () => {
   it.each(['GET', 'POST'])('%s without a signed-in user → 401, and nothing is read or changed', async (method) => {
     const res = await call(method, 'Bearer nope');
     expect(res.code).toBe(401);
+    expect(res.body).toEqual({ ok: false, error: 'Unauthorized' });
     expect(db.state.row.blocked_at).toBe(BLOCKED.blocked_at);
     expect(login).not.toHaveBeenCalled();
   });
 
   it('other methods → 405', async () => {
-    expect((await call('DELETE')).code).toBe(405);
+    const res = await call('DELETE');
+    expect(res.code).toBe(405);
+    expect(res.body).toEqual({ ok: false, error: 'Method not allowed' });
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('without the Supabase service key → 500, nothing read and no login (fails closed)', async () => {
+    const saved = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.VITE_SUPABASE_URL = 'https://db.example.com';
+    handler = makeHandler({ login, verify });
+    const res = await call('POST');
+    expect(res.code).toBe(500);
+    expect(login).not.toHaveBeenCalled();
+    if (saved !== undefined) process.env.SUPABASE_SERVICE_ROLE_KEY = saved;
+  });
+
+  it('the default handler checks the signed-in user for real (no token → 401)', async () => {
+    process.env.VITE_SUPABASE_URL = 'https://db.example.com';
+    process.env.VITE_SUPABASE_ANON_KEY = 'anon-key';
+    const res = { code: 0, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
+    await defaultHandler({ method: 'GET', headers: {} }, res);
+    expect(res.code).toBe(401);
+    expect(res.body).toEqual({ ok: false, error: 'Unauthorized' });
   });
 });
 
@@ -53,6 +81,11 @@ describe('REQ-657: GET shows the breaker, never the session', () => {
     expect(res.code).toBe(200);
     expect(res.body).toEqual({ blocked: true, reason: 'it refused the login', since: '2026-10-22T00:05:00.000Z' });
     expect(JSON.stringify(res.body)).not.toContain('secret-cookie');
+  });
+
+  it('an empty table: blocked false', async () => {
+    db = fakeSiteAccessDb(null);
+    expect((await call('GET')).body).toEqual({ blocked: false, reason: null, since: null });
   });
 
   it('not blocked: blocked false', async () => {

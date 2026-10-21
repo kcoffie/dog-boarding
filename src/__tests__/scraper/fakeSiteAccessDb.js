@@ -7,7 +7,8 @@
  * @param {{ readError?: string, writeError?: string }} [opts]
  */
 export function fakeSiteAccessDb(row, { readError, writeError } = {}) {
-  const state = { row: row ? { id: true, ...row } : null, updates: [], inserts: [] };
+  // calls: every builder call as [table, method, ...args], so tests can check the query shape
+  const state = { row: row ? { id: true, ...row } : null, updates: [], inserts: [], calls: [] };
 
   function from(table) {
     let op = 'select';
@@ -38,15 +39,22 @@ export function fakeSiteAccessDb(row, { readError, writeError } = {}) {
       return { data: [{ id: true }], error: null };
     };
 
+    const log = (method, args) => state.calls.push([table, method, ...args]);
     const builder = {
-      select() { return builder; },
-      update(p) { op = 'update'; payload = p; return builder; },
-      upsert(p) { op = 'upsert'; payload = p; return builder; },
-      insert(p) { op = 'insert'; payload = p; return builder; },
-      eq(col, v) { filters.push((r) => r[col] === v); return builder; },
-      is(col, v) { filters.push((r) => (r[col] ?? null) === v); return builder; },
-      not(col, _op, v) { filters.push((r) => (r[col] ?? null) !== v); return builder; },
-      limit() { return builder; },
+      select(...a) { log('select', a); return builder; },
+      update(p) { log('update', [p]); op = 'update'; payload = p; return builder; },
+      upsert(p) { log('upsert', [p]); op = 'upsert'; payload = p; return builder; },
+      insert(p) { log('insert', [p]); op = 'insert'; payload = p; return builder; },
+      eq(col, v) { log('eq', [col, v]); filters.push((r) => r[col] === v); return builder; },
+      is(col, v) { log('is', [col, v]); filters.push((r) => (r[col] ?? null) === v); return builder; },
+      not(col, notOp, v) {
+        log('not', [col, notOp, v]);
+        // PostgREST rejects an unknown operator; only `not.is` is used here
+        if (notOp !== 'is') throw new Error(`fakeSiteAccessDb: unsupported not operator "${notOp}"`);
+        filters.push((r) => (r[col] ?? null) !== v);
+        return builder;
+      },
+      limit(...a) { log('limit', a); return builder; },
       maybeSingle: () => run().then((r) => ({ data: r.data?.[0] ?? null, error: r.error })),
       then: (resolve, reject) => run().then(resolve, reject),
     };

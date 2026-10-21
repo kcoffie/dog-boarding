@@ -79,11 +79,23 @@ describe('getSiteSession: the one way a run gets the session; it never logs in',
     await expect(getSiteSession(db)).rejects.toThrow('site_access read failed: timeout');
   });
 
-  it('reads the one row by its key', async () => {
+  it('reads the one row by its key, with the session and breaker columns', async () => {
     const db = stored();
-    const from = vi.spyOn(db, 'from');
     await readSiteAccess(db);
-    expect(from).toHaveBeenCalledWith('site_access');
+    expect(db.state.calls).toEqual([
+      ['site_access', 'select', 'session_cookies, session_expires_at, blocked_at, blocked_reason'],
+      ['site_access', 'eq', 'id', true],
+    ]);
+  });
+
+  it('the errors say why: blocked since when and the reason; no session; expired at', async () => {
+    const blocked = await getSiteSession(stored({ blocked_at: '2026-10-21T07:05:00Z', blocked_reason: 'r1' })).catch((e) => e);
+    expect(blocked.message).toBe('Booking site blocked since 2026-10-21T07:05:00Z: r1');
+    expect(blocked.name).toBe('SiteAccessError');
+    expect((await getSiteSession(stored({ session_cookies: null })).catch((e) => e)).message)
+      .toBe('No booking-site session stored (cron-auth signs in at 00:00 UTC)');
+    expect((await getSiteSession(stored({ session_expires_at: EARLIER })).catch((e) => e)).message)
+      .toBe(`Booking-site session expired at ${EARLIER}`);
   });
 });
 
@@ -136,6 +148,17 @@ describe('tripBreaker: only a lockout risk trips it; the first trip wins and ale
     expect(alertAndLog.mock.calls[0][1]).toBe('site-access');
   });
 
+  it('the trip is one conditional update: only while not blocked, returning the changed row', async () => {
+    const db = stored();
+    await tripBreaker(db, 'r');
+    expect(db.state.calls).toEqual([
+      ['site_access', 'update', { blocked_at: NOW.toISOString(), blocked_reason: 'r', updated_at: NOW.toISOString() }],
+      ['site_access', 'eq', 'id', true],
+      ['site_access', 'is', 'blocked_at', null],
+      ['site_access', 'select', 'id'],
+    ]);
+  });
+
   it('a second trip keeps the first reason and sends no second alert', async () => {
     const db = stored();
     await tripBreaker(db, 'first reason');
@@ -158,9 +181,10 @@ describe('tripBreaker: only a lockout risk trips it; the first trip wins and ale
     expect(alertAndLog.mock.calls[0][2]).toContain('Update the password in Vercel before you press Clear.');
   });
 
-  it('a throttle alert does not mention the password', async () => {
+  it('a throttle alert does not mention the password, and a recorded trip says nothing about recording', async () => {
     await tripBreaker(stored(), 'it answered 429 (too many requests) on a schedule page');
     expect(alertAndLog.mock.calls[0][2]).not.toContain('password');
+    expect(alertAndLog.mock.calls[0][2]).not.toContain("Couldn't record");
   });
 });
 
@@ -196,6 +220,16 @@ describe('clearBreaker: Kate\'s Clear, one conditional update', () => {
     expect(db.state.row.cleared_at).toBe(NOW.toISOString());
   });
 
+  it('Clear is one conditional update: only while blocked, returning the changed row', async () => {
+    const db = blocked();
+    await clearBreaker(db, 'kate@example.com');
+    expect(db.state.calls.slice(1)).toEqual([
+      ['site_access', 'eq', 'id', true],
+      ['site_access', 'not', 'blocked_at', 'is', null],
+      ['site_access', 'select', 'id'],
+    ]);
+  });
+
   it('a second press finds nothing to clear', async () => {
     const db = blocked();
     await clearBreaker(db, 'kate@example.com');
@@ -221,6 +255,7 @@ describe('naming what the site refused', () => {
     ['https://agirlandyourdog.com/pets/1/forms', 'a form page'],
     ['/login', 'the login page'],
     ['https://agirlandyourdog.com/other', 'a page'],
+    ['http://[', 'a page'],
   ])('%s is %s', (url, what) => {
     expect(describeSitePath(url)).toBe(what);
   });
