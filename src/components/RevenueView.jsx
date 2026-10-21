@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { getDateRange, calculateNights } from '../utils/dateUtils';
+import { activeBoardings } from '../utils/calculations';
 
 export default function RevenueView({ startDate, days }) {
-  const { dogs, boardings } = useData();
+  const { dogs, boardings: allBoardings } = useData();
+  const boardings = activeBoardings(allBoardings);
   const [sortField, setSortField] = useState('checkout');
   const [sortDir, setSortDir] = useState('desc');
 

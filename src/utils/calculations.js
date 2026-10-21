@@ -1,6 +1,17 @@
 import { isOvernight } from './dateUtils';
 
 /**
+ * A boarding that reconciliation marked as gone from the booking site
+ * (cancelled_at set) has no nights: it's left out of pay and the rosters.
+ * The row is kept, never deleted (REQ-108, #322).
+ * @param {Array} boardings - List of boardings
+ * @returns {Array} - Boardings not marked cancelled
+ */
+export function activeBoardings(boardings) {
+  return boardings.filter(b => !b.cancelledAt);
+}
+
+/**
  * Calculate gross revenue for a specific date
  * @param {Array} dogs - List of dogs
  * @param {Array} boardings - List of boardings
@@ -10,7 +21,7 @@ import { isOvernight } from './dateUtils';
 export function calculateGross(dogs, boardings, dateStr) {
   let total = 0;
   for (const dog of dogs) {
-    const dogBoardings = boardings.filter(b => b.dogId === dog.id);
+    const dogBoardings = activeBoardings(boardings).filter(b => b.dogId === dog.id);
     for (const boarding of dogBoardings) {
       if (isOvernight(boarding, dateStr)) {
         total += (boarding.nightRate ?? dog.nightRate ?? 0);

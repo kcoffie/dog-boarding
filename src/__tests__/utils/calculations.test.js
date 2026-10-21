@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateGross, calculateBoardingGross } from '../../utils/calculations';
+import { activeBoardings, calculateGross, calculateBoardingGross } from '../../utils/calculations';
 
 /**
  * @requirements REQ-203
@@ -100,5 +100,40 @@ describe('REQ-203: calculateBoardingGross — boarding.nightRate fallback chain'
       nightRate: null,
     };
     expect(calculateBoardingGross(dog, boarding, ['2025-01-15', '2025-01-16'])).toBe(0);
+  });
+});
+
+/**
+ * @requirements REQ-108
+ */
+describe('REQ-108: a boarding marked gone (cancelledAt) has no nights (#322)', () => {
+  const dogs = [
+    { id: '1', name: 'Luna', nightRate: 45 },
+    { id: '2', name: 'Cooper', nightRate: 55 },
+  ];
+
+  it('a boarding marked gone adds nothing to the night\'s gross', () => {
+    const boardings = [
+      { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00' },
+      { id: '2', dogId: '2', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00', cancelledAt: '2025-01-10T12:00:00Z' },
+    ];
+    // Only Luna is there on Jan 15: $45
+    expect(calculateGross(dogs, boardings, '2025-01-15')).toBe(45);
+  });
+
+  it('an amended stay pays the new booking\'s rate, not the one marked gone', () => {
+    // The site replaced booking 1 with booking 2 for the same dog and night;
+    // reconciliation marked booking 1 gone. The marked row comes first.
+    const boardings = [
+      { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00', nightRate: 60, cancelledAt: '2025-01-14T12:00:00Z' },
+      { id: '2', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00', nightRate: 70 },
+    ];
+    expect(calculateGross(dogs, boardings, '2025-01-15')).toBe(70);
+  });
+
+  it('activeBoardings keeps unmarked boardings and drops marked ones', () => {
+    const kept = { id: '1', dogId: '1', cancelledAt: null };
+    const dropped = { id: '2', dogId: '2', cancelledAt: '2025-01-10T12:00:00Z' };
+    expect(activeBoardings([kept, dropped]).map(b => b.id)).toEqual(['1']);
   });
 });

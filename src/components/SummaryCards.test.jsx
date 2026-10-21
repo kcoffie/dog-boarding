@@ -180,4 +180,38 @@ describe('REQ-035: SummaryCards', () => {
       expect(screen.getByText('gross income')).toBeInTheDocument();
     });
   });
+
+  /** @requirements REQ-108 */
+  describe('REQ-108: boardings marked gone (#322)', () => {
+    const gone = { id: '3', dogId: '1', arrivalDateTime: '2025-01-17T14:00:00', departureDateTime: '2025-01-19T10:00:00', cancelledAt: '2025-01-14T12:00:00Z' };
+
+    it('a boarding marked gone adds nothing to period revenue', () => {
+      useData.mockReturnValue({
+        dogs: mockDogs,
+        boardings: [...mockBoardings, gone],
+        settings: mockSettings,
+        getNetPercentageForDate: () => 65,
+        getNightAssignment: () => '',
+      });
+
+      render(<SummaryCards startDate="2025-01-15" days={4} />);
+
+      // Jan 15-18: Luna 15, 16 + Cooper 16, 17 = 4 nights x $45 = $180 (Luna's marked stay would add $90)
+      expect(screen.getByText('$180')).toBeInTheDocument();
+    });
+
+    it('a night with only a boarding marked gone needs no one assigned', () => {
+      useData.mockReturnValue({
+        dogs: mockDogs,
+        boardings: [gone],
+        settings: mockSettings,
+        getNetPercentageForDate: () => 65,
+        getNightAssignment: () => '',
+      });
+
+      render(<SummaryCards startDate="2025-01-15" days={4} />);
+
+      expect(screen.getByText('0/0')).toBeInTheDocument();
+    });
+  });
 });
