@@ -137,4 +137,21 @@ describe('REQ-202: RevenueView', () => {
       expect(screen.getByText('$500')).toBeInTheDocument();
     });
   });
+
+  /** @requirements REQ-108 */
+  describe('REQ-108: boardings marked gone (#322)', () => {
+    it('a boarding marked gone adds nothing to the period total', () => {
+      useData.mockReturnValue({
+        dogs: mockDogs,
+        boardings: [
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00', billedAmount: 200 },
+          { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T14:00:00', departureDateTime: '2025-01-18T10:00:00', billedAmount: 300, cancelledAt: '2025-01-14T12:00:00Z' },
+        ],
+      });
+      render(<RevenueView startDate={START_DATE} days={7} />);
+      // Only the $200 stay counts; the marked $300 stay would make it $500
+      expect(screen.getByText('Period Total').closest('tr')).toHaveTextContent('$200');
+      expect(screen.queryByText('$500')).not.toBeInTheDocument();
+    });
+  });
 });

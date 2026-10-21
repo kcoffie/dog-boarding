@@ -353,7 +353,7 @@ Matrix displays summary statistics.
 - "Active Dogs" shows total active dogs
 - "Period Revenue" shows gross revenue for visible period
 
-**Tests:** `src/components/SummaryCards.test.jsx`
+**Tests:** `src/components/SummaryCards.test.jsx`, `src/__tests__/pages/RevenueView.test.jsx`
 
 ---
 
@@ -661,9 +661,9 @@ and archived so it doesn't appear as an active boarding.
 - For date-range syncs, only records overlapping the sync window are checked
 - For full syncs (no date range), all active records not seen are checked
 - Rate limiting between confirmation fetches (same delay as detail page fetches)
-- A boarding marked gone (`cancelled_at` set) is left out everywhere the boarding matrix already hides it: the morning roster, the weekend roster, payroll (night pay and the daytime follow-on credit), the matrix's employee totals and the summary cards. The row is kept, never deleted (#322)
+- A boarding marked gone (`cancelled_at` set) is left out everywhere the boarding matrix already hides it: the morning roster, the weekend roster, payroll (night pay and the daytime follow-on credit), the matrix page's employee totals, summary cards and revenue table. The row is kept, never deleted (#322)
 
-**Tests:** `src/__tests__/scraper/reconcile.test.js`; #322: `src/__tests__/utils/calculations.test.js`, `src/__tests__/pictureOfDay.test.js`, `src/__tests__/rosterImage.test.js`, `src/pages/PayrollPage.test.jsx`, `src/components/EmployeeTotals.test.jsx`, `src/components/SummaryCards.test.jsx`
+**Tests:** `src/__tests__/scraper/reconcile.test.js`; #322: `src/__tests__/utils/calculations.test.js`, `src/__tests__/pictureOfDay.test.js`, `src/__tests__/rosterImage.test.js`, `src/pages/PayrollPage.test.jsx`, `src/components/EmployeeTotals.test.jsx`, `src/components/SummaryCards.test.jsx`, `src/__tests__/pages/RevenueView.test.jsx`
 
 ---
 
