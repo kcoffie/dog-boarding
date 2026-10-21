@@ -78,7 +78,7 @@ export default async function handler(request) {
 
   try {
     const body = await request.json();
-    const { action, url, cookies, method = 'GET' } = body;
+    const { action, url, cookies, method = 'GET', redirect } = body;
 
     // Handle different actions
     switch (action) {
@@ -211,8 +211,10 @@ export default async function handler(request) {
           });
         }
 
+        // redirect 'manual': reconciliation reads where a booking's URL redirects to (#324)
         const response = await fetch(fullUrl, {
           method,
+          redirect: redirect === 'manual' ? 'manual' : 'follow',
           headers: {
             'User-Agent': 'Mozilla/5.0 (compatible; DogBoardingSync/2.0)',
             ...(cookies ? { 'Cookie': cookies } : {}),
@@ -226,6 +228,7 @@ export default async function handler(request) {
           status: response.status,
           html,
           cookies: response.headers.get('set-cookie') || '',
+          location: response.headers.get('location') || '',
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },

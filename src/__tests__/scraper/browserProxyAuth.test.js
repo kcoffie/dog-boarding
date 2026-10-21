@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const getSession = vi.fn();
 vi.mock('../../lib/supabase.js', () => ({ supabase: { auth: { getSession } } }));
 
-const { authenticate, authenticatedFetch, clearSession } = await import('../../lib/scraper/auth.js');
+const { authenticate, authenticatedFetch, clearSession, SiteThrottled, resetSiteStop } = await import('../../lib/scraper/auth.js');
 
 const fetchFn = vi.fn();
 
@@ -78,5 +78,30 @@ describe('REQ-656: browser → sync-proxy auth', () => {
     fetchFn.mockResolvedValue({ json: async () => ({ success: false, error: 'Unauthorized' }) });
     await authenticate();
     expect(fetchFn.mock.calls[0][1].headers).toEqual({ 'Content-Type': 'application/json' });
+  });
+});
+
+/** @requirements REQ-657 */
+describe('REQ-657: Sync Now in the browser stops on a 429/403 and can read a redirect', () => {
+  beforeEach(async () => {
+    resetSiteStop(); // as runSync does at the start of every run
+    getSession.mockResolvedValue(session('jwt-1'));
+    fetchFn.mockResolvedValueOnce({ json: async () => ({ success: true, cookies: 'sid=1' }) });
+    await authenticate();
+  });
+
+  it('a 429 passed back by the proxy throws SiteThrottled, and the next fetch makes no call', async () => {
+    fetchFn.mockResolvedValueOnce({ json: async () => ({ success: false, status: 429, html: '' }) });
+    await expect(authenticatedFetch('https://agirlandyourdog.com/schedule')).rejects.toBeInstanceOf(SiteThrottled);
+    await expect(authenticatedFetch('https://agirlandyourdog.com/schedule')).rejects.toBeInstanceOf(SiteThrottled);
+    expect(fetchFn).toHaveBeenCalledTimes(2); // the login and the one 429
+  });
+
+  it("redirect 'manual' is sent to the proxy, and the redirect's Location comes back", async () => {
+    fetchFn.mockResolvedValueOnce({ json: async () => ({ success: false, status: 302, html: '', location: 'https://agirlandyourdog.com/schedule' }) });
+    const res = await authenticatedFetch('https://agirlandyourdog.com/schedule/a/ABC/1', { redirect: 'manual' });
+    expect(JSON.parse(fetchFn.mock.calls[1][1].body).redirect).toBe('manual');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe('https://agirlandyourdog.com/schedule');
   });
 });

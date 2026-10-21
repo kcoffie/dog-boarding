@@ -369,6 +369,8 @@ cp .env.example .env.local   # fill in Supabase credentials
 npm run dev                   # http://localhost:5173
 ```
 
+`npm run dev` serves the app only. Sync Now needs the API routes: run `npx vercel dev` instead.
+
 ### Supabase setup
 
 1. Create a project at [supabase.com](https://supabase.com)

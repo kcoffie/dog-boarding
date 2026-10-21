@@ -6,7 +6,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { SCRAPER_CONFIG } from './config.js';
 import { applyDetailFilters } from './appointmentFilter.js';
-import { authenticate, isAuthenticated } from './auth.js';
+import { authenticate, isAuthenticated, resetSiteStop, SiteThrottled } from './auth.js';
 import { fetchAllSchedulePages } from './schedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
 import { mapAndSaveAppointment } from './mapping.js';
@@ -187,48 +187,6 @@ export function sanitizeError(message) {
 }
 
 /**
- * Delay helper with jitter
- * @param {number} ms
- * @param {number} [jitter=0.2] - Random jitter factor (0-1)
- */
-function delay(ms, jitter = 0.2) {
-  const jitterMs = ms * jitter * Math.random();
-  return new Promise(resolve => setTimeout(resolve, ms + jitterMs));
-}
-
-/**
- * Retry a function with exponential backoff
- * @param {Function} fn
- * @param {Object} [options]
- * @param {number} [options.maxRetries=3]
- * @param {number[]} [options.delays]
- * @returns {Promise<any>}
- */
-async function withRetry(fn, options = {}) {
-  const {
-    maxRetries = SCRAPER_CONFIG.maxRetries,
-    delays = SCRAPER_CONFIG.retryDelays,
-  } = options;
-
-  let lastError;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-
-      if (attempt < maxRetries) {
-        const delayMs = delays[attempt] || delays[delays.length - 1];
-        await delay(delayMs);
-      }
-    }
-  }
-
-  throw lastError;
-}
-
-/**
  * Run a full sync
  * @param {Object} options
  * @param {Date} [options.startDate] - Start of date range
@@ -250,6 +208,8 @@ export async function runSync(options = {}) {
   const startTime = Date.now();
   const timings = {};
   let syncLogRecord = null;
+  // A new run: an earlier run's 429/403 stop doesn't carry over (#324)
+  resetSiteStop();
 
   // Log sync start to file
   logSyncStart('manual');
@@ -299,7 +259,7 @@ export async function runSync(options = {}) {
       onProgress?.({ stage: 'authenticating' });
       stepStart = Date.now();
       syncLog('[Sync] 🔐 Starting authentication...');
-      const authResult = await withRetry(() => authenticate());
+      const authResult = await authenticate();
       logTiming('authentication', stepStart);
 
       if (!authResult.success) {
@@ -315,13 +275,16 @@ export async function runSync(options = {}) {
     onProgress?.({ stage: 'fetching_schedule' });
     stepStart = Date.now();
     syncLog('[Sync] 📅 Fetching schedule pages...');
-    const appointments = await withRetry(() =>
-      fetchAllSchedulePages({ startDate, endDate, boardingOnly })
-    );
+    const appointments = await fetchAllSchedulePages({ startDate, endDate, boardingOnly });
     logTiming('fetchSchedule', stepStart);
 
     result.appointmentsFound = appointments.length;
     console.log(`[Sync] 📋 Found ${appointments.length} appointments`);
+    // An empty schedule is a broken page or a layout change, never a real week (#324).
+    // Stop before anything else, above all before reconciliation.
+    if (appointments.length === 0) {
+      throw new Error('The schedule showed 0 appointments: stopping before anything else');
+    }
     onProgress?.({ stage: 'schedule_fetched', count: appointments.length });
 
     // Process each appointment
@@ -385,20 +348,13 @@ export async function runSync(options = {}) {
           continue;
         }
 
-        // Rate limiting delay
-        if (i > 0) {
-          await delay(SCRAPER_CONFIG.delayBetweenRequests);
-        }
-
         // Extract appointment URL parts
         const urlMatch = appt.url.match(/\/schedule\/a\/([^/]+)\/(\d+)/);
         const [, appointmentId, timestamp] = urlMatch || [null, appt.id, ''];
 
-        // Fetch details with retry
+        // Fetch details (paced in authenticatedFetch; no retries inside a run, #324)
         const fetchStart = Date.now();
-        const details = await withRetry(() =>
-          fetchAppointmentDetails(appointmentId, timestamp)
-        );
+        const details = await fetchAppointmentDetails(appointmentId, timestamp);
         const fetchDuration = Date.now() - fetchStart;
 
         // Post-fetch filters — title, booking_status, pricing, same-day duration,
@@ -464,6 +420,8 @@ export async function runSync(options = {}) {
           result.changeDetails.push(saveResult.changeDetails);
         }
       } catch (error) {
+        // A 429/403 ends the run: no more requests, no reconciliation (#324)
+        if (error instanceof SiteThrottled) throw error;
         result.appointmentsFailed++;
         const sanitizedMsg = sanitizeError(error.message);
         result.errors.push({
@@ -507,8 +465,13 @@ export async function runSync(options = {}) {
         supabase, seenExternalIds, reconcileStart, endDate
       );
       result.appointmentsArchived = reconcileResult.archived;
+      if (reconcileResult.skipped) {
+        result.reconcileNote = reconcileResult.skipped;
+        result.errors.push({ stage: 'reconcile', error: reconcileResult.skipped });
+      }
       syncLog(`[Sync] 🔍 Reconciliation complete: ${reconcileResult.archived} archived, ${reconcileResult.warnings} warnings, ${reconcileResult.errors} errors`);
     } catch (reconcileErr) {
+      if (reconcileErr instanceof SiteThrottled) throw reconcileErr;
       syncError('[Sync] ⚠️ Reconciliation threw unexpectedly (sync result unaffected):', reconcileErr.message);
     }
 
@@ -537,6 +500,7 @@ export async function runSync(options = {}) {
           result.formsProcessed++;
           onProgress?.({ stage: 'draining_queue', processed: drainProcessed });
         } catch (formErr) {
+          if (formErr instanceof SiteThrottled) throw formErr;
           const msg = formErr.message.slice(0, 200);
           syncError(`[Sync] ❌ Form fetch failed for ${drainItem.external_id}: ${msg}`);
           await markFailed(supabase, drainItem.id, msg);
@@ -552,6 +516,7 @@ export async function runSync(options = {}) {
         syncLog('[Sync] 📋 Form queue empty — nothing to drain');
       }
     } catch (drainErr) {
+      if (drainErr instanceof SiteThrottled) throw drainErr;
       syncWarn(`[Sync] ⚠️ Form queue drain error (sync result unaffected): ${drainErr.message}`);
     }
 
@@ -633,7 +598,8 @@ export async function runSync(options = {}) {
         `Parse warning: ${result.parseNullCount}/${result.parseTotalCount} appointments had missing fields`;
     } else if (result.success) {
       lastSyncMessage =
-        `Synced ${result.appointmentsCreated + result.appointmentsUpdated} appointments`;
+        `Synced ${result.appointmentsCreated + result.appointmentsUpdated} appointments` +
+        (result.reconcileNote ? `. ${result.reconcileNote}` : '');
     } else {
       lastSyncMessage =
         `Failed: ${sanitizeError(result.errors[0]?.error) || 'Unknown error'}`;

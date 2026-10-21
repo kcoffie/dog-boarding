@@ -654,13 +654,12 @@ and archived so it doesn't appear as an active boarding.
 **Acceptance Criteria:**
 - After each sync, active DB records not seen on the schedule are identified as candidates
 - Candidates whose `source_url` returns a valid appointment page are NOT archived (warn + log)
-- Candidates whose `source_url` returns an access-denied page are marked `sync_status: 'archived'`
-- Fetch errors for individual candidates are logged but do not stop reconciliation or the sync
+- Candidates whose `source_url` redirects to `/schedule` are marked `sync_status: 'archived'`; the proof rule, the limits and what stops reconciliation are in REQ-657
 - A DB query failure in reconciliation is logged and reconciliation is skipped (sync still succeeds)
 - `sync_logs` records the count of archived appointments (`appointments_archived`)
 - For date-range syncs, only records overlapping the sync window are checked
 - For full syncs (no date range), all active records not seen are checked
-- Rate limiting between confirmation fetches (same delay as detail page fetches)
+- Confirmation fetches are paced like every booking-site request (REQ-657)
 - A boarding marked gone (`cancelled_at` set) is left out everywhere the boarding matrix already hides it: the morning roster, the weekend roster, payroll (night pay and the daytime follow-on credit), the matrix page's employee totals, summary cards and revenue table. The row is kept, never deleted (#322)
 
 **Tests:** `src/__tests__/scraper/reconcile.test.js`; #322: `src/__tests__/utils/calculations.test.js`, `src/__tests__/pictureOfDay.test.js`, `src/__tests__/rosterImage.test.js`, `src/pages/PayrollPage.test.jsx`, `src/components/EmployeeTotals.test.jsx`, `src/components/SummaryCards.test.jsx`, `src/__tests__/pages/RevenueView.test.jsx`
@@ -1503,6 +1502,27 @@ The proxy token was built into the public JavaScript bundle (`VITE_` prefix), so
 - Known cost: a manual sync makes one sign-in check per proxied page (hundreds in a long historical sync). A slow or throttled Supabase answers 503 partway through; the sync stops rather than passing unchecked
 
 **Tests:** `src/__tests__/verifyUser.test.js`, `src/__tests__/sendQuestion.test.js`, `src/__tests__/syncProxyAuth.test.js`, `src/__tests__/scraper/browserProxyAuth.test.js`, `src/__tests__/cronAuthNodeImport.test.js`
+
+---
+
+### REQ-657: Booking-site safety
+**Added:** v6.6.0 | **Status:** In progress (part A of #324; the breaker and single login are part B)
+
+The booking-site account is the client's; a rate limit or a lockout hurts her business. Every request is paced, the first sign of throttling ends the run, and reconciliation marks a booking gone only on proof. Design: `docs/specs/sync-redesign-design-note.md`, "Before any unattended run".
+
+**Acceptance Criteria:**
+- Every booking-site request (sync, detail, forms, reconciliation, roster refresh, Integration Check step 0, and the server-side login) goes through one paced queue per process: each starts at least `delayBetweenRequests` (1.5 s) after the previous one, including two requests made at the same moment. A 429/403 on a login stops that run as a failed login; the browser's login through `sync-proxy` goes away in part B
+- A 429 or 403 throws `SiteThrottled`. Every later request in that run throws it without touching the site. `setSession` (Node runs) and the start of `runSync` (Sync Now) begin a new run. A 5xx doesn't stop the run
+- No retries inside a run (`withRetry` is gone); the next scheduled run is the retry
+- `runSync` stops at a `SiteThrottled` from a booking, reconciliation or the form drain: the run fails, with no further booking, reconciliation or form drain
+- `runDetailSync` puts an item back to pending on `SiteThrottled` without using a retry, and re-throws it. Integration Check step 0 sends its report and skips the browser check after it. The roster refresh treats any non-2xx as a failed fetch
+- 0 appointments across the whole schedule scan fails `runSync` and `runScheduleSync` before anything else
+- Reconciliation opens each candidate without following redirects. **Gone** = a redirect whose `Location` is exactly `/schedule` on the booking site's own host (what a removed booking's URL answers). A 200 appointment page is present (warned, not marked). Anything else — another redirect, an error status, an unrecognised page, a fetch error — stops reconciliation and marks nothing
+- More than 10 candidates: reconciliation is skipped without opening any. More than 3 gone: none are marked. Every candidate is checked before any is marked. A stop is reported in the run's result, `sync_logs.errors` and the last-sync message
+- `sync-proxy` follows redirects unless asked for `redirect: 'manual'`, and returns the response's `Location`
+- The historical import (Settings) and the local dev server's login proxy are gone
+
+**Tests:** `src/__tests__/scraper/auth.test.js`, `src/__tests__/scraper/browserProxyAuth.test.js`, `src/__tests__/scraper/reconcile.test.js`, `src/__tests__/scraper/runSyncSafety.test.js`, `src/__tests__/scraper/syncRunner.test.js`, `src/__tests__/syncProxyAuth.test.js`, `src/__tests__/notifyHelpers.test.js`
 
 ---
 

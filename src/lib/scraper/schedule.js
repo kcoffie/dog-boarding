@@ -283,9 +283,6 @@ export async function fetchAllSchedulePages(options = {}) {
     }
 
     currentUrl = result.nextPageUrl;
-
-    // Rate limiting delay between pages
-    await delay(SCRAPER_CONFIG.delayBetweenRequests);
   }
 
   // Deduplicate by ID
@@ -371,15 +368,6 @@ function parsePagination(html) {
   };
 }
 
-
-/**
- * Delay utility
- * @param {number} ms
- * @returns {Promise<void>}
- */
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 export default {
   parseSchedulePage,
