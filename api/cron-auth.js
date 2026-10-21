@@ -28,8 +28,8 @@ export const config = { runtime: 'nodejs' };
 
 function getSupabase() {
   const url = process.env.VITE_SUPABASE_URL;
-  // Prefer service role key (bypasses RLS) for server-side cron operations
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
+  // The service key only: site_access has no policies, so another key reads no row (#324)
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('Supabase env vars not configured');
   return createClient(url, key);
 }

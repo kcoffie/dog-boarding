@@ -39,11 +39,9 @@ describe('REQ-657: loginToSite', () => {
     expect(db.state.row.session_cookies).toBe('sid=new');
   });
 
-  it('an empty table is not blocked: it logs in and creates the row', async () => {
-    authenticate.mockResolvedValue({ success: true, cookies: 'sid=new' });
-    const db = fakeSiteAccessDb(null);
-    expect((await loginToSite(db, { env: ENV })).ok).toBe(true);
-    expect(db.state.row.session_cookies).toBe('sid=new');
+  it('a missing row throws before any login (fails closed)', async () => {
+    await expect(loginToSite(fakeSiteAccessDb(null), { env: ENV })).rejects.toThrow('no row');
+    expect(authenticate).not.toHaveBeenCalled();
   });
 
   it('while the breaker is tripped it does not log in', async () => {

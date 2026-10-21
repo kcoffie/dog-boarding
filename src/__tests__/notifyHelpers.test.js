@@ -29,7 +29,8 @@ vi.mock('../lib/scraper/siteAccess.js', async (importOriginal) => ({
   clearSiteSession: vi.fn(),
 }));
 
-vi.mock('../lib/scraper/auth.js', () => ({
+vi.mock('../lib/scraper/auth.js', async (importOriginal) => ({
+  SiteThrottled: (await importOriginal()).SiteThrottled,
   setSession: vi.fn(),
   authenticatedFetch: vi.fn(),
 }));
@@ -166,14 +167,13 @@ describe('exit path 3: authenticatedFetch throws (other)', () => {
   });
 
   /** @requirements REQ-657 */
-  it('a 429 from the booking site leaves the roster on its data with a warning (#324)', async () => {
+  it('a 429 leaves the roster on its data with no warning: the breaker sent the one alert (#324)', async () => {
     const { SiteThrottled } = await vi.importActual('../lib/scraper/auth.js');
     authenticatedFetch.mockRejectedValue(new SiteThrottled(429));
 
     const result = await refreshDaytimeSchedule(MOCK_SUPABASE, TEST_DATE);
 
-    expect(result.refreshed).toBe(false);
-    expect(result.warning).toBe('Schedule fetch failed: Booking site answered 429: stopping this run');
+    expect(result).toEqual({ refreshed: false, rowCount: 0, warning: null });
   });
 });
 

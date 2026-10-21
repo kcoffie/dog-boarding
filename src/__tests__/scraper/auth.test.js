@@ -207,6 +207,21 @@ describe('REQ-100: External Source Authentication', () => {
       expect(await authenticate('user@example.com', 'pw')).toEqual({ success: false, error: 'Login failed with status 502' });
     });
 
+    it('a redirect back to the login page is a rejected login, not a session', async () => {
+      mockFetch.mockResolvedValueOnce(loginPage()).mockResolvedValueOnce({
+        ok: false, status: 302, headers: new Headers({ location: 'https://agirlandyourdog.com/login' }), text: () => Promise.resolve(''),
+      });
+      expect(await authenticate('user@example.com', 'wrong')).toEqual({ success: false, error: 'Login redirected back to the login page', rejected: true });
+      expect(getSessionCookies()).toBeNull();
+    });
+
+    it('a redirect to the schedule after the login is a session', async () => {
+      mockFetch.mockResolvedValueOnce(loginPage()).mockResolvedValueOnce({
+        ok: false, status: 302, headers: new Headers({ location: '/schedule' }), text: () => Promise.resolve(''),
+      });
+      expect((await authenticate('user@example.com', 'pw')).success).toBe(true);
+    });
+
     it('a 500 on the login page is not throttled', async () => {
       mockFetch.mockResolvedValueOnce(answer(500));
       expect(await authenticate('user@example.com', 'pw')).toEqual({ success: false, error: 'Failed to load login page: 500' });

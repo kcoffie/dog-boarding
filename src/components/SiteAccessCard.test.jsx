@@ -28,7 +28,7 @@ describe('REQ-657: SiteAccessCard', () => {
   });
 
   it('not blocked: says OK and offers no Clear', async () => {
-    fetchFn.mockResolvedValue(answer(200, { blocked: false, reason: null, since: null }));
+    fetchFn.mockResolvedValue(answer(200, { blocked: false, reason: null, since: null, hasSession: true }));
     render(<SiteAccessCard />);
     expect(await screen.findByText('OK: the sync can reach the booking site.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
@@ -45,7 +45,7 @@ describe('REQ-657: SiteAccessCard', () => {
     fetchFn
       .mockResolvedValueOnce(answer(200, BLOCKED))
       .mockResolvedValueOnce(answer(200, { ok: true, loggedIn: true }))
-      .mockResolvedValueOnce(answer(200, { blocked: false, reason: null, since: null }));
+      .mockResolvedValueOnce(answer(200, { blocked: false, reason: null, since: null, hasSession: true }));
     render(<SiteAccessCard />);
     fireEvent.click(await screen.findByRole('button', { name: 'Clear' }));
     expect(await screen.findByText('Cleared and signed in to the booking site.')).toBeInTheDocument();
@@ -60,7 +60,15 @@ describe('REQ-657: SiteAccessCard', () => {
       .mockResolvedValueOnce(answer(200, BLOCKED));
     render(<SiteAccessCard />);
     fireEvent.click(await screen.findByRole('button', { name: 'Clear' }));
-    expect(await screen.findByText('Authentication failed: Invalid credentials')).toBeInTheDocument();
+    expect(await screen.findByText('Cleared, but the sign-in failed: Authentication failed: Invalid credentials')).toBeInTheDocument();
+  });
+
+  it('not blocked but no session: says the sync waits for the nightly sign-in, not OK', async () => {
+    fetchFn.mockResolvedValue(answer(200, { blocked: false, reason: null, since: null, hasSession: false }));
+    render(<SiteAccessCard />);
+    expect(await screen.findByText(/no booking-site session yet/)).toBeInTheDocument();
+    expect(screen.queryByText('OK: the sync can reach the booking site.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
   });
 
   it("a status that can't be read says so", async () => {

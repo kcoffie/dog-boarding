@@ -59,6 +59,15 @@ function paced(fn) {
 
 const isThrottle = (status) => status === 429 || status === 403;
 
+/** True when a redirect Location points at the booking site's login page. */
+function isLoginPath(location) {
+  try {
+    return /^\/login\/?$/.test(new URL(location, SCRAPER_CONFIG.baseUrl).pathname);
+  } catch {
+    return false;
+  }
+}
+
 // The Supabase client of a Node run, given by setSession: a 429/403 trips the breaker there.
 let breakerDb = null;
 
@@ -173,6 +182,12 @@ export async function authenticate(username, password) {
     const newCookiesArr = loginResponse.headers.getSetCookie?.() ?? [];
     const allCookies = cookiesArrayToHeader([...initialCookiesArr, ...newCookiesArr]);
 
+    // A wrong password can also answer with a redirect back to the login page
+    const location = loginResponse.headers.get?.('location') ?? '';
+    if (isRedirect && isLoginPath(location)) {
+      return { success: false, error: 'Login redirected back to the login page', rejected: true };
+    }
+
     if (isRedirect) {
       // Store session
       sessionCookies = allCookies;
@@ -282,6 +297,12 @@ export async function authenticatedFetch(url, options = {}) {
     }
     if (result.noSession) throw new Error(result.error || 'No booking-site session');
     await stopIfThrottled(result.status, url);
+    // sync-proxy follows no redirects. Unless the caller asked to see them (reconciliation), a
+    // redirect to the login page is an expired session and any other is an error naming it.
+    if (options.redirect !== 'manual' && result.status >= 300 && result.status < 400) {
+      if (isLoginPath(result.location || '')) throw new Error('Session expired. Re-authentication required.');
+      throw new Error(`Booking site redirected (${result.status}) to ${result.location || 'nowhere'}`);
+    }
 
     // Return a Response-like object that matches the expected interface
     return {

@@ -106,7 +106,7 @@ describe.each([
     expect(work()).not.toHaveBeenCalled();
   });
 
-  it('falls back to the anon key when the service role key is unset', async () => {
+  it.skipIf(_name === 'cron-auth')('falls back to the anon key when the service role key is unset', async () => {
     const { createClient } = await import('@supabase/supabase-js');
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     process.env.VITE_SUPABASE_ANON_KEY = 'anon-key';
@@ -114,6 +114,15 @@ describe.each([
     expect(res.code).toBe(200);
     expect(createClient).toHaveBeenCalledWith('https://db.example.com', 'anon-key');
   });
+});
+
+it('REQ-657: cron-auth uses the service key only: without it the run fails and nothing logs in', async () => {
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.VITE_SUPABASE_ANON_KEY = 'anon-key';
+  const res = await call(cronAuth);
+  expect(res.code).toBe(500);
+  expect(res.body).toStrictEqual({ error: 'Supabase env vars not configured' });
+  expect(authenticate).not.toHaveBeenCalled();
 });
 
 describe('REQ-109: the crons run on the Node.js runtime (process.env), not edge', () => {

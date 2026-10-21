@@ -33,7 +33,6 @@
  *
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- *   EXTERNAL_SITE_USERNAME, EXTERNAL_SITE_PASSWORD  (for Step 0 re-auth on session expiry)
  *   TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID
  */
 
@@ -42,7 +41,7 @@ import { createClient } from '@supabase/supabase-js';
 import { alertAndLog, exitCodeAfterAlert } from '../src/lib/alertKate.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
-import { getSiteSession } from '../src/lib/scraper/siteAccess.js';
+import { getSiteSession, tripBreaker, throttleReason } from '../src/lib/scraper/siteAccess.js';
 import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
 
 const BASE_URL = 'https://agirlandyourdog.com';
@@ -135,6 +134,13 @@ function getSupabase() {
  * The stored session, or { blocked: true } while the breaker is tripped (#324), or null when
  * there's no usable session. A failed read throws (the run fails rather than guessing).
  */
+/** Trip the breaker for a 429/403 on the browser check's page load. The breaker alerts. Exit 0. */
+export async function stopOnThrottle(supabase, err) {
+  console.error('[IntegCheck] %s: tripping the breaker', err.message);
+  await tripBreaker(supabase, throttleReason(err.status, err.url));
+  return 0;
+}
+
 export async function loadSession(supabase) {
   console.log('[IntegCheck] Loading the stored session from site_access...');
   try {
@@ -185,6 +191,16 @@ function parseCookieString(raw, domain) {
  *
  * Browser is always closed via try/finally, even if evaluate throws.
  */
+/** The browser check's page load answered 429/403: main() trips the breaker (#324). */
+export class PageThrottled extends Error {
+  constructor(status, url) {
+    super(`Booking site answered ${status} to the schedule page`);
+    this.name = 'PageThrottled';
+    this.status = status;
+    this.url = url;
+  }
+}
+
 async function scrapeWithPlaywright(cookieString) {
   console.log('[IntegCheck] Launching headless Chromium...');
   const browser = await chromium.launch();
@@ -205,6 +221,9 @@ async function scrapeWithPlaywright(cookieString) {
     console.log('[IntegCheck] Navigating to %s...', scheduleUrl);
     const response = await page.goto(scheduleUrl, { waitUntil: 'networkidle', timeout: PLAYWRIGHT_TIMEOUT_MS });
     console.log('[IntegCheck] Page loaded — HTTP %d', response.status());
+    if (response.status() === 429 || response.status() === 403) {
+      throw new PageThrottled(response.status(), scheduleUrl);
+    }
 
     // Detect session rejection — AGYD redirects to login if cookies are stale
     const isLoginPage = await page.locator('input[type="password"]').count();
@@ -487,11 +506,11 @@ async function main() {
       console.log('[IntegCheck] Step 0 done: %d detail iteration(s)', drained);
     }
   } catch (step0Err) {
-    // A 429/403 from the booking site: don't add a browser page load on top (#324)
+    // A 429/403 from the booking site tripped the breaker, which alerted Kate: no browser page load
+    // on top, and no second message (#324)
     if (step0Err.name === 'SiteThrottled') {
-      const msg = `⚠️ Integration check stopped (${today})\n${step0Err.message}. Skipped the schedule check so the booking site gets no more requests. Nothing contacts it until Clear in Settings.`;
-      console.error('[IntegCheck]', msg);
-      process.exit(await sendReport(supabase, msg, true));
+      console.error('[IntegCheck] Step 0 stopped: %s. Skipping the schedule check.', step0Err.message);
+      process.exit(0);
     }
     console.error('[IntegCheck] Step 0 error (continuing to check): %s', step0Err.message);
   }
@@ -515,6 +534,7 @@ async function main() {
   try {
     ({ boardingAppointments, daytimeAppointments } = await scrapeWithPlaywright(cookieString));
   } catch (err) {
+    if (err instanceof PageThrottled) process.exit(await stopOnThrottle(supabase, err));
     const msg = `⚠️ Integration check failed (${today})\nPlaywright error: ${err.message}`;
     console.error('[IntegCheck]', msg);
     await sendAlertMessage(msg, supabase);

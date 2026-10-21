@@ -21,7 +21,7 @@ import { readSiteAccess, storeSiteSession, tripBreaker, throttleReason } from '.
  */
 export async function loginToSite(supabase, { env = process.env } = {}) {
   const row = await readSiteAccess(supabase);
-  if (row?.blocked_at) {
+  if (row.blocked_at) {
     console.log('[SiteLogin] Breaker tripped: not logging in');
     return { ok: false, blocked: true, error: `Booking site blocked since ${row.blocked_at}: ${row.blocked_reason}` };
   }

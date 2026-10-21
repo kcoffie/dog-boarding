@@ -264,6 +264,10 @@ describe('REQ-657: sync-proxy fetches only the sync pages and follows no redirec
 
   it.each([
     'http://[',
+    'https://agirlandyourdog.com@evil.example/schedule',
+    'https://agirlandyourdog.com:8443/schedule',
+    'https://user:pw@agirlandyourdog.com/schedule',
+    'https://user@agirlandyourdog.com/schedule',
     '/admin/schedule',
     '/schedule/days-7/2026/10/19/extra',
     '/x/schedule/days-7/2026/10/19',

@@ -260,8 +260,8 @@ All secrets must be **Repository secrets** (not environment secrets) for workflo
 |---|---|---|
 | `VITE_SUPABASE_URL` | All workflows | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | All workflows | Never expose to browser |
-| `EXTERNAL_SITE_USERNAME` | integration-check | For Step 0 re-auth |
-| `EXTERNAL_SITE_PASSWORD` | integration-check | For Step 0 re-auth |
+| `EXTERNAL_SITE_USERNAME` | integration-check | **Unused since #324** (the check never logs in); Kate may delete it |
+| `EXTERNAL_SITE_PASSWORD` | integration-check | **Unused since #324**; Kate may delete it |
 | `META_PHONE_NUMBER_ID` | notify workflows | From Meta app dashboard |
 | `META_WHATSAPP_TOKEN` | notify workflows | System user token — never expires |
 | `NOTIFY_RECIPIENTS` | notify workflows | E.164, comma-separated |

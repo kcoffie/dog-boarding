@@ -39,3 +39,6 @@ ON CONFLICT (id) DO NOTHING;
 
 -- No sync_settings row: still create the single row.
 INSERT INTO site_access (id) VALUES (true) ON CONFLICT (id) DO NOTHING;
+
+-- The session now lives only in site_access. (The empty columns are dropped in a later migration.)
+UPDATE sync_settings SET session_cookies = NULL, session_expires_at = NULL;

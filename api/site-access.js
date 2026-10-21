@@ -1,7 +1,7 @@
 /**
  * /api/site-access — the booking-site breaker on the Settings page (#324, REQ-657).
  *
- * GET:  { blocked, reason, since } only. Never the session.
+ * GET:  { blocked, reason, since, hasSession } only. Never the session.
  * POST: Clear. One conditional update clears it (only while blocked, so a double press clears and
  *       logs in once) and records who and when; then it logs in at once through loginToSite, the
  *       same login as cron-auth. A refused login trips it again, with a new alert.
@@ -43,10 +43,13 @@ export function makeHandler({ getDb = serviceDb, login = loginToSite, verify = v
 
       if (req.method === 'GET') {
         const row = await readSiteAccess(db);
+        const stamp = row.session_expires_at ? new Date(row.session_expires_at).getTime() : 0;
         return res.status(200).json({
-          blocked: Boolean(row?.blocked_at),
-          reason: row?.blocked_reason ?? null,
-          since: row?.blocked_at ?? null,
+          blocked: Boolean(row.blocked_at),
+          reason: row.blocked_reason ?? null,
+          since: row.blocked_at ?? null,
+          // Whether a session is stored and unexpired; never the session itself
+          hasSession: Boolean(row.session_cookies) && stamp > Date.now(),
         });
       }
 

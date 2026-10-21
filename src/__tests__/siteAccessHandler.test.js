@@ -79,18 +79,25 @@ describe('REQ-657: GET shows the breaker, never the session', () => {
   it('blocked: { blocked, reason, since } and nothing else', async () => {
     const res = await call('GET');
     expect(res.code).toBe(200);
-    expect(res.body).toEqual({ blocked: true, reason: 'it refused the login', since: '2026-10-22T00:05:00.000Z' });
+    expect(res.body).toEqual({ blocked: true, reason: 'it refused the login', since: '2026-10-22T00:05:00.000Z', hasSession: true });
     expect(JSON.stringify(res.body)).not.toContain('secret-cookie');
   });
 
-  it('an empty table: blocked false', async () => {
+  it('a missing row → 500, never "not blocked"', async () => {
     db = fakeSiteAccessDb(null);
-    expect((await call('GET')).body).toEqual({ blocked: false, reason: null, since: null });
+    expect((await call('GET')).code).toBe(500);
   });
 
-  it('not blocked: blocked false', async () => {
+  it('not blocked: blocked false, with a session', async () => {
     db = fakeSiteAccessDb({ ...BLOCKED, blocked_at: null, blocked_reason: null });
-    expect((await call('GET')).body).toEqual({ blocked: false, reason: null, since: null });
+    expect((await call('GET')).body).toEqual({ blocked: false, reason: null, since: null, hasSession: true });
+  });
+
+  it('no session, or one whose stamp has passed, is hasSession false', async () => {
+    db = fakeSiteAccessDb({ ...BLOCKED, blocked_at: null, session_cookies: null });
+    expect((await call('GET')).body.hasSession).toBe(false);
+    db = fakeSiteAccessDb({ ...BLOCKED, blocked_at: null, session_expires_at: '2020-01-01T00:00:00Z' });
+    expect((await call('GET')).body.hasSession).toBe(false);
   });
 
   it('a failed read → 500 with a plain message', async () => {

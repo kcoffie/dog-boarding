@@ -8,6 +8,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fakeSiteAccessDb } from './scraper/fakeSiteAccessDb.js';
 
+vi.mock('../lib/alertKate.js', async (importOriginal) => ({ ...(await importOriginal()), alertAndLog: vi.fn(async () => true) }));
+
 const { loadSession } = await import('../../scripts/integration-check.js');
 
 beforeEach(() => {
@@ -32,5 +34,16 @@ describe('REQ-657: integration-check loadSession', () => {
 
   it('a failed read throws rather than guessing', async () => {
     await expect(loadSession(fakeSiteAccessDb(null, { readError: 'timeout' }))).rejects.toThrow('site_access read failed: timeout');
+  });
+});
+
+describe('REQ-657: a 429/403 on the browser check\'s page load trips the breaker', () => {
+  it('trips it naming the status and the schedule page, and exits 0 (the breaker alerted)', async () => {
+    const { stopOnThrottle, PageThrottled } = await import('../../scripts/integration-check.js');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const db = fakeSiteAccessDb({ session_cookies: 'sid=1', session_expires_at: '2099-01-01T00:00:00Z', blocked_at: null, blocked_reason: null });
+    const code = await stopOnThrottle(db, new PageThrottled(429, 'https://agirlandyourdog.com/schedule'));
+    expect(code).toBe(0);
+    expect(db.state.row.blocked_reason).toBe('it answered 429 (too many requests) on a schedule page');
   });
 });

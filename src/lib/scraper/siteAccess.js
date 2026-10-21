@@ -34,8 +34,9 @@ export class SiteAccessError extends Error {
 
 /**
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase  service key
- * @returns {Promise<Object|null>} the row, or null when the table is empty
- * @throws {Error} on any query error (never read as "not blocked")
+ * @returns {Promise<Object>} the row
+ * @throws {Error} on any query error, or when the row is missing (migration 028 creates it; the
+ *   anon key also reads no row). Neither is ever read as "not blocked".
  */
 export async function readSiteAccess(supabase) {
   const { data, error } = await supabase
@@ -44,7 +45,8 @@ export async function readSiteAccess(supabase) {
     .eq('id', ROW_ID)
     .maybeSingle();
   if (error) throw new Error(`site_access read failed: ${error.message}`);
-  return data ?? null;
+  if (!data) throw new Error('site_access read failed: no row (is the service key set?)');
+  return data;
 }
 
 /**
@@ -55,10 +57,10 @@ export async function readSiteAccess(supabase) {
  */
 export async function getSiteSession(supabase) {
   const row = await readSiteAccess(supabase);
-  if (row?.blocked_at) {
+  if (row.blocked_at) {
     throw new SiteAccessError('SITE_BLOCKED', `Booking site blocked since ${row.blocked_at}: ${row.blocked_reason}`);
   }
-  if (!row?.session_cookies || !row.session_expires_at) {
+  if (!row.session_cookies || !row.session_expires_at) {
     throw new SiteAccessError('NO_SESSION', 'No booking-site session stored (cron-auth signs in at 00:00 UTC)');
   }
   if (Date.now() >= new Date(row.session_expires_at).getTime()) {
@@ -126,6 +128,8 @@ export async function tripBreaker(supabase, reason, { rejectedLogin = false } = 
       .select('id');
     if (error) throw new Error(error.message);
     first = data.length > 0;
+    // 0 rows changed means "already tripped" only if the row is there and tripped
+    if (!first && !(await readSiteAccess(supabase)).blocked_at) throw new Error('the block was not recorded');
   } catch (err) {
     writeError = err.message;
     first = true; // couldn't record it: alert anyway, so the stop is never silent

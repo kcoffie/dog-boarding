@@ -65,8 +65,8 @@ describe('getSiteSession: the one way a run gets the session; it never logs in',
     expect(await codeOf(getSiteSession(stored({ session_expires_at: null })))).toBe('NO_SESSION');
   });
 
-  it('an empty table is NO_SESSION', async () => {
-    expect(await codeOf(getSiteSession(fakeSiteAccessDb(null)))).toBe('NO_SESSION');
+  it('a missing row (or a key that sees none) throws, never "not blocked"', async () => {
+    await expect(getSiteSession(fakeSiteAccessDb(null))).rejects.toThrow('site_access read failed: no row (is the service key set?)');
   });
 
   it('while the breaker is tripped it is SITE_BLOCKED, even with a good session', async () => {
@@ -167,6 +167,12 @@ describe('tripBreaker: only a lockout risk trips it; the first trip wins and ale
     expect(db.state.row.blocked_reason).toBe('first reason');
     expect(db.state.row.blocked_at).toBe(NOW.toISOString());
     expect(alertAndLog).toHaveBeenCalledTimes(1);
+  });
+
+  it('a trip on a missing row is not "already tripped": it alerts, saying it was not recorded', async () => {
+    expect(await tripBreaker(fakeSiteAccessDb(null), 'r')).toBe(true);
+    expect(alertAndLog).toHaveBeenCalledTimes(1);
+    expect(alertAndLog.mock.calls[0][2]).toContain("Couldn't record the block");
   });
 
   it("a trip that can't be recorded still alerts, saying the next run may try again", async () => {
@@ -285,6 +291,13 @@ describe.skipIf(code === null)('migration 028: only the server can read or write
   it('creates no policy, so anon and signed-in users get nothing', () => {
     expect(code).not.toMatch(/CREATE POLICY/i);
     expect(code).not.toMatch(/GRANT/i);
+  });
+
+  it('empties the old session columns after copying the session in', () => {
+    const copy = code.indexOf('INSERT INTO site_access (id, session_cookies, session_expires_at)');
+    const empty = code.indexOf('UPDATE sync_settings SET session_cookies = NULL, session_expires_at = NULL;');
+    expect(copy).toBeGreaterThan(-1);
+    expect(empty).toBeGreaterThan(copy);
   });
 
   it('allows one row only: the key is a boolean that must be true', () => {

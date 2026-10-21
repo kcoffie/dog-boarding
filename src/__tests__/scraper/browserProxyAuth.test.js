@@ -104,6 +104,16 @@ describe('REQ-657: Sync Now in the browser never holds the session and stops whe
     await expect(authenticatedFetch(PAGE)).rejects.toThrow('No booking-site session stored');
   });
 
+  it('on a normal fetch, a redirect to the login page is an expired session', async () => {
+    fetchFn.mockResolvedValueOnce(proxyAnswers({ success: false, status: 302, html: '', location: 'https://agirlandyourdog.com/login' }));
+    await expect(authenticatedFetch(PAGE)).rejects.toThrow('Session expired. Re-authentication required.');
+  });
+
+  it('on a normal fetch, any other redirect is an error naming where it went', async () => {
+    fetchFn.mockResolvedValueOnce(proxyAnswers({ success: false, status: 301, html: '', location: 'https://agirlandyourdog.com/elsewhere' }));
+    await expect(authenticatedFetch(PAGE)).rejects.toThrow('Booking site redirected (301) to https://agirlandyourdog.com/elsewhere');
+  });
+
   it("a redirect's status and Location come back from the proxy", async () => {
     fetchFn.mockResolvedValueOnce(proxyAnswers({ success: false, status: 302, html: '', location: 'https://agirlandyourdog.com/schedule' }));
     const res = await authenticatedFetch('https://agirlandyourdog.com/schedule/a/ABC/1', { redirect: 'manual' });

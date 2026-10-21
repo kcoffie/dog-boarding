@@ -4,6 +4,7 @@
 # Step 0 runs schedule sync + drains detail queue before the Playwright compare,
 # so bookings made after midnight UTC but before this check don't appear as false
 # positives. Non-fatal — if sync fails, the check continues with current DB state.
+# It never logs in: it uses the session cron-auth stored (#324).
 #
 # Runs 3x/day. Also available on-demand via workflow_dispatch.
 #
@@ -12,7 +13,6 @@
 #
 # Required Repository secrets (Settings → Secrets → Actions → Repository secrets):
 #   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-#   EXTERNAL_SITE_USERNAME, EXTERNAL_SITE_PASSWORD  ← Step 0 re-auth on session expiry
 #   TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID (Kate's alert channel, REQ-652)
 name: Integration Check
 
@@ -49,8 +49,6 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          EXTERNAL_SITE_USERNAME: ${{ secrets.EXTERNAL_SITE_USERNAME }}
-          EXTERNAL_SITE_PASSWORD: ${{ secrets.EXTERNAL_SITE_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
           INTEGRATION_CHECK_SCHEDULE: ${{ github.event.schedule }}

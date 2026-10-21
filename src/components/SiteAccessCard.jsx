@@ -47,7 +47,7 @@ export default function SiteAccessCard() {
       const { res, body } = await callSiteAccess('POST');
       setClearResult(res.ok
         ? { ok: true, text: 'Cleared and signed in to the booking site.' }
-        : { ok: false, text: body.error || `HTTP ${res.status}` });
+        : { ok: false, text: res.status === 502 ? `Cleared, but the sign-in failed: ${body.error}` : body.error || `HTTP ${res.status}` });
     } catch (err) {
       setClearResult({ ok: false, text: err.message });
     }
@@ -62,8 +62,14 @@ export default function SiteAccessCard() {
         <p className="text-sm text-red-600 mt-2">Couldn&apos;t read the booking-site status: {loadError}</p>
       )}
       {!loadError && !status && <p className="text-sm text-slate-400 mt-2">Loading...</p>}
-      {status && !status.blocked && (
+      {status && !status.blocked && status.hasSession && (
         <p className="text-sm text-slate-600 mt-2">OK: the sync can reach the booking site.</p>
+      )}
+      {status && !status.blocked && !status.hasSession && (
+        <p className="text-sm text-amber-700 mt-2">
+          Not blocked, but there is no booking-site session yet. The sync waits for the nightly sign-in
+          (5 PM Pacific).
+        </p>
       )}
       {status?.blocked && (
         <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-4">

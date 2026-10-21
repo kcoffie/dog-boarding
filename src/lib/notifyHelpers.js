@@ -9,7 +9,7 @@
  */
 
 import { getSiteSession, clearSiteSession } from './scraper/siteAccess.js';
-import { setSession, authenticatedFetch } from './scraper/auth.js';
+import { setSession, authenticatedFetch, SiteThrottled } from './scraper/auth.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from './scraper/daytimeSchedule.js';
 
 const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com';
@@ -82,6 +82,11 @@ export async function refreshDaytimeSchedule(supabase, date) {
           console.warn(`[Notify/Refresh] clearSiteSession also failed: ${e.message}`)
         );
         return { refreshed: false, rowCount: 0, warning: 'Session expired — cron-auth will re-authenticate at midnight' };
+      }
+      // A 429/403 tripped the breaker, which alerted: don't send a second alert for it (#324)
+      if (err instanceof SiteThrottled) {
+        console.warn(`[Notify/Refresh] ${err.message} — continuing with DB data`);
+        return { refreshed: false, rowCount: 0, warning: null };
       }
       console.warn(`[Notify/Refresh] Fetch failed (${err.message}) — continuing with stale DB data`);
       return { refreshed: false, rowCount: 0, warning: `Schedule fetch failed: ${err.message}` };

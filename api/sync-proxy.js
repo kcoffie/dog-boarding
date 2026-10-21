@@ -42,6 +42,7 @@ export function isSyncUrl(url) {
     return false;
   }
   return parsed.protocol === 'https:' && parsed.hostname === EXTERNAL_HOST
+    && parsed.port === '' && !parsed.username && !parsed.password
     && SYNC_PATHS.some((re) => re.test(parsed.pathname));
 }
 
