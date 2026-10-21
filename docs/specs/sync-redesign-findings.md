@@ -1,6 +1,6 @@
 # Sync redesign: findings (research before the design note)
 
-**Status:** research, 2026-10-20 (session 39); answers added 2026-10-21 (section 6a). **No decisions yet.** This is everything known about how the app gets in step with the booking site, what goes wrong, and what we still need to find out. The design note (options → choice → what breaks → threat → how we'll know) comes after Kate has read this, and goes through the architect gate before any code.
+**Status:** research, 2026-10-20 (session 39); answers added 2026-10-21 (section 6a). **Decided 2026-10-21: see `docs/specs/sync-redesign-design-note.md`.** This is everything known about how the app gets in step with the booking site, what goes wrong, and what we still need to find out. The design note (options → choice → what breaks → threat → how we'll know) comes after Kate has read this, and goes through the architect gate before any code.
 
 **Why now:** on 2026-10-20 a boarding that was gone from the booking site was on the 4am roster and would have counted toward pay (#316), and a manual Sync Now stopped part-way and locked the button for 30 minutes (#317). The roster, pay and UAT all depend on the app agreeing with the booking site.
 

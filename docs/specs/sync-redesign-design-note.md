@@ -1,6 +1,6 @@
 # Design note: sync redesign — #318
 
-**Status:** revised after the architect gate (2026-10-21, session 40: "proceed with changes"). No code until Kate decides. Evidence and Kate's decisions: `docs/specs/sync-redesign-findings.md` (problems P1–P21, answers in 6a, decisions in 6b).
+**Status:** **decided by Kate 2026-10-21 (session 40): option 3**, with the decisions at the end. Revised after the architect gate ("proceed with changes"). Build in the order below, starting next session. Evidence and Kate's decisions: `docs/specs/sync-redesign-findings.md` (problems P1–P21, answers in 6a, decisions in 6b).
 
 ## Problem
 The app has to match the booking site without anyone pressing a button, and a failure has to reach Kate in a form she can act on. Today:
@@ -38,7 +38,7 @@ This ships first, on its own, and also protects today's paths:
   - Set by any login failure, 429, 403 or challenge, from any path.
   - Every path checks it before touching the site, backups included.
   - **Only cron-auth logs in.** Every other path uses the stored session or fails.
-  - After a failed login, nothing logs in until Kate clears it or ~24 h pass (Kate decides which).
+  - After a failed login, **nothing logs in again until Kate clears the flag** (Kate, 2026-10-21). She gets one clear alert that says so and how to clear it.
 - **Reconciliation guard:**
   - Archive only on a positive "gone" signal: a 404, or a 200 that is neither the login page nor an appointment page.
   - Skip reconciliation when the schedule found 0 rows, or far fewer than the database expects for the window.
@@ -49,11 +49,11 @@ This ships first, on its own, and also protects today's paths:
 | Run | Runs on | When (UTC; Pacific) | Window | Booking pages opened | Requests per run (est.) |
 |---|---|---|---|---|---|
 | **Near-term** | Vercel cron | 2×/day to start: 09:00 (2am PDT / 1am PST), 01:00 (6pm / 5pm). Add 19:00 once a week of `sync_logs` shows real counts | today, tomorrow | boardings active today or tomorrow; anything new or changed | 2 schedule + ~10 + forms ≤ 4 → **~16**, cap 40 |
-| **Full pass** | GitHub, dispatched by Vercel at 07:00 (midnight PDT / 11pm PST); best-effort GitHub backup at 08:17 | 1×/day | 7 days back to ~60 ahead | every boarding in the window; new or changed; reconciliation both ways | ~10 + ~50–65 + forms ≤ 20 → **~90**, cap 150 |
+| **Full pass** | GitHub, dispatched by Vercel at 07:00 (midnight PDT / 11pm PST); best-effort GitHub backup at 08:17 | 1×/day | 7 days back to 45 days ahead (Kate) | every boarding in the window; new or changed; reconciliation both ways | ~8 + ~40–50 + forms ≤ 20 → **~75**, cap 150 |
 
 - **Skip store:** bookings known not to be boardings aren't re-opened while their ID, title and link stay the same.
 - **Unchanged boardings** aren't re-opened between full passes, except today's and tomorrow's (P4).
-- **Daily budget:** all paths together, about **110–120 requests a day** (forms included). A daily ceiling of 250 in the database stops further runs and alerts.
+- **Daily budget:** all paths together, about **100–110 requests a day** (forms included). A daily ceiling of 250 in the database stops further runs and alerts.
 - **One at a time:** the button refuses while any run is going, or within 15 min of the last. Near-term and full pass don't queue behind each other: a run that finds another running exits and logs "skipped: busy".
 - **Every run writes `sync_logs`** (kind, window, requests, counts, status), so Sync History is real (P11). The button page reads it (#317).
 - **Timezone:** the workflow sets `TZ=America/Los_Angeles`. Window code gets a test under `TZ=UTC`.
@@ -93,12 +93,24 @@ This ships first, on its own, and also protects today's paths:
 - **The Integration Check** alerts when the app and the site disagree, either way.
 - **Sync History** shows each run with its kind, requests and status.
 
-## Decisions for Kate
-1. **Option 3:** near-term on Vercel, full pass on GitHub. (Option 4 puts everything on GitHub.)
-2. **After a failed login:** nothing logs in again until you clear it (safest), or it retries after ~24 h?
-3. **Reconciliation:** archive at most 3 bookings per run; above that, archive nothing and alert?
-4. **Near-term:** start at 2×/day (09:00 and 01:00 UTC), add midday after a week?
-5. **Full pass window:** 7 days back to 60 days ahead (~90 requests), or 30 ahead (~55)?
-6. **Button:** one at a time, at least 15 min apart?
-7. **Integration Check** once a day; retire the old sync paths after 3 good nights.
-8. **Confirm in Vercel:** qboard → Settings → Functions, is Fluid compute on? Option 3's near-term runs need the 300 s limit.
+## Kate's decisions (2026-10-21)
+1. **Option 3:** near-term runs on Vercel (Fluid compute is on for qboard, so functions get 300 s), full pass on GitHub dispatched by Vercel.
+2. **After a failed login, nothing logs in again until Kate clears the flag.** The alert must say clearly what happened and how to clear it.
+3. **Reconciliation archives at most 3 bookings per run;** above that it archives nothing and alerts.
+4. **Near-term runs 2×/day** (09:00 and 01:00 UTC = 2am and 6pm PDT); add midday after a week of real counts.
+5. **Full pass window: 7 days back to 45 days ahead.**
+6. **Button:** one run at a time, at least 15 min apart.
+7. **Integration Check once a day** (check only, both ways), and **retire the old sync paths after 3 good nights** in a row.
+
+### What those two things are (checked in the code, 2026-10-21)
+- **Integration Check** (`scripts/integration-check.js`, GitHub workflow `integration-check.yml`, scheduled 00:00, 08:00 and 16:00 UTC; GitHub starts it hours late). Each run:
+  - Step 0: it runs a sync itself: the same schedule scan as the Vercel cron, then up to 20 queued bookings. If that fails, it carries on.
+  - Then it opens the booking site's schedule page in a real headless browser (Playwright), reads the booking links on the page, and compares them with the app's boardings from 7 days ago to 7 days ahead.
+  - It flags bookings on the page that aren't in the app, boardings with an "Unknown" dog name, and today's daycare and playgroup visits that are on the page but not in the app. It never checks the other way (in the app but gone from the site).
+  - The 08:00 run always sends its report to Telegram. The other two send only when something is wrong. It fails (red run) only when a needed report couldn't be delivered.
+  - After the redesign: step 0 goes, it compares both ways, and it runs once a day after the full pass.
+- **The old sync paths** to retire:
+  - **The Vercel crons** `cron-schedule` (00:05 UTC, scans 3 week pages and queues bookings), `cron-detail` and `cron-detail-2` (00:10 and 00:15, each processes one queued booking).
+  - **The Integration Check's step 0.**
+  - **The booking items in `sync_queue`.** Form items stay.
+  - `cron-auth` (00:00, signs in to the booking site once a day) **stays**, as the only path allowed to log in.
