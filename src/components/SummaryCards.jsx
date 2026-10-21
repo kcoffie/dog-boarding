@@ -1,9 +1,10 @@
 import { useData } from '../context/DataContext';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
-import { calculateGross } from '../utils/calculations';
+import { activeBoardings, calculateGross } from '../utils/calculations';
 
 export default function SummaryCards({ startDate, days }) {
-  const { dogs, boardings, getNightAssignment } = useData();
+  const { dogs, boardings: allBoardings, getNightAssignment } = useData();
+  const boardings = activeBoardings(allBoardings);
 
   const dates = getDateRange(startDate, days);
   const todayStr = new Date().toISOString().split('T')[0];

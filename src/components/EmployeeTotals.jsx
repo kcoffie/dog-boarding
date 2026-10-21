@@ -1,9 +1,11 @@
 import { useData } from '../context/DataContext';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
 import { DEFAULT_MATRIX_DAYS } from '../utils/constants';
+import { activeBoardings } from '../utils/calculations';
 
 export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }) {
-  const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment, getWorkedFollowingDay } = useData();
+  const { dogs, boardings: allBoardings, settings, getNetPercentageForDate, getNightAssignment, getWorkedFollowingDay } = useData();
+  const boardings = activeBoardings(allBoardings);
 
   // Helper to check if employee is active
   const isEmployeeActive = (name) => {

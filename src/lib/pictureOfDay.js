@@ -166,7 +166,7 @@ export async function queryBoarders(supabase, dateStr) {
 
   const { data, error } = await supabase
     .from('boardings')
-    .select('booking_status, arrival_datetime, departure_datetime, dogs(name)')
+    .select('booking_status, cancelled_at, arrival_datetime, departure_datetime, dogs(name)')
     .lt('arrival_datetime', nextDayISO)
     .gte('departure_datetime', nextDayISO);
 
@@ -181,7 +181,8 @@ export async function queryBoarders(supabase, dateStr) {
   const seen = new Set();
   const boarders = [];
   for (const row of (data || [])) {
-    if (row.booking_status === 'cancelled') continue;
+    // cancelled_at: reconciliation found it gone from the booking site (#322)
+    if (row.booking_status === 'cancelled' || row.cancelled_at) continue;
     const name = row.dogs?.name;
     if (name && !seen.has(name)) {
       seen.add(name);

@@ -691,13 +691,14 @@ export async function getWeekendBoardings(supabase, start, end) {
   console.log(`[RosterImage/Weekend] Querying boardings from ${start} to ${end}`);
   const { data, error } = await supabase
     .from('boardings')
-    .select('external_id, arrival_datetime, departure_datetime, booking_status, dogs(name)')
+    .select('external_id, arrival_datetime, departure_datetime, booking_status, cancelled_at, dogs(name)')
     .or(`and(arrival_datetime.gte.${start},arrival_datetime.lte.${end}),and(departure_datetime.gte.${start},departure_datetime.lte.${end})`)
     .order('arrival_datetime', { ascending: true });
 
   if (error) throw error;
 
-  const rows = (data || []).map(b => ({
+  // cancelled_at: reconciliation found it gone from the booking site (#322)
+  const rows = (data || []).filter(b => !b.cancelled_at).map(b => ({
     external_id: b.external_id,
     arrival_datetime: b.arrival_datetime,
     departure_datetime: b.departure_datetime,

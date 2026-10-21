@@ -183,6 +183,7 @@ describe('getWeekendBoardings', () => {
     expect(capturedSelect).not.toContain('client_name');
     expect(capturedSelect).toContain('dogs(name)');
     expect(capturedSelect).toContain('booking_status');
+    expect(capturedSelect).toContain('cancelled_at'); // #322: the gone filter reads it
     expect(capturedSelect).toContain('arrival_datetime');
     expect(capturedSelect).toContain('departure_datetime');
   });
@@ -226,6 +227,29 @@ describe('getWeekendBoardings', () => {
 
     // Both rows depart within window
     expect(departing).toHaveLength(2);
+  });
+
+  /** @requirements REQ-108 */
+  it('a boarding marked gone (cancelled_at) is neither arriving nor departing (#322)', async () => {
+    const mockRows = [
+      { external_id: 'KEEP01', arrival_datetime: '2026-04-03T20:00:00Z', departure_datetime: '2026-04-05T15:00:00Z', booking_status: 'confirmed', cancelled_at: null, dogs: { name: 'Buddy' } },
+      { external_id: 'GONE01', arrival_datetime: '2026-04-03T21:00:00Z', departure_datetime: '2026-04-05T16:00:00Z', booking_status: 'confirmed', cancelled_at: '2026-04-01T12:00:00Z', dogs: { name: 'Ghost' } },
+    ];
+    const mockChain = {
+      select: vi.fn().mockReturnThis(),
+      or: vi.fn().mockReturnThis(),
+      order: vi.fn().mockResolvedValue({ data: mockRows, error: null }),
+    };
+    const mockSupabase = { from: vi.fn().mockReturnValue(mockChain) };
+
+    const { arriving, departing } = await getWeekendBoardings(
+      mockSupabase,
+      '2026-04-03T00:00:00Z',
+      '2026-04-06T12:00:00Z',
+    );
+
+    expect(arriving.map(b => b.external_id)).toEqual(['KEEP01']);
+    expect(departing.map(b => b.external_id)).toEqual(['KEEP01']);
   });
 
   it('throws when supabase returns an error', async () => {

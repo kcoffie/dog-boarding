@@ -15,6 +15,7 @@ import {
   getPictureOfDay,
   hashPicture,
   shouldSendNotification,
+  queryBoarders,
 } from '../lib/pictureOfDay.js';
 
 // ---------------------------------------------------------------------------
@@ -455,6 +456,34 @@ describe('getPictureOfDay diff logic', () => {
 
     expect(result.boarders).toHaveLength(1);
     expect(result.boarders[0].name).toBe('Nutmeg');
+  });
+
+  /** @requirements REQ-108 */
+  it('boarders: a boarding marked gone (cancelled_at) is not on the roster (#322)', async () => {
+    // Reconciliation sets cancelled_at and leaves booking_status confirmed.
+    const boarderRows = [
+      { booking_status: 'confirmed', cancelled_at: null, arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Nutmeg' } },
+      { booking_status: 'confirmed', cancelled_at: '2026-04-28T21:50:00Z', arrival_datetime: '2026-04-29T00:00:00Z', departure_datetime: '2026-05-02T00:00:00Z', dogs: { name: 'Ghost' } },
+    ];
+    const supa = buildSupaMock({ boarderRows });
+
+    const result = await getPictureOfDay(supa, parseDateParam(DATE));
+
+    expect(result.boarders.map(b => b.name)).toEqual(['Nutmeg']);
+  });
+
+  /** @requirements REQ-108 */
+  it('boarders: the query reads cancelled_at, so the gone filter has something to check (#322)', async () => {
+    let selected = '';
+    const chain = {
+      select: (s) => { selected = s; return chain; },
+      lt: () => chain,
+      gte: async () => ({ data: [], error: null }),
+    };
+
+    await queryBoarders({ from: () => chain }, DATE);
+
+    expect(selected.split(',').map(c => c.trim())).toContain('cancelled_at');
   });
 
   it('boarders: deduplicates dogs that appear in multiple boarding rows', async () => {

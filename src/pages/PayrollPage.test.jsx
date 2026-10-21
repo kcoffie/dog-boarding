@@ -392,4 +392,34 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
       expect(screen.queryByText('Total Outstanding')).not.toBeInTheDocument();
     });
   });
+
+  /** @requirements REQ-108 */
+  describe('REQ-108: boardings marked gone (#322)', () => {
+    it('a boarding marked gone adds nothing to night pay or the daytime credit', () => {
+      useData.mockReturnValue({
+        dogs: mockDogs,
+        boardings: [
+          // Luna, night of day1: counts
+          { id: '1', dogId: '1', arrivalDateTime: dates.day1DateTime, departureDateTime: dates.day3DateTime },
+          // Cooper, night of day1, marked gone: would add $45 night and $35 day
+          { id: '2', dogId: '2', arrivalDateTime: dates.day1DateTime, departureDateTime: dates.day3DateTime, cancelledAt: `${dates.day1}T12:00:00Z` },
+        ],
+        settings: mockSettings,
+        getNightAssignment: (date) => (date === dates.day1 ? 'Kate' : ''),
+        nightAssignments: [{ id: '1', date: dates.day1, employeeId: 'emp-1', workedFollowingDay: true }],
+        queryDaytimePetNames: mockQueryDaytimePetNames,
+        payments: [],
+        getNetPercentageForDate: () => 65,
+        addPayment: mockAddPayment,
+        deletePayment: mockDeletePayment,
+        getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
+      });
+
+      render(<PayrollPage />);
+
+      // Kate, night of day1: Luna only. Night $45 x 65% = $29.25; daytime $35 x 65% = $22.75
+      expect(screen.getByText('$29.25')).toBeInTheDocument();
+      expect(screen.getByText('$22.75')).toBeInTheDocument();
+    });
+  });
 });

@@ -240,4 +240,28 @@ describe('REQ-040: EmployeeTotals', () => {
       expect(container.firstChild).toBeNull();
     });
   });
+
+  /** @requirements REQ-108 */
+  describe('REQ-108: boardings marked gone (#322)', () => {
+    it('a boarding marked gone adds nothing to the employee\'s earnings', () => {
+      const boardings = [
+        ...mockBoardings,
+        // Cooper, Jan 15-16, marked gone: would add $45 on Jan 15
+        { id: '3', dogId: '2', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-16T10:00:00', cancelledAt: '2025-01-14T12:00:00Z' },
+      ];
+      useData.mockReturnValue({
+        ...mockDaytimeExtras,
+        dogs: mockDogs,
+        boardings,
+        settings: mockSettings,
+        getNetPercentageForDate: () => 65,
+        getNightAssignment: createGetNightAssignment({ '2025-01-15': 'Kate' }),
+      });
+
+      render(<EmployeeTotals startDate="2025-01-15" days={4} />);
+
+      // Jan 15: only Luna, $45 x 65% = $29.25 (not $58.50)
+      expect(screen.getByText('$29.25')).toBeInTheDocument();
+    });
+  });
 });

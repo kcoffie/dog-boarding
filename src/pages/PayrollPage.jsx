@@ -4,12 +4,12 @@ import DateNavigator from '../components/DateNavigator';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PaymentDialog from '../components/PaymentDialog';
 import { getDateRange, isOvernight } from '../utils/dateUtils';
-import { calculateGross } from '../utils/calculations';
+import { activeBoardings, calculateGross } from '../utils/calculations';
 
 export default function PayrollPage() {
   const {
     dogs,
-    boardings,
+    boardings: allBoardings,
     payments,
     getNetPercentageForDate,
     getNightAssignment,
@@ -18,6 +18,7 @@ export default function PayrollPage() {
     deletePayment,
     getPaidDatesForEmployee,
   } = useData();
+  const boardings = activeBoardings(allBoardings);
 
   // Default to last 30 days, but restore from localStorage if available
   const [startDate, setStartDate] = useState(() => {
