@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 21, 2026, ~00:00 UTC (session 39, end). **Production = main (`e0fe16a`, #310: token out of the browser, rotated).** The roster reaches Kate on **Telegram**. WhatsApp is locked (since 2026-10-17). Staff get the roster again when Twilio SMS (#260) ships. **Top priority: the sync redesign (#318). Research and design first; no sync code until Kate decides.**
+**Last updated:** October 21, 2026, ~17:30 UTC (session 40, end). **Production = main (`e0fe16a`, #310), unchanged this session.** The roster reaches Kate on **Telegram** (proven on the new token 10-21). WhatsApp is locked (since 2026-10-17). **The sync redesign (#318) is decided: option 3. Build it in the design note's order, starting with #322 and the site-safety PR #324.**
 
 **The goal for the next few sessions:** get the app back to where it was in May (the roster reaches staff every morning, unattended, and a failure alerts Kate), then **start real UAT with the end user**, and prioritise the remaining work from UAT feedback. Do what's needed, simply; nothing more.
 
@@ -26,31 +26,33 @@
 
 ---
 
-## Current State (2026-10-21 ~00:00 UTC, end of session 39)
+## Current State (2026-10-21 ~17:30 UTC, end of session 40)
 
-### Session 39: what happened
-1. **#301 merged and rotated (PR #310, `e0fe16a`, live 21:05 UTC 10-20).** Kate chose to do it mid-afternoon instead of after 03:00 UTC: intraday sends nothing while `ROSTER_CHANNEL=telegram`, so the real constraint was Kate being present for the rotation.
-   - The first `check:deploy` got a **401**: Vercel's `INTERNAL_API_TOKEN` didn't match `.env.local`. Fixed by copying `.env.local`'s value into Vercel (qboard, Production) and the GitHub secret, then redeploying. **If a token 401s again, suspect Vercel's project, environment scope or a pasted value first.**
-   - Checks (21:13–21:14 UTC): `check:deploy` OK; roster image NEW → 200, OLD → 401; sync-proxy OLD → 401, none → 401; send-question signed out → 401; the live JS (1 MB) holds neither token; `notify-intraday` dispatch → `{"ok":true,"action":"skipped","reason":"channel_telegram"}`.
-   - Kate deleted `VITE_SYNC_PROXY_TOKEN` from GitHub and `.env.local` (21:16 UTC); `check:deploy` still OK after. **Not confirmed: deleted in Vercel** (ask Kate).
-   - **Send a Question returned "Unauthorized" in Kate's already-open tab** (old JS sent the old token). A reload fixed it, and Send a Question works signed in. **Anyone with the app open from before 21:05 10-20 (or the installed PWA) needs to reload once.**
-   - Sync Now works through the new signed-in proxy. #11 closed (moot).
-   - Mutation on `e0fe16a` (incremental): **52.06%**, ratchet 50.
-2. **Sync turned out to be the real problem. Kate's top priority is now the sync redesign (#318).** Findings: `docs/specs/sync-redesign-findings.md` (every sync path, two implementations, 19 problems with evidence, constraints, 10 open questions, a direction that's **not decided**). Kate: "before we make any changes we need to make good, informed design decisions and take in our whole universe of sync knowledge". **#294 is parked into it.**
-   - Each Vercel `cron-detail` run processes **one** booking (2/day). The Integration Check's sync-before-compare (up to 20 bookings a run) does most of the real syncing. Only browser Sync Now removes bookings that are gone from the site. The Integration Check compares one way only.
-   - **Bug found and fixed for one booking:** a boarding removed on the booking site (`C63QhHuu`, 10/19–10/25) was on the 10-20 4am roster. Kate's Sync Now archived it at 21:50:23 UTC. The bug itself is #316.
-   - Sync Now on 10-20: the first run (10/20–11/20) reached reconciliation but died when the page was reloaded, before writing its counts; its log row stayed `running` and locked the button for 30 min. The second run (10/20–12/19) took **47 m 49 s**: found 519, skipped 500, updated 17, failed 2 (playgroup pages crash the parser, P18). #317 (high).
-3. **Issues filed:** #311 Sync History page, #312 silent $0 rate, #313 hand edits survive the sync, #314 pay breakdown image, #315 Integration Check same-day visits, #316 vanished bookings, #317 Sync Now behaviour (high), #318 sync redesign (umbrella), #319 Sync Details window opens off-screen and can't scroll (UAT bug; likely needs a portal like REQ-506). Kate: todos should be issues.
-4. **Not done (by Kate's choice or blocked):** #294 (parked into #318), #299, the UAT design notes for #312/#314, and the overnight checks (session 39 started at 20:52 UTC, before any overnight run).
+### Session 40: what happened
+1. **Overnight checks (first runs after #301), UTC:**
+   - `notify-4am` (scheduled 11:00) started **15:51**, sent to Telegram, no 401. **Kate: it arrived.** It listed a dog whose booking was removed on the site: see item 3.
+   - `auth` refreshed 00:37. `schedule` 00:15: found 287, **`requeuedEdited` 18** (all recurring playgroup bookings, P20), `urlChangesIgnored` 2. `detail` 00:16 (on yesterday's session, P6) and 00:50.
+   - `sync_queue` pending 45–47 (above 30).
+   - Integration Check 02:45 and 13:19: no red runs. Both alerted the same two "Missing from DB" items (`C63QhKpW` and a new `C63QhL5g`, same dog and dates, skipped by the sync on purpose). Noted on #315.
+   - `cron-health-check` (00:30) started 05:07.
+   - **ops-watch had not run by 17:30 UTC** (window 17:00–17:59). Its last row, 10-20 17:36, had one finding: an undelivered Integration Check alert in the previous 24 h. That was 10-19 18:47 UTC, during the Telegram setup (the two red runs that day). Every Integration Check alert since has been sent (`message_log`). **Next session: read today's row; expected no findings.**
+   - Kate confirmed `VITE_SYNC_PROXY_TOKEN` is deleted in Vercel.
+2. **The sync redesign is decided (#318).** Read `docs/specs/sync-redesign-design-note.md` (decisions at the end) and `docs/specs/sync-redesign-findings.md` (6a research answers, 6b Kate's decisions).
+   - **Option 3:** one Node-safe engine. Near-term runs (today and tomorrow, ~16 requests) on Vercel crons at 09:00 and 01:00 UTC. A daily full pass (7 days back to 45 ahead, ~75 requests) on GitHub Actions, dispatched by a Vercel cron at 07:00 UTC with the existing `GH_ACTIONS_TOKEN`. The button starts the full pass. The Integration Check becomes check-only, both ways, once a day. The old sync paths retire after 3 good nights.
+   - **The booking-site account is Charlie's; load is a hard constraint.** About 110–120 requests a day, a daily ceiling of 250, one paced fetch, stop at the first 429/403/challenge, no retries inside a run.
+   - **After a failed login, nothing logs in again until Kate clears the flag** (with a clear alert). Only `cron-auth` may log in. Reconciliation archives at most 3 per run.
+   - **The architect found real problems in today's code (#324):** reconciliation archives on any error (a 429 would cancel real boardings); `withRetry` reads a missing `retryDelays`, so the first error becomes "Cannot read properties of undefined (reading '0')" (that's P18's error, so P18's real first error is hidden by `withRetry`); any path can log in; form fetches are unpaced; 0 schedule rows counts as success; logs print names in Node; `schedule.js` needs `DOMParser` (not in Node). **Until #324 ships, avoid long Sync Now runs.**
+   - Fluid compute is on for qboard (Kate), so Vercel functions get 300 s. The `api/cron-detail.js` "10 s" header is out of date.
+   - The AI screenshot check was tried before: Integration Check "Step 3" (Claude vision on the roster image), removed in PR #202 (May 2026).
+3. **Bug found: archived boardings stay on the roster and in pay (#322).** Reconciliation sets `cancelled_at` and leaves `booking_status` = `confirmed`. The matrix checks `cancelledAt` (correct). `queryBoarders` (morning roster) checks only `booking_status`, `getWeekendBoardings` checks neither, and payroll (`calculateGross`, `computeDaytimeNet`) checks neither. `C63QhHuu` stays on every roster through 10/25. **Kate: fix it first thing next session.**
+4. **GitHub starts scheduled runs 4–6 h late (#321):** 4am roster at 15:34–17:21 UTC, 7am at 18:23–19:44. The redesign moves triggers to Vercel.
+5. **Booking details appear in public Actions logs (#323).** Kate chose: a private `job_logs` table (service key only), deleted after 30 days. Public logs keep counts, IDs and pass/fail. Old run logs with names need deleting: ask Kate first.
+6. **Issues filed:** #321 (late schedules), #322 (archived boardings on roster/pay), #323 (private logs), #324 (booking-site safety). Commented on #313 (Kate's drift direction) and #315.
 
-### Production (checked 2026-10-20 ~21:17 UTC)
-- main `e0fe16a` (#310) is live: home 200, roster image 200 `image/png` with `INTERNAL_API_TOKEN`.
-- **Tonight's runs are the first after #301:** `schedule` cron 00:05 UTC 10-21 (also the first on #292's queue fix); **`notify-4am` 11:00 UTC 10-21 is the first scheduled roster on the new token**; ops-watch 17:00 UTC 10-21 (its roster-image read uses the new token).
+### Session 39 (reference)
+#301 merged and rotated (PR #310); sync findings written; #311–#319 filed. Details: git history of this file.
 
-### Session 38 (reference)
-#304/#303/#306/#308 merged; ops-watch's first run (10-20 17:36); #301 built locally; UAT plan. Details: git history of this file.
-
-## Current reference (still true after session 39)
+## Current reference (still true after session 40)
 
 ### Telegram alerts (#265, live, proven 2026-10-19)
 - **The bot is `@qap_alert_bot`** (neutral name, Kate's).
@@ -92,21 +94,20 @@
 - **January issues #6–#24:** triage with Charlie at the first UAT check-in (`docs/UAT_PLAN.md`).
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/specs/sync-redesign-findings.md`, `docs/UAT_PLAN.md`. Baseline: `git status`, `npm run test:run`, open PRs and issues.
-2. **Overnight checks (first runs after #301), with real timestamps** (`date -u`, run `createdAt`):
-   - `notify-4am` (scheduled 11:00 UTC, often hours late) → `{"to":"telegram","status":"sent"}` in its log and the `notify` cron_health row; **ask Kate it arrived.** A 401 here means the GitHub secret and Vercel disagree.
-   - `schedule` cron_health row: `found` > 0, `requeuedEdited` near 0, `urlChangesIgnored` > 0. `auth` and `detail` rows succeeded.
-   - `sync_queue` pending < 30.
-   - ops-watch's 17:00 UTC row: expected **no findings**.
-   - Every red Integration Check: read the log. `C63QhKpW` should drop out after 10/22 (#315 otherwise).
-   - Ask Kate: did she delete `VITE_SYNC_PROXY_TOKEN` in Vercel?
-3. **#318 sync redesign: research the open questions (findings section 6), read-only.** Start with: can `runSync` (`src/lib/scraper/sync.js`) run unchanged in Node on GitHub Actions, and where do a full sync's 48 minutes go (pages fetched vs skipped; the 1.5 s delay)? Add answers to the findings doc as you go. Then write the design note (problem → options → choice → what breaks → threat → how we'll know), run the `architect` agent, and **get Kate's decision before any code.** No piecemeal sync fixes meanwhile.
-4. **UAT prep (`docs/UAT_PLAN.md`, "Before UAT starts"):** design notes for #312 (silent $0 rate) and #314 (pay breakdown image; Charlie sends it from her phone, the app never does). Ask Kate about accounts before building anything that depends on them (who gets accounts; every signed-in user sees everyone's pay, REQ-005). The admin's account, the invite dry-run (#23, #24) and the "watch first" session are Kate's.
-5. **#299** after the redesign's direction is set (it may change what "production" checks look like).
-6. **#260** once Kate has upgraded Twilio and decided #291's points.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/specs/sync-redesign-design-note.md`, `docs/specs/sync-redesign-findings.md`. Baseline: `git status`, `npm run test:run`, open PRs and issues.
+2. **Quick checks with real timestamps:** ops-watch's latest row (expected no findings); last night's `schedule`/`auth`/`detail` rows; `sync_queue` pending; the 4am roster (ask Kate it arrived); red Integration Checks.
+3. **#322 (first, Kate):** roster and payroll treat a boarding with `cancelled_at` as gone, in all four readers (`queryBoarders`, `getWeekendBoardings`, `calculateGross`, `computeDaytimeNet`). Tests written from the rule; reviewer; merge; `check:deploy`.
+4. **#324 site-safety PR** (design note, "Before any unattended run"): one paced fetch for every booking-site request; `SiteThrottled` on 429/403/challenge stops the run; remove `withRetry`; a shared breaker (`sync_settings.site_blocked_until` + reason) that every path checks, set by any login failure or throttle, cleared only by Kate (her decision for login failures; the note applies it to throttling too, so confirm with her), with a clear alert that says how to clear it; only `cron-auth` logs in; the reconciliation guard (positive "gone" signal, max 3 archives, row floor); 0 schedule rows fails the run. A breaker column changes a table: write the short design note section and run the architect first if it's more than the note covers.
+5. **#323 private logs:** `job_logs` table (architect gate: new table), 30-day delete, Node entry point redirects `console.*` before imports, a test that fails if a fixture name reaches stdout.
+6. Then the design note's build order: the Node-safe engine (regex parser as the only schedule parser, `sync_logs` columns, skip store), full pass on GitHub, near-term on Vercel (+ #321), retire old paths, button (#317/#311), drift list (#313).
+7. UAT prep (`docs/UAT_PLAN.md`): design notes for #312 and #314; ask Kate about accounts first.
 
 ## Open TODOs
-- [ ] **#318 sync redesign (top priority, Kate 2026-10-20):** findings in `docs/specs/sync-redesign-findings.md`. Research → design note → architect → Kate decides → build. Covers #316, #317 (high), #311, #294 (parked into it)
+- [ ] **#318 sync redesign: DECIDED 2026-10-21 (option 3), build in order:** #322 → #324 → #323 → engine → full pass → near-term (+#321) → retire old paths → button (#317/#311) → drift list (#313). Covers #316, #294
+- [ ] #322 archived boardings on roster and in pay (first, next session)
+- [ ] #324 booking-site safety (before any unattended run)
+- [ ] #323 private job logs (30-day delete); then delete old public run logs with names (ask Kate)
+- [ ] #321 scheduled runs 4–6 h late (fixed by the redesign's Vercel triggers)
 - [ ] #299
 - [ ] UAT: Kate reviews `docs/UAT_PLAN.md` decisions, creates the admin account, runs "watch first" with Charlie and her admin; triage #6–#24 at the first check-in
 - [ ] #312 a dog with no rate counts as $0, silently (before UAT)
@@ -116,7 +117,6 @@
 - [ ] Maybe: a clear "something looks wrong at 9pm" path (Send a Question, made obvious, with what happens next)
 - [ ] #307 invite-code management
 - [ ] #319 Sync Details window off-screen, can't scroll (UAT bug)
-- [ ] Kate: confirm `VITE_SYNC_PROXY_TOKEN` deleted in Vercel
 - [ ] #260 Twilio (Kate: upgrade + A2P; #291 decisions)
 - [ ] #311 Sync History page usable (someday, after UAT starts)
 - [ ] #239 backfill: parked until UAT (Kate revisits)
