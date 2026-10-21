@@ -37,10 +37,10 @@
    - Sync Now works through the new signed-in proxy. #11 closed (moot).
    - Mutation on `e0fe16a` (incremental): **52.06%**, ratchet 50.
 2. **Sync turned out to be the real problem. Kate's top priority is now the sync redesign (#318).** Findings: `docs/specs/sync-redesign-findings.md` (every sync path, two implementations, 19 problems with evidence, constraints, 10 open questions, a direction that's **not decided**). Kate: "before we make any changes we need to make good, informed design decisions and take in our whole universe of sync knowledge". **#294 is parked into it.**
-   - Each Vercel `cron-detail` run processes **one** booking (2/day). The Integration Check's sync-before-compare does most of the real syncing. Only browser Sync Now removes bookings that are gone from the site. The Integration Check compares one way only.
+   - Each Vercel `cron-detail` run processes **one** booking (2/day). The Integration Check's sync-before-compare (up to 20 bookings a run) does most of the real syncing. Only browser Sync Now removes bookings that are gone from the site. The Integration Check compares one way only.
    - **Bug found and fixed for one booking:** a boarding removed on the booking site (`C63QhHuu`, 10/19–10/25) was on the 10-20 4am roster. Kate's Sync Now archived it at 21:50:23 UTC. The bug itself is #316.
    - Sync Now on 10-20: the first run (10/20–11/20) reached reconciliation but died when the page was reloaded, before writing its counts; its log row stayed `running` and locked the button for 30 min. The second run (10/20–12/19) took **47 m 49 s**: found 519, skipped 500, updated 17, failed 2 (playgroup pages crash the parser, P18). #317 (high).
-3. **Issues filed:** #311 Sync History page, #312 silent $0 rate, #313 hand edits survive the sync, #314 pay breakdown image, #315 Integration Check same-day visits, #316 vanished bookings, #317 Sync Now behaviour (high), #318 sync redesign (umbrella), #319 Sync Details window cut off (UAT bug; likely needs a portal like REQ-506). Kate: todos should be issues.
+3. **Issues filed:** #311 Sync History page, #312 silent $0 rate, #313 hand edits survive the sync, #314 pay breakdown image, #315 Integration Check same-day visits, #316 vanished bookings, #317 Sync Now behaviour (high), #318 sync redesign (umbrella), #319 Sync Details window opens off-screen and can't scroll (UAT bug; likely needs a portal like REQ-506). Kate: todos should be issues.
 4. **Not done (by Kate's choice or blocked):** #294 (parked into #318), #299, the UAT design notes for #312/#314, and the overnight checks (session 39 started at 20:52 UTC, before any overnight run).
 
 ### Production (checked 2026-10-20 ~21:17 UTC)
@@ -84,7 +84,7 @@
 
 ### Issues
 - **#318 sync redesign (top priority):** research → design note → architect → Kate decides → build. Covers #316, #317 (high), #311, #294; touches #313, #315, #312.
-- **UAT fixes:** #312 ($0 rate, before UAT), #314 (pay breakdown image), #313 (hand edits; after the redesign decides who wins), #319 (Sync Details cut off).
+- **UAT fixes:** #312 ($0 rate, before UAT), #314 (pay breakdown image), #313 (hand edits; after the redesign decides who wins), #319 (Sync Details window off-screen, can't scroll).
 - **#299** (alert when a merge doesn't reach production; architect gate; needs `INTERNAL_API_TOKEN` in the workflow since #301).
 - **#260:** Twilio SMS roster. Kate starts the Twilio upgrade (A2P needs a paid account; no registered business, and messages can't be tied to Charlie's, so check the sole-proprietor or toll-free route). PR #291 holds the design and Kate's open decisions.
 - **#307:** remove invite-code management from Settings (sign-up is gone since #301).
@@ -115,7 +115,7 @@
 - [ ] Maybe: notify Charlie when her admin adds or changes boarding info
 - [ ] Maybe: a clear "something looks wrong at 9pm" path (Send a Question, made obvious, with what happens next)
 - [ ] #307 invite-code management
-- [ ] #319 Sync Details window cut off (UAT bug)
+- [ ] #319 Sync Details window off-screen, can't scroll (UAT bug)
 - [ ] Kate: confirm `VITE_SYNC_PROXY_TOKEN` deleted in Vercel
 - [ ] #260 Twilio (Kate: upgrade + A2P; #291 decisions)
 - [ ] #311 Sync History page usable (someday, after UAT starts)
