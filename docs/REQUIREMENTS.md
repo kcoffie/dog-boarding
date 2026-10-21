@@ -1511,13 +1511,13 @@ The proxy token was built into the public JavaScript bundle (`VITE_` prefix), so
 The booking-site account is the client's; a rate limit or a lockout hurts her business. Every request is paced, the first sign of throttling ends the run, and reconciliation marks a booking gone only on proof. Design: `docs/specs/sync-redesign-design-note.md`, "Before any unattended run".
 
 **Acceptance Criteria:**
-- Every booking-site request (sync, detail, forms, reconciliation, roster refresh, Integration Check step 0, login) goes through one paced queue per process: each starts at least `delayBetweenRequests` (1.5 s) after the previous one, including two requests made at the same moment
+- Every booking-site request (sync, detail, forms, reconciliation, roster refresh, Integration Check step 0, and the server-side login) goes through one paced queue per process: each starts at least `delayBetweenRequests` (1.5 s) after the previous one, including two requests made at the same moment. A 429/403 on a login stops that run as a failed login; the browser's login through `sync-proxy` goes away in part B
 - A 429 or 403 throws `SiteThrottled`. Every later request in that run throws it without touching the site. `setSession` (Node runs) and the start of `runSync` (Sync Now) begin a new run. A 5xx doesn't stop the run
 - No retries inside a run (`withRetry` is gone); the next scheduled run is the retry
 - `runSync` stops at a `SiteThrottled` from a booking, reconciliation or the form drain: the run fails, with no further booking, reconciliation or form drain
 - `runDetailSync` puts an item back to pending on `SiteThrottled` without using a retry, and re-throws it. Integration Check step 0 sends its report and skips the browser check after it. The roster refresh treats any non-2xx as a failed fetch
 - 0 appointments across the whole schedule scan fails `runSync` and `runScheduleSync` before anything else
-- Reconciliation opens each candidate without following redirects. **Gone** = a redirect whose `Location` path is exactly `/schedule` (what a removed booking's URL answers). A 200 appointment page is present (warned, not marked). Anything else — another redirect, an error status, an unrecognised page, a fetch error — stops reconciliation and marks nothing
+- Reconciliation opens each candidate without following redirects. **Gone** = a redirect whose `Location` is exactly `/schedule` on the booking site's own host (what a removed booking's URL answers). A 200 appointment page is present (warned, not marked). Anything else — another redirect, an error status, an unrecognised page, a fetch error — stops reconciliation and marks nothing
 - More than 10 candidates: reconciliation is skipped without opening any. More than 3 gone: none are marked. Every candidate is checked before any is marked. A stop is reported in the run's result, `sync_logs.errors` and the last-sync message
 - `sync-proxy` follows redirects unless asked for `redirect: 'manual'`, and returns the response's `Location`
 - The historical import (Settings) and the local dev server's login proxy are gone

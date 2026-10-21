@@ -22,7 +22,7 @@ export const MAX_ARCHIVES = 3;
  *
  * A removed booking's URL answers 302 to /schedule (seen 2026-10-21 on an archived booking);
  * the "You cannot view appointment" popup is drawn by JavaScript, so it's not in the HTML.
- *   'gone'       — a redirect to exactly /schedule
+ *   'gone'       — a redirect to exactly /schedule on the booking site
  *   'present'    — 200 with an appointment page (`data-start_scheduled`)
  *   'unexpected' — anything else: a redirect elsewhere (the login page means the session
  *                  failed), an error status, an unrecognised page. Reconciliation stops.
@@ -34,13 +34,14 @@ export const MAX_ARCHIVES = 3;
  */
 export function classifyCandidateResponse(response, html) {
   if (response.status >= 300 && response.status < 400) {
-    let path = null;
+    let target = null;
     try {
-      path = new URL(response.headers.get('location') || '', SCRAPER_CONFIG.baseUrl).pathname;
+      target = new URL(response.headers.get('location') || '', SCRAPER_CONFIG.baseUrl);
     } catch {
       // unparseable Location: unexpected
     }
-    return path === '/schedule' ? 'gone' : 'unexpected';
+    const site = new URL(SCRAPER_CONFIG.baseUrl).host;
+    return target?.host === site && target.pathname === '/schedule' ? 'gone' : 'unexpected';
   }
   if (response.status === 200 && html.includes('data-start_scheduled')) return 'present';
   return 'unexpected';

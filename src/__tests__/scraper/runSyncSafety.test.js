@@ -32,21 +32,27 @@ import { fetchAllSchedulePages } from '../../lib/scraper/schedule.js';
 import { fetchAppointmentDetails } from '../../lib/scraper/extraction.js';
 import { mapAndSaveAppointment } from '../../lib/scraper/mapping.js';
 import { reconcileArchivedAppointments } from '../../lib/scraper/reconcile.js';
-import { dequeueOne } from '../../lib/scraper/syncQueue.js';
+import { dequeueOne, markFailed } from '../../lib/scraper/syncQueue.js';
+import { fetchAndStoreBoardingForm } from '../../lib/scraper/forms.js';
 
 // Every query resolves to an empty list; inserts return a sync log row. Records each sync_logs update.
 function makeDb() {
   const logUpdates = [];
+  const settingsUpdates = [];
   const chain = (table) => {
     const c = {
       select: () => c, insert: () => c, eq: () => c, lt: () => c, in: () => c, order: () => c, limit: () => c,
-      update: (values) => { if (table === 'sync_logs') logUpdates.push(values); return c; },
+      update: (values) => {
+        if (table === 'sync_logs') logUpdates.push(values);
+        if (table === 'sync_settings') settingsUpdates.push(values);
+        return c;
+      },
       single: async () => ({ data: { id: 'log-1' }, error: null }),
       then: (resolve) => resolve({ data: [], error: null }),
     };
     return c;
   };
-  return { from: chain, logUpdates };
+  return { from: chain, logUpdates, settingsUpdates };
 }
 
 const appt = (id) => ({ id, title: '10/24-27', url: `https://agirlandyourdog.com/schedule/a/${id}/1`, petIds: [] });
@@ -94,6 +100,18 @@ describe('REQ-657: Sync Now stops safely', () => {
     expect(dequeueOne).not.toHaveBeenCalled();
   });
 
+  it('a 429 in the form drain fails the run: the next form is not fetched and the item is not marked failed', async () => {
+    fetchAllSchedulePages.mockResolvedValue([appt('A')]);
+    const form = (id) => ({ id, external_id: id, meta: { external_pet_id: '10001' } });
+    dequeueOne.mockResolvedValueOnce(form('F1')).mockResolvedValueOnce(form('F2'));
+    fetchAndStoreBoardingForm.mockRejectedValueOnce(new SiteThrottled(429));
+    const db = makeDb();
+    await expect(runSync({ supabase: db })).rejects.toThrow('Booking site answered 429: stopping this run');
+    expect(fetchAndStoreBoardingForm).toHaveBeenCalledTimes(1);
+    expect(markFailed).not.toHaveBeenCalled();
+    expect(db.logUpdates.at(-1).status).toBe('failed');
+  });
+
   it('a stopped reconciliation is reported in the result and the sync log', async () => {
     fetchAllSchedulePages.mockResolvedValue([appt('A')]);
     const note = 'Reconciliation stopped: 4 bookings look removed (more than 3), nothing marked';
@@ -102,5 +120,14 @@ describe('REQ-657: Sync Now stops safely', () => {
     const result = await runSync({ supabase: db });
     expect(result.reconcileNote).toBe(note);
     expect(db.logUpdates.at(-1).errors).toContainEqual({ stage: 'reconcile', error: note });
+  });
+
+  it('a stopped reconciliation is in the last-sync message on the Settings page', async () => {
+    fetchAllSchedulePages.mockResolvedValue([appt('A')]);
+    const note = 'Reconciliation skipped: 12 bookings missing from the schedule (more than 10), none opened';
+    reconcileArchivedAppointments.mockResolvedValue({ archived: 0, warnings: 0, errors: 0, skipped: note });
+    const db = makeDb();
+    await runSync({ supabase: db });
+    expect(db.settingsUpdates.at(-1).last_sync_message).toBe(`Synced 1 appointments. ${note}`);
   });
 });

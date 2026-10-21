@@ -246,6 +246,17 @@ describe('REQ-657: booking-site requests are paced, and a 429/403 stops the run'
     clearSession();
   });
 
+  it('a rejected request does not hold up the next one', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('network down'));
+    const first = authenticatedFetch(URL).catch(err => err);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await first).message).toBe('network down');
+
+    const second = authenticatedFetch(URL);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect((await second).status).toBe(200);
+  });
+
   it('a second request starts 1.5 s after the first, not before', async () => {
     const first = authenticatedFetch(URL);
     await vi.advanceTimersByTimeAsync(0);

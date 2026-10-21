@@ -143,6 +143,10 @@ describe('REQ-108, REQ-657: classifyCandidateResponse() — only a redirect to /
     expect(classifyCandidateResponse(redirectTo(null), '')).toBe('unexpected');
   });
 
+  it('a redirect to /schedule on another host is not gone', () => {
+    expect(classifyCandidateResponse(redirectTo('https://other.example.com/schedule'), '')).toBe('unexpected');
+  });
+
   it('a 301 to /schedule is gone too', () => {
     expect(classifyCandidateResponse(redirectTo('/schedule', 301), '')).toBe('gone');
   });

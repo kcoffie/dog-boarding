@@ -389,6 +389,16 @@ export async function runScheduleSync(supabase) {
   };
 }
 
+// A 429/403 isn't the item's fault: put it back without using a retry, then stop (#324)
+async function requeueAndStop(supabase, item, err) {
+  console.log(`[SyncRunner:Detail] 🛑 ${err.message} — re-queuing ${item.external_id}`);
+  await supabase
+    .from('sync_queue')
+    .update({ status: 'pending', processing_started_at: null })
+    .eq('id', item.id);
+  throw err;
+}
+
 /**
  * Dequeue and process one item from the sync queue.
  *
@@ -411,16 +421,6 @@ export async function runScheduleSync(supabase) {
  *   reason?: string,
  * }>}
  */
-// A 429/403 isn't the item's fault: put it back without using a retry, then stop (#324)
-async function requeueAndStop(supabase, item, err) {
-  console.log(`[SyncRunner:Detail] 🛑 ${err.message} — re-queuing ${item.external_id}`);
-  await supabase
-    .from('sync_queue')
-    .update({ status: 'pending', processing_started_at: null })
-    .eq('id', item.id);
-  throw err;
-}
-
 export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   // Ensure session before dequeuing so we never need to put an item back on auth failure.
   let cookies;
