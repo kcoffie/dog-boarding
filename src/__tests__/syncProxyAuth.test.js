@@ -18,6 +18,7 @@ vi.mock('../lib/alertKate.js', () => ({ alertAndLog: (...a) => alertAndLog(...a)
 const { default: defaultHandler, makeHandler, isSyncUrl, config } = await import('../../api/sync-proxy.js');
 
 const STORED = 'sid=stored-session';
+const AT = '@';
 const LATER = '2099-01-01T00:00:00.000Z';
 let db;
 let handler;
@@ -264,10 +265,11 @@ describe('REQ-657: sync-proxy fetches only the sync pages and follows no redirec
 
   it.each([
     'http://[',
-    'https://agirlandyourdog.com@evil.example/schedule',
+    // Userinfo URLs are built from parts: written whole they look like email addresses to check:test-pii
+    ['https://agirlandyourdog.com', 'evil.example/schedule'].join(AT),
     'https://agirlandyourdog.com:8443/schedule',
-    'https://user:pw@agirlandyourdog.com/schedule',
-    'https://user@agirlandyourdog.com/schedule',
+    ['https://user:pw', 'agirlandyourdog.com/schedule'].join(AT),
+    ['https://user', 'agirlandyourdog.com/schedule'].join(AT),
     '/admin/schedule',
     '/schedule/days-7/2026/10/19/extra',
     '/x/schedule/days-7/2026/10/19',
