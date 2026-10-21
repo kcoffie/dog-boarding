@@ -22,7 +22,7 @@
  *   0. Sync-before-compare: run schedule sync + drain detail queue so any
  *      bookings added since the midnight cron are in the DB before we compare.
  *      Non-fatal — if sync fails, the check continues with the current DB state.
- *   1. Load session cookies from Supabase sync_settings (same cache the crons use)
+ *   1. Load the stored booking-site session from site_access (the crons' session; never logs in)
  *   2. Playwright: render /schedule, extract appointment IDs
  *      from live DOM links (boarding + daytime)
  *   3. Supabase: query boardings overlapping today → today+7d; query daytime_appointments for today
@@ -33,7 +33,6 @@
  *
  * Required env vars (GitHub Actions Repository secrets):
  *   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- *   EXTERNAL_SITE_USERNAME, EXTERNAL_SITE_PASSWORD  (for Step 0 re-auth on session expiry)
  *   TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID
  */
 
@@ -42,7 +41,7 @@ import { createClient } from '@supabase/supabase-js';
 import { alertAndLog, exitCodeAfterAlert } from '../src/lib/alertKate.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
-import { readSettingsRow } from '../src/lib/scraper/syncSettingsRow.js';
+import { getSiteSession, tripBreaker, throttleReason } from '../src/lib/scraper/siteAccess.js';
 import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
 
 const BASE_URL = 'https://agirlandyourdog.com';
@@ -131,25 +130,29 @@ function getSupabase() {
 // Step 1: Load session cookies from Supabase
 // ---------------------------------------------------------------------------
 
-async function loadSession(supabase) {
-  console.log('[IntegCheck] Loading session cookies from sync_settings...');
+/**
+ * The stored session, or { blocked: true } while the breaker is tripped (#324), or null when
+ * there's no usable session. A failed read throws (the run fails rather than guessing).
+ */
+/** Trip the breaker for a 429/403 on the browser check's page load. The breaker alerts. Exit 0. */
+export async function stopOnThrottle(supabase, err) {
+  console.error('[IntegCheck] %s: tripping the breaker', err.message);
+  await tripBreaker(supabase, throttleReason(err.status, err.url));
+  return 0;
+}
 
-  const data = await readSettingsRow(supabase, 'session_cookies, session_expires_at');
-
-  if (!data?.session_cookies) {
-    console.log('[IntegCheck] No session_cookies found in DB');
-    return null;
+export async function loadSession(supabase) {
+  console.log('[IntegCheck] Loading the stored session from site_access...');
+  try {
+    return { cookies: await getSiteSession(supabase) };
+  } catch (err) {
+    if (err.code === 'SITE_BLOCKED') return { blocked: true };
+    if (err.code === 'NO_SESSION') {
+      console.log('[IntegCheck] %s', err.message);
+      return null;
+    }
+    throw err;
   }
-
-  const expiresAt = new Date(data.session_expires_at);
-  if (Date.now() >= expiresAt.getTime()) {
-    console.log('[IntegCheck] Cached session expired at %s', expiresAt.toISOString());
-    return null;
-  }
-
-  const remainingH = Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
-  console.log('[IntegCheck] Session valid (~%dh remaining)', remainingH);
-  return data.session_cookies;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +191,16 @@ function parseCookieString(raw, domain) {
  *
  * Browser is always closed via try/finally, even if evaluate throws.
  */
+/** The browser check's page load answered 429/403: main() trips the breaker (#324). */
+export class PageThrottled extends Error {
+  constructor(status, url) {
+    super(`Booking site answered ${status} to the schedule page`);
+    this.name = 'PageThrottled';
+    this.status = status;
+    this.url = url;
+  }
+}
+
 async function scrapeWithPlaywright(cookieString) {
   console.log('[IntegCheck] Launching headless Chromium...');
   const browser = await chromium.launch();
@@ -208,6 +221,9 @@ async function scrapeWithPlaywright(cookieString) {
     console.log('[IntegCheck] Navigating to %s...', scheduleUrl);
     const response = await page.goto(scheduleUrl, { waitUntil: 'networkidle', timeout: PLAYWRIGHT_TIMEOUT_MS });
     console.log('[IntegCheck] Page loaded — HTTP %d', response.status());
+    if (response.status() === 429 || response.status() === 403) {
+      throw new PageThrottled(response.status(), scheduleUrl);
+    }
 
     // Detect session rejection — AGYD redirects to login if cookies are stale
     const isLoginPage = await page.locator('input[type="password"]').count();
@@ -480,7 +496,7 @@ async function main() {
           detailResult.queueDepth ?? 0,
         );
         drained++;
-        if (detailResult.action === 'idle' || detailResult.action === 'session_cleared' || detailResult.action === 'session_failed') {
+        if (['idle', 'session_cleared', 'session_failed', 'site_blocked'].includes(detailResult.action)) {
           break;
         }
         if (i === MAX_DETAIL_ITERATIONS - 1) {
@@ -490,17 +506,23 @@ async function main() {
       console.log('[IntegCheck] Step 0 done: %d detail iteration(s)', drained);
     }
   } catch (step0Err) {
-    // A 429/403 from the booking site: don't add a browser page load on top (#324)
+    // A 429/403 from the booking site tripped the breaker, which alerted Kate: no browser page load
+    // on top, and no second message (#324)
     if (step0Err.name === 'SiteThrottled') {
-      const msg = `⚠️ Integration check stopped (${today})\n${step0Err.message}. Skipped the schedule check so the booking site gets no more requests; the next run tries again.`;
-      console.error('[IntegCheck]', msg);
-      process.exit(await sendReport(supabase, msg, true));
+      console.error('[IntegCheck] Step 0 stopped: %s. Skipping the schedule check.', step0Err.message);
+      process.exit(0);
     }
     console.error('[IntegCheck] Step 0 error (continuing to check): %s', step0Err.message);
   }
 
   // Step 1: Session
-  const cookieString = await loadSession(supabase);
+  const session = await loadSession(supabase);
+  if (session?.blocked) {
+    // The breaker alerted when it tripped and ops-watch reports it daily; don't repeat it here
+    console.log('[IntegCheck] Booking site blocked: skipping the schedule check (no request made)');
+    process.exit(0);
+  }
+  const cookieString = session?.cookies;
   if (!cookieString) {
     const msg = `⚠️ Integration check skipped (${today})\nNo valid session cached. Run cron-auth first.`;
     console.log('[IntegCheck]', msg);
@@ -512,6 +534,7 @@ async function main() {
   try {
     ({ boardingAppointments, daytimeAppointments } = await scrapeWithPlaywright(cookieString));
   } catch (err) {
+    if (err instanceof PageThrottled) process.exit(await stopOnThrottle(supabase, err));
     const msg = `⚠️ Integration check failed (${today})\nPlaywright error: ${err.message}`;
     console.error('[IntegCheck]', msg);
     await sendAlertMessage(msg, supabase);

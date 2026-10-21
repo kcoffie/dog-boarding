@@ -75,10 +75,21 @@ In Meta Business Settings → System Users → Admin → confirm the system user
 The alert message will say which cron missed a run or had consecutive failures (auth, schedule, or detail).
 
 **If `cron-auth` is missing/failed:**
-- All other crons will fail too (no valid session)
-- Check Vercel logs for `/api/cron-auth` — look for auth errors (`[Auth]` log lines)
-- Common causes: external site password changed, site is down, Vercel function error
-- Manual fix: trigger `cron-auth` manually via `curl https://qboarding.vercel.app/api/cron-auth -H "Authorization: Bearer $CRON_SECRET"`, then trigger `cron-schedule`
+- The other crons don't log in themselves (#324): they use the stored session until its 30 h stamp passes, then record `session_failed`
+- Check Vercel logs for `/api/cron-auth` — look for auth errors (`[Auth]` / `[SiteLogin]` log lines)
+- Common causes: external site password changed (that trips the breaker: see "Booking site blocked"), site is down, Vercel function error
+- Manual fix (a 5xx or a timeout, not a refused login): trigger `cron-auth` manually via `curl https://qboarding.vercel.app/api/cron-auth -H "Authorization: Bearer $CRON_SECRET"`, then trigger `cron-schedule`
+
+---
+
+### "Booking site blocked" (Telegram alert, or an ops-watch line)
+
+The breaker (#324, REQ-657) tripped: the booking site refused the app's login, or answered 429 (too many requests) or 403 (refused). Until it's cleared, **nothing contacts the booking site**: the sync crons, Sync Now, the roster refresh and the Integration Check all stop (`action: 'site_blocked'`, recorded as success because the alert already went out). The roster keeps using the data already in the app. ops-watch repeats it daily.
+
+1. Read the reason: Settings → "Booking site access", or `SELECT blocked_at, blocked_reason, cleared_at, cleared_by FROM site_access;` (service key; the table has no policies).
+2. **"it refused the login":** the app's own booking-site password is wrong or was changed. Update `EXTERNAL_SITE_PASSWORD` in Vercel (qboard → Production) and redeploy **before** Clear, or Clear's login fails and trips it again.
+3. **"it answered 429 / 403":** the site is throttling the account. Wait (a few hours at least), and don't press Clear repeatedly: each Clear is one login.
+4. Press **Clear** in Settings. It records who cleared it, then logs in at once. "Cleared and signed in" means the next runs work; an error means it tripped again (new alert).
 
 **If `cron-schedule` is missing/failed:**
 - Boardings won't be queued for the next cycle
@@ -97,6 +108,7 @@ The alert message will say which cron missed a run or had consecutive failures (
 `/api/ops-watch` runs on Vercel once a day, some time between 17:00 and 17:59 UTC (Hobby cron precision) and checks outcomes, not just whether jobs ran. Every line of the alert is one finding:
 - **Schedule scan … (failed / hung / got the login page / found no appointments / last run Nh ago):** the nightly `cron-schedule` didn't do its job (#275). `SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'schedule';` For `sync_settings read failed`, check Supabase. For `N enqueue(s) failed`, `result.failedEnqueueIds` names them. For the login page, check AGYD's login (cron-auth's row). One night's miss is caught up by the next scans.
 - **Sync backlog / Sync queue deep / Sync stalled:** the detail queue isn't draining (oldest pending over 16 h, more than 30 pending, or nothing processed in 36 h). If `requeuedEdited` in the `schedule` `cron_health` row is large, unchanged appointments are being re-queued again (#278). See "Queue is backed up". To drain by hand: `node scripts/drain-queue.js` with `.env.local` loaded (sends nothing, about 7–10 s per item).
+- **Booking site blocked since … Nothing syncs until Clear in Settings:** the breaker is tripped. See "Booking site blocked".
 - **No morning roster / not delivered:** check today's `notify-4am` run in Actions and the `message_delivery_status` rows. "Not delivered" with Meta errors usually means a token or template problem.
 - **Workflow X: last success Nh ago:** open that workflow in Actions. If it's disabled, enable it. If it's failing, read the error (an expired Gmail token is a common one).
 - **Roster image broken:** call `/api/roster-image?type=weekend&token=…`. A 500 with `FUNCTION_INVOCATION_FAILED` means the function crashed on load. The last time (#246) a dependency bump caused it.
@@ -170,7 +182,7 @@ Supabase pauses free-tier projects after 7 days of inactivity.
 Check the queue query above. If there are many pending items:
 
 1. **Is the detail cron running?** Check `cron_health` for `cron-detail` — if it hasn't run recently, trigger it manually
-2. **Is the session valid?** If `cron-auth` failed, the session may be expired. Trigger `cron-auth` manually first
+2. **Is the session valid, and the breaker clear?** If `cron-auth` failed, the session may be expired: trigger `cron-auth` manually first. If Settings shows "Booking site blocked", see that section
 3. **Are items stuck?** Items with `status = 'processing'` for more than 10 minutes are stuck. Run `resetStuck` logic or manually update them to `pending` via SQL:
 
 ```sql
@@ -248,8 +260,8 @@ All secrets must be **Repository secrets** (not environment secrets) for workflo
 |---|---|---|
 | `VITE_SUPABASE_URL` | All workflows | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | All workflows | Never expose to browser |
-| `EXTERNAL_SITE_USERNAME` | integration-check | For Step 0 re-auth |
-| `EXTERNAL_SITE_PASSWORD` | integration-check | For Step 0 re-auth |
+| `EXTERNAL_SITE_USERNAME` | integration-check | **Unused since #324** (the check never logs in); Kate may delete it |
+| `EXTERNAL_SITE_PASSWORD` | integration-check | **Unused since #324**; Kate may delete it |
 | `META_PHONE_NUMBER_ID` | notify workflows | From Meta app dashboard |
 | `META_WHATSAPP_TOKEN` | notify workflows | System user token — never expires |
 | `NOTIFY_RECIPIENTS` | notify workflows | E.164, comma-separated |

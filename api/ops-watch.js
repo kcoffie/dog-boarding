@@ -57,6 +57,11 @@ function makeDeps(supabase) {
       return rows[0] ?? null;
     },
 
+    async loadSiteAccess() {
+      const rows = await must(supabase.from('site_access').select('blocked_at, blocked_reason').eq('id', true).limit(1));
+      return rows[0] ?? null;
+    },
+
     async loadRosterRows() {
       const since = new Date(Date.now() - 48 * 3600e3).toISOString();
       const sent = await must(supabase.from('message_log').select('wamid, sent_at, recipient')

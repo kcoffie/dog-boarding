@@ -24,7 +24,7 @@ The 5-minute gaps ensure each step completes before the next begins. `cron-detai
 
 The AGYD booking site is the source of truth for all appointments. The app's Supabase DB needs to mirror it. Rather than scraping in one monolithic job (which would exceed Vercel's 10s function timeout), the work is split across three jobs that hand off via the DB:
 
-- `cron-auth` owns the **credential** — a session cookie stored in `sync_settings`
+- `cron-auth` owns the **credential** — a session cookie stored in `site_access` (service key only, #324). It and Clear (Settings) are the only paths that log in
 - `cron-schedule` owns the **discovery** — finding appointment IDs and enqueuing them in `sync_queue`
 - `cron-detail` owns the **enrichment** — fetching one appointment's full detail page and upserting to `boardings`/`dogs`
 
@@ -35,7 +35,7 @@ This queue-based design means a single slow appointment detail page can't block 
 ## Job 1: `cron-auth` (`api/cron-auth.js`)
 
 ### What it does
-Unconditionally re-authenticates against AGYD on every run, caching the resulting session cookies in `sync_settings` with a 24-hour TTL.
+Unconditionally re-authenticates against AGYD on every run (through `loginToSite`), storing the session cookies in `site_access` with a 30-hour stamp. While the breaker is tripped it doesn't log in and records `action: 'site_blocked'`; a refused login (or a 429/403) trips the breaker and alerts Kate once (REQ-657).
 
 There is **no skip-if-valid logic** — it always calls `authenticate()`. This was a deliberate fix (v4.4.1): the prior skip caused a race condition where a session stored a few minutes after midnight (e.g. 00:27) would appear valid at the 00:00 cron but expire before the morning notify windows (4am/7am/8:30am PST). All three notify windows would then fail with "no session."
 
@@ -51,10 +51,10 @@ Since this cron runs once a day, the cost of an unconditional re-auth is one HTT
 - Session TTL is hardcoded to 24 hours — matches the nightly run cadence
 - If credentials are wrong, throws → writes `failure` to `cron_health`
 - **Does NOT log the session cookie value** — only logs expiry time (security)
-- `cron-schedule`, `cron-detail`, and `notify` all use `ensureSession()` which self-heals on cache miss — so even if `cron-auth` failed, they can recover mid-run
+- `cron-schedule`, `cron-detail`, `notify` and the Integration Check use `getSiteSession()`, which never logs in (#324): if `cron-auth` failed, they run on the stored session until its 30 h stamp passes, then record `session_failed`
 
 ### On failure
-`cron-schedule` and `cron-detail` call `ensureSession()` — if the cached session is missing/expired, they re-authenticate themselves rather than skipping. This means a `cron-auth` failure is no longer catastrophic for the day's sync.
+`cron-schedule` and `cron-detail` call `getSiteSession()`. They never log in: one login a day (cron-auth) keeps the client's booking-site account safe (#324). A 30 h stamp covers a late cron-auth. While the breaker is tripped they return `site_blocked` before fetching or dequeuing, recorded as health success.
 
 ---
 
@@ -101,7 +101,7 @@ A re-queue stores the scan's URL and title, merges meta (keeping a stored `exter
 On the same HTML already fetched, calls `parseDaytimeSchedulePage()` and `upsertDaytimeAppointments()` to keep `daytime_appointments` fresh. No extra HTTP requests.
 
 #### Session expiry detection
-If the schedule page HTML contains both `"login"` and `"password"`, the session has been rejected. The cron clears the cached session (`clearSession`) and returns — `cron-auth` will re-authenticate the next night.
+If the schedule page HTML contains both `"login"` and `"password"`, the session has been rejected. The cron clears the stored session (`clearSiteSession`) and returns — `cron-auth` will re-authenticate the next night.
 
 ### Outputs
 - Enqueues boarding candidates into `sync_queue` (type=`appointment`)
@@ -128,7 +128,7 @@ On every invocation, calls `resetStuck(supabase)` — returns any items stuck in
 Calls `dequeueOne(supabase)` — atomically marks the oldest pending item as `processing` and returns it. If the queue is empty, logs "idle" and returns.
 
 #### Session check
-Loads cached session from `sessionCache.js`. If missing, resets the dequeued item back to `pending` (so it's not lost) and returns — waiting for `cron-auth` to refresh.
+Loads the stored session with `getSiteSession` (`siteAccess.js`); blocked → `site_blocked`. If missing, resets the dequeued item back to `pending` (so it's not lost) and returns — waiting for `cron-auth` to refresh.
 
 #### Type dispatch
 
@@ -214,7 +214,8 @@ Security: all three handlers check `Authorization: Bearer {CRON_SECRET}` before 
 | `vercel.json` | Cron schedules (Vercel Hobby: once/day at midnight UTC) |
 | `api/_cronHealth.js` | Shared `writeCronHealth()` helper |
 | `src/lib/scraper/auth.js` | `authenticate()`, `authenticatedFetch()`, `setSession()` |
-| `src/lib/scraper/sessionCache.js` | `getSession()`, `storeSession()`, `clearSession()`, `ensureSession()` (self-healing: returns cached session or re-authenticates) |
+| `src/lib/scraper/siteAccess.js` | `getSiteSession()` (never logs in, fails closed), `storeSiteSession()` (30 h), `clearSiteSession()`, the breaker (`tripBreaker`, `clearBreaker`) |
+| `src/lib/scraper/siteLogin.js` | `loginToSite()`: the one login, used by cron-auth and Clear |
 | `src/lib/scraper/syncQueue.js` | `enqueue()`, `dequeueOne()`, `markDone()`, `markFailed()`, `resetStuck()`, `getQueueDepth()` |
 | `src/lib/scraper/appointmentFilter.js` | `applyDetailFilters()` — shared post-detail filter gates (title, pricing, duration, date-overlap) |
 | `src/lib/scraper/extraction.js` | `fetchAppointmentDetails()` — detail page parser |

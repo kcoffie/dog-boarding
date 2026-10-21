@@ -37,7 +37,7 @@ Runs the schedule sync and drains the detail queue **before** the Playwright com
 - Does NOT call `writeCronHealth` — health tracking is the Vercel cron handlers' responsibility. Step 0 is a "best effort" sync, not a scheduled cron run.
 - Signal isolation is preserved: Steps 2–4 (Playwright, DB compare) are unchanged and import nothing from `src/lib/scraper/`. Step 0 runs before the independent check begins.
 
-**Session re-auth in Step 0:** `ensureSession` can re-authenticate if the session is expired, provided `EXTERNAL_SITE_USERNAME` and `EXTERNAL_SITE_PASSWORD` are set as GH repo secrets. If they are, a stale session will be refreshed and the fresh session is available to Step 1's `loadSession` (making Playwright work too). If they're not set, re-auth silently fails and Step 0 is skipped.
+**No login (#324):** Step 0 and Step 1 use the session `cron-auth` stored in `site_access` (`getSiteSession`); the check never logs in, so the `EXTERNAL_SITE_*` GitHub secrets are no longer used by it. With no usable session, Step 0 records `session_failed` and Step 1 reports "skipped". While the booking-site breaker is tripped, Step 0 does nothing and the check exits before the browser load, without a report (the breaker alerted, and ops-watch repeats it daily).
 
 ### Step 1 — Load session cookies
 Reads `session_cookies` from `sync_settings` in Supabase — the same auth token the midnight cron uses. If missing or expired, sends WhatsApp and exits. The session is refreshed by `cron-auth.js` which runs at midnight.

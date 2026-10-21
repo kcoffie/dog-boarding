@@ -51,7 +51,7 @@ Each workflow is a single step: a `curl` to `/api/notify?window={window}&token={
 
 The endpoint orchestrates the full notify flow:
 
-1. **Refresh live schedule** — calls `refreshDaytimeSchedule()` to fetch the current day's DC/PG appointments from AGYD and upsert into `daytime_appointments`. This ensures the image reflects live data, not just what was ingested at midnight. Uses `ensureSession()` (self-healing: re-authenticates if the cached session is missing or expired). If the refresh fails, `sendRefreshAlert()` fires a WhatsApp warning — but only once per day (deduplicates via `cron_health.result.lastAlertDate`).
+1. **Refresh live schedule** — calls `refreshDaytimeSchedule()` to fetch the current day's DC/PG appointments from AGYD and upsert into `daytime_appointments`. This ensures the image reflects live data, not just what was ingested at midnight. Uses `getSiteSession()`: the stored session, never a login (#324). While the booking-site breaker is tripped it skips the refresh with no warning (the breaker already alerted). If the refresh fails, `sendRefreshAlert()` sends Kate a Telegram warning — but only once per day (deduplicates via `cron_health.result.alertDate`). A 429/403 or a tripped breaker sends no warning: the breaker already alerted.
 
 2. **Get picture of day** — calls `getPictureOfDay()` from `pictureOfDay.js`. This selects one dog per active worker for the day, building a roster of {worker → boarding dog}.
 

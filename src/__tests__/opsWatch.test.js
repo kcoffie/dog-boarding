@@ -1,6 +1,6 @@
 /**
  * Ops watch: outcome checks that run outside GitHub. Expected values come from REQ-651.
- * @requirements REQ-651
+ * @requirements REQ-651, REQ-657
  *
  * Boundaries (Supabase, GitHub, the image endpoint, Kate's alert channel) are fakes passed to runOpsWatch.
  */
@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   checkQueue,
   checkScheduleScan,
+  checkSiteAccess,
   checkRoster,
   checkWorkflowRuns,
   checkImage,
@@ -248,6 +249,23 @@ describe('roster image', () => {
   });
 });
 
+/** @requirements REQ-657 */
+describe('REQ-657 checkSiteAccess: the booking-site breaker is a finding every day it stays tripped', () => {
+  it('no row is no finding', () => {
+    expect(checkSiteAccess(null)).toEqual([]);
+  });
+
+  it('not tripped is no finding', () => {
+    expect(checkSiteAccess({ blocked_at: null, blocked_reason: null })).toEqual([]);
+  });
+
+  it('tripped is one finding with when, why and what to do', () => {
+    expect(checkSiteAccess({ blocked_at: '2026-10-16T07:05:00Z', blocked_reason: 'it refused the login' })).toEqual([
+      'Booking site blocked since 2026-10-16T07:05:00Z: it refused the login. Nothing syncs until Clear in Settings',
+    ]);
+  });
+});
+
 describe('runOpsWatch', () => {
   function deps(over = {}) {
     const sent = { alert: [], email: [] };
@@ -256,6 +274,7 @@ describe('runOpsWatch', () => {
       now: () => NOW,
       loadQueueStats: async () => ({ pendingCount: 0, oldestPendingAt: null, lastDoneAt: hoursAgo(5) }),
       loadScheduleHealth: async () => ({ last_ran_at: hoursAgo(16), status: 'success', result: { found: 227 }, error_msg: null }),
+      loadSiteAccess: async () => ({ blocked_at: null, blocked_reason: null }),
       loadRosterRows: async () => ({ sent: [{ wamid: 'w1', sent_at: '2026-10-16T11:00:05Z' }], deliveredWamids: ['w1'] }),
       loadLastSuccess: async () => ({
         'gmail-monitor.yml': hoursAgo(1),
@@ -271,6 +290,15 @@ describe('runOpsWatch', () => {
       ...over,
     };
   }
+
+  it('REQ-657: a tripped breaker goes out as a finding', async () => {
+    const d = deps({ loadSiteAccess: async () => ({ blocked_at: '2026-10-16T07:05:00Z', blocked_reason: 'it answered 429 (too many requests) on a schedule page' }) });
+    const r = await runOpsWatch(d);
+    expect(r.findings).toEqual([
+      'Booking site blocked since 2026-10-16T07:05:00Z: it answered 429 (too many requests) on a schedule page. Nothing syncs until Clear in Settings',
+    ]);
+    expect(d.sent.alert).toHaveLength(1);
+  });
 
   it('a healthy day sends nothing and is ok', async () => {
     const d = deps();
@@ -307,10 +335,11 @@ describe('runOpsWatch', () => {
 
   it("each check that can't run is named", async () => {
     const boom = async () => { throw new Error('x'); };
-    const r = await runOpsWatch(deps({ loadQueueStats: boom, loadScheduleHealth: boom, loadRosterRows: boom, loadLastSuccess: boom, fetchImage: boom, loadFailedAlerts: boom }));
+    const r = await runOpsWatch(deps({ loadQueueStats: boom, loadScheduleHealth: boom, loadSiteAccess: boom, loadRosterRows: boom, loadLastSuccess: boom, fetchImage: boom, loadFailedAlerts: boom }));
     expect(r.findings).toEqual([
       "Couldn't check the sync queue: x",
       "Couldn't check the schedule scan: x",
+      "Couldn't check the booking-site breaker: x",
       "Couldn't check the morning roster: x",
       "Couldn't check the scheduled workflows: x",
       "Couldn't check the roster image: x",
@@ -387,8 +416,8 @@ describe('REQ-652: undelivered alerts', () => {
     expect(checkFailedAlerts(rows)).toEqual(['Alerts not delivered in the last 24h: 3 (gmail-monitor, send-question)']);
   });
 
-  it('the alert jobs watched are the five that alert Kate (REQ-655 adds the refresh alert)', () => {
-    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert']);
+  it('the alert jobs watched are the six that alert Kate (REQ-655 adds the refresh alert, REQ-657 the breaker)', () => {
+    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access']);
   });
 
   it('runOpsWatch reports failed alerts from the alert log', async () => {
@@ -397,6 +426,7 @@ describe('REQ-652: undelivered alerts', () => {
       now: () => NOW,
       loadQueueStats: async () => ({ pendingCount: 0, oldestPendingAt: null, lastDoneAt: hoursAgo(5) }),
       loadScheduleHealth: async () => ({ last_ran_at: hoursAgo(16), status: 'success', result: { found: 227 }, error_msg: null }),
+      loadSiteAccess: async () => ({ blocked_at: null, blocked_reason: null }),
       loadRosterRows: async () => ({ sent: [{ wamid: 'w1', sent_at: '2026-10-16T11:00:05Z' }], deliveredWamids: ['w1'] }),
       loadLastSuccess: async () => ({
         'gmail-monitor.yml': hoursAgo(1), 'integration-check.yml': hoursAgo(9), 'cron-health-check.yml': hoursAgo(17),

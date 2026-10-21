@@ -17,7 +17,7 @@
  *
  * Runs on Node.js runtime (NOT edge) so process.env is available.
  *
- * @requirements REQ-109
+ * @requirements REQ-109, REQ-657
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -53,6 +53,12 @@ export default async function handler(req, res) {
 
     if (result.action === 'session_failed') {
       await writeCronHealth(supabase, 'schedule', 'failure', { action: 'session_failed' }, result.error?.slice(0, 500));
+      return res.status(200).json({ ok: true, ...result });
+    }
+
+    // Not a cron failure: the breaker alerted when it tripped, and ops-watch reports it daily (#324)
+    if (result.action === 'site_blocked') {
+      await writeCronHealth(supabase, 'schedule', 'success', { action: 'site_blocked' }, null);
       return res.status(200).json({ ok: true, ...result });
     }
 

@@ -5,7 +5,7 @@
  * finding too: silence is never success. The I/O (Supabase, GitHub, the image endpoint, Kate's alert channel,
  * the email dispatch) is passed in, so the rules can be tested without it. Wiring: api/ops-watch.js.
  * Design: docs/specs/ops-watch-design-note.md.
- * @requirements REQ-651, REQ-652
+ * @requirements REQ-651, REQ-652, REQ-657
  */
 
 const HOUR_MS = 3600e3;
@@ -119,8 +119,18 @@ export function checkScheduleScan(row, now) {
   return [];
 }
 
+/**
+ * The booking-site breaker (#324, REQ-657): a finding every day it stays tripped. It alerted once
+ * when it tripped; this keeps it from being forgotten.
+ * @param {{ blocked_at: string|null, blocked_reason: string|null }|null} row  the site_access row
+ */
+export function checkSiteAccess(row) {
+  if (!row?.blocked_at) return [];
+  return [`Booking site blocked since ${row.blocked_at}: ${row.blocked_reason}. Nothing syncs until Clear in Settings`];
+}
+
 /** Jobs whose alerts go to Kate; a failed message_log row for any of them is a finding (REQ-652). */
-export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert'];
+export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access'];
 
 /**
  * @param {Array<{job_name: string}>} failedRows  message_log rows with status 'failed' for ALERT_JOBS
@@ -143,6 +153,7 @@ export async function runOpsWatch(d) {
   const checks = [
     ['the sync queue', async () => checkQueue(await d.loadQueueStats(), now)],
     ['the schedule scan', async () => checkScheduleScan(await d.loadScheduleHealth(), now)],
+    ['the booking-site breaker', async () => checkSiteAccess(await d.loadSiteAccess())],
     ['the morning roster', async () => checkRoster(await d.loadRosterRows(), now)],
     ['the scheduled workflows', async () => checkWorkflowRuns(await d.loadLastSuccess(), now)],
     ['the roster image', async () => checkImage(await d.fetchImage())],

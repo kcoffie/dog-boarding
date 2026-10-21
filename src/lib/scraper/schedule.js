@@ -4,7 +4,7 @@
  */
 
 import { SCRAPER_CONFIG } from './config.js';
-import { authenticatedFetch, isAuthenticated } from './auth.js';
+import { authenticatedFetch } from './auth.js';
 import { syncLogger } from './logger.js';
 
 const log = syncLogger.log;
@@ -165,10 +165,6 @@ export async function fetchSchedulePage(options = {}) {
   const { startDate, endDate, boardingOnly = true } = options;
 
   log(`[Schedule] fetchSchedulePage called with startDate=${startDate}, endDate=${endDate}`);
-
-  if (!isAuthenticated()) {
-    throw new Error('Not authenticated. Call authenticate() first.');
-  }
 
   // Use the days-7 URL format to jump to the right week.
   // The ?start=&end= query params are ignored by the external site.

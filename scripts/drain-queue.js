@@ -3,7 +3,7 @@
  * Drain the sync_queue by hand (runbook: "Queue is backed up").
  *
  * Runs the same runDetailSync() the nightly crons use, one item at a time, until the queue is
- * idle, the session fails, or the cap is reached. Sends no WhatsApp. Pauses between items so AGYD
+ * idle, the session fails, the breaker is tripped (#324), or the cap is reached. Never logs in. Sends no WhatsApp. Pauses between items so AGYD
  * isn't hammered. Writes to the database through the normal sync path only.
  *
  * Usage: node scripts/drain-queue.js [maxItems=1000]   (needs .env.local: Supabase service key)
@@ -23,7 +23,7 @@ for (let i = 0; i < max; i++) {
   last = await runDetailSync(supabase, { runResetStuck: false });
   counts[last.action] = (counts[last.action] ?? 0) + 1;
   if (i % 25 === 0) console.log(`[Drain] ${i + 1}: ${last.action}, queue ${last.queueDepth ?? '?'}`, counts);
-  if (['idle', 'session_failed', 'session_cleared'].includes(last.action)) break;
+  if (['idle', 'session_failed', 'session_cleared', 'site_blocked'].includes(last.action)) break;
   await new Promise((r) => setTimeout(r, PAUSE_MS));
 }
 console.log('[Drain] done', counts, 'last:', last?.action, last?.error ?? '');

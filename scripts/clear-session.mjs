@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { createClient } from '@supabase/supabase-js';
+import { clearSiteSession } from '../src/lib/scraper/siteAccess.js';
 
 const envFile = readFileSync(resolve(process.cwd(), '.env.local'), 'utf8');
 for (const line of envFile.split('\n')) {
@@ -18,14 +19,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
 );
 
-const { data, error } = await supabase.from('sync_settings').select('id').order('id', { ascending: true }).limit(1).maybeSingle();
-if (error) throw new Error(`sync_settings read failed: ${error.message}`);
-if (data) {
-  await supabase.from('sync_settings').update({
-    session_cookies: null,
-    session_expires_at: null,
-  }).eq('id', data.id);
-  console.log('Session cleared.');
-} else {
-  console.log('No sync_settings row found.');
-}
+// Forgets the stored booking-site session (site_access, #324); the next cron-auth logs in.
+// Doesn't touch the breaker: only Clear in Settings does that.
+await clearSiteSession(supabase);
+console.log('Session cleared.');

@@ -5,11 +5,11 @@
  * `refreshDaytimeSchedule` was previously inlined in api/notify.js. It is
  * extracted here so it can be unit-tested without standing up the HTTP handler.
  *
- * @requirements REQ-v5.0-M1-2
+ * @requirements REQ-v5.0-M1-2, REQ-657
  */
 
-import { ensureSession, clearSession } from './scraper/sessionCache.js';
-import { setSession, authenticatedFetch } from './scraper/auth.js';
+import { getSiteSession, clearSiteSession } from './scraper/siteAccess.js';
+import { setSession, authenticatedFetch, SiteThrottled } from './scraper/auth.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from './scraper/daytimeSchedule.js';
 
 const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com';
@@ -28,7 +28,8 @@ const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.
  * The send must never be blocked by a refresh failure.
  *
  * Exit paths:
- *   1. ensureSession throws             → { refreshed: false, warning: 'Session unavailable: ...' }
+ *   0. breaker tripped (#324)           → { refreshed: false, warning: null } (it alerted when it tripped)
+ *   1. getSiteSession throws            → { refreshed: false, warning: 'Session unavailable: ...' }
  *   2. authenticatedFetch throws SESSION_EXPIRED → clears session → { refreshed: false, warning: '...' }
  *   3. authenticatedFetch throws (other) → { refreshed: false, warning: 'Schedule fetch failed: ...' }
  *   4. rows.length === 0 + large HTML   → { refreshed: true, rowCount: 0, warning: '...access-denied...' }
@@ -44,18 +45,21 @@ export async function refreshDaytimeSchedule(supabase, date) {
   // Outer try/catch ensures this function NEVER throws — every exit path returns
   // { refreshed: boolean, rowCount: number, warning: string|null }.
   try {
-    // ensureSession: returns cached session or re-authenticates if expired/missing.
-    // Throws only if credentials are missing or auth fails — caught by outer catch.
+    // The stored session; never logs in (#324).
     let cookies;
     try {
-      cookies = await ensureSession(supabase);
+      cookies = await getSiteSession(supabase);
     } catch (sessionErr) {
+      if (sessionErr.code === 'SITE_BLOCKED') {
+        console.warn('[Notify/Refresh] Booking site blocked — skipping live refresh, using DB data');
+        return { refreshed: false, rowCount: 0, warning: null };
+      }
       console.warn(`[Notify/Refresh] Could not obtain session: ${sessionErr.message} — skipping live refresh, using stale DB data`);
       return { refreshed: false, rowCount: 0, warning: `Session unavailable: ${sessionErr.message}` };
     }
 
     // Inject session cookies so authenticatedFetch uses them.
-    setSession(cookies);
+    setSession(cookies, { supabase });
 
     // Build the week-page URL for today. Month and day are NOT zero-padded —
     // the external site uses bare numbers in its URL (e.g. /schedule/days-7/2026/3/6).
@@ -74,10 +78,15 @@ export async function refreshDaytimeSchedule(supabase, date) {
       // SESSION_EXPIRED: clear the cached session so cron-auth re-authenticates.
       if (err.message === 'SESSION_EXPIRED') {
         console.warn('[Notify/Refresh] Session expired — clearing cached session so cron-auth re-authenticates');
-        await clearSession(supabase).catch(e =>
-          console.warn(`[Notify/Refresh] clearSession also failed: ${e.message}`)
+        await clearSiteSession(supabase).catch(e =>
+          console.warn(`[Notify/Refresh] clearSiteSession also failed: ${e.message}`)
         );
         return { refreshed: false, rowCount: 0, warning: 'Session expired — cron-auth will re-authenticate at midnight' };
+      }
+      // A 429/403 tripped the breaker, which alerted: don't send a second alert for it (#324)
+      if (err instanceof SiteThrottled) {
+        console.warn(`[Notify/Refresh] ${err.message} — continuing with DB data`);
+        return { refreshed: false, rowCount: 0, warning: null };
       }
       console.warn(`[Notify/Refresh] Fetch failed (${err.message}) — continuing with stale DB data`);
       return { refreshed: false, rowCount: 0, warning: `Schedule fetch failed: ${err.message}` };

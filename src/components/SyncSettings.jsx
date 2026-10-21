@@ -73,10 +73,6 @@ export default function SyncSettings() {
     switch (syncProgress.stage) {
       case 'starting':
         return 'Starting sync...';
-      case 'authenticating':
-        return 'Authenticating...';
-      case 'authenticated':
-        return 'Authenticated';
       case 'fetching_schedule':
         return 'Fetching schedule...';
       case 'schedule_fetched':

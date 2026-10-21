@@ -19,9 +19,10 @@ vi.mock('../../lib/scraper/auth.js', async (importOriginal) => ({
   authenticatedFetch: vi.fn(),
 }));
 
-vi.mock('../../lib/scraper/sessionCache.js', () => ({
-  ensureSession: vi.fn(),
-  clearSession: vi.fn(),
+vi.mock('../../lib/scraper/siteAccess.js', async (importOriginal) => ({
+  SiteAccessError: (await importOriginal()).SiteAccessError,
+  getSiteSession: vi.fn(),
+  clearSiteSession: vi.fn(),
 }));
 
 vi.mock('../../lib/scraper/syncQueue.js', () => ({
@@ -51,7 +52,7 @@ vi.mock('../../lib/scraper/forms.js', () => ({
 }));
 
 import { setSession, authenticatedFetch, SiteThrottled } from '../../lib/scraper/auth.js';
-import { ensureSession, clearSession } from '../../lib/scraper/sessionCache.js';
+import { getSiteSession, clearSiteSession, SiteAccessError } from '../../lib/scraper/siteAccess.js';
 import { enqueue, dequeueOne, markDone, markFailed, resetStuck, getQueueDepth } from '../../lib/scraper/syncQueue.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../../lib/scraper/daytimeSchedule.js';
 import { fetchAppointmentDetails } from '../../lib/scraper/extraction.js';
@@ -157,8 +158,8 @@ describe('runScheduleSync', () => {
     parseDaytimeSchedulePage.mockReturnValue([]);
   });
 
-  it('returns action=session_failed when ensureSession throws', async () => {
-    ensureSession.mockRejectedValue(new Error('No credentials configured'));
+  it('returns action=session_failed when getSiteSession throws', async () => {
+    getSiteSession.mockRejectedValue(new Error('No credentials configured'));
     const result = await runScheduleSync(makeMockSupabase());
     expect(result.action).toBe('session_failed');
     expect(result.error).toMatch(/No credentials/);
@@ -166,14 +167,14 @@ describe('runScheduleSync', () => {
   });
 
   it('returns action=session_cleared when SESSION_EXPIRED is detected on page fetch', async () => {
-    ensureSession.mockResolvedValue('session=abc');
+    getSiteSession.mockResolvedValue('session=abc');
     setSession.mockReturnValue(undefined);
     // authenticatedFetch returns a response whose text includes login/password markers
     authenticatedFetch.mockResolvedValue({
       ok: true,
       text: () => Promise.resolve('<html>login password</html>'),
     });
-    // supabase mock needs to support getCursorDate (single) and clearSession calls
+    // supabase mock needs to support getCursorDate (single) and clearSiteSession calls
     const supabase = {
       from: () => ({
         select: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
@@ -182,15 +183,15 @@ describe('runScheduleSync', () => {
         delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
       }),
     };
-    clearSession.mockResolvedValue(undefined);
+    clearSiteSession.mockResolvedValue(undefined);
     const result = await runScheduleSync(supabase);
     expect(result.action).toBe('session_cleared');
-    expect(clearSession).toHaveBeenCalledTimes(1);
+    expect(clearSiteSession).toHaveBeenCalledTimes(1);
   });
 
   /** @requirements REQ-109 */
   it('0 appointments across every page fails the scan before queueing (#324)', async () => {
-    ensureSession.mockResolvedValue('session=abc');
+    getSiteSession.mockResolvedValue('session=abc');
     setSession.mockReturnValue(undefined);
     // Return HTML with no matching appointment links
     authenticatedFetch.mockResolvedValue({
@@ -226,7 +227,7 @@ describe('runScheduleSync', () => {
   it('enqueues a "PG 3/23-30" title appointment — PG boarding must NOT be filtered', async () => {
     // Regression test for #114/#115: \bpg\b was incorrectly blocking PG boarding appointments.
     // "PG 3/23-30" is a pack group BOARDING (Boarding Nights pricing), not daycare.
-    ensureSession.mockResolvedValue('session=abc');
+    getSiteSession.mockResolvedValue('session=abc');
     setSession.mockReturnValue(undefined);
     const pgHtml = `
       <a href="/schedule/a/C63QgJQ9/1742342400" class="day-event">
@@ -270,7 +271,7 @@ describe('runScheduleSync', () => {
     // "Boarding discounted nights for DC full-time" contains "DC" as a client tier
     // descriptor. The old /(d\/c|\bdc\b)/i pattern matched the mid-title "DC" word
     // and silently dropped this overnight boarding all day. Fix: anchor to ^(d\/c|dc)\b.
-    ensureSession.mockResolvedValue('session=abc');
+    getSiteSession.mockResolvedValue('session=abc');
     setSession.mockReturnValue(undefined);
     const html = `
       <a href="/schedule/a/C63QAAAA/1777629600" class="day-event">
@@ -313,7 +314,7 @@ describe('runScheduleSync', () => {
     // Part-Time daycare appointment using the /schedule/a/ URL format. Missing ^PT\b
     // in nonBoardingPatterns caused the integration check DOM scanner to flag it as
     // a boarding candidate and fire false "Missing from DB" alerts every run.
-    ensureSession.mockResolvedValue('session=abc');
+    getSiteSession.mockResolvedValue('session=abc');
     setSession.mockReturnValue(undefined);
     const html = `
       <a href="/schedule/a/C63QgiVF/1777975200" class="day-event">
@@ -356,14 +357,14 @@ describe('runScheduleSync', () => {
 describe('runDetailSync', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    ensureSession.mockResolvedValue('session=abc');
+    getSiteSession.mockResolvedValue('session=abc');
     setSession.mockReturnValue(undefined);
     resetStuck.mockResolvedValue(0);
     getQueueDepth.mockResolvedValue(0);
   });
 
-  it('returns action=session_failed when ensureSession throws', async () => {
-    ensureSession.mockRejectedValue(new Error('Auth failed'));
+  it('returns action=session_failed when getSiteSession throws', async () => {
+    getSiteSession.mockRejectedValue(new Error('Auth failed'));
     const result = await runDetailSync(makeMockSupabase());
     expect(result.action).toBe('session_failed');
     expect(result.error).toMatch(/Auth failed/);
@@ -423,7 +424,7 @@ describe('runDetailSync', () => {
       retry_count: 0,
     });
     fetchAppointmentDetails.mockRejectedValue(new Error('Session expired — please re-authenticate'));
-    clearSession.mockResolvedValue(undefined);
+    clearSiteSession.mockResolvedValue(undefined);
 
     const supabase = {
       from: () => ({
@@ -435,7 +436,7 @@ describe('runDetailSync', () => {
 
     const result = await runDetailSync(supabase);
     expect(result.action).toBe('session_cleared');
-    expect(clearSession).toHaveBeenCalledTimes(1);
+    expect(clearSiteSession).toHaveBeenCalledTimes(1);
   });
 
   it('returns action=skipped and marks done when applyDetailFilters rejects the appointment', async () => {
@@ -567,7 +568,7 @@ describe('REQ-109 runScheduleSync', () => {
     vi.setSystemTime(new Date(2026, 9, 19));
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    ensureSession.mockResolvedValue('session=abc');
+    getSiteSession.mockResolvedValue('session=abc');
     enqueue.mockResolvedValue(undefined);
     getQueueDepth.mockResolvedValue(0);
     parseDaytimeSchedulePage.mockReturnValue([]);
@@ -613,16 +614,26 @@ describe('REQ-109 runScheduleSync', () => {
   });
 
   it('with no session, returns session_failed and fetches nothing', async () => {
-    ensureSession.mockRejectedValue(new Error('no credentials'));
+    getSiteSession.mockRejectedValue(new Error('no credentials'));
     const result = await runScheduleSync(makeDb());
     expect(result.action).toBe('session_failed');
     expect(result.cursorAdvancedTo).toBe('');
     expect(authenticatedFetch).not.toHaveBeenCalled();
   });
 
-  it('fetches with the session ensureSession returned', async () => {
-    await runScheduleSync(makeDb({ cursor: '2026-10-19' }));
-    expect(setSession).toHaveBeenCalledWith('session=abc');
+  it('fetches with the session getSiteSession returned, and gives the run its database for the breaker', async () => {
+    const db = makeDb({ cursor: '2026-10-19' });
+    await runScheduleSync(db);
+    expect(setSession).toHaveBeenCalledWith('session=abc', { supabase: db });
+  });
+
+  it('REQ-657: while the breaker is tripped, returns site_blocked and fetches nothing', async () => {
+    getSiteSession.mockRejectedValue(new SiteAccessError('SITE_BLOCKED', 'blocked'));
+    const result = await runScheduleSync(makeDb());
+    expect(result.action).toBe('site_blocked');
+    expect(result.error).toBeUndefined();
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it('a failed cursor read fails the scan before anything is fetched or queued (#275)', async () => {
@@ -681,7 +692,7 @@ describe('REQ-109 runScheduleSync', () => {
     expect(result.action).toBe('session_cleared');
     expect(result.reason).toBe('session_expired');
     expect(result.cursorAdvancedTo).toBe('');
-    expect(clearSession).toHaveBeenCalledWith(db);
+    expect(clearSiteSession).toHaveBeenCalledWith(db);
     expect(enqueue).not.toHaveBeenCalled();
     expect(db.calls.settingsUpdates).toEqual([]);
   });
@@ -897,7 +908,7 @@ describe('REQ-109 runDetailSync', () => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    ensureSession.mockResolvedValue('session=abc');
+    getSiteSession.mockResolvedValue('session=abc');
     resetStuck.mockResolvedValue(0);
     getQueueDepth.mockResolvedValue(4);
     fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63X', pet_name: 'Dog A' });
@@ -905,16 +916,25 @@ describe('REQ-109 runDetailSync', () => {
   });
 
   it('with no session, returns session_failed before dequeuing anything', async () => {
-    ensureSession.mockRejectedValue(new Error('no credentials'));
+    getSiteSession.mockRejectedValue(new Error('no credentials'));
     const result = await runDetailSync(makeDb());
     expect(result.action).toBe('session_failed');
     expect(dequeueOne).not.toHaveBeenCalled();
   });
 
-  it('processes the item with the session ensureSession returned', async () => {
+  it('processes the item with the session getSiteSession returned, and gives the run its database for the breaker', async () => {
     dequeueOne.mockResolvedValue(null);
-    await runDetailSync(makeDb());
-    expect(setSession).toHaveBeenCalledWith('session=abc');
+    const db = makeDb();
+    await runDetailSync(db);
+    expect(setSession).toHaveBeenCalledWith('session=abc', { supabase: db });
+  });
+
+  it('REQ-657: while the breaker is tripped, returns site_blocked before dequeuing anything', async () => {
+    getSiteSession.mockRejectedValue(new SiteAccessError('SITE_BLOCKED', 'blocked'));
+    const result = await runDetailSync(makeDb());
+    expect(result).toEqual({ action: 'site_blocked' });
+    expect(dequeueOne).not.toHaveBeenCalled();
+    expect(fetchAppointmentDetails).not.toHaveBeenCalled();
   });
 
   it('a form item with no pet ID is marked done and skipped as no_pet_id', async () => {
@@ -948,7 +968,7 @@ describe('REQ-109 runDetailSync', () => {
     const db = makeDb();
     const result = await runDetailSync(db);
     expect(result).toEqual({ action: 'session_cleared', reason: 'session_expired' });
-    expect(clearSession).toHaveBeenCalledWith(db);
+    expect(clearSiteSession).toHaveBeenCalledWith(db);
     expect(db.calls.queueUpdates).toEqual([{ values: { status: 'pending', processing_started_at: null }, col: 'id', val: 'q1' }]);
     expect(markFailed).not.toHaveBeenCalled();
   });
