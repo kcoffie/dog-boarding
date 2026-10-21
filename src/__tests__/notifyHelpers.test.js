@@ -1,12 +1,13 @@
 /**
  * Tests for refreshDaytimeSchedule — all 7 exit paths.
- * @requirements REQ-v5.0-M1-2
+ * @requirements REQ-v5.0-M1-2, REQ-657
  *
  * The function's contract: NEVER throws. Every exit path returns
  * { refreshed: boolean, rowCount: number, warning: string|null }.
  *
  * Exit paths:
- *   1. ensureSession throws             → { refreshed: false, warning: 'Session unavailable: ...' }
+ *   0. breaker tripped (#324)          → { refreshed: false, warning: null }, no request
+ *   1. getSiteSession throws            → { refreshed: false, warning: 'Session unavailable: ...' }
  *   2. authenticatedFetch throws SESSION_EXPIRED → clears session → { refreshed: false, warning: '...' }
  *   3. authenticatedFetch throws (other) → { refreshed: false, warning: 'Schedule fetch failed: ...' }
  *   4. rows.length === 0 + large HTML   → { refreshed: true, rowCount: 0, warning: '...access-denied...' }
@@ -22,9 +23,10 @@ import { refreshDaytimeSchedule } from '../lib/notifyHelpers.js';
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('../lib/scraper/sessionCache.js', () => ({
-  ensureSession: vi.fn(),
-  clearSession: vi.fn(),
+vi.mock('../lib/scraper/siteAccess.js', async (importOriginal) => ({
+  SiteAccessError: (await importOriginal()).SiteAccessError,
+  getSiteSession: vi.fn(),
+  clearSiteSession: vi.fn(),
 }));
 
 vi.mock('../lib/scraper/auth.js', () => ({
@@ -37,7 +39,7 @@ vi.mock('../lib/scraper/daytimeSchedule.js', () => ({
   upsertDaytimeAppointments: vi.fn(),
 }));
 
-import { ensureSession, clearSession } from '../lib/scraper/sessionCache.js';
+import { getSiteSession, clearSiteSession, SiteAccessError } from '../lib/scraper/siteAccess.js';
 import { setSession, authenticatedFetch } from '../lib/scraper/auth.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../lib/scraper/daytimeSchedule.js';
 
@@ -62,7 +64,7 @@ function makeHtmlResponse(body, status = 200) {
 beforeEach(() => {
   vi.clearAllMocks();
   // Default: happy path
-  ensureSession.mockResolvedValue('session-cookies');
+  getSiteSession.mockResolvedValue('session-cookies');
   setSession.mockReturnValue(undefined);
   authenticatedFetch.mockResolvedValue(makeHtmlResponse('<valid html>'));
   parseDaytimeSchedulePage.mockReturnValue([{ id: 'appt1' }, { id: 'appt2' }]);
@@ -70,12 +72,32 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Exit path 1: ensureSession throws
+// Exit path 0: the breaker is tripped (#324)
 // ---------------------------------------------------------------------------
 
-describe('exit path 1: ensureSession throws', () => {
+describe('REQ-657 exit path 0: the breaker is tripped', () => {
+  it('makes no request and returns no warning (the breaker already alerted)', async () => {
+    getSiteSession.mockRejectedValue(new SiteAccessError('SITE_BLOCKED', 'blocked'));
+
+    const result = await refreshDaytimeSchedule(MOCK_SUPABASE, TEST_DATE);
+
+    expect(result).toEqual({ refreshed: false, rowCount: 0, warning: null });
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+  });
+
+  it('gives the run its database, so a 429 during the refresh trips the breaker', async () => {
+    await refreshDaytimeSchedule(MOCK_SUPABASE, TEST_DATE);
+    expect(setSession).toHaveBeenCalledWith('session-cookies', { supabase: MOCK_SUPABASE });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Exit path 1: getSiteSession throws
+// ---------------------------------------------------------------------------
+
+describe('exit path 1: getSiteSession throws', () => {
   it('returns { refreshed: false } with session warning', async () => {
-    ensureSession.mockRejectedValue(new Error('No credentials'));
+    getSiteSession.mockRejectedValue(new Error('No credentials'));
 
     const result = await refreshDaytimeSchedule(MOCK_SUPABASE, TEST_DATE);
 
@@ -94,20 +116,20 @@ describe('exit path 1: ensureSession throws', () => {
 describe('exit path 2: SESSION_EXPIRED', () => {
   it('clears session and returns { refreshed: false } with expiry warning', async () => {
     authenticatedFetch.mockRejectedValue(new Error('SESSION_EXPIRED'));
-    clearSession.mockResolvedValue(undefined);
+    clearSiteSession.mockResolvedValue(undefined);
 
     const result = await refreshDaytimeSchedule(MOCK_SUPABASE, TEST_DATE);
 
     expect(result.refreshed).toBe(false);
     expect(result.rowCount).toBe(0);
     expect(result.warning).toMatch(/Session expired/);
-    expect(clearSession).toHaveBeenCalledWith(MOCK_SUPABASE);
+    expect(clearSiteSession).toHaveBeenCalledWith(MOCK_SUPABASE);
     expect(parseDaytimeSchedulePage).not.toHaveBeenCalled();
   });
 
-  it('returns { refreshed: false } even if clearSession also fails', async () => {
+  it('returns { refreshed: false } even if clearSiteSession also fails', async () => {
     authenticatedFetch.mockRejectedValue(new Error('SESSION_EXPIRED'));
-    clearSession.mockRejectedValue(new Error('DB unavailable'));
+    clearSiteSession.mockRejectedValue(new Error('DB unavailable'));
 
     const result = await refreshDaytimeSchedule(MOCK_SUPABASE, TEST_DATE);
 
@@ -130,7 +152,7 @@ describe('exit path 3: authenticatedFetch throws (other)', () => {
     expect(result.rowCount).toBe(0);
     expect(result.warning).toMatch(/Schedule fetch failed/);
     expect(result.warning).toMatch(/ECONNREFUSED/);
-    expect(clearSession).not.toHaveBeenCalled();
+    expect(clearSiteSession).not.toHaveBeenCalled();
   });
 
   /** @requirements REQ-657 */
@@ -217,11 +239,6 @@ describe('exit path 6: normal success', () => {
     expect(result.warning).toBeNull();
   });
 
-  it('calls setSession with the cookies from ensureSession', async () => {
-    await refreshDaytimeSchedule(MOCK_SUPABASE, TEST_DATE);
-
-    expect(setSession).toHaveBeenCalledWith('session-cookies');
-  });
 });
 
 // ---------------------------------------------------------------------------

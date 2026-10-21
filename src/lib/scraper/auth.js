@@ -23,6 +23,15 @@ export class SiteThrottled extends Error {
   }
 }
 
+/** sync-proxy refused: the breaker is tripped. Stops a run exactly as a 429/403 does. */
+export class SiteBlocked extends SiteThrottled {
+  constructor() {
+    super(423);
+    this.name = 'SiteBlocked';
+    this.message = 'Booking site access is blocked until Clear in Settings: stopping this run';
+  }
+}
+
 // Set by the first 429/403 in a run; every later request throws it without touching the site,
 // so loops that catch errors and carry on can't keep going. Reset by setSession/resetSiteStop.
 let siteStop = null;
@@ -48,18 +57,27 @@ function paced(fn) {
   return turn.then(fn);
 }
 
-function stopIfThrottled(status) {
-  if (status === 429 || status === 403) {
-    siteStop = new SiteThrottled(status);
-    throw siteStop;
+const isThrottle = (status) => status === 429 || status === 403;
+
+// The Supabase client of a Node run, given by setSession: a 429/403 trips the breaker there.
+let breakerDb = null;
+
+async function stopIfThrottled(status, url) {
+  if (!isThrottle(status)) return;
+  siteStop = new SiteThrottled(status);
+  if (breakerDb) {
+    // Loaded here, not at the top: the browser bundle never needs it (sync-proxy trips instead)
+    const { tripBreaker, throttleReason } = await import('./siteAccess.js');
+    await tripBreaker(breakerDb, throttleReason(status, url));
   }
+  throw siteStop;
 }
 
 /**
  * Build headers for sync-proxy calls: the signed-in user's Supabase access token (REQ-656).
  * Browser only. supabase.js is imported here, not at the top, because cron-auth and the other
  * server jobs import this file and supabase.js throws at load without import.meta.env.
- * getSession() runs on every call so a long historical sync gets a refreshed token.
+ * getSession() runs on every call so a long Sync Now gets a refreshed token.
  */
 async function proxyHeaders() {
   const { supabase } = await import('../supabase.js');
@@ -81,41 +99,17 @@ function isBrowser() {
 }
 
 /**
- * Authenticate with the external booking system.
- * In the browser, credentials are read server-side by the proxy — do not pass them here.
- * In Node.js (cron path), username and password must be supplied.
- * @param {string} [username] - Login username/email (Node.js path only)
- * @param {string} [password] - Login password (Node.js path only)
- * @returns {Promise<{success: boolean, cookies?: string, error?: string}>}
+ * Log in to the booking site (Node only: cron-auth and Clear, through siteLogin.js). The browser
+ * never logs in; sync-proxy adds the stored session on the server (#324).
+ * @param {string} username
+ * @param {string} password
+ * @returns {Promise<{success: boolean, cookies?: string, error?: string,
+ *   throttled?: boolean, status?: number, rejected?: boolean}>} `throttled` (with its `status`): a 429/403 on the login page or the
+ *   login itself; `rejected`: the site answered the login without letting us in. Both are lockout
+ *   risks and trip the breaker. A 5xx or a network error is neither.
  */
 export async function authenticate(username, password) {
   try {
-    // Use server-side proxy in browser to bypass CORS.
-    // Credentials are read from server env by the proxy — not sent in request body.
-    if (isBrowser()) {
-      const proxyStart = Date.now();
-      console.log('[Auth] 🔐 Using server-side proxy for authentication...');
-
-      const response = await fetch('/api/sync-proxy', {
-        method: 'POST',
-        headers: await proxyHeaders(),
-        body: JSON.stringify({ action: 'authenticate' }),
-      });
-
-      const result = await response.json();
-      const proxyDuration = Date.now() - proxyStart;
-
-      if (result.success) {
-        sessionCookies = result.cookies;
-        sessionExpiry = Date.now() + (24 * 60 * 60 * 1000);
-        console.log(`[Auth] ✅ Authentication successful via proxy (${proxyDuration}ms)`);
-      } else {
-        console.log(`[Auth] ❌ Authentication failed via proxy (${proxyDuration}ms): ${result.error}`);
-      }
-
-      return result;
-    }
-
     // Direct fetch for server-side (Node.js) execution - credentials required
     if (!username || !password) {
       return {
@@ -138,6 +132,7 @@ export async function authenticate(username, password) {
       return {
         success: false,
         error: `Failed to load login page: ${loginPageResponse.status}`,
+        ...(isThrottle(loginPageResponse.status) ? { throttled: true, status: loginPageResponse.status } : {}),
       };
     }
 
@@ -189,18 +184,25 @@ export async function authenticate(username, password) {
       };
     }
 
+    if (isThrottle(loginResponse.status)) {
+      return { success: false, error: `Login answered ${loginResponse.status}`, throttled: true, status: loginResponse.status };
+    }
+
     // 200 means login form returned (failed login)
     const responseText = await loginResponse.text();
     if (responseText.includes('invalid') || responseText.includes('incorrect')) {
       return {
         success: false,
         error: 'Invalid credentials',
+        rejected: true,
       };
     }
 
     return {
       success: false,
       error: `Login failed with status ${loginResponse.status}`,
+      // A 5xx is the site failing, not a refusal
+      ...(loginResponse.status < 500 ? { rejected: true } : {}),
     };
   } catch (error) {
     return {
@@ -222,29 +224,24 @@ export function getSessionCookies() {
 }
 
 /**
- * Check if we have a valid session
- * @returns {boolean}
- */
-export function isAuthenticated() {
-  return getSessionCookies() !== null;
-}
-
-/**
  * Clear the current session
  */
 export function clearSession() {
   sessionCookies = null;
   sessionExpiry = null;
+  breakerDb = null;
 }
 
 /**
- * Set session from external source (e.g., stored cookies)
+ * Start a Node run with the stored session (from getSiteSession). Forgets an earlier run's stop.
  * @param {string} cookies
- * @param {number} [expiryMs] - Expiry time in ms from now
+ * @param {{ expiryMs?: number, supabase?: import('@supabase/supabase-js').SupabaseClient }} [opts]
+ *   `supabase`: where a 429/403 in this run trips the breaker (#324)
  */
-export function setSession(cookies, expiryMs = 24 * 60 * 60 * 1000) {
+export function setSession(cookies, { expiryMs = 24 * 60 * 60 * 1000, supabase = null } = {}) {
   sessionCookies = cookies;
   sessionExpiry = Date.now() + expiryMs;
+  breakerDb = supabase;
   resetSiteStop();
 }
 
@@ -258,13 +255,8 @@ export function setSession(cookies, expiryMs = 24 * 60 * 60 * 1000) {
 export async function authenticatedFetch(url, options = {}) {
   if (siteStop) throw siteStop;
 
-  const cookies = getSessionCookies();
-
-  if (!cookies) {
-    throw new Error('Not authenticated. Call authenticate() first.');
-  }
-
-  // Use server-side proxy in browser to bypass CORS
+  // Browser (Sync Now): sync-proxy adds the stored session on the server, checks the breaker,
+  // and trips it on a 429/403. The browser never holds the session.
   if (isBrowser()) {
     const proxyStart = Date.now();
     console.log('[Auth] 📡 Fetching via proxy:', url);
@@ -276,9 +268,7 @@ export async function authenticatedFetch(url, options = {}) {
       body: JSON.stringify({
         action: 'fetch',
         url,
-        cookies,
         method: options.method || 'GET',
-        ...(options.redirect === 'manual' ? { redirect: 'manual' } : {}),
       }),
     }));
 
@@ -286,7 +276,12 @@ export async function authenticatedFetch(url, options = {}) {
     const proxyDuration = Date.now() - proxyStart;
 
     console.log(`[Auth] ⏱️ Proxy fetch completed (${proxyDuration}ms): ${result.success ? 'success' : 'failed'}`);
-    stopIfThrottled(result.status);
+    if (result.blocked) {
+      siteStop = new SiteBlocked();
+      throw siteStop;
+    }
+    if (result.noSession) throw new Error(result.error || 'No booking-site session');
+    await stopIfThrottled(result.status, url);
 
     // Return a Response-like object that matches the expected interface
     return {
@@ -295,14 +290,15 @@ export async function authenticatedFetch(url, options = {}) {
       text: async () => result.html || '',
       json: async () => JSON.parse(result.html || '{}'),
       headers: {
-        get: (name) => {
-          const key = name.toLowerCase();
-          if (key === 'set-cookie') return result.cookies;
-          if (key === 'location') return result.location || null;
-          return null;
-        },
+        get: (name) => (name.toLowerCase() === 'location' ? result.location || null : null),
       },
     };
+  }
+
+  const cookies = getSessionCookies();
+
+  if (!cookies) {
+    throw new Error('Not authenticated. Call authenticate() first.');
   }
 
   // Direct fetch for server-side (Node.js) execution
@@ -316,7 +312,7 @@ export async function authenticatedFetch(url, options = {}) {
     ...options,
     headers,
   }));
-  stopIfThrottled(response.status);
+  await stopIfThrottled(response.status, url);
   return response;
 }
 
@@ -362,7 +358,6 @@ function cookiesArrayToHeader(setCookieArr) {
 export default {
   authenticate,
   getSessionCookies,
-  isAuthenticated,
   clearSession,
   setSession,
   authenticatedFetch,

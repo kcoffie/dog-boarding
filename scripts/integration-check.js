@@ -22,7 +22,7 @@
  *   0. Sync-before-compare: run schedule sync + drain detail queue so any
  *      bookings added since the midnight cron are in the DB before we compare.
  *      Non-fatal — if sync fails, the check continues with the current DB state.
- *   1. Load session cookies from Supabase sync_settings (same cache the crons use)
+ *   1. Load the stored booking-site session from site_access (the crons' session; never logs in)
  *   2. Playwright: render /schedule, extract appointment IDs
  *      from live DOM links (boarding + daytime)
  *   3. Supabase: query boardings overlapping today → today+7d; query daytime_appointments for today
@@ -42,7 +42,7 @@ import { createClient } from '@supabase/supabase-js';
 import { alertAndLog, exitCodeAfterAlert } from '../src/lib/alertKate.js';
 import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
-import { readSettingsRow } from '../src/lib/scraper/syncSettingsRow.js';
+import { getSiteSession } from '../src/lib/scraper/siteAccess.js';
 import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
 
 const BASE_URL = 'https://agirlandyourdog.com';
@@ -131,25 +131,22 @@ function getSupabase() {
 // Step 1: Load session cookies from Supabase
 // ---------------------------------------------------------------------------
 
-async function loadSession(supabase) {
-  console.log('[IntegCheck] Loading session cookies from sync_settings...');
-
-  const data = await readSettingsRow(supabase, 'session_cookies, session_expires_at');
-
-  if (!data?.session_cookies) {
-    console.log('[IntegCheck] No session_cookies found in DB');
-    return null;
+/**
+ * The stored session, or { blocked: true } while the breaker is tripped (#324), or null when
+ * there's no usable session. A failed read throws (the run fails rather than guessing).
+ */
+export async function loadSession(supabase) {
+  console.log('[IntegCheck] Loading the stored session from site_access...');
+  try {
+    return { cookies: await getSiteSession(supabase) };
+  } catch (err) {
+    if (err.code === 'SITE_BLOCKED') return { blocked: true };
+    if (err.code === 'NO_SESSION') {
+      console.log('[IntegCheck] %s', err.message);
+      return null;
+    }
+    throw err;
   }
-
-  const expiresAt = new Date(data.session_expires_at);
-  if (Date.now() >= expiresAt.getTime()) {
-    console.log('[IntegCheck] Cached session expired at %s', expiresAt.toISOString());
-    return null;
-  }
-
-  const remainingH = Math.round((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
-  console.log('[IntegCheck] Session valid (~%dh remaining)', remainingH);
-  return data.session_cookies;
 }
 
 // ---------------------------------------------------------------------------
@@ -480,7 +477,7 @@ async function main() {
           detailResult.queueDepth ?? 0,
         );
         drained++;
-        if (detailResult.action === 'idle' || detailResult.action === 'session_cleared' || detailResult.action === 'session_failed') {
+        if (['idle', 'session_cleared', 'session_failed', 'site_blocked'].includes(detailResult.action)) {
           break;
         }
         if (i === MAX_DETAIL_ITERATIONS - 1) {
@@ -492,7 +489,7 @@ async function main() {
   } catch (step0Err) {
     // A 429/403 from the booking site: don't add a browser page load on top (#324)
     if (step0Err.name === 'SiteThrottled') {
-      const msg = `⚠️ Integration check stopped (${today})\n${step0Err.message}. Skipped the schedule check so the booking site gets no more requests; the next run tries again.`;
+      const msg = `⚠️ Integration check stopped (${today})\n${step0Err.message}. Skipped the schedule check so the booking site gets no more requests. Nothing contacts it until Clear in Settings.`;
       console.error('[IntegCheck]', msg);
       process.exit(await sendReport(supabase, msg, true));
     }
@@ -500,7 +497,13 @@ async function main() {
   }
 
   // Step 1: Session
-  const cookieString = await loadSession(supabase);
+  const session = await loadSession(supabase);
+  if (session?.blocked) {
+    // The breaker alerted when it tripped and ops-watch reports it daily; don't repeat it here
+    console.log('[IntegCheck] Booking site blocked: skipping the schedule check (no request made)');
+    process.exit(0);
+  }
+  const cookieString = session?.cookies;
   if (!cookieString) {
     const msg = `⚠️ Integration check skipped (${today})\nNo valid session cached. Run cron-auth first.`;
     console.log('[IntegCheck]', msg);

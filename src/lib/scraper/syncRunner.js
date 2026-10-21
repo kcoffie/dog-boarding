@@ -17,8 +17,12 @@
  *     (config.js). integration-check.js imports the same constant so all
  *     execution paths use a single definition.
  *
+ * SESSION (#324): both runners read the stored session with getSiteSession and never log in.
+ *   While the breaker is tripped they return action 'site_blocked' before touching the site or
+ *   the queue; with no session they return 'session_failed'.
+ *
  * SIDE EFFECT — setSession:
- *   runScheduleSync calls setSession(cookies) on the auth module, which sets
+ *   runScheduleSync calls setSession(cookies, { supabase }) on the auth module, which sets
  *   module-level state used by authenticatedFetch. This is intentional and safe
  *   in a single-process Node.js context (no concurrency). Be aware that any
  *   subsequent authenticatedFetch calls in the same process will use these
@@ -41,7 +45,7 @@
 
 import { setSession } from './auth.js';
 import { authenticatedFetch, SiteThrottled } from './auth.js';
-import { ensureSession, clearSession } from './sessionCache.js';
+import { getSiteSession, clearSiteSession } from './siteAccess.js';
 import { SCRAPER_CONFIG } from './config.js';
 import { applyDetailFilters } from './appointmentFilter.js';
 import { readSettingsRow } from './syncSettingsRow.js';
@@ -237,9 +241,9 @@ async function saveCursorDate(supabase, date) {
  * Does NOT call writeCronHealth — callers are responsible for health tracking.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- *   Must use the service role key — reads session_cookies from sync_settings.
+ *   Must use the service role key — reads the session from site_access.
  * @returns {Promise<{
- *   action: 'ok'|'enqueue_failed'|'session_failed'|'session_cleared',
+ *   action: 'ok'|'enqueue_failed'|'session_failed'|'session_cleared'|'site_blocked',
  *   reason?: string, failedEnqueues?: number, failedEnqueueIds?: string[],
  *   pagesScanned: number,
  *   found: number,
@@ -255,18 +259,21 @@ async function saveCursorDate(supabase, date) {
 export async function runScheduleSync(supabase) {
   console.log('[SyncRunner:Schedule] Starting schedule sync');
 
-  // Ensure we have a valid session — re-authenticates if cache is missing/expired.
-  // Requires EXTERNAL_SITE_USERNAME + EXTERNAL_SITE_PASSWORD in env when re-auth is needed.
   let cookies;
   try {
-    cookies = await ensureSession(supabase);
+    cookies = await getSiteSession(supabase);
   } catch (sessionErr) {
+    const empty = { pagesScanned: 0, found: 0, skipped: 0, queued: 0, daytimeUpserted: 0, daytimeErrors: 0, cursorAdvancedTo: '', queueDepth: 0 };
+    if (sessionErr.code === 'SITE_BLOCKED') {
+      console.log('[SyncRunner:Schedule] ⛔ Booking site blocked: not scanning');
+      return { action: 'site_blocked', ...empty };
+    }
     console.error('[SyncRunner:Schedule] ❌ Could not obtain session:', sessionErr.message);
-    return { action: 'session_failed', error: sessionErr.message, pagesScanned: 0, found: 0, skipped: 0, queued: 0, daytimeUpserted: 0, daytimeErrors: 0, cursorAdvancedTo: '', queueDepth: 0 };
+    return { action: 'session_failed', error: sessionErr.message, ...empty };
   }
 
   // Sets module-level state in auth.js used by authenticatedFetch (intentional — see module JSDoc).
-  setSession(cookies);
+  setSession(cookies, { supabase });
 
   const cursorDate = await getCursorDate(supabase);
   const today = new Date();
@@ -295,7 +302,7 @@ export async function runScheduleSync(supabase) {
     } catch (err) {
       if (err.message === 'SESSION_EXPIRED') {
         console.log('[SyncRunner:Schedule] 🔒 SESSION_EXPIRED detected — clearing cached session');
-        await clearSession(supabase);
+        await clearSiteSession(supabase);
         return { action: 'session_cleared', reason: 'session_expired', pagesScanned: stats.pagesScanned, found: 0, skipped: 0, queued: 0, daytimeUpserted: 0, daytimeErrors: 0, cursorAdvancedTo: '', queueDepth: 0 };
       }
       throw err;
@@ -414,7 +421,7 @@ async function requeueAndStop(supabase, item, err) {
  *   before dequeuing. Pass false when looping to avoid redundant DB queries
  *   on every iteration — the caller should call resetStuck once before the loop.
  * @returns {Promise<{
- *   action: 'idle'|'created'|'updated'|'unchanged'|'form_stored'|'skipped'|'failed'|'form_failed'|'save_failed'|'session_failed'|'session_cleared',
+ *   action: 'idle'|'created'|'updated'|'unchanged'|'form_stored'|'skipped'|'failed'|'form_failed'|'save_failed'|'session_failed'|'session_cleared'|'site_blocked',
  *   externalId?: string,
  *   queueDepth?: number,
  *   error?: string,
@@ -422,16 +429,20 @@ async function requeueAndStop(supabase, item, err) {
  * }>}
  */
 export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
-  // Ensure session before dequeuing so we never need to put an item back on auth failure.
+  // Get the session before dequeuing so we never need to put an item back on auth failure.
   let cookies;
   try {
-    cookies = await ensureSession(supabase);
+    cookies = await getSiteSession(supabase);
   } catch (sessionErr) {
+    if (sessionErr.code === 'SITE_BLOCKED') {
+      console.log('[SyncRunner:Detail] ⛔ Booking site blocked: not dequeuing');
+      return { action: 'site_blocked' };
+    }
     console.error('[SyncRunner:Detail] ❌ Could not obtain session:', sessionErr.message);
     return { action: 'session_failed', error: sessionErr.message };
   }
 
-  setSession(cookies);
+  setSession(cookies, { supabase });
 
   // Reset stuck items — only needed on the first call in a loop, not every iteration.
   if (runResetStuck) {
@@ -475,7 +486,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
       if (formErr instanceof SiteThrottled) await requeueAndStop(supabase, item, formErr);
       if (formErr?.message && formErr.message.includes('Session expired')) {
         console.log('[SyncRunner:Detail] 🔒 SESSION_EXPIRED during form fetch — clearing session + re-queuing item');
-        await clearSession(supabase);
+        await clearSiteSession(supabase);
         await supabase
           .from('sync_queue')
           .update({ status: 'pending', processing_started_at: null })
@@ -502,7 +513,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
     if (err instanceof SiteThrottled) await requeueAndStop(supabase, item, err);
     if (err?.message && err.message.includes('Session expired')) {
       console.log('[SyncRunner:Detail] 🔒 SESSION_EXPIRED during detail fetch — clearing session + re-queuing item');
-      await clearSession(supabase);
+      await clearSiteSession(supabase);
       await supabase
         .from('sync_queue')
         .update({ status: 'pending', processing_started_at: null })

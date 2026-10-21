@@ -1,13 +1,12 @@
 /**
  * Authentication module tests
- * @requirements REQ-100, REQ-402, REQ-640
+ * @requirements REQ-100, REQ-402, REQ-640, REQ-657
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   authenticate,
   authenticatedFetch,
-  isAuthenticated,
   clearSession,
   setSession,
   getSessionCookies,
@@ -15,6 +14,13 @@ import {
 } from '../../lib/scraper/auth.js';
 import { SCRAPER_CONFIG } from '../../lib/scraper/config.js';
 import { mockLoginPage } from './fixtures.js';
+
+// The breaker table is a boundary: a 429/403 in a Node run trips it (siteAccess.test.js covers it)
+const tripBreaker = vi.fn(async () => true);
+vi.mock('../../lib/scraper/siteAccess.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  tripBreaker: (...args) => tripBreaker(...args),
+}));
 
 // Mock global fetch
 const mockFetch = vi.fn();
@@ -134,28 +140,17 @@ describe('REQ-100: External Source Authentication', () => {
 
       await authenticate('user@example.com', 'password');
 
-      expect(isAuthenticated()).toBe(true);
-      expect(getSessionCookies()).toBeTruthy();
+      expect(getSessionCookies()).toBe('session=initial; auth=authenticated');
     });
   });
 
   describe('session management', () => {
-    it('isAuthenticated() returns false when no session', () => {
-      expect(isAuthenticated()).toBe(false);
-    });
-
-    it('isAuthenticated() returns true after setSession()', () => {
+    it('clearSession() removes the session', () => {
       setSession('test-cookie=value');
-
-      expect(isAuthenticated()).toBe(true);
-    });
-
-    it('clearSession() removes authentication', () => {
-      setSession('test-cookie=value');
-      expect(isAuthenticated()).toBe(true);
+      expect(getSessionCookies()).toBe('test-cookie=value');
 
       clearSession();
-      expect(isAuthenticated()).toBe(false);
+      expect(getSessionCookies()).toBeNull();
     });
 
     it('getSessionCookies() returns null when not authenticated', () => {
@@ -170,13 +165,51 @@ describe('REQ-100: External Source Authentication', () => {
 
     it('session expires after specified time', async () => {
       // Set session with very short expiry
-      setSession('test=value', 1); // 1ms expiry
+      setSession('test=value', { expiryMs: 1 }); // 1ms expiry
 
       // Wait for expiry
       await new Promise(resolve => setTimeout(resolve, 10));
 
-      expect(isAuthenticated()).toBe(false);
       expect(getSessionCookies()).toBeNull();
+    });
+  });
+
+  describe('REQ-657: what a failed login means for the breaker', () => {
+    const loginPage = () => ({ ok: true, status: 200, headers: new Headers(), text: () => Promise.resolve(mockLoginPage) });
+    const answer = (status, body = '') => ({ ok: status < 300, status, headers: new Headers(), text: () => Promise.resolve(body) });
+
+    it('the login form back with "invalid" is a rejected login', async () => {
+      mockFetch.mockResolvedValueOnce(loginPage()).mockResolvedValueOnce(answer(200, 'Those credentials are invalid'));
+      expect(await authenticate('user@example.com', 'wrong')).toEqual({ success: false, error: 'Invalid credentials', rejected: true });
+    });
+
+    it('a 401 to the login is a rejected login', async () => {
+      mockFetch.mockResolvedValueOnce(loginPage()).mockResolvedValueOnce(answer(401));
+      const result = await authenticate('user@example.com', 'wrong');
+      expect(result.rejected).toBe(true);
+      expect(result.throttled).toBeUndefined();
+    });
+
+    it('a 429 to the login is throttled, with its status, and not counted as rejected', async () => {
+      mockFetch.mockResolvedValueOnce(loginPage()).mockResolvedValueOnce(answer(429));
+      expect(await authenticate('user@example.com', 'pw')).toEqual({ success: false, error: 'Login answered 429', throttled: true, status: 429 });
+    });
+
+    it('a 403 on the login page is throttled, and the login is never posted', async () => {
+      mockFetch.mockResolvedValueOnce(answer(403));
+      const result = await authenticate('user@example.com', 'pw');
+      expect(result).toEqual({ success: false, error: 'Failed to load login page: 403', throttled: true, status: 403 });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('a 502 to the login is neither rejected nor throttled (the site failing is not a lockout risk)', async () => {
+      mockFetch.mockResolvedValueOnce(loginPage()).mockResolvedValueOnce(answer(502));
+      expect(await authenticate('user@example.com', 'pw')).toEqual({ success: false, error: 'Login failed with status 502' });
+    });
+
+    it('a 500 on the login page is not throttled', async () => {
+      mockFetch.mockResolvedValueOnce(answer(500));
+      expect(await authenticate('user@example.com', 'pw')).toEqual({ success: false, error: 'Failed to load login page: 500' });
     });
   });
 
@@ -318,6 +351,40 @@ describe('REQ-657: booking-site requests are paced, and a 429/403 stops the run'
     await vi.advanceTimersByTimeAsync(1500);
     expect((await second).status).toBe(200);
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('in a run started with its database, a 429 trips the breaker once, naming the status and the page', async () => {
+    tripBreaker.mockClear();
+    const db = { fake: 'db' };
+    setSession('session=abc', { supabase: db });
+    mockFetch.mockResolvedValueOnce(respond(429));
+    const first = authenticatedFetch(URL).catch(err => err);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await first).toBeInstanceOf(SiteThrottled);
+    await expect(authenticatedFetch(URL)).rejects.toBeInstanceOf(SiteThrottled);
+    expect(tripBreaker).toHaveBeenCalledTimes(1);
+    expect(tripBreaker).toHaveBeenCalledWith(db, 'it answered 429 (too many requests) on a booking page');
+  });
+
+  it('a 403 trips it as refused', async () => {
+    tripBreaker.mockClear();
+    const db = { fake: 'db' };
+    setSession('session=abc', { supabase: db });
+    mockFetch.mockResolvedValueOnce(respond(403));
+    const first = authenticatedFetch('https://agirlandyourdog.com/schedule/days-7/2026/10/19').catch(err => err);
+    await vi.advanceTimersByTimeAsync(0);
+    await first;
+    expect(tripBreaker).toHaveBeenCalledWith(db, 'it answered 403 (refused) on a schedule page');
+  });
+
+  it('a 500 does not trip the breaker', async () => {
+    tripBreaker.mockClear();
+    setSession('session=abc', { supabase: { fake: 'db' } });
+    mockFetch.mockResolvedValueOnce(respond(500));
+    const first = authenticatedFetch(URL);
+    await vi.advanceTimersByTimeAsync(0);
+    await first;
+    expect(tripBreaker).not.toHaveBeenCalled();
   });
 
   it('a 500 does not stop the run', async () => {

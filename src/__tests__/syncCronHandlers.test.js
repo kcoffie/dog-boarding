@@ -1,11 +1,11 @@
 /**
  * The Vercel sync crons: cron-auth, cron-schedule, cron-detail (+ cron-detail-2).
- * @requirements REQ-109, REQ-401, REQ-640
+ * @requirements REQ-109, REQ-401, REQ-640, REQ-657
  *
  * Expected values come from REQUIREMENTS, not from running the handlers.
  * These handlers are thin wrappers: auth gate, health tracking, result → HTTP status.
- * Boundaries faked: Supabase client creation, the AGYD login (authenticate), the session
- * store, the sync runner and queue (tested in scraper/), and the cron_health writer.
+ * Boundaries faked: Supabase client creation, the AGYD login (authenticate), the site_access
+ * table (session store and breaker; siteAccess.test.js covers it), the sync runner and queue (tested in scraper/), and the cron_health writer.
  *
  * Not covered on purpose: "runs when CRON_SECRET is unset". REQ-109 allows it, but #239
  * plans to make it fail closed, so a test would lock in the behavior about to change.
@@ -14,13 +14,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@supabase/supabase-js', () => ({ createClient: vi.fn(() => ({ fake: 'supabase' })) }));
 vi.mock('../lib/scraper/auth.js', () => ({ authenticate: vi.fn() }));
-vi.mock('../lib/scraper/sessionCache.js', () => ({ storeSession: vi.fn(async () => {}) }));
+vi.mock('../lib/scraper/siteAccess.js', async (importOriginal) => ({
+  throttleReason: (await importOriginal()).throttleReason,
+  readSiteAccess: vi.fn(),
+  storeSiteSession: vi.fn(),
+  tripBreaker: vi.fn(async () => true),
+}));
 vi.mock('../lib/scraper/syncRunner.js', () => ({ runScheduleSync: vi.fn(), runDetailSync: vi.fn() }));
 vi.mock('../lib/scraper/syncQueue.js', () => ({ resetStuck: vi.fn(async () => 0) }));
 vi.mock('../../api/_cronHealth.js', () => ({ writeCronHealth: vi.fn(async () => {}) }));
 
 const { authenticate } = await import('../lib/scraper/auth.js');
-const { storeSession } = await import('../lib/scraper/sessionCache.js');
+const { readSiteAccess, storeSiteSession, tripBreaker } = await import('../lib/scraper/siteAccess.js');
 const { runScheduleSync, runDetailSync } = await import('../lib/scraper/syncRunner.js');
 const { resetStuck } = await import('../lib/scraper/syncQueue.js');
 const { writeCronHealth } = await import('../../api/_cronHealth.js');
@@ -32,7 +37,7 @@ const { default: cronDetail2 } = await import('../../api/cron-detail-2.js');
 const SECRET = 'cron-secret';
 const AUTH = { authorization: `Bearer ${SECRET}` };
 const NOW = '2026-10-19T00:00:00.000Z';
-const DAY_LATER = '2026-10-20T00:00:00.000Z';
+const STAMP = '2026-10-20T06:00:00.000Z'; // what storeSiteSession stamped (30 h; siteAccess.test.js)
 
 function call(handler, { method = 'GET', headers = AUTH } = {}) {
   const res = { code: 0, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
@@ -53,6 +58,9 @@ beforeEach(() => {
   writeCronHealth.mockImplementation(async () => {});
   resetStuck.mockImplementation(async () => 0);
   authenticate.mockResolvedValue({ success: true, cookies: 'sid=abc' });
+  readSiteAccess.mockResolvedValue({ session_cookies: null, session_expires_at: null, blocked_at: null, blocked_reason: null });
+  storeSiteSession.mockResolvedValue(STAMP);
+  tripBreaker.mockResolvedValue(true);
   runScheduleSync.mockResolvedValue({ action: 'scanned', pagesScanned: 3, found: 12, skipped: 7, queued: 5, requeuedEdited: 2, urlChangesIgnored: 4, cursorAdvancedTo: '2026-11-02', queueDepth: 9 });
   runDetailSync.mockResolvedValue({ action: 'created', externalId: 'EXT1', queueDepth: 4 });
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -127,32 +135,63 @@ describe('REQ-640: cron-auth', () => {
     expect(authenticate).toHaveBeenCalledWith('user', 'pass');
   });
 
-  it('stores the new session cookies for 24 hours', async () => {
+  it('stores the new session in site_access', async () => {
     await call(cronAuth);
-    expect(storeSession).toHaveBeenCalledWith({ fake: 'supabase' }, 'sid=abc', 24 * 60 * 60 * 1000);
+    expect(storeSiteSession).toHaveBeenCalledWith({ fake: 'supabase' }, 'sid=abc');
   });
 
-  it('answers refreshed with the expiry 24 hours from now', async () => {
+  it('answers refreshed with the stored session\'s expiry', async () => {
     const res = await call(cronAuth);
     expect(res.code).toBe(200);
-    expect(res.body).toEqual({ ok: true, action: 'refreshed', expiresAt: DAY_LATER });
+    expect(res.body).toEqual({ ok: true, action: 'refreshed', expiresAt: STAMP });
   });
 
   it('records started, then success with the expiry', async () => {
     await call(cronAuth);
     expect(writes('auth')).toStrictEqual([
       ['started', { action: 'running' }, null],
-      ['success', { action: 'refreshed', expiresAt: DAY_LATER }, null],
+      ['success', { action: 'refreshed', expiresAt: STAMP }, null],
     ]);
   });
 
-  it('a rejected login fails the run, records the reason and stores no session', async () => {
-    authenticate.mockResolvedValue({ success: false, error: 'bad password' });
+  it('a rejected login fails the run, records the reason, stores no session and trips the breaker (REQ-657)', async () => {
+    authenticate.mockResolvedValue({ success: false, error: 'Invalid credentials', rejected: true });
     const res = await call(cronAuth);
     expect(res.code).toBe(500);
-    expect(res.body).toStrictEqual({ error: 'Authentication failed: bad password' });
-    expect(storeSession).not.toHaveBeenCalled();
-    expect(writes('auth').at(-1)).toEqual(['failure', null, 'Authentication failed: bad password']);
+    expect(res.body).toStrictEqual({ error: 'Authentication failed: Invalid credentials' });
+    expect(storeSiteSession).not.toHaveBeenCalled();
+    expect(tripBreaker).toHaveBeenCalledWith({ fake: 'supabase' }, 'it refused the login', { rejectedLogin: true });
+    expect(writes('auth').at(-1)).toEqual(['failure', null, 'Authentication failed: Invalid credentials']);
+  });
+
+  it('a 429 on the login trips the breaker naming the status (REQ-657)', async () => {
+    authenticate.mockResolvedValue({ success: false, error: 'Login answered 429', throttled: true, status: 429 });
+    await call(cronAuth);
+    expect(tripBreaker).toHaveBeenCalledWith({ fake: 'supabase' }, 'it answered 429 (too many requests) on the login page');
+  });
+
+  it('a login that fails with a 5xx fails the run without tripping the breaker (REQ-657)', async () => {
+    authenticate.mockResolvedValue({ success: false, error: 'Login failed with status 502' });
+    const res = await call(cronAuth);
+    expect(res.code).toBe(500);
+    expect(tripBreaker).not.toHaveBeenCalled();
+  });
+
+  it('while the breaker is tripped, it does not log in and records site_blocked as success (REQ-657)', async () => {
+    readSiteAccess.mockResolvedValue({ blocked_at: '2026-10-18T07:05:00.000Z', blocked_reason: 'it refused the login' });
+    const res = await call(cronAuth);
+    expect(res.code).toBe(200);
+    expect(res.body).toStrictEqual({ ok: true, action: 'site_blocked' });
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(writes('auth').at(-1)).toStrictEqual(['success', { action: 'site_blocked' }, null]);
+  });
+
+  it('a failed site_access read fails the run without logging in (fails closed)', async () => {
+    readSiteAccess.mockRejectedValue(new Error('site_access read failed: timeout'));
+    const res = await call(cronAuth);
+    expect(res.code).toBe(500);
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(writes('auth').at(-1)).toStrictEqual(['failure', null, 'site_access read failed: timeout']);
   });
 
   it('missing site credentials fail the run without trying to log in', async () => {
@@ -250,6 +289,13 @@ describe('REQ-109: cron-schedule', () => {
     expect(writes('schedule').at(-1)).toStrictEqual(['success', { action: 'session_cleared', reason: 'cookies rejected' }, null]);
   });
 
+  it('REQ-657: a blocked run is recorded as success with site_blocked (the breaker already alerted)', async () => {
+    runScheduleSync.mockResolvedValue({ action: 'site_blocked', pagesScanned: 0 });
+    const res = await call(cronSchedule);
+    expect(res.code).toBe(200);
+    expect(writes('schedule').at(-1)).toStrictEqual(['success', { action: 'site_blocked' }, null]);
+  });
+
   it('an unexpected error returns 500 and records the failure', async () => {
     runScheduleSync.mockRejectedValue(new Error('parse crash'));
     const res = await call(cronSchedule);
@@ -317,6 +363,13 @@ describe('REQ-109: cron-detail', () => {
     runDetailSync.mockResolvedValue({ action: 'session_failed', error: 'e'.repeat(700) });
     await call(cronDetail);
     expect(writes('detail').at(-1)[2]).toHaveLength(500);
+  });
+
+  it('REQ-657: a blocked run is recorded as success with site_blocked (the breaker already alerted)', async () => {
+    runDetailSync.mockResolvedValue({ action: 'site_blocked' });
+    const res = await call(cronDetail);
+    expect(res.code).toBe(200);
+    expect(writes('detail').at(-1)).toStrictEqual(['success', { action: 'site_blocked' }, null]);
   });
 
   it('a cleared session is recorded as success', async () => {

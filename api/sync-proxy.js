@@ -1,17 +1,49 @@
 /**
- * Server-side proxy for external sync operations
- * Bypasses CORS restrictions by making requests from the server
- * Callers: the browser only, as a signed-in user (REQ-656). Fetches are GET-only.
- * @requirements REQ-100, REQ-104, REQ-656
+ * Server-side proxy for Sync Now's booking-site reads (the browser can't call the site: CORS).
+ * Callers: the browser only, as a signed-in user (REQ-656).
+ *
+ * Booking-site safety (#324, REQ-657):
+ * - The session stays on the server: the proxy adds the stored cookie (site_access) itself and
+ *   never returns it or any Set-Cookie. The browser never logs in; only cron-auth and Clear do.
+ * - While the breaker is tripped it answers { blocked: true } without contacting the site.
+ * - It fetches only the site's sync paths (schedule, booking, forms), GET only, and follows no
+ *   redirects: status and Location go back to the browser (reconciliation reads them).
+ * - A 429 or 403 trips the breaker here, on the server, and alerts Kate once.
+ *
+ * @requirements REQ-100, REQ-104, REQ-656, REQ-657
  */
 
+import { createClient } from '@supabase/supabase-js';
 import { verifyUser } from '../src/lib/verifyUser.js';
+import { getSiteSession, tripBreaker, throttleReason } from '../src/lib/scraper/siteAccess.js';
 
 export const config = {
   runtime: 'edge',
 };
 
-const EXTERNAL_BASE_URL = 'https://agirlandyourdog.com';
+const EXTERNAL_HOST = 'agirlandyourdog.com';
+const EXTERNAL_BASE_URL = `https://${EXTERNAL_HOST}`;
+
+/** The paths Sync Now reads. Anything else is refused before any request. */
+const SYNC_PATHS = [
+  /^\/schedule$/,
+  /^\/schedule\/days-7\/\d{4}\/\d{1,2}\/\d{1,2}$/,
+  /^\/schedule\/a\/[A-Za-z0-9]+(\/\d+)?$/,
+  /^\/pets\/[A-Za-z0-9]+\/forms$/,
+  /^\/pets\/[A-Za-z0-9]+\/forms\/\d+\/view\/\d+$/,
+];
+
+/** True when `url` is one of the site's sync pages (on its own host, over https). */
+export function isSyncUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url, EXTERNAL_BASE_URL);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'https:' && parsed.hostname === EXTERNAL_HOST
+    && SYNC_PATHS.some((re) => re.test(parsed.pathname));
+}
 
 /**
  * Sanitize error messages to avoid leaking sensitive information
@@ -27,231 +59,70 @@ function sanitizeError(message) {
   return sanitized;
 }
 
-/**
- * Parse all input fields from a login form in HTML.
- * Returns a map of { fieldName: { type, value } }.
- */
-function extractLoginFormFields(html) {
-  const fields = {};
-  for (const [input] of html.matchAll(/<input[^>]*>/gi)) {
-    const type = (input.match(/type="([^"]+)"/i)?.[1] || 'text').toLowerCase();
-    const name = input.match(/name="([^"]+)"/i)?.[1];
-    const value = input.match(/value="([^"]+)"/i)?.[1] ?? '';
-    if (name) fields[name] = { type, value };
-  }
-  return fields;
+function json(body, status) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-/**
- * Build a Cookie request header from an array of Set-Cookie strings.
- * Uses indexOf('=') to handle cookie values containing '=' signs.
- */
-function cookiesArrayToHeader(setCookieArr) {
-  const cookies = new Map();
-  for (const setCookie of setCookieArr) {
-    const [nameValue] = setCookie.split(';');
-    const eqIdx = nameValue.indexOf('=');
-    if (eqIdx < 0) continue;
-    const name = nameValue.slice(0, eqIdx).trim();
-    const value = nameValue.slice(eqIdx + 1).trim().replace(/^"|"$/g, '');
-    if (name) cookies.set(name, value);
-  }
-  return Array.from(cookies.entries()).map(([n, v]) => `${n}=${v}`).join('; ');
+function serviceDb() {
+  const url = process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Server misconfigured: Supabase service key not set');
+  return createClient(url, key);
 }
 
-export default async function handler(request) {
-  // Only allow POST
-  if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+/** @param {{ getDb?: () => import('@supabase/supabase-js').SupabaseClient }} [deps] */
+export function makeHandler({ getDb = serviceDb } = {}) {
+  return async function handler(request) {
+    if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
-  const auth = await verifyUser(request.headers.get('authorization'));
-  if (!auth.ok) {
-    return new Response(JSON.stringify({ error: auth.error }), {
-      status: auth.status,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+    const auth = await verifyUser(request.headers.get('authorization'));
+    if (!auth.ok) return json({ error: auth.error }, auth.status);
 
-  try {
-    const body = await request.json();
-    const { action, url, cookies, method = 'GET', redirect } = body;
+    try {
+      const { action, url, method = 'GET' } = await request.json();
 
-    // Handle different actions
-    switch (action) {
-      case 'authenticate': {
-        // Credentials are read server-side — never sent from the browser
-        const username = process.env.EXTERNAL_SITE_USERNAME;
-        const password = process.env.EXTERNAL_SITE_PASSWORD;
-        if (!username || !password) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: 'Server credentials not configured',
-          }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
+      if (action !== 'fetch') return json({ success: false, error: `Unknown action: ${action}` }, 400);
+      if (!url) return json({ success: false, error: 'URL is required' }, 400);
+      // Reads only: the sync never writes to the booking site.
+      if (method !== 'GET') return json({ success: false, error: 'Only GET is allowed' }, 400);
+      if (!isSyncUrl(url)) return json({ success: false, error: 'URL not allowed' }, 403);
 
-        const loginUrl = `${EXTERNAL_BASE_URL}/login`;
-
-        // Get login page for CSRF token
-        const loginPageResponse = await fetch(loginUrl, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; DogBoardingSync/2.0)',
-          },
-        });
-
-        if (!loginPageResponse.ok) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: `Failed to load login page: ${loginPageResponse.status}`,
-          }), {
-            status: 502,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        const initialCookiesArr = loginPageResponse.headers.getSetCookie?.() ?? [];
-        const initialCookieHeader = cookiesArrayToHeader(initialCookiesArr);
-        const loginPageHtml = await loginPageResponse.text();
-        const formFields = extractLoginFormFields(loginPageHtml);
-
-        // Build form data: use discovered field names + include all hidden fields
-        const formData = new URLSearchParams();
-        for (const [name, { type, value }] of Object.entries(formFields)) {
-          if (type === 'hidden') {
-            formData.append(name, value);
-          } else if (type === 'text' || type === 'email') {
-            formData.append(name, username);
-          } else if (type === 'password') {
-            formData.append(name, password);
-          }
-        }
-
-        // Submit login
-        const loginResponse = await fetch(loginUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (compatible; DogBoardingSync/2.0)',
-            'Cookie': initialCookieHeader,
-          },
-          body: formData.toString(),
-          redirect: 'manual',
-        });
-
-        // Successful login returns 302 redirect to schedule/dashboard
-        const isRedirect = loginResponse.status >= 300 && loginResponse.status < 400;
-        const newCookiesArr = loginResponse.headers.getSetCookie?.() ?? [];
-        const allCookies = cookiesArrayToHeader([...initialCookiesArr, ...newCookiesArr]);
-
-        if (isRedirect) {
-          return new Response(JSON.stringify({
-            success: true,
-            cookies: allCookies,
-          }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        const responseText = await loginResponse.text();
-        if (responseText.includes('invalid') || responseText.includes('incorrect')) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: 'Invalid credentials',
-          }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        return new Response(JSON.stringify({
-          success: false,
-          error: `Login failed with status ${loginResponse.status}`,
-        }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' },
-        });
+      const db = getDb();
+      let cookies;
+      try {
+        cookies = await getSiteSession(db);
+      } catch (err) {
+        if (err.code === 'SITE_BLOCKED') return json({ success: false, blocked: true, error: err.message }, 423);
+        if (err.code === 'NO_SESSION') return json({ success: false, noSession: true, error: err.message }, 503);
+        throw err; // a failed read: fail closed
       }
 
-      case 'fetch': {
-        if (!url) {
-          return new Response(JSON.stringify({
-            success: false,
-            error: 'URL is required',
-          }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
+      const fullUrl = new URL(url, EXTERNAL_BASE_URL).href;
+      const response = await fetch(fullUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; DogBoardingSync/2.0)',
+          'Cookie': cookies,
+        },
+      });
 
-        // Reads only: the sync never writes to the booking site.
-        if (method !== 'GET') {
-          return new Response(JSON.stringify({ success: false, error: 'Only GET is allowed' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        // Construct full URL if relative
-        const fullUrl = url.startsWith('http') ? url : `${EXTERNAL_BASE_URL}${url}`;
-
-        // Validate hostname to prevent SSRF
-        const parsedUrl = new URL(fullUrl);
-        if (parsedUrl.hostname !== 'agirlandyourdog.com') {
-          return new Response(JSON.stringify({ success: false, error: 'URL not allowed' }), {
-            status: 403,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        // redirect 'manual': reconciliation reads where a booking's URL redirects to (#324)
-        const response = await fetch(fullUrl, {
-          method,
-          redirect: redirect === 'manual' ? 'manual' : 'follow',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; DogBoardingSync/2.0)',
-            ...(cookies ? { 'Cookie': cookies } : {}),
-          },
-        });
-
-        const html = await response.text();
-
-        return new Response(JSON.stringify({
-          success: response.ok,
-          status: response.status,
-          html,
-          cookies: response.headers.get('set-cookie') || '',
-          location: response.headers.get('location') || '',
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
+      if (response.status === 429 || response.status === 403) {
+        await tripBreaker(db, throttleReason(response.status, fullUrl));
       }
 
-      default:
-        return new Response(JSON.stringify({
-          success: false,
-          error: `Unknown action: ${action}`,
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+      const html = await response.text();
+      return json({
+        success: response.ok,
+        status: response.status,
+        html,
+        location: response.headers.get('location') || '',
+      }, 200);
+    } catch (error) {
+      console.error('[sync-proxy] Error:', error);
+      return json({ success: false, error: sanitizeError(error.message) }, 500);
     }
-  } catch (error) {
-    console.error('[sync-proxy] Error:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: sanitizeError(error.message),
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  };
 }
+
+export default makeHandler();

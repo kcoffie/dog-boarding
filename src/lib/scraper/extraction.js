@@ -4,7 +4,7 @@
  */
 
 import { SCRAPER_CONFIG } from './config.js';
-import { authenticatedFetch, isAuthenticated } from './auth.js';
+import { authenticatedFetch } from './auth.js';
 
 /**
  * Parse check-in and check-out dates from a service_type string.
@@ -158,10 +158,6 @@ export function parseAppointmentPage(html, sourceUrl = '') {
  * @returns {Promise<Object>} Extracted appointment data
  */
 export async function fetchAppointmentDetails(appointmentId, timestamp = '') {
-  if (!isAuthenticated()) {
-    throw new Error('Not authenticated. Call authenticate() first.');
-  }
-
   const url = timestamp
     ? `${SCRAPER_CONFIG.baseUrl}/schedule/a/${appointmentId}/${timestamp}`
     : `${SCRAPER_CONFIG.baseUrl}/schedule/a/${appointmentId}`;

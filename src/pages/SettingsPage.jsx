@@ -5,6 +5,7 @@ import { useInvites } from '../hooks/useInvites';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getEmployeeName, isEmployeeActive } from '../utils/employeeHelpers';
 import SyncSettings from '../components/SyncSettings';
+import SiteAccessCard from '../components/SiteAccessCard';
 import { useCronHealth } from '../hooks/useCronHealth';
 
 const CRON_LABELS = {
@@ -40,6 +41,7 @@ function resultSummary(result) {
   if (action === 'skipped' && result.reason === 'session_valid') return 'Session still valid';
   if (action === 'skipped' && result.reason === 'no_session')    return 'Waiting for auth';
   if (action === 'session_cleared') return 'Session expired — cleared';
+  if (action === 'site_blocked')    return 'Skipped: booking site blocked';
   if (action === 'idle')         return 'Queue empty';
   if (action === 'failed')       return `Item failed — ${queueDepth ?? 0} remaining`;
   if (action === 'save_failed')  return `Save failed — ${queueDepth ?? 0} remaining`;
@@ -615,6 +617,9 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* Booking-site breaker (#324) */}
+      <SiteAccessCard />
 
       {/* Cron Health Section */}
       <CronHealthCard cronHealth={cronHealth} loading={cronHealthLoading} />

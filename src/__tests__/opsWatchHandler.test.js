@@ -1,6 +1,6 @@
 /**
  * /api/ops-watch handler: auth, dry run, cron_health, and the data it hands to the rules (REQ-651).
- * @requirements REQ-651, REQ-652
+ * @requirements REQ-651, REQ-652, REQ-657
  *
  * Boundaries faked: Supabase (a chainable fake returning queued results per table), fetch
  * (GitHub + the roster image), Kate's alert channel (alertAndLog), and the cron_health writer.
@@ -44,6 +44,7 @@ function healthy() {
   results.cron_health = [{ data: [{ last_ran_at: ago(16), status: 'success', result: { found: 227 }, error_msg: null }], error: null }];
   results.message_log = [{ data: [{ wamid: 'w1', sent_at: ago(0.1) }], error: null }];
   results.message_delivery_status = [{ data: [{ wamid: 'w1' }], error: null }];
+  results.site_access = [{ data: [{ blocked_at: null, blocked_reason: null }], error: null }];
   globalThis.fetch = vi.fn(async (url) => {
     if (String(url).includes('roster-image')) return { status: 200, headers: { get: () => 'image/png' } };
     if (String(url).includes('/dispatches')) return { ok: true, status: 204 };
@@ -231,12 +232,26 @@ describe("REQ-652: Kate's alert channel", () => {
     expect(writeCronHealth.mock.calls[0][2]).toBe('failure');
   });
 
-  it('failed alerts are read from message_log: status failed, the five alert jobs, the last 24 hours', async () => {
+  it('REQ-657: the breaker is read from the one site_access row', async () => {
+    await call(AUTH, { dryRun: '1' });
+    const q = calls.filter(([t]) => t === 'site_access').map(([, m, ...a]) => [m, ...a]);
+    expect(q).toEqual([['select', 'blocked_at, blocked_reason'], ['eq', 'id', true], ['limit', 1]]);
+  });
+
+  it('REQ-657: a tripped breaker in site_access becomes a finding', async () => {
+    results.site_access = [{ data: [{ blocked_at: '2026-10-16T07:05:00Z', blocked_reason: 'it refused the login' }], error: null }];
+    const res = await call(AUTH, { dryRun: '1' });
+    expect(res.body.findings).toEqual([
+      'Booking site blocked since 2026-10-16T07:05:00Z: it refused the login. Nothing syncs until Clear in Settings',
+    ]);
+  });
+
+  it('failed alerts are read from message_log: status failed, the six alert jobs, the last 24 hours', async () => {
     await call(AUTH, { dryRun: '1' });
     const q = calls.filter(([t]) => t === 'message_log').map(([, m, ...a]) => [m, ...a]);
     expect(q.slice(-4)).toEqual([
       ['select', 'job_name'], ['eq', 'status', 'failed'],
-      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert']],
+      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access']],
       ['gte', 'sent_at', '2026-10-15T17:00:00.000Z'],
     ]);
   });

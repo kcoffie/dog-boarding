@@ -683,7 +683,7 @@ cron functions that each complete within the Hobby plan's 10-second limit.
 
 **Acceptance Criteria:**
 - `cron-auth` always re-authenticates on every run — no skip-if-valid logic (unconditional refresh prevents the race condition where a late-stored session appears valid but expires before morning notify windows)
-- `cron-auth` stores new session cookies and expiry in `sync_settings` after successful auth
+- `cron-auth` stores new session cookies and expiry in `site_access` after successful auth, through `loginToSite` (REQ-657: it doesn't log in while the breaker is tripped, and a rejected login trips it)
 - `cron-schedule` fetches this week, next week and a rotating cursor week per call (see Shared runners below)
 - `cron-schedule` cursor advances 7 days each call, wraps back to today after 8 weeks (~today+56d)
 - `cron-schedule` filters known non-boarding titles before enqueueing (same patterns as `sync.js`)
@@ -728,10 +728,10 @@ cron functions that each complete within the Hobby plan's 10-second limit.
   - **Session expired** during a form or detail fetch → the session is cleared and the item goes back to `pending` (not a retry); returns `session_cleared`
   - **Any other fetch or save error**, including a thrown value that isn't an `Error` → the item is marked failed with the error's first 200 characters (retry/backoff per above); returns `form_failed`, `failed` or `save_failed`
   - Every processed item reports the pending `queueDepth`
-- *`sync_settings` access (#275).* Every reader and writer (cursor, session cache, browser sync settings, integration-check) reads the row through `readSettingsRow`: `order('id')`, `limit(1)`, `maybeSingle()`. So if a duplicate row ever appears, they all use the lowest id, rather than splitting the cursor and session across rows (`.limit(1).single()` returns an arbitrary row, it doesn't error)
+- *`sync_settings` access (#275).* Every reader and writer (cursor, browser sync settings) reads the row through `readSettingsRow`: `order('id')`, `limit(1)`, `maybeSingle()`. So if a duplicate row ever appears, they all use the lowest id, rather than splitting the cursor and session across rows (`.limit(1).single()` returns an arbitrary row, it doesn't error)
   - A read error throws `sync_settings read failed: …`. An empty table is "no row" (cursor = today, no cached session). A writer never inserts after a failed read
   - A failed cursor write throws `sync_settings cursor write failed: …`. Either throw fails the scan, so `cron-schedule` records `failure`
-  - `ensureSession`: when a fresh login succeeds but the session can't be cached, it logs the error and still returns the cookies. `cron-auth` calls `storeSession` itself, so a cache failure stays red there
+  - The session is no longer in `sync_settings`: it moved to `site_access` (REQ-657, #324). No runner logs in; `ensureSession` is gone
 - *Failed enqueues (#275).* A scan where any enqueue threw returns `action: 'enqueue_failed'`, with `failedEnqueues` (the count) and `failedEnqueueIds` (the first 5), plus the usual counts. `cron-schedule` records it as `failure` with error `N enqueue(s) failed` and the counts in `result`. The cursor still advances: at about 4 scans a day it cycles in about 2 days, and one item that always fails mustn't freeze it. An insert that hits the unique key (`23505`, a concurrent scan queued it first) returns `unchanged`, not a failure. Integration Check step 0 drains after `enqueue_failed` as after `ok`
 - *Still true:* `session_cleared` is recorded as health success (a single expired session is routine; `cron-auth` re-logs in daily). A persisting one is reported by ops-watch's schedule-scan rule (REQ-651) and its 16 h oldest-pending rule
 
@@ -1506,7 +1506,7 @@ The proxy token was built into the public JavaScript bundle (`VITE_` prefix), so
 ---
 
 ### REQ-657: Booking-site safety
-**Added:** v6.6.0 | **Status:** In progress (part A of #324; the breaker and single login are part B)
+**Added:** v6.6.0 | **Status:** Complete (#324 parts A and B; the old `sync_settings` session columns are dropped in a later PR after one good night)
 
 The booking-site account is the client's; a rate limit or a lockout hurts her business. Every request is paced, the first sign of throttling ends the run, and reconciliation marks a booking gone only on proof. Design: `docs/specs/sync-redesign-design-note.md`, "Before any unattended run".
 
@@ -1519,10 +1519,21 @@ The booking-site account is the client's; a rate limit or a lockout hurts her bu
 - 0 appointments across the whole schedule scan fails `runSync` and `runScheduleSync` before anything else
 - Reconciliation opens each candidate without following redirects. **Gone** = a redirect whose `Location` is exactly `/schedule` on the booking site's own host (what a removed booking's URL answers). A 200 appointment page is present (warned, not marked). Anything else — another redirect, an error status, an unrecognised page, a fetch error — stops reconciliation and marks nothing
 - More than 10 candidates: reconciliation is skipped without opening any. More than 3 gone: none are marked. Every candidate is checked before any is marked. A stop is reported in the run's result, `sync_logs.errors` and the last-sync message
-- `sync-proxy` follows redirects unless asked for `redirect: 'manual'`, and returns the response's `Location`
 - The historical import (Settings) and the local dev server's login proxy are gone
 
-**Tests:** `src/__tests__/scraper/auth.test.js`, `src/__tests__/scraper/browserProxyAuth.test.js`, `src/__tests__/scraper/reconcile.test.js`, `src/__tests__/scraper/runSyncSafety.test.js`, `src/__tests__/scraper/syncRunner.test.js`, `src/__tests__/syncProxyAuth.test.js`, `src/__tests__/notifyHelpers.test.js`
+*Part B: the session, the breaker and one login (#324)*
+- The session and the breaker live in `site_access`: one row (a boolean key that must be true), row-level security on and no policies, so only the service key reads or writes it (migration 028). Columns: `session_cookies`, `session_expires_at`, `blocked_at`, `blocked_reason`, `cleared_at`, `cleared_by`
+- `getSiteSession` is the one way a run gets the session. It never logs in. It throws `SITE_BLOCKED` while the breaker is tripped, `NO_SESSION` with no cookie or a passed stamp, and fails closed when the read fails. `runScheduleSync`, `runDetailSync`, the roster refresh, Integration Check and `sync-proxy` use it
+- Only `cron-auth` and Clear log in, both through `loginToSite`, which checks the breaker first. A stored session is stamped 30 h (Kate, 2026-10-21)
+- **Only a lockout risk trips the breaker:** a rejected login (the login form back, or a non-5xx non-redirect answer), or a 429/403 on any page or the login. A 5xx, a timeout, a network error or an unrecognised page fails that run without tripping. The first trip records `blocked_at` and its reason and alerts Kate once (Telegram, `alertAndLog`, job `site-access`); a later trip keeps the first reason and sends nothing. A trip that can't be recorded still alerts
+- The alert says when (Pacific), why, that nothing contacts the booking site until Clear, where Clear is, and that the roster uses the data already in the app. For a rejected login it adds "Update the password in Vercel before you press Clear."
+- While tripped, no path contacts the site: the runners return `site_blocked` before fetching or dequeuing; `cron-auth`, `cron-schedule` and `cron-detail` record it as health **success** with `action: 'site_blocked'` (not a cron failure: the breaker alerted, and ops-watch reports it daily); the roster refresh returns no warning; Integration Check exits before the browser check; `sync-proxy` answers 423 `{ blocked: true }`
+- In Node, `setSession(cookies, { supabase })` gives the run its database, and `authenticatedFetch` trips the breaker on a 429/403. In the browser, `sync-proxy` trips it on the server
+- `sync-proxy` keeps the session on the server: it adds the stored cookie itself and never returns it or a Set-Cookie. It has no login action. It fetches only the sync pages (`/schedule`, `/schedule/days-7/Y/M/D`, `/schedule/a/<id>[/<ts>]`, `/pets/<id>/forms`, `/pets/<id>/forms/<n>/view/<n>`) on the site's own host over https, GET only, follows no redirects, and returns the status and `Location`. No stored session → 503 `{ noSession: true }`; a failed read → 500. The browser treats `blocked` as `SiteBlocked`, which stops Sync Now as a 429 does
+- **Clear** (Settings → `POST /api/site-access`, a signed-in user): one conditional update clears it only while blocked and records who and when, so two presses clear and log in once (the second is 409). It then logs in at once; a refused login trips it again with a new alert (502). `GET /api/site-access` returns `{ blocked, reason, since }` only
+- ops-watch reports a tripped breaker every day (`Booking site blocked since <time>: <reason>. Nothing syncs until Clear in Settings`), and `site-access` is in `ALERT_JOBS`, so an undelivered trip alert is a finding too
+
+**Tests:** `src/__tests__/scraper/auth.test.js`, `src/__tests__/scraper/browserProxyAuth.test.js`, `src/__tests__/scraper/reconcile.test.js`, `src/__tests__/scraper/runSyncSafety.test.js`, `src/__tests__/scraper/syncRunner.test.js`, `src/__tests__/syncProxyAuth.test.js`, `src/__tests__/notifyHelpers.test.js`, `src/__tests__/scraper/siteAccess.test.js`, `src/__tests__/scraper/siteLogin.test.js`, `src/__tests__/siteAccessHandler.test.js`, `src/__tests__/syncCronHandlers.test.js`, `src/__tests__/opsWatch.test.js`, `src/__tests__/opsWatchHandler.test.js`, `src/__tests__/integrationCheckSession.test.js`, `src/components/SiteAccessCard.test.jsx`
 
 ---
 

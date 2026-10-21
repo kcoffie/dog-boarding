@@ -6,7 +6,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { SCRAPER_CONFIG } from './config.js';
 import { applyDetailFilters } from './appointmentFilter.js';
-import { authenticate, isAuthenticated, resetSiteStop, SiteThrottled } from './auth.js';
+import { resetSiteStop, SiteThrottled } from './auth.js';
 import { fetchAllSchedulePages } from './schedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
 import { mapAndSaveAppointment } from './mapping.js';
@@ -254,22 +254,8 @@ export async function runSync(options = {}) {
     logTiming('createSyncLog', stepStart);
     onProgress?.({ stage: 'started', logId: syncLogRecord.id });
 
-    // Authenticate if needed
-    if (!isAuthenticated()) {
-      onProgress?.({ stage: 'authenticating' });
-      stepStart = Date.now();
-      syncLog('[Sync] 🔐 Starting authentication...');
-      const authResult = await authenticate();
-      logTiming('authentication', stepStart);
-
-      if (!authResult.success) {
-        throw new Error(`Authentication failed: ${authResult.error}`);
-      }
-    } else {
-      syncLog('[Sync] ✅ Already authenticated, skipping login');
-    }
-
-    onProgress?.({ stage: 'authenticated' });
+    // No login here: sync-proxy uses the session cron-auth stored, and refuses while the
+    // breaker is tripped (#324)
 
     // Fetch schedule
     onProgress?.({ stage: 'fetching_schedule' });
