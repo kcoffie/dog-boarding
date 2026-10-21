@@ -42,10 +42,10 @@ This ships first and protects today's paths. The plan below comes from reading e
 | Roster refresh (`notify` → `refreshDaytimeSchedule`) | each roster run | yes, through `ensureSession` | 1 request | no: it doesn't check the status |
 | Integration Check step 0 | 3×/day | yes, through `ensureSession` | no: up to ~43 requests back to back (3 pages + 20 detail-and-form rounds) | no: it carries on to Playwright |
 | Integration Check compare (Playwright) | 3×/day | no: it loads the stored session | 1 page | no |
-| Sync Now (`runSync` in the browser, through `sync-proxy`) | when pressed | yes, on nearly every press (the session lives in the tab) | mostly 1.5 s; the form drain isn't | no, and it's the only path that reconciles |
+| Sync Now (`runSync` in the browser, through `sync-proxy`) | when pressed | yes, on nearly every press | mostly 1.5 s; the form drain isn't | no, and it's the only path that reconciles |
 | Historical import (Settings → `historicalSync.js`) | when pressed | as Sync Now | as Sync Now | no: `runSync` per batch, with reconciliation, carrying on after failures |
 | Local dev server (`vite.config.js` proxy) | `npm run dev` Sync Now | **yes, with an empty password**: every local Sync Now sends a failed login to the real site | — | no |
-| Scripts: `drain-queue.js`, `test-cron.mjs`, `clear-session.mjs`, `test-stages.mjs`, `test-full-sync.mjs` | by hand | `drain-queue` and `test-cron` can; the two `test-*.mjs` are January debug scripts, deleted in PR A | — | no |
+| Scripts: `scripts/drain-queue.js`, `scripts/test-cron.mjs`, `scripts/clear-session.mjs`; `test-stages.mjs` and `test-full-sync.mjs` at the repo root | by hand | `drain-queue` and `test-cron` can; the two root `test-*.mjs` are January debug scripts, deleted in PR A | — | no |
 
 Every path except Playwright goes through two functions in `src/lib/scraper/auth.js`: `authenticate()` and `authenticatedFetch()`. The browser's calls reach the site through `api/sync-proxy.js`.
 
@@ -63,14 +63,14 @@ Every path except Playwright goes through two functions in `src/lib/scraper/auth
 ### The plan
 **One paced fetch.** `authenticatedFetch` paces every request in the process 1.5 s apart, as a promise chain (Fluid compute can run two calls in one process, so not read-then-sleep). In the browser it paces the tab's calls to `sync-proxy`. Two separate jobs aren't paced against each other; the redesign's one-run-at-a-time rule closes that.
 
-**A stop that can't be swallowed.** On a 429 or 403, `authenticatedFetch` throws `SiteThrottled` and sets a stop flag in `auth.js` (reset by `setSession` at the start of the next run). Every later request in that run throws at once without touching the site, so the loops that catch errors and carry on can't keep going. `runDetailSync` re-throws it instead of `markFailed`; `refreshDaytimeSchedule` checks the status; Integration Check step 0 skips Playwright after it. `withRetry` is deleted (it never retried: its config key is missing).
+**A stop that can't be swallowed.** On a 429 or 403, `authenticatedFetch` throws `SiteThrottled` and sets a stop flag in `auth.js` (reset by `setSession` at the start of the next run). Every later request in that run throws at once without touching the site, so the loops that catch errors and carry on can't keep going. `runDetailSync` re-throws it instead of `markFailed`; `refreshDaytimeSchedule` checks the status; Integration Check step 0 skips Playwright after it. `withRetry` is deleted (it never retried: its delay list, `SCRAPER_CONFIG.retryDelays`, doesn't exist).
 
 **The session and the breaker move to a new table, `site_access`:** one row (a boolean primary key), row-level security on and no policies, so only the service key can read or write it.
 - Columns: `session_cookies`, `session_expires_at` (moved from `sync_settings`), `blocked_at`, `blocked_reason`, `cleared_at`, `cleared_by`.
 - **One way in:** `getSiteSession(supabase)` replaces `ensureSession`. It returns the cookie, or throws `SITE_BLOCKED` or `NO_SESSION`, and fails closed if the read fails. It never logs in. Every Node path calls it.
-- **Trips** (first trip wins; later ones don't change the reason or alert again): a rejected login in `cron-auth`, or a 429/403 anywhere. In Node, `authenticatedFetch` trips it where the error happens (`setSession(cookies, supabase)` gives it the client). In the browser, `sync-proxy` trips it on the server.
-- **The browser never holds the session.** `sync-proxy` checks the breaker, adds the stored cookie on the server, follows no redirects, passes status and `Location` back, and only fetches schedule, appointment and forms paths. Its `authenticate` action and the browser's `isAuthenticated()` checks (`runSync`, `schedule.js`, `extraction.js`) go.
-- **Only cron-auth logs in.** It checks the breaker first. A rejected session is cleared and that run fails; the next `cron-auth` or Clear logs in.
+- **Trips** (first trip wins; later ones don't change the reason or alert again): a rejected login in `cron-auth`, or a 429/403 anywhere. In Node, `authenticatedFetch` trips it where the error happens (`setSession(cookies, { expiryMs, supabase })` gives it the client; today's signature is `setSession(cookies, expiryMs)`). In the browser, `sync-proxy` trips it on the server.
+- **The session stays on the server.** `sync-proxy` checks the breaker, adds the stored cookie itself, follows no redirects, passes status and `Location` back, and allows only the site's sync paths (schedule, appointment, forms). Its `authenticate` action and the browser's `isAuthenticated()` checks (`runSync`, `schedule.js`, `extraction.js`) go.
+- **Only cron-auth and Clear log in,** through one shared login function that checks the breaker first. A rejected session is cleared and that run fails; the next `cron-auth` or Clear logs in.
 - A blocked run exits with `action: 'site_blocked'` and touches nothing. It isn't a cron failure, because the breaker has already alerted; ops-watch keeps reporting it (below), and the roster's own refresh warning doesn't repeat it.
 
 **Clear:** a Settings section shows "Booking site blocked since <time>: <reason>" and a **Clear** button. `POST /api/site-access` (`verifyUser`) clears it in one conditional update (only while blocked, so a double press means one login), records who and when, then runs `cron-auth`'s login. A failed login trips it again with a new alert. `GET /api/site-access` returns `{ blocked, reason, since }` only.
@@ -88,14 +88,17 @@ Every path except Playwright goes through two functions in `src/lib/scraper/auth
 
 ### Two PRs
 - **A (code only, no schema):** the paced fetch, `SiteThrottled` and the stop flag (with the re-throws above), removing `withRetry`, the reconciliation guard (with `sync-proxy` passing status and `Location`, no redirects), 0 rows fails, removing the historical import, deleting the dev-server login proxy and the two `test-*.mjs` files.
-- **B (new table, architect gate passed with changes):** `site_access`, `getSiteSession`, the breaker, only cron-auth logs in, `sync-proxy` adds the cookie on the server, Clear, the alert, ops-watch, the 30 h stamp. **Order:** migration (create `site_access`, copy the session in), then deploy B, then drop the old columns in a later PR after one good night. Every step outside 23:30–01:30 UTC. The old columns were added by hand, so the migration is written against production's real schema.
+- **B (new table, architect gate passed with changes):** `site_access`, `getSiteSession`, the breaker, only cron-auth and Clear log in, `sync-proxy` adds the cookie on the server, Clear, the alert, ops-watch, the 30 h stamp. **Order:** migration (create `site_access`, copy the session in), then deploy B, then drop the old columns in a later PR after one good night. Every step outside 23:30–01:30 UTC. The old columns were added by hand, so the migration is written against production's real schema.
 
 ### Tests (from the rules; each seen failing)
 - A second request waits until 1.5 s after the first; two concurrent calls are still 1.5 s apart.
 - A 429 and a 403 each throw `SiteThrottled`; after one, the next request in the run throws without a fetch; `runDetailSync` doesn't mark the item failed.
 - Reconciliation: a 302 to `/schedule` is gone; a 302 to the login page, a 200, a 500 and an unknown page are not, and stop the loop; 11 candidates open nothing; 4 gone marks none; 3 gone marks 3.
 - 0 rows across the scan fails the run before reconciliation; 0 on one page of three doesn't.
-- Breaker: a 429 trips it once (one alert for two trips); each listed path makes no request while it's tripped; `getSiteSession` never logs in and fails closed; Clear records the user and logs in once for two presses; a rejected login re-trips it; `GET /api/site-access` never returns the cookie; `sync-proxy` refuses a path outside the allowlist.
+- Breaker: a 429 trips it once (one alert for two trips); each listed path makes no request while it's tripped; `getSiteSession` never logs in and fails closed; Clear records the user and logs in once for two presses; a rejected login re-trips it; `GET /api/site-access` never returns the cookie; `sync-proxy` fetches only the site's sync paths, follows no redirects and never returns the cookie; `site_access` can't be read with the anon key.
+- A 5xx, a timeout and an unrecognised page don't trip the breaker; a second trip keeps the first reason; a blocked run returns `site_blocked` and isn't a cron failure; the stored session's stamp is 30 h.
+- The stop flag resets at the next run's `setSession`; `refreshDaytimeSchedule` returns a warning on a 429; Integration Check skips Playwright after `SiteThrottled`.
+- 10 candidates opens all 10 (11 opens none).
 
 ## How it works (after the safety PR)
 | Run | Runs on | When (UTC; Pacific) | Window | Booking pages opened | Requests per run (est.) |
@@ -110,7 +113,7 @@ Every path except Playwright goes through two functions in `src/lib/scraper/auth
 - **Every run writes `sync_logs`** (kind, window, requests, counts, status), so Sync History is real (P11). The button page reads it (#317).
 - **Timezone:** the workflow sets `TZ=America/Los_Angeles`. Window code gets a test under `TZ=UTC`.
 - **Stuck runs:** `abortStuckSync`'s cutoff goes from 30 to 60 min. The first full pass, with an empty skip store, is run once by hand with Kate watching.
-- **Retired after 3 good nights:** `cron-schedule`, `cron-detail`, `cron-detail-2`, booking items in `sync_queue` (form items stay), and the Integration Check's sync-before-compare. `MONITORED_CRONS` and ops-watch's queue checks change in the same PR. `cron-auth` stays as the only path that logs in.
+- **Retired after 3 good nights:** `cron-schedule`, `cron-detail`, `cron-detail-2`, booking items in `sync_queue` (form items stay), and the Integration Check's sync-before-compare. `MONITORED_CRONS` and ops-watch's queue checks change in the same PR. `cron-auth` stays; it and Clear are the only paths that log in.
 - **Integration Check:** check only, once a day, both ways (P13), each finding reported once (#315). Dispatched by Vercel at 08:30 UTC, after the full pass (07:00 + up to 59 min of jitter + ~10 min). It stays a separate run, so the checker never checks its own work.
 - **ADR:** a new ADR supersedes ADR-002 ("sync on Vercel crons").
 
@@ -148,7 +151,7 @@ Every path except Playwright goes through two functions in `src/lib/scraper/auth
 ## Kate's decisions (2026-10-21)
 1. **Option 3:** near-term runs on Vercel (Fluid compute is on for qboard, so functions get 300 s), full pass on GitHub dispatched by Vercel.
 2. **After a failed login, nothing logs in again until Kate clears the flag.** The alert must say clearly what happened and how to clear it.
-3. **Reconciliation archives at most 3 bookings per run;** above that it archives nothing and alerts.
+3. **Reconciliation archives at most 3 bookings per run;** above that it archives nothing and alerts. *(Refined 2026-10-21 for #324: skip above 10 candidates, check first; a browser run reports in its result and `sync_logs`, Telegram comes with the server-side engine.)*
 4. **Near-term runs 2×/day** (09:00 and 01:00 UTC = 2am and 6pm PDT); add midday after a week of real counts.
 5. **Full pass window: 7 days back to 45 days ahead.**
 6. **Button:** one run at a time, at least 15 min apart.
@@ -165,4 +168,4 @@ Every path except Playwright goes through two functions in `src/lib/scraper/auth
   - **The Vercel crons** `cron-schedule` (00:05 UTC, scans 3 week pages and queues bookings), `cron-detail` and `cron-detail-2` (00:10 and 00:15, each processes one queued booking).
   - **The Integration Check's step 0.**
   - **The booking items in `sync_queue`.** Form items stay.
-  - `cron-auth` (00:00, signs in to the booking site once a day) **stays**, as the only path allowed to log in.
+  - `cron-auth` (00:00, signs in to the booking site once a day) **stays**; it and Clear are the only paths allowed to log in.
