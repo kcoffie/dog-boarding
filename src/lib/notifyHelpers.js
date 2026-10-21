@@ -68,6 +68,7 @@ export async function refreshDaytimeSchedule(supabase, date) {
     let html;
     try {
       const response = await authenticatedFetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       html = await response.text();
     } catch (err) {
       // SESSION_EXPIRED: clear the cached session so cron-auth re-authenticates.

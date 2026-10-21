@@ -490,6 +490,12 @@ async function main() {
       console.log('[IntegCheck] Step 0 done: %d detail iteration(s)', drained);
     }
   } catch (step0Err) {
+    // A 429/403 from the booking site: don't add a browser page load on top (#324)
+    if (step0Err.name === 'SiteThrottled') {
+      const msg = `⚠️ Integration check stopped (${today})\n${step0Err.message}. Skipped the schedule check so the booking site gets no more requests; the next run tries again.`;
+      console.error('[IntegCheck]', msg);
+      process.exit(await sendReport(supabase, msg, true));
+    }
     console.error('[IntegCheck] Step 0 error (continuing to check): %s', step0Err.message);
   }
 

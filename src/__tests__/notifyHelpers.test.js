@@ -51,8 +51,8 @@ const TEST_DATE = new Date(2026, 2, 20); // March 20 2026 (local)
 const SMALL_HTML = '<html>tiny</html>';
 const LARGE_HTML = 'x'.repeat(11000); // > 10000 bytes → access-denied heuristic
 
-function makeHtmlResponse(body) {
-  return { text: () => Promise.resolve(body) };
+function makeHtmlResponse(body, status = 200) {
+  return { ok: status >= 200 && status < 300, status, text: () => Promise.resolve(body) };
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +131,27 @@ describe('exit path 3: authenticatedFetch throws (other)', () => {
     expect(result.warning).toMatch(/Schedule fetch failed/);
     expect(result.warning).toMatch(/ECONNREFUSED/);
     expect(clearSession).not.toHaveBeenCalled();
+  });
+
+  /** @requirements REQ-657 */
+  it('an error status is a failed fetch, not a schedule with 0 events (#324)', async () => {
+    authenticatedFetch.mockResolvedValue(makeHtmlResponse('<html>Service Unavailable</html>', 503));
+
+    const result = await refreshDaytimeSchedule(MOCK_SUPABASE, TEST_DATE);
+
+    expect(result.refreshed).toBe(false);
+    expect(result.warning).toBe('Schedule fetch failed: HTTP 503');
+  });
+
+  /** @requirements REQ-657 */
+  it('a 429 from the booking site leaves the roster on its data with a warning (#324)', async () => {
+    const { SiteThrottled } = await vi.importActual('../lib/scraper/auth.js');
+    authenticatedFetch.mockRejectedValue(new SiteThrottled(429));
+
+    const result = await refreshDaytimeSchedule(MOCK_SUPABASE, TEST_DATE);
+
+    expect(result.refreshed).toBe(false);
+    expect(result.warning).toBe('Schedule fetch failed: Booking site answered 429: stopping this run');
   });
 });
 

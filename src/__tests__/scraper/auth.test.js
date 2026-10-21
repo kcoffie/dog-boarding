@@ -6,11 +6,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   authenticate,
+  authenticatedFetch,
   isAuthenticated,
   clearSession,
   setSession,
   getSessionCookies,
+  SiteThrottled,
 } from '../../lib/scraper/auth.js';
+import { SCRAPER_CONFIG } from '../../lib/scraper/config.js';
 import { mockLoginPage } from './fixtures.js';
 
 // Mock global fetch
@@ -214,5 +217,117 @@ describe('REQ-100: External Source Authentication', () => {
 
       consoleSpy.mockRestore();
     });
+  });
+});
+
+/**
+ * @requirements REQ-657
+ */
+describe('REQ-657: booking-site requests are paced, and a 429/403 stops the run', () => {
+  const URL = 'https://agirlandyourdog.com/schedule/a/ABC/1';
+  const respond = (status) => ({ ok: status < 300, status, text: async () => '' });
+
+  let days = 0;
+
+  beforeEach(() => {
+    SCRAPER_CONFIG.delayBetweenRequests = 1500;
+    vi.useFakeTimers();
+    // Each test a day past the last one's requests, so its first request goes at once
+    days += 1;
+    vi.setSystemTime(Date.now() + days * 86_400_000);
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue(respond(200));
+    setSession('session=abc');
+  });
+
+  afterEach(() => {
+    SCRAPER_CONFIG.delayBetweenRequests = 0;
+    vi.useRealTimers();
+    clearSession();
+  });
+
+  it('a second request starts 1.5 s after the first, not before', async () => {
+    const first = authenticatedFetch(URL);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    const second = authenticatedFetch(URL);
+    await vi.advanceTimersByTimeAsync(1499);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    await Promise.all([first, second]);
+  });
+
+  it('two requests made at the same moment still start 1.5 s apart', async () => {
+    const both = Promise.all([authenticatedFetch(URL), authenticatedFetch(URL)]);
+    await vi.advanceTimersByTimeAsync(1499);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    await both;
+  });
+
+  it('a 429 throws SiteThrottled', async () => {
+    mockFetch.mockResolvedValue(respond(429));
+    const result = authenticatedFetch(URL).catch(err => err);
+    await vi.advanceTimersByTimeAsync(0);
+    const err = await result;
+    expect(err).toBeInstanceOf(SiteThrottled);
+    expect(err.status).toBe(429);
+  });
+
+  it('a 403 throws SiteThrottled', async () => {
+    mockFetch.mockResolvedValue(respond(403));
+    const result = authenticatedFetch(URL).catch(err => err);
+    await vi.advanceTimersByTimeAsync(0);
+    const err = await result;
+    expect(err).toBeInstanceOf(SiteThrottled);
+    expect(err.status).toBe(403);
+  });
+
+  it('after a 429, the next request in the run throws without touching the site', async () => {
+    mockFetch.mockResolvedValueOnce(respond(429));
+    const first = authenticatedFetch(URL).catch(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    await first;
+
+    await expect(authenticatedFetch(URL)).rejects.toBeInstanceOf(SiteThrottled);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('setSession starts a new run: requests go out again after a 429', async () => {
+    mockFetch.mockResolvedValueOnce(respond(429));
+    const first = authenticatedFetch(URL).catch(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    await first;
+
+    setSession('session=abc');
+    const second = authenticatedFetch(URL);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect((await second).status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('a 500 does not stop the run', async () => {
+    mockFetch.mockResolvedValueOnce(respond(500));
+    const first = authenticatedFetch(URL);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await first).status).toBe(500);
+
+    const second = authenticatedFetch(URL);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect((await second).status).toBe(200);
+  });
+
+  it('the login page and the login itself are paced too', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, status: 200, headers: new Headers(), text: async () => mockLoginPage })
+      .mockResolvedValueOnce({ ok: false, status: 302, headers: new Headers(), text: async () => '' });
+    const login = authenticate('user@example.com', 'secret');
+    await vi.advanceTimersByTimeAsync(1499);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await login).success).toBe(true);
   });
 });

@@ -109,3 +109,23 @@ describe('REQ-656: sync-proxy only reads', () => {
     expect(bookingSiteCalls()).toHaveLength(0);
   });
 });
+
+/** @requirements REQ-657 */
+describe('REQ-657: sync-proxy follows redirects only when not asked to stop at them', () => {
+  it('redirect "manual": the redirect is not followed, and its status and Location come back', async () => {
+    fetchFn.mockImplementationOnce(fakeFetch()).mockImplementationOnce(async () => ({
+      ok: false, status: 302, text: async () => 'Redirecting...',
+      headers: new Headers({ location: 'https://agirlandyourdog.com/schedule' }),
+    }));
+    const res = await handler(proxyRequest({ action: 'fetch', url: '/schedule/a/ABC/1', redirect: 'manual' }));
+    const body = await res.json();
+    expect(bookingSiteCalls()[0][1].redirect).toBe('manual');
+    expect(body.status).toBe(302);
+    expect(body.location).toBe('https://agirlandyourdog.com/schedule');
+  });
+
+  it('without it, redirects are followed as before', async () => {
+    await handler(proxyRequest({ action: 'fetch', url: '/schedule' }));
+    expect(bookingSiteCalls()[0][1].redirect).toBe('follow');
+  });
+});

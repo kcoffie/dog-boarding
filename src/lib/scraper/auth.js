@@ -12,6 +12,50 @@ let sessionCookies = null;
 let sessionExpiry = null;
 
 /**
+ * The booking site answered 429 (too many requests) or 403 (refused). The run stops at once:
+ * no retries, and no further request to the site in this run (#324).
+ */
+export class SiteThrottled extends Error {
+  constructor(status) {
+    super(`Booking site answered ${status}: stopping this run`);
+    this.name = 'SiteThrottled';
+    this.status = status;
+  }
+}
+
+// Set by the first 429/403 in a run; every later request throws it without touching the site,
+// so loops that catch errors and carry on can't keep going. Reset by setSession/resetSiteStop.
+let siteStop = null;
+
+/** Start a new run: forget an earlier run's 429/403 stop. */
+export function resetSiteStop() {
+  siteStop = null;
+}
+
+// One paced queue for every booking-site request in this process (#324): each request starts
+// at least delayBetweenRequests after the previous one. A promise chain, not read-then-sleep,
+// so two calls in the same process can't both slip through.
+let paceChain = Promise.resolve();
+let lastRequestAt = 0;
+
+function paced(fn) {
+  const turn = paceChain.then(async () => {
+    const wait = lastRequestAt + SCRAPER_CONFIG.delayBetweenRequests - Date.now();
+    if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+    lastRequestAt = Date.now();
+  });
+  paceChain = turn;
+  return turn.then(fn);
+}
+
+function stopIfThrottled(status) {
+  if (status === 429 || status === 403) {
+    siteStop = new SiteThrottled(status);
+    throw siteStop;
+  }
+}
+
+/**
  * Build headers for sync-proxy calls: the signed-in user's Supabase access token (REQ-656).
  * Browser only. supabase.js is imported here, not at the top, because cron-auth and the other
  * server jobs import this file and supabase.js throws at load without import.meta.env.
@@ -83,12 +127,12 @@ export async function authenticate(username, password) {
     const loginUrl = `${SCRAPER_CONFIG.baseUrl}/login`;
 
     // Get login page to discover form fields (field names + hidden values like nonce)
-    const loginPageResponse = await fetch(loginUrl, {
+    const loginPageResponse = await paced(() => fetch(loginUrl, {
       method: 'GET',
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; DogBoardingSync/2.0)',
       },
-    });
+    }));
 
     if (!loginPageResponse.ok) {
       return {
@@ -118,7 +162,7 @@ export async function authenticate(username, password) {
     }
 
     // Submit login
-    const loginResponse = await fetch(loginUrl, {
+    const loginResponse = await paced(() => fetch(loginUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -127,7 +171,7 @@ export async function authenticate(username, password) {
       },
       body: formData.toString(),
       redirect: 'manual', // Don't follow redirects automatically
-    });
+    }));
 
     // Successful login returns 302 redirect to schedule/dashboard
     const isRedirect = loginResponse.status >= 300 && loginResponse.status < 400;
@@ -201,15 +245,19 @@ export function clearSession() {
 export function setSession(cookies, expiryMs = 24 * 60 * 60 * 1000) {
   sessionCookies = cookies;
   sessionExpiry = Date.now() + expiryMs;
+  resetSiteStop();
 }
 
 /**
- * Make an authenticated request
+ * Make an authenticated request. Every booking-site request goes through here: paced, and a
+ * 429/403 throws SiteThrottled and stops the rest of the run (#324).
  * @param {string} url
- * @param {RequestInit} [options]
+ * @param {RequestInit} [options] - `redirect: 'manual'` returns a redirect instead of following it
  * @returns {Promise<Response>}
  */
 export async function authenticatedFetch(url, options = {}) {
+  if (siteStop) throw siteStop;
+
   const cookies = getSessionCookies();
 
   if (!cookies) {
@@ -221,21 +269,24 @@ export async function authenticatedFetch(url, options = {}) {
     const proxyStart = Date.now();
     console.log('[Auth] 📡 Fetching via proxy:', url);
 
-    const response = await fetch('/api/sync-proxy', {
+    const headers = await proxyHeaders();
+    const response = await paced(() => fetch('/api/sync-proxy', {
       method: 'POST',
-      headers: await proxyHeaders(),
+      headers,
       body: JSON.stringify({
         action: 'fetch',
         url,
         cookies,
         method: options.method || 'GET',
+        ...(options.redirect === 'manual' ? { redirect: 'manual' } : {}),
       }),
-    });
+    }));
 
     const result = await response.json();
     const proxyDuration = Date.now() - proxyStart;
 
     console.log(`[Auth] ⏱️ Proxy fetch completed (${proxyDuration}ms): ${result.success ? 'success' : 'failed'}`);
+    stopIfThrottled(result.status);
 
     // Return a Response-like object that matches the expected interface
     return {
@@ -244,7 +295,12 @@ export async function authenticatedFetch(url, options = {}) {
       text: async () => result.html || '',
       json: async () => JSON.parse(result.html || '{}'),
       headers: {
-        get: (name) => name.toLowerCase() === 'set-cookie' ? result.cookies : null,
+        get: (name) => {
+          const key = name.toLowerCase();
+          if (key === 'set-cookie') return result.cookies;
+          if (key === 'location') return result.location || null;
+          return null;
+        },
       },
     };
   }
@@ -256,10 +312,12 @@ export async function authenticatedFetch(url, options = {}) {
     ...options.headers,
   };
 
-  return fetch(url, {
+  const response = await paced(() => fetch(url, {
     ...options,
     headers,
-  });
+  }));
+  stopIfThrottled(response.status);
+  return response;
 }
 
 /**
@@ -308,4 +366,5 @@ export default {
   clearSession,
   setSession,
   authenticatedFetch,
+  resetSiteStop,
 };

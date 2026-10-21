@@ -40,7 +40,7 @@
  */
 
 import { setSession } from './auth.js';
-import { authenticatedFetch } from './auth.js';
+import { authenticatedFetch, SiteThrottled } from './auth.js';
 import { ensureSession, clearSession } from './sessionCache.js';
 import { SCRAPER_CONFIG } from './config.js';
 import { applyDetailFilters } from './appointmentFilter.js';
@@ -317,6 +317,11 @@ export async function runScheduleSync(supabase) {
   }
 
   stats.found = appointments.length;
+  // An empty schedule across every page is a broken page or a layout change, never a real
+  // week: fail the run before queueing, the daytime upsert or the cursor (#324)
+  if (stats.found === 0) {
+    throw new Error(`The schedule showed 0 appointments across ${stats.pagesScanned} page(s)`);
+  }
 
   for (const appt of appointments) {
     const titleLower = (appt.title || '').toLowerCase().trim();
@@ -406,6 +411,16 @@ export async function runScheduleSync(supabase) {
  *   reason?: string,
  * }>}
  */
+// A 429/403 isn't the item's fault: put it back without using a retry, then stop (#324)
+async function requeueAndStop(supabase, item, err) {
+  console.log(`[SyncRunner:Detail] 🛑 ${err.message} — re-queuing ${item.external_id}`);
+  await supabase
+    .from('sync_queue')
+    .update({ status: 'pending', processing_started_at: null })
+    .eq('id', item.id);
+  throw err;
+}
+
 export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   // Ensure session before dequeuing so we never need to put an item back on auth failure.
   let cookies;
@@ -457,6 +472,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
       console.log(`[SyncRunner:Detail] ✅ Form stored for boarding ${boardingId} — queue depth: ${remaining}`);
       return { action: 'form_stored', externalId: item.external_id, queueDepth: remaining };
     } catch (formErr) {
+      if (formErr instanceof SiteThrottled) await requeueAndStop(supabase, item, formErr);
       if (formErr?.message && formErr.message.includes('Session expired')) {
         console.log('[SyncRunner:Detail] 🔒 SESSION_EXPIRED during form fetch — clearing session + re-queuing item');
         await clearSession(supabase);
@@ -483,6 +499,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   try {
     details = await fetchAppointmentDetails(appointmentId, timestamp);
   } catch (err) {
+    if (err instanceof SiteThrottled) await requeueAndStop(supabase, item, err);
     if (err?.message && err.message.includes('Session expired')) {
       console.log('[SyncRunner:Detail] 🔒 SESSION_EXPIRED during detail fetch — clearing session + re-queuing item');
       await clearSession(supabase);

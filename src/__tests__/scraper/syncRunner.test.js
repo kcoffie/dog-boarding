@@ -13,7 +13,8 @@ import { buildWeekUrl, advanceCursor, parseScheduleHtml, runScheduleSync, runDet
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('../../lib/scraper/auth.js', () => ({
+vi.mock('../../lib/scraper/auth.js', async (importOriginal) => ({
+  SiteThrottled: (await importOriginal()).SiteThrottled,
   setSession: vi.fn(),
   authenticatedFetch: vi.fn(),
 }));
@@ -49,7 +50,7 @@ vi.mock('../../lib/scraper/forms.js', () => ({
   fetchAndStoreBoardingForm: vi.fn(),
 }));
 
-import { setSession, authenticatedFetch } from '../../lib/scraper/auth.js';
+import { setSession, authenticatedFetch, SiteThrottled } from '../../lib/scraper/auth.js';
 import { ensureSession, clearSession } from '../../lib/scraper/sessionCache.js';
 import { enqueue, dequeueOne, markDone, markFailed, resetStuck, getQueueDepth } from '../../lib/scraper/syncQueue.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../../lib/scraper/daytimeSchedule.js';
@@ -187,7 +188,8 @@ describe('runScheduleSync', () => {
     expect(clearSession).toHaveBeenCalledTimes(1);
   });
 
-  it('returns action=ok with stats on successful scan with no boardings', async () => {
+  /** @requirements REQ-109 */
+  it('0 appointments across every page fails the scan before queueing (#324)', async () => {
     ensureSession.mockResolvedValue('session=abc');
     setSession.mockReturnValue(undefined);
     // Return HTML with no matching appointment links
@@ -216,10 +218,9 @@ describe('runScheduleSync', () => {
       },
     };
     getQueueDepth.mockResolvedValue(0);
-    const result = await runScheduleSync(supabase);
-    expect(result.action).toBe('ok');
-    expect(result.found).toBe(0);
-    expect(result.queued).toBe(0);
+    const { enqueue } = await import('../../lib/scraper/syncQueue.js');
+    await expect(runScheduleSync(supabase)).rejects.toThrow('The schedule showed 0 appointments');
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it('enqueues a "PG 3/23-30" title appointment — PG boarding must NOT be filtered', async () => {
@@ -545,10 +546,15 @@ function link({ id, ts = '1792836000', title = '', pet = '', petId = null, href 
     + `<span class="day-event-title">${title}</span><span class="event-pet"${petAttr}>${pet}</span></a>`;
 }
 
-// Serve schedule pages by URL; unknown URLs get an empty page.
+// One daycare visit: a real-looking week that queues nothing (an empty week fails the scan, #324)
+const DAYCARE_ONLY = link({ id: 'DCONLY', title: 'DC:FT' });
+
+// Serve schedule pages by URL; unknown URLs get an empty page. With no pages given, every
+// page is daycare-only.
 function servePages(pages = {}) {
+  const fallback = Object.keys(pages).length > 0 ? '' : DAYCARE_ONLY;
   authenticatedFetch.mockImplementation((url) => Promise.resolve({
-    ok: true, status: 200, text: () => Promise.resolve(`<html><body>${pages[url] ?? ''}</body></html>`),
+    ok: true, status: 200, text: () => Promise.resolve(`<html><body>${pages[url] ?? fallback}</body></html>`),
   }));
 }
 
@@ -681,13 +687,13 @@ describe('REQ-109 runScheduleSync', () => {
   });
 
   it('a page with "login" but no "password" is a schedule, not a login form', async () => {
-    authenticatedFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('<a href="/login">log out</a>') });
+    authenticatedFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve(`<a href="/login">log out</a>${DAYCARE_ONLY}`) });
     const result = await runScheduleSync(makeDb());
     expect(result.action).toBe('ok');
   });
 
   it('a page with "password" but no "login" is a schedule, not a login form', async () => {
-    authenticatedFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('<p>reset password</p>') });
+    authenticatedFetch.mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve(`<p>reset password</p>${DAYCARE_ONLY}`) });
     const result = await runScheduleSync(makeDb());
     expect(result.action).toBe('ok');
   });
@@ -947,6 +953,17 @@ describe('REQ-109 runDetailSync', () => {
     expect(markFailed).not.toHaveBeenCalled();
   });
 
+  /** @requirements REQ-657 */
+  it('a 429/403 during a form fetch puts the item back without a retry and stops the run (#324)', async () => {
+    dequeueOne.mockResolvedValue(formItem());
+    const throttled = new SiteThrottled(429);
+    fetchAndStoreBoardingForm.mockRejectedValue(throttled);
+    const db = makeDb();
+    await expect(runDetailSync(db)).rejects.toBe(throttled);
+    expect(db.calls.queueUpdates).toEqual([{ values: { status: 'pending', processing_started_at: null }, col: 'id', val: 'q1' }]);
+    expect(markFailed).not.toHaveBeenCalled();
+  });
+
   it('any other form error marks the item failed', async () => {
     dequeueOne.mockResolvedValue(formItem());
     fetchAndStoreBoardingForm.mockRejectedValue(new Error('form page 500'));
@@ -1024,6 +1041,18 @@ describe('REQ-109 runDetailSync', () => {
     expect(result).toEqual({ action: 'session_cleared', reason: 'session_expired' });
     expect(db.calls.queueUpdates).toEqual([{ values: { status: 'pending', processing_started_at: null }, col: 'id', val: 'q1' }]);
     expect(markFailed).not.toHaveBeenCalled();
+  });
+
+  /** @requirements REQ-657 */
+  it('a 429/403 during a detail fetch puts the item back without a retry and stops the run (#324)', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem());
+    const throttled = new SiteThrottled(403);
+    fetchAppointmentDetails.mockRejectedValue(throttled);
+    const db = makeDb();
+    await expect(runDetailSync(db)).rejects.toBe(throttled);
+    expect(db.calls.queueUpdates).toEqual([{ values: { status: 'pending', processing_started_at: null }, col: 'id', val: 'q1' }]);
+    expect(markFailed).not.toHaveBeenCalled();
+    expect(mapAndSaveAppointment).not.toHaveBeenCalled();
   });
 
   it('any other detail fetch error marks the item failed with the first 200 characters', async () => {

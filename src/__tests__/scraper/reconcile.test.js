@@ -5,14 +5,15 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  isAccessDeniedPage,
+  classifyCandidateResponse,
   findReconciliationCandidates,
   archiveSyncAppointment,
   cancelBoardingForArchivedAppointment,
   reconcileArchivedAppointments,
 } from '../../lib/scraper/reconcile.js';
 
-vi.mock('../../lib/scraper/auth.js', () => ({
+vi.mock('../../lib/scraper/auth.js', async (importOriginal) => ({
+  SiteThrottled: (await importOriginal()).SiteThrottled,
   authenticatedFetch: vi.fn(),
 }));
 
@@ -26,17 +27,17 @@ vi.mock('../../lib/scraper/logger.js', () => ({
 
 vi.mock('../../lib/scraper/config.js', () => ({
   SCRAPER_CONFIG: {
+    baseUrl: 'https://agirlandyourdog.com',
     delayBetweenRequests: 0, // No delay in tests
   },
 }));
 
-import { authenticatedFetch } from '../../lib/scraper/auth.js';
+import { authenticatedFetch, SiteThrottled } from '../../lib/scraper/auth.js';
 
 // ─── HTML fixtures ────────────────────────────────────────────────────────────
 
 const VALID_APPT_HTML = '<div id="when-wrapper" data-start_scheduled="1770976800"></div>';
 const SCHEDULE_PAGE_HTML = '<div class="schedule">No appointment here</div>';
-const LOGIN_PAGE_HTML = '<form>Please login <input type="password" /> here</form>';
 
 // ─── Supabase mock helper ─────────────────────────────────────────────────────
 
@@ -105,25 +106,62 @@ const makeRecord = (overrides = {}) => ({
   ...overrides,
 });
 
-const okResponse = (html) => ({ ok: true, status: 200, text: async () => html });
+const noHeaders = { get: () => null };
+const okResponse = (html) => ({ ok: true, status: 200, headers: noHeaders, text: async () => html });
+const statusResponse = (status, html = '') => ({ ok: status < 300, status, headers: noHeaders, text: async () => html });
+// What a removed booking's URL answers (seen 2026-10-21): 302 to /schedule
+const redirectTo = (location, status = 302) => ({
+  ok: false, status,
+  headers: { get: (name) => (name.toLowerCase() === 'location' ? location : null) },
+  text: async () => 'Redirecting...',
+});
+const goneResponse = () => redirectTo('https://agirlandyourdog.com/schedule');
+const candidates = (n) => Array.from({ length: n }, (_, i) =>
+  makeRecord({ id: `uuid-${i}`, external_id: `ID${i}`, source_url: `https://agirlandyourdog.com/schedule/a/ID${i}/1` }));
 
 // ─── isAccessDeniedPage() ─────────────────────────────────────────────────────
 
-describe('REQ-108: isAccessDeniedPage()', () => {
-  it('returns true for non-200 response', () => {
-    expect(isAccessDeniedPage('', { ok: false })).toBe(true);
+/** @requirements REQ-657 */
+describe('REQ-108, REQ-657: classifyCandidateResponse() — only a redirect to /schedule is gone', () => {
+  it('a 302 to /schedule is gone', () => {
+    expect(classifyCandidateResponse(goneResponse(), 'Redirecting...')).toBe('gone');
   });
 
-  it('returns true for 200 response serving schedule page (no data-start_scheduled)', () => {
-    expect(isAccessDeniedPage(SCHEDULE_PAGE_HTML, { ok: true })).toBe(true);
+  it('a relative redirect to /schedule is gone', () => {
+    expect(classifyCandidateResponse(redirectTo('/schedule'), '')).toBe('gone');
   });
 
-  it('returns false for valid appointment HTML (has data-start_scheduled)', () => {
-    expect(isAccessDeniedPage(VALID_APPT_HTML, { ok: true })).toBe(false);
+  it('a redirect to the login page is not gone (the session failed)', () => {
+    expect(classifyCandidateResponse(redirectTo('https://agirlandyourdog.com/login'), '')).toBe('unexpected');
   });
 
-  it('returns false for login page (session expired, not access denied)', () => {
-    expect(isAccessDeniedPage(LOGIN_PAGE_HTML, { ok: true })).toBe(false);
+  it('a redirect to another schedule path is not gone', () => {
+    expect(classifyCandidateResponse(redirectTo('/schedule/a/OTHER/1'), '')).toBe('unexpected');
+  });
+
+  it('a redirect with no Location is not gone', () => {
+    expect(classifyCandidateResponse(redirectTo(null), '')).toBe('unexpected');
+  });
+
+  it('a 301 to /schedule is gone too', () => {
+    expect(classifyCandidateResponse(redirectTo('/schedule', 301), '')).toBe('gone');
+  });
+
+  it('a 400 or a 200 that names /schedule in Location is not gone (only redirects count)', () => {
+    expect(classifyCandidateResponse(redirectTo('/schedule', 400), '')).toBe('unexpected');
+    expect(classifyCandidateResponse(redirectTo('/schedule', 200), '')).toBe('unexpected');
+  });
+
+  it('a 200 appointment page is present', () => {
+    expect(classifyCandidateResponse(okResponse(VALID_APPT_HTML), VALID_APPT_HTML)).toBe('present');
+  });
+
+  it('a 200 page that is not an appointment is not gone', () => {
+    expect(classifyCandidateResponse(okResponse(SCHEDULE_PAGE_HTML), SCHEDULE_PAGE_HTML)).toBe('unexpected');
+  });
+
+  it('a 500 is not gone, even with an appointment marker in the body', () => {
+    expect(classifyCandidateResponse(statusResponse(500, VALID_APPT_HTML), VALID_APPT_HTML)).toBe('unexpected');
   });
 });
 
@@ -250,13 +288,13 @@ describe('REQ-108: cancelBoardingForArchivedAppointment()', () => {
 
 describe('REQ-108: reconcileArchivedAppointments()', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks(); // drops queued once-answers from the previous test too
   });
 
-  it('archives candidate when source_url is access-denied', async () => {
+  it('archives a candidate whose URL redirects to /schedule', async () => {
     const records = [makeRecord({ external_id: 'C63QgS0U' })];
     const supabase = createMockSupabase(records);
-    authenticatedFetch.mockResolvedValue(okResponse(SCHEDULE_PAGE_HTML));
+    authenticatedFetch.mockResolvedValue(goneResponse());
 
     const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
 
@@ -302,39 +340,98 @@ describe('REQ-108: reconcileArchivedAppointments()', () => {
     expect(counts.errors).toBe(1);
   });
 
-  it('continues to next candidate after an individual fetch error', async () => {
-    const records = [
-      makeRecord({ external_id: 'AAA', source_url: 'https://example.com/a/AAA/1' }),
-      makeRecord({ external_id: 'BBB', source_url: 'https://example.com/a/BBB/2' }),
-    ];
-    const supabase = createMockSupabase(records);
-    authenticatedFetch
-      .mockRejectedValueOnce(new Error('Timeout'))
-      .mockResolvedValueOnce(okResponse(SCHEDULE_PAGE_HTML));
+  /** @requirements REQ-657 */
+  it('a fetch error stops reconciliation: later candidates are not opened and nothing is marked', async () => {
+    const supabase = createMockSupabase(candidates(2));
+    authenticatedFetch.mockRejectedValueOnce(new Error('Timeout')).mockResolvedValueOnce(goneResponse());
 
     const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
 
-    expect(counts.archived).toBe(1);
+    expect(authenticatedFetch).toHaveBeenCalledTimes(1);
+    expect(counts.archived).toBe(0);
     expect(counts.errors).toBe(1);
+    expect(counts.skipped).toBe("Reconciliation stopped: ID0 couldn't be opened (Timeout), nothing marked");
   });
 
-  it('returns correct { archived, warnings, errors } counts across mixed outcomes', async () => {
-    const records = [
-      makeRecord({ external_id: 'AAA', source_url: 'https://example.com/a/AAA/1' }),
-      makeRecord({ external_id: 'BBB', source_url: 'https://example.com/a/BBB/2' }),
-      makeRecord({ external_id: 'CCC', source_url: 'https://example.com/a/CCC/3' }),
-    ];
-    const supabase = createMockSupabase(records);
+  /** @requirements REQ-657 */
+  it('an unexpected answer stops reconciliation and marks nothing, even after a gone one', async () => {
+    const supabase = createMockSupabase(candidates(3));
     authenticatedFetch
-      .mockResolvedValueOnce(okResponse(SCHEDULE_PAGE_HTML)) // AAA → access denied → archive
-      .mockResolvedValueOnce(okResponse(VALID_APPT_HTML))    // BBB → accessible → warn
-      .mockRejectedValueOnce(new Error('Timeout'));           // CCC → error
+      .mockResolvedValueOnce(goneResponse())
+      .mockResolvedValueOnce(statusResponse(503))
+      .mockResolvedValueOnce(goneResponse());
 
     const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
 
-    expect(counts.archived).toBe(1);
-    expect(counts.warnings).toBe(1);
-    expect(counts.errors).toBe(1);
+    expect(authenticatedFetch).toHaveBeenCalledTimes(2);
+    expect(counts.archived).toBe(0);
+    expect(counts.skipped).toBe('Reconciliation stopped: unexpected answer (HTTP 503) for ID1, nothing marked');
+    expect(supabase._records.every(r => r.sync_status === 'active')).toBe(true);
+  });
+
+  /** @requirements REQ-657 */
+  it('a 429/403 stops the whole run: SiteThrottled is thrown, nothing marked', async () => {
+    const supabase = createMockSupabase(candidates(2));
+    authenticatedFetch.mockResolvedValueOnce(goneResponse()).mockRejectedValueOnce(new SiteThrottled(429));
+
+    await expect(reconcileArchivedAppointments(supabase, new Set(), null, null)).rejects.toBeInstanceOf(SiteThrottled);
+    expect(supabase._records.every(r => r.sync_status === 'active')).toBe(true);
+  });
+
+  /** @requirements REQ-657 */
+  it('more than 10 candidates: skipped, none opened', async () => {
+    const supabase = createMockSupabase(candidates(11));
+
+    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+    expect(counts.archived).toBe(0);
+    expect(counts.skipped).toBe('Reconciliation skipped: 11 bookings missing from the schedule (more than 10), none opened');
+  });
+
+  /** @requirements REQ-657 */
+  it('10 candidates are all opened', async () => {
+    const supabase = createMockSupabase(candidates(10));
+    authenticatedFetch.mockResolvedValue(okResponse(VALID_APPT_HTML));
+
+    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    expect(authenticatedFetch).toHaveBeenCalledTimes(10);
+    expect(counts.skipped).toBe(null);
+  });
+
+  /** @requirements REQ-657 */
+  it('4 gone: none marked', async () => {
+    const supabase = createMockSupabase(candidates(4));
+    authenticatedFetch.mockResolvedValue(goneResponse());
+
+    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    expect(counts.archived).toBe(0);
+    expect(counts.skipped).toBe('Reconciliation stopped: 4 bookings look removed (more than 3), nothing marked');
+    expect(supabase._records.every(r => r.sync_status === 'active')).toBe(true);
+  });
+
+  /** @requirements REQ-657 */
+  it('3 gone: all 3 marked', async () => {
+    const supabase = createMockSupabase(candidates(3));
+    authenticatedFetch.mockResolvedValue(goneResponse());
+
+    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    expect(counts.archived).toBe(3);
+    expect(counts.skipped).toBe(null);
+    expect(supabase._records.every(r => r.sync_status === 'archived')).toBe(true);
+  });
+
+  /** @requirements REQ-657 */
+  it('opens each candidate without following redirects', async () => {
+    const supabase = createMockSupabase(candidates(1));
+    authenticatedFetch.mockResolvedValue(goneResponse());
+
+    await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    expect(authenticatedFetch).toHaveBeenCalledWith('https://agirlandyourdog.com/schedule/a/ID0/1', { redirect: 'manual' });
   });
 
   it('does not fetch candidates that are in seenExternalIds', async () => {
@@ -348,29 +445,13 @@ describe('REQ-108: reconcileArchivedAppointments()', () => {
     expect(counts.archived).toBe(0);
   });
 
-  it('respects rate limiting between confirmation fetches', async () => {
-    const records = [
-      makeRecord({ external_id: 'AAA', source_url: 'https://example.com/a/AAA/1' }),
-      makeRecord({ external_id: 'BBB', source_url: 'https://example.com/a/BBB/2' }),
-    ];
-    const supabase = createMockSupabase(records);
-    authenticatedFetch.mockResolvedValue(okResponse(SCHEDULE_PAGE_HTML));
-
-    // With delayBetweenRequests: 0 in test config, this just verifies
-    // both candidates are processed (delay doesn't block anything)
-    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
-
-    expect(authenticatedFetch).toHaveBeenCalledTimes(2);
-    expect(counts.archived).toBe(2);
-  });
-
   it('cascades cancelled_at to mapped boarding when mapped_boarding_id is present', async () => {
     const records = [
       makeRecord({ external_id: 'AAA', mapped_boarding_id: 'boarding-uuid-1' }),
       { id: 'boarding-uuid-1' },
     ];
     const supabase = createMockSupabase(records);
-    authenticatedFetch.mockResolvedValue(okResponse(SCHEDULE_PAGE_HTML));
+    authenticatedFetch.mockResolvedValue(goneResponse());
 
     const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
 
@@ -384,7 +465,7 @@ describe('REQ-108: reconcileArchivedAppointments()', () => {
   it('skips boarding cascade when mapped_boarding_id is null', async () => {
     const records = [makeRecord({ external_id: 'AAA', mapped_boarding_id: null })];
     const supabase = createMockSupabase(records);
-    authenticatedFetch.mockResolvedValue(okResponse(SCHEDULE_PAGE_HTML));
+    authenticatedFetch.mockResolvedValue(goneResponse());
 
     const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
 
@@ -432,7 +513,7 @@ describe('REQ-108: reconcileArchivedAppointments()', () => {
         return builder;
       },
     };
-    authenticatedFetch.mockResolvedValue(okResponse(SCHEDULE_PAGE_HTML));
+    authenticatedFetch.mockResolvedValue(goneResponse());
 
     const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
 

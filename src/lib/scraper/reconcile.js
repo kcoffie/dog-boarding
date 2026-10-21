@@ -5,33 +5,45 @@
  */
 
 import { SCRAPER_CONFIG } from './config.js';
-import { authenticatedFetch } from './auth.js';
+import { authenticatedFetch, SiteThrottled } from './auth.js';
 import { syncLogger } from './logger.js';
 
 const syncLog = syncLogger.log;
 const syncError = syncLogger.error;
 const syncWarn = syncLogger.warn;
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+/** More missing bookings than this: skip reconciliation without opening any (#324). */
+export const MAX_CANDIDATES = 10;
+/** More bookings gone than this: mark none (Kate, 2026-10-21). */
+export const MAX_ARCHIVES = 3;
 
 /**
- * Detect if a fetched page is an access-denied page rather than a valid appointment.
+ * What a candidate's URL says, fetched without following redirects (#324).
  *
- * Valid appointment pages always contain `data-start_scheduled` on #when-wrapper.
- * When an appointment is inaccessible, the server serves the /schedule page HTML
- * (the "You cannot view appointment" popup is JS-rendered — not in the raw source).
+ * A removed booking's URL answers 302 to /schedule (seen 2026-10-21 on an archived booking);
+ * the "You cannot view appointment" popup is drawn by JavaScript, so it's not in the HTML.
+ *   'gone'       — a redirect to exactly /schedule
+ *   'present'    — 200 with an appointment page (`data-start_scheduled`)
+ *   'unexpected' — anything else: a redirect elsewhere (the login page means the session
+ *                  failed), an error status, an unrecognised page. Reconciliation stops.
+ * A 429/403 never gets here: authenticatedFetch throws SiteThrottled first.
  *
+ * @param {{ status: number, headers: { get(name: string): string|null } }} response
  * @param {string} html
- * @param {{ ok: boolean }} response
- * @returns {boolean}
+ * @returns {'gone'|'present'|'unexpected'}
  */
-export function isAccessDeniedPage(html, response) {
-  if (!response.ok) return true;
-  const isLoginPage = html.includes('login') && html.includes('password');
-  const isAppointmentPage = html.includes('data-start_scheduled');
-  return !isLoginPage && !isAppointmentPage;
+export function classifyCandidateResponse(response, html) {
+  if (response.status >= 300 && response.status < 400) {
+    let path = null;
+    try {
+      path = new URL(response.headers.get('location') || '', SCRAPER_CONFIG.baseUrl).pathname;
+    } catch {
+      // unparseable Location: unexpected
+    }
+    return path === '/schedule' ? 'gone' : 'unexpected';
+  }
+  if (response.status === 200 && html.includes('data-start_scheduled')) return 'present';
+  return 'unexpected';
 }
 
 /**
@@ -111,20 +123,23 @@ export async function cancelBoardingForArchivedAppointment(supabase, boardingId)
 /**
  * Reconcile archived appointments after the main sync loop.
  *
- * Finds active records not seen during this sync, fetches each source_url to
- * confirm inaccessibility, then marks confirmed records as archived.
+ * Finds active records not seen during this sync, opens each source_url without following
+ * redirects, and marks them archived only on proof (#324):
+ *   - more than MAX_CANDIDATES candidates: skip without opening any
+ *   - check every candidate first; any unexpected answer stops and marks nothing
+ *   - more than MAX_ARCHIVES gone: mark none
+ * `skipped` explains a stop, for the run's result and sync_logs.
  *
- * Does NOT throw — all errors are logged and counted so the sync result is
- * not affected by reconciliation failures.
+ * Throws only SiteThrottled (a 429/403 ends the whole run). Everything else is logged and counted.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {Set<string>} seenExternalIds
  * @param {Date|null} startDate
  * @param {Date|null} endDate
- * @returns {Promise<{archived: number, warnings: number, errors: number}>}
+ * @returns {Promise<{archived: number, warnings: number, errors: number, skipped: string|null}>}
  */
 export async function reconcileArchivedAppointments(supabase, seenExternalIds, startDate, endDate) {
-  const counts = { archived: 0, warnings: 0, errors: 0 };
+  const counts = { archived: 0, warnings: 0, errors: 0, skipped: null };
 
   let candidates;
   try {
@@ -140,44 +155,66 @@ export async function reconcileArchivedAppointments(supabase, seenExternalIds, s
     endDate: endDate?.toISOString() ?? 'full sync',
   });
 
+  if (candidates.length > MAX_CANDIDATES) {
+    counts.skipped = `Reconciliation skipped: ${candidates.length} bookings missing from the schedule (more than ${MAX_CANDIDATES}), none opened`;
+    syncWarn(`[Reconcile] ⚠️ ${counts.skipped}`);
+    return counts;
+  }
+
+  const gone = [];
   for (let i = 0; i < candidates.length; i++) {
     const candidate = candidates[i];
+    syncLog(`[Reconcile] Checking ${i + 1}/${candidates.length}: ${candidate.external_id}`);
 
-    if (i > 0) {
-      await delay(SCRAPER_CONFIG.delayBetweenRequests);
+    let verdict;
+    let status;
+    try {
+      const response = await authenticatedFetch(candidate.source_url, { redirect: 'manual' });
+      status = response.status;
+      verdict = classifyCandidateResponse(response, await response.text());
+    } catch (fetchErr) {
+      if (fetchErr instanceof SiteThrottled) throw fetchErr;
+      counts.errors++;
+      counts.skipped = `Reconciliation stopped: ${candidate.external_id} couldn't be opened (${fetchErr.message}), nothing marked`;
+      syncError(`[Reconcile] ❌ ${counts.skipped}`);
+      return counts;
     }
 
-    syncLog(`[Reconcile] Checking ${i + 1}/${candidates.length}: ${candidate.external_id} (${candidate.source_url})`);
+    if (verdict === 'gone') {
+      syncLog(`[Reconcile] Gone from the site: ${candidate.external_id}`);
+      gone.push(candidate);
+    } else if (verdict === 'present') {
+      syncWarn(`[Reconcile] ⚠️ ${candidate.external_id} loaded a valid appointment page but was NOT seen during sync — NOT archiving. Possible sync bug.`);
+      counts.warnings++;
+    } else {
+      counts.skipped = `Reconciliation stopped: unexpected answer (HTTP ${status}) for ${candidate.external_id}, nothing marked`;
+      syncWarn(`[Reconcile] ⚠️ ${counts.skipped}`);
+      return counts;
+    }
+  }
 
+  if (gone.length > MAX_ARCHIVES) {
+    counts.skipped = `Reconciliation stopped: ${gone.length} bookings look removed (more than ${MAX_ARCHIVES}), nothing marked`;
+    syncWarn(`[Reconcile] ⚠️ ${counts.skipped}`);
+    return counts;
+  }
+
+  for (const candidate of gone) {
     try {
-      const response = await authenticatedFetch(candidate.source_url);
-      const html = await response.text();
+      await archiveSyncAppointment(supabase, candidate.external_id);
+      counts.archived++;
 
-      if (isAccessDeniedPage(html, response)) {
-        syncLog(`[Reconcile] ✅ Confirmed inaccessible: ${candidate.external_id} (HTTP ${response.status})`);
+      if (candidate.mapped_boarding_id) {
         try {
-          await archiveSyncAppointment(supabase, candidate.external_id);
-          counts.archived++;
-
-          if (candidate.mapped_boarding_id) {
-            try {
-              await cancelBoardingForArchivedAppointment(supabase, candidate.mapped_boarding_id);
-              syncLog(`[Reconcile] ✅ Marked boarding ${candidate.mapped_boarding_id} as cancelled`);
-            } catch (cancelErr) {
-              syncError(`[Reconcile] ❌ Failed to cancel boarding ${candidate.mapped_boarding_id}:`, cancelErr.message);
-              counts.errors++;
-            }
-          }
-        } catch (archiveErr) {
-          syncError(`[Reconcile] ❌ Failed to archive ${candidate.external_id}:`, archiveErr.message);
+          await cancelBoardingForArchivedAppointment(supabase, candidate.mapped_boarding_id);
+          syncLog(`[Reconcile] ✅ Marked boarding ${candidate.mapped_boarding_id} as cancelled`);
+        } catch (cancelErr) {
+          syncError(`[Reconcile] ❌ Failed to cancel boarding ${candidate.mapped_boarding_id}:`, cancelErr.message);
           counts.errors++;
         }
-      } else {
-        syncWarn(`[Reconcile] ⚠️ ${candidate.external_id} loaded a valid appointment page but was NOT seen during sync — NOT archiving. Possible sync bug.`);
-        counts.warnings++;
       }
-    } catch (fetchErr) {
-      syncError(`[Reconcile] ❌ Fetch error for ${candidate.external_id}:`, fetchErr.message, fetchErr.stack);
+    } catch (archiveErr) {
+      syncError(`[Reconcile] ❌ Failed to archive ${candidate.external_id}:`, archiveErr.message);
       counts.errors++;
     }
   }
@@ -187,7 +224,7 @@ export async function reconcileArchivedAppointments(supabase, seenExternalIds, s
 }
 
 export default {
-  isAccessDeniedPage,
+  classifyCandidateResponse,
   findReconciliationCandidates,
   archiveSyncAppointment,
   cancelBoardingForArchivedAppointment,
