@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 21, 2026, ~17:30 UTC (session 40, end). **Production = main (`e0fe16a`, #310), unchanged this session.** The roster reaches Kate on **Telegram** (proven on the new token 10-21). WhatsApp is locked (since 2026-10-17). **The sync redesign (#318) is decided: option 3. Build it in the design note's order, starting with #322 and the site-safety PR #324.**
+**Last updated:** October 21, 2026, ~21:20 UTC (session 41, end). **Production = main (`e247638`, #329).** The roster reaches Kate on **Telegram**. WhatsApp is locked (since 2026-10-17). **Sync redesign (#318): #322 and #324 part A are live; next is #324 part B (the breaker table), then the on-time roster trigger.**
 
 **The goal for the next few sessions:** get the app back to where it was in May (the roster reaches staff every morning, unattended, and a failure alerts Kate), then **start real UAT with the end user**, and prioritise the remaining work from UAT feedback. Do what's needed, simply; nothing more.
 
@@ -26,33 +26,24 @@
 
 ---
 
-## Current State (2026-10-21 ~17:30 UTC, end of session 40)
+## Current State (2026-10-21 ~21:20 UTC, end of session 41)
 
-### Session 40: what happened
-1. **Overnight checks (first runs after #301), UTC:**
-   - `notify-4am` (scheduled 11:00) started **15:51**, sent to Telegram, no 401. **Kate: it arrived.** It listed a dog whose booking was removed on the site: see item 3.
-   - `auth` refreshed 00:37. `schedule` 00:15: found 287, **`requeuedEdited` 18** (all recurring playgroup bookings, P20), `urlChangesIgnored` 2. `detail` 00:16 (on yesterday's session, P6) and 00:50.
-   - `sync_queue` pending 45–47 (above 30).
-   - Integration Check 02:45 and 13:19: no red runs. Both alerted the same two "Missing from DB" items (`C63QhKpW` and a new `C63QhL5g`, same dog and dates, skipped by the sync on purpose). Noted on #315.
-   - `cron-health-check` (00:30) started 05:07.
-   - **ops-watch had not run by 17:30 UTC** (window 17:00–17:59). Its last row, 10-20 17:36, had one finding: an undelivered Integration Check alert in the previous 24 h. That was 10-19 18:47 UTC, during the Telegram setup (the two red runs that day). Every Integration Check alert since has been sent (`message_log`). **Next session: read today's row; expected no findings.**
-   - Kate confirmed `VITE_SYNC_PROXY_TOKEN` is deleted in Vercel.
-2. **The sync redesign is decided (#318).** Read `docs/specs/sync-redesign-design-note.md` (decisions at the end) and `docs/specs/sync-redesign-findings.md` (6a research answers, 6b Kate's decisions).
-   - **Option 3:** one Node-safe engine. Near-term runs (today and tomorrow, ~16 requests) on Vercel crons at 09:00 and 01:00 UTC. A daily full pass (7 days back to 45 ahead, ~75 requests) on GitHub Actions, dispatched by a Vercel cron at 07:00 UTC with the existing `GH_ACTIONS_TOKEN`. The button starts the full pass. The Integration Check becomes check-only, both ways, once a day. The old sync paths retire after 3 good nights.
-   - **The booking-site account is Charlie's; load is a hard constraint.** About 110–120 requests a day, a daily ceiling of 250, one paced fetch, stop at the first 429/403/challenge, no retries inside a run.
-   - **After a failed login, nothing logs in again until Kate clears the flag** (with a clear alert). Only `cron-auth` may log in. Reconciliation archives at most 3 per run.
-   - **The architect found real problems in today's code (#324):** reconciliation archives on any error (a 429 would cancel real boardings); `withRetry` reads a missing `retryDelays`, so the first error becomes "Cannot read properties of undefined (reading '0')" (that's P18's error, so P18's real first error is hidden by `withRetry`); any path can log in; form fetches are unpaced; 0 schedule rows counts as success; logs print names in Node; `schedule.js` needs `DOMParser` (not in Node). **Until #324 ships, avoid long Sync Now runs.**
-   - Fluid compute is on for qboard (Kate), so Vercel functions get 300 s. The `api/cron-detail.js` "10 s" header is out of date.
-   - The AI screenshot check was tried before: Integration Check "Step 3" (Claude vision on the roster image), removed in PR #202 (May 2026).
-3. **Bug found: archived boardings stay on the roster and in pay (#322).** Reconciliation sets `cancelled_at` and leaves `booking_status` = `confirmed`. The matrix checks `cancelledAt` (correct). `queryBoarders` (morning roster) checks only `booking_status`, `getWeekendBoardings` checks neither, and payroll (`calculateGross`, `computeDaytimeNet`) checks neither. `C63QhHuu` stays on every roster through 10/25. **Kate: fix it first thing next session.**
-4. **GitHub starts scheduled runs 4–6 h late (#321):** 4am roster at 15:34–17:21 UTC, 7am at 18:23–19:44. The redesign moves triggers to Vercel.
-5. **Booking details appear in public Actions logs (#323).** Kate chose: a private `job_logs` table (service key only), deleted after 30 days. Public logs keep counts, IDs and pass/fail. Old run logs with names need deleting: ask Kate first.
-6. **Issues filed:** #321 (late schedules), #322 (archived boardings on roster/pay), #323 (private logs), #324 (booking-site safety). Commented on #313 (Kate's drift direction) and #315.
+### Session 41: what happened
+1. **Checks (UTC):** ops-watch 10-21 17:36: the old undelivered-alert finding is gone; two queue findings (45 pending, limit 30, oldest 17 h). **Kate: leave the limit** until the old sync paths retire (daily alert expected until then). `auth` 00:37, `schedule` 00:15, `detail` 00:16/00:50, Integration Check 02:45 and 13:19 green, 4am roster sent 15:51.
+2. **#322 merged** (PR #327, 93dc821): a boarding with `cancelled_at` is left out of both rosters, payroll (night pay + daytime credit), and the matrix page's employee totals, summary cards and revenue table. Rows are never deleted. Rule in REQ-108. Two boardings are marked: `C63QhHuu` (off the roster from 10-22) and `C63QgVl9` (March; its pay period drops). Flagging past changes like that: **#326** (filed).
+3. **#324 plan merged** (PR #328): code map of every booking-site path, evidence, Kate's decisions, two-PR plan. Architect ("proceed with changes") and reviewer passed. **Evidence (one request, Kate's OK): a removed booking's URL answers 302 → `/schedule`.**
+4. **#324 PR A merged** (PR #329, e247638, live 20:15 UTC): one paced fetch (1.5 s, promise chain), `SiteThrottled` stop on 429/403 that loops can't swallow, `withRetry` removed, 0 appointments fails the run, reconciliation marks gone only on a redirect to `/schedule` on the site's host (>10 candidates: none opened; >3 gone: none marked; check all first), historical import and the dev login proxy removed, two old debug scripts deleted. New **REQ-657**. Scoped Stryker: 84% on changed lines. **Tonight's 00:00–01:00 UTC crons are the first on PR A.**
+5. **Kate's #324 decisions:** only lockout risks trip the breaker (rejected login, 429/403); an unrecognised page stops without tripping; Clear lives on Settings and logs in at once; >10 candidates skip; mark at most 3; remove the historical import; session stamp 30 h.
+6. **Accounts:** the booking site is still Charlie's business account (the load limit stands), but the app signs in as **its own user** on it, not with Charlie's personal login. Charlie's old sign-in to this app was blocked; Kate creates her a new account at UAT (sign-up is off).
+7. Kate approved: **the on-time roster trigger** (a Vercel cron that dispatches the roster) right after PR B.
+
+### Session 40 (reference)
+Sync redesign decided (option 3, design note); #321–#324 filed; first overnight checks after #301. Details: git history of this file.
 
 ### Session 39 (reference)
 #301 merged and rotated (PR #310); sync findings written; #311–#319 filed. Details: git history of this file.
 
-## Current reference (still true after session 40)
+## Current reference (still true after session 41)
 
 ### Telegram alerts (#265, live, proven 2026-10-19)
 - **The bot is `@qap_alert_bot`** (neutral name, Kate's).
@@ -94,18 +85,19 @@
 - **January issues #6–#24:** triage with Charlie at the first UAT check-in (`docs/UAT_PLAN.md`).
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/specs/sync-redesign-design-note.md`, `docs/specs/sync-redesign-findings.md`. Baseline: `git status`, `npm run test:run`, open PRs and issues.
-2. **Quick checks with real timestamps:** ops-watch's latest row (expected no findings); last night's `schedule`/`auth`/`detail` rows; `sync_queue` pending; the 4am roster (ask Kate it arrived); red Integration Checks.
-3. **#322 (first, Kate):** roster and payroll treat a boarding with `cancelled_at` as gone, in all four readers (`queryBoarders`, `getWeekendBoardings`, `calculateGross`, `computeDaytimeNet`). Tests written from the rule; reviewer; merge; `check:deploy`.
-4. **#324 site-safety PR** (design note, "Before any unattended run"): one paced fetch for every booking-site request; `SiteThrottled` on 429/403/challenge stops the run; remove `withRetry`; a shared breaker (`sync_settings.site_blocked_until` + reason) that every path checks, set by any login failure or throttle, cleared only by Kate (her decision for login failures; the note applies it to throttling too, so confirm with her), with a clear alert that says how to clear it; only `cron-auth` logs in; the reconciliation guard (positive "gone" signal, max 3 archives, row floor); 0 schedule rows fails the run. A breaker column changes a table: write the short design note section and run the architect first if it's more than the note covers.
-5. **#323 private logs:** `job_logs` table (architect gate: new table), 30-day delete, Node entry point redirects `console.*` before imports, a test that fails if a fixture name reaches stdout.
-6. Then the design note's build order: the Node-safe engine (regex parser as the only schedule parser, `sync_logs` columns, skip store), full pass on GitHub, near-term on Vercel (+ #321), retire old paths, button (#317/#311), drift list (#313).
-7. UAT prep (`docs/UAT_PLAN.md`): design notes for #312 and #314; ask Kate about accounts first.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, and `docs/specs/sync-redesign-design-note.md` section "Before any unattended run" (the #324 plan; PR A is done, **PR B is next**).
+2. **Check the first night on PR A (real timestamps):** `cron_health` / `cron_health_log` for `auth`, `schedule`, `detail` since 10-22 00:00 UTC (a 429/403 or "0 appointments" now fails loudly); ops-watch's 10-22 row; Integration Check runs; the 4am roster (ask Kate). If anything broke, fix that before PR B.
+3. **#324 PR B** (plan: the note's "The plan" + "Two PRs" B + "Tests"). Build on a branch: `site_access` table (one row, boolean PK, RLS on, no policies; session moved from `sync_settings`; `blocked_at`, `blocked_reason`, `cleared_at`, `cleared_by`), `getSiteSession()` replacing `ensureSession` (never logs in, fails closed), breaker trips in `authenticatedFetch` (Node) and `sync-proxy` (browser path), only `cron-auth` and Clear log in (one shared login function), `sync-proxy` adds the cookie server-side + path allowlist + no redirects, Clear on Settings (`GET`/`POST /api/site-access`, conditional update, then logs in), the alert (once per trip; "update the password in Vercel before Clear" for a rejected login), ops-watch finding + `site-access` in `ALERT_JOBS`, 30 h stamp, remove the browser `isAuthenticated()` checks. Migration written against production's real schema (the session columns were added by hand). **Order: migration, then deploy B, then drop the old columns in a later PR after one good night; all outside 23:30–01:30 UTC.** Reviewer, merge, `check:deploy`.
+4. **On-time roster trigger** (Kate: yes): a Vercel cron that dispatches `notify-4am` on time (#321). Ask before changing any schedule.
+5. **#323 private job logs:** `job_logs` table (architect gate: new table), 30-day delete, Node entry point redirects `console.*` before imports, a test that fails if a fixture name reaches stdout. Deleting old public run logs needs Kate's OK.
+6. Then the design note's build order: engine → full pass → near-term → retire old paths → button (#317/#311) → drift list (#313).
+7. UAT prep (`docs/UAT_PLAN.md`): #312 before UAT; Kate creates the client's new account and her admin's.
 
 ## Open TODOs
-- [ ] **#318 sync redesign: DECIDED 2026-10-21 (option 3), build in order:** #322 → #324 → #323 → engine → full pass → near-term (+#321) → retire old paths → button (#317/#311) → drift list (#313). Covers #316, #294
-- [ ] #322 archived boardings on roster and in pay (first, next session)
-- [ ] #324 booking-site safety (before any unattended run)
+- [ ] **#318 sync redesign: DECIDED 2026-10-21 (option 3), build in order:** ~~#322~~ → #324 (A done, B next) → roster trigger → #323 → engine → full pass → near-term (+#321) → retire old paths → button (#317/#311) → drift list (#313). Covers #316, #294
+- [ ] #324 booking-site safety: part A done (#329); **part B next** (breaker table, Clear, single login)
+- [ ] On-time roster trigger (Kate approved; after #324 B)
+- [ ] #326 flag past boardings that change after an employee worked them
 - [ ] #323 private job logs (30-day delete); then delete old public run logs with names (ask Kate)
 - [ ] #321 scheduled runs 4–6 h late (fixed by the redesign's Vercel triggers)
 - [ ] #299
