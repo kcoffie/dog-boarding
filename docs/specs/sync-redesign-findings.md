@@ -123,6 +123,18 @@ Two parsers and two flows mean the paths behave differently (reconciliation is o
 
 Still open: Q4 (how far back to reconcile), Q6 (who wins on a hand edit), Q7–Q9. These need Kate's decisions or belong in the design note.
 
+## 6b. Kate's decisions (2026-10-21)
+
+1. **Freshness by date.** Today, later today and tomorrow matter most: those bookings must be right and mostly up to date. The full sync of 100+ bookings can be slow and less frequent.
+2. **Booking-site load.** Don't re-open bookings already known not to be boardings. Skip bookings that haven't changed, with **one full pass a day** as the minimum.
+3. **Q6, hand edits (half-done until seen in real use):** the app wins until the site changes. A hand edit is a **drift** between the app and the booking site, and the app keeps a list of drifts with two states: (1) the app differs from the site; (2) they differed, and now they match. Acting on those states waits until the case comes up in real use. (#313)
+4. **Q4 (how far back):** waiting on the cost and benefit below.
+5. **Public logs:** detailed logs are wanted for debugging but must be private and expire (#323).
+
+**The AI screenshot check was tried before.** Integration Check "Step 3" used Claude vision to compare dog names in the roster image with the database. It ran silently skipped whenever the API key had no credits, and was removed in PR #202 (May 2026, B-2/K-5) after false positives. Today `ANTHROPIC_API_KEY` is used only by gmail-monitor's optional one-line summaries.
+
+**Q4, cost and benefit of looking back.** Today the paths look back different amounts: Sync Now and its reconciliation start at the range's first day (today by default); the `schedule` cron starts at this week's Sunday (0–6 days back); the Integration Check's DB side covers the past 7 days. Looking back one more week costs one schedule page (~5 s) plus one page for each booking in that week that's new, changed or missing. With "skip unchanged" that's a few pages, except in the daily full pass, which re-opens every boarding page in the window (~5–15 boardings a week, at ~8.5 s each). The benefit: a late change (an early pickup, a changed rate, a removed stay) is caught before pay is worked out. Reconciliation can only catch a removed past stay if the past is in its window.
+
 ## 7. Direction under consideration (not decided)
 
 One sync engine, one independent watcher, both judged by outcomes:
