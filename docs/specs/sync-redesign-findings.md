@@ -1,6 +1,6 @@
 # Sync redesign: findings (research before the design note)
 
-**Status:** research, 2026-10-20 (session 39). **No decisions yet.** This is everything known about how the app gets in step with the booking site, what goes wrong, and what we still need to find out. The design note (options → choice → what breaks → threat → how we'll know) comes after Kate has read this, and goes through the architect gate before any code.
+**Status:** research, 2026-10-20 (session 39); answers added 2026-10-21 (section 6a). **No decisions yet.** This is everything known about how the app gets in step with the booking site, what goes wrong, and what we still need to find out. The design note (options → choice → what breaks → threat → how we'll know) comes after Kate has read this, and goes through the architect gate before any code.
 
 **Why now:** on 2026-10-20 a boarding that was gone from the booking site was on the 4am roster and would have counted toward pay (#316), and a manual Sync Now stopped part-way and locked the button for 30 minutes (#317). The roster, pay and UAT all depend on the app agreeing with the booking site.
 
@@ -82,6 +82,42 @@ Two parsers and two flows mean the paths behave differently (reconciliation is o
 8. Retire the Vercel sync crons, or keep one as a backup?
 9. What exactly should an alert say, so Kate can act at 7pm with no laptop?
 10. Does anything else read `sync_queue`, `cron_health` rows for `detail`/`auth`, or `sync_logs`, that a change would break (ops-watch, cron-health-check, Settings UI)?
+
+## 6a. Answers so far (session 40, 2026-10-21, read-only research)
+
+**Kate's constraint (2026-10-21):** don't risk a limit or a lock on the booking-site account. Boardings don't change often. **One good full sync every 24 h is an OK minimum.** Other checks are welcome only if they're light. Every option below is judged by how many booking-site pages it fetches.
+
+**Q1. Can `runSync` run in Node on GitHub Actions? Yes, with three small changes and no new parser.**
+- `auth.js` already has a Node path: `isBrowser()` is false without `window`, so `authenticatedFetch` calls the booking site directly (no proxy).
+- `runSync` calls `authenticate()` with no credentials when it has no session, and the Node path needs them. A server wrapper would load the stored session first (`sessionCache`, `setSession`), as `syncRunner.js` does, so `runSync` skips the login. That's one login a day (cron-auth's), not one per run.
+- `runSync` defaults to an anon-key Supabase client. The server passes a service-role client through `options.supabase`, which `runSync` already accepts and hands to `mapAndSaveAppointment`. `mapping.js`'s own `import.meta.env` default is then never evaluated.
+- `logger.js`/`fileLogger.js` use `import.meta.env?.DEV` and do nothing in Node. Nothing else in `src/lib/scraper/` touches `window`, `document` or `localStorage`.
+- Not yet run. A local Node run would prove it, but it would fetch from the booking site, so it waits for Kate's OK.
+- `sync.js` predates the 2026-10-16 gates and has no mutation score. Running it unattended brings it under the gates (#239).
+
+**Q2. Where the 47 m 49 s went (Sync Now 2026-10-20, 10/20–12/19).**
+- Per booking page fetched: about 8–9 s. Consecutive saves were 7–9 s apart (`sync_appointments.last_synced_at`). That's the 1.5 s delay plus ~4–5 s for the booking site to answer: GitHub Actions' direct fetches in the Integration Check take ~4–5 s per page too, so it's the site, not the proxy.
+- Saves ran from 21:57 to 22:19 (22 min). At ~8.5 s a page that's **roughly 150–160 booking pages fetched**, of which 17 were saved and 2 failed. So **most fetched pages are thrown away after fetching** (`applyDetailFilters`: playgroup, same-day, outside the range). The other ~360 skips happen before fetching (title patterns, archived IDs).
+- 22:19 to 22:44 (25 min) is unaccounted for. It's reconciliation (one page per candidate, 1.5 s apart), the form drain (up to 20), fetched-and-skipped bookings after the last save, or all three. The log doesn't say. Estimate, not measured.
+- Compare March: 623 found in 6 m 56 s and 450 in 4 m 56 s (2026-03-24). The same code was 7× faster, so the duration depends on how many pages get fetched (and possibly on a background tab), not on the range.
+- **A full sync's cost is ~10 schedule pages + ~150–200 booking pages.** At today's pace that's ~25 min on a server, spaced one request every ~8 s.
+
+**Q3. Booking-site load: is there any sign of rate limiting?** None found.
+- 123 `sync_logs` rows (2026-01 to 10-20): every error is a parser crash, a timeout or abort, or a login problem. No 429, 403, captcha or "too many".
+- 4 recent Integration Check logs: no 429/403. `sync_queue` has no stored errors.
+- Absence isn't proof. The site's limits are unknown, and every request says `DogBoardingSync/2.0` in its User-Agent, so the site can tell these requests apart from a person.
+- **Today's load, estimated:** Integration Check 3×/day (3 schedule pages + up to 20 booking pages + forms + its Playwright week pages) ≈ 80; Vercel crons ≈ 7; roster jobs ≈ 5. **About 90 pages a day.** A nightly full sync as it works today adds ~190, the same as one Sync Now press. Not re-fetching bookings already known to be non-boarding, or unchanged since the last full sync, could cut that a lot. That's a design choice, because P4 (edits invisible from the schedule page) argues for re-fetching.
+
+**Q10. What reads the tables a change would touch.**
+- `sync_logs`: only `useSyncHistory` (Sync History page, Settings "Last Sync"), written by `sync.js` and `historicalSync.js`. A server sync that writes it makes those pages truthful (P11) with no reader change.
+- `sync_queue`: `ops-watch` (pending count, oldest pending, last done) and `syncRunner`/`syncQueue`. Retiring the queue means changing ops-watch's checks in the same PR.
+- `cron_health` rows `auth`/`schedule`/`detail`: `scripts/cron-health-check.js` (`MONITORED_CRONS`), ops-watch (schedule) and Settings (`useCronHealth`). Retiring a Vercel cron means removing it from `MONITORED_CRONS`, or the 00:30 check alerts "didn't run" every night.
+
+**Q5 (partly). The button can trigger a server run with no new secret.** `GH_ACTIONS_TOKEN` (fine-grained, this repo, Actions read and write) is already in Vercel for ops-watch. A signed-in endpoint could dispatch the sync workflow and the page could read its `sync_logs` row. Whether to reuse that token for a second purpose is an architect-gate question.
+
+**Already in place for a second, independent reader:** the Integration Check renders the booking site's week pages in a real browser (Playwright, `scripts/integration-check.js`) and reads the live DOM, deliberately apart from the regex parser. A screenshot of those same pages could be read by an AI model and compared with the app and the roster image, at no extra booking-site load. Costs: a new API key (architect gate), client data sent to another third party (Kate's call), and answers that can vary between runs, so it can raise a flag but not be the source of truth. Screenshots show names and dates, not rates (#312).
+
+Still open: Q4 (how far back to reconcile), Q6 (who wins on a hand edit), Q7–Q9. These need Kate's decisions or belong in the design note.
 
 ## 7. Direction under consideration (not decided)
 
