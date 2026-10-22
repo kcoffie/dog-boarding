@@ -1405,7 +1405,7 @@ A daily Vercel cron (`/api/ops-watch`, 17:00 UTC) checks the outcomes the client
 ---
 
 ### REQ-652: Kate's alerts on Telegram
-**Added:** v6.4.0 | **Status:** In Progress
+**Added:** v6.4.0 | **Status:** Complete
 
 Every alert to Kate goes through one function, `sendAlert(text)` (`src/lib/alertKate.js`), which sends it to her through a dedicated Telegram bot. WhatsApp alerts stopped when Meta disabled the account (2026-10-18). A failed alert is never silent. Design: `docs/specs/telegram-alerts-design-note.md` (#259).
 

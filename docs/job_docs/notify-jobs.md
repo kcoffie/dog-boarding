@@ -189,7 +189,6 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 
 ## Known Issues / Backlog
 
-- **WhatsApp delivery receipts:** a `wamid` returned by Meta proves the message was accepted, not that it was delivered to the phone. Post-acceptance delivery failures are silent. F-1 (PR #165, April 3) implemented the webhook endpoint and `message_delivery_status` table — delivery events are now stored. Alerting on `status=failed` is not yet implemented (G-1 backlog).
+- **WhatsApp is locked (since 2026-10-17); the roster goes to Kate on Telegram (`ROSTER_CHANNEL`).** The WhatsApp delivery-receipt alert (G-1) was dropped in the 2026-10-22 triage; a real channel for Charlie and staff is #260. Until then Kate forwards the roster image by hand.
 - **DST manual update:** each March and November, the UTC times in the 7am, 8:30am, Friday and intraday `.yml` files need to be updated by hand. The 4am roster no longer does (REQ-658).
 - **7am and the 4am fallback share 14:00 UTC.** On a day the on-time send failed, GitHub can start both together; neither has recorded a send yet, so both may send (two rosters plus the late alert). A duplicate on a failure day is the accepted direction.
-- **`shouldSendNotification` `window` param shadowing:** the parameter named `window` shadows the browser global. Low-priority rename to `sendWindow`.

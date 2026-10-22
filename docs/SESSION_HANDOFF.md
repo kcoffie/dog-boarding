@@ -1,13 +1,13 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 22, 2026, ~17:50 UTC (session 43, end). **Production = main (`6ff56de`, #335).** The roster reaches Kate on **Telegram**. WhatsApp is locked (since 2026-10-17). **#324 is done (migration 029 ran). The 4am roster is now sent on time by Vercel (REQ-658, #335); its first live run is Fri 10-23 11:00–12:59 UTC. Next session: check that run, then build the full TBD list with Kate before UAT.**
+**Last updated:** October 22, 2026, ~22:10 UTC (session 44, end). **Production = main (`6ff56de`, #335), unchanged this session.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 44 was planning only: the full TBD triage is on GitHub (labels + comments) and the new `docs/SPRINT_PLAN.md` (v7, approved) is the plan. Next: check Fri 10-23's on-time 4am roster, then Sprint 1's top 3, starting with #321 (deadline 10-30).**
 
-**The goal for the next few sessions:** get the app back to where it was in May (the roster reaches staff every morning, unattended, and a failure alerts Kate), then **start real UAT with the end user**, and prioritise the remaining work from UAT feedback. Do what's needed, simply; nothing more.
+**The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
 ---
 
 ## ▶ START HERE (every session)
 
-1. **Read this file to the end, then `docs/ENGINEERING_PROCESS.md`** (team gates). Check the baseline before changing anything: `git status`, `npm run test:run`, open PRs and issues.
+1. **Read this file to the end, then `docs/ENGINEERING_PROCESS.md`** (team gates) **and `docs/SPRINT_PLAN.md`** (the plan; start each session by naming its top 3). Check the baseline before changing anything: `git status`, `npm run test:run`, open PRs and issues.
 2. **Kate's rules:**
    - Work on branches and never commit to `main`. Commit and push each green chunk. Claude may open and squash-merge PRs once every check is green **and** the reviewer agent has run.
    - Use `type: description (#issue)` commits. Never add AI attribution: no Co-Authored-By, no Claude-Session, no session links, no "Generated with Claude Code" in PR bodies. A PreToolUse hook, the commit hook and CI reject them, and they overrule Claude Code's per-session reminder.
@@ -23,12 +23,34 @@
    - Delete files: a hook blocks `git rm`/`rm` in this repo.
    - Dispatch a workflow that sends a message (e.g. `notify-4am.yml`), and push to a Dependabot branch: the permission classifier blocks both even with Kate's OK in chat.
    - Read Vercel env or logs.
+   - Run SQL or migrations against production: Kate runs them (the classifier blocks Claude in the Supabase SQL editor).
 
 ---
 
-## Current State (2026-10-22 ~17:50 UTC, end of session 43)
+## Current State (2026-10-22 ~22:10 UTC, end of session 44)
 
-### Session 43: what happened
+### Session 44: what happened (no code changed)
+1. **The 4am check was deferred:** the first on-time run is Fri 10-23, after this session. It's step 2 below.
+2. **One TBD list, from every source** (issues, PRs, this file, UAT plan, the May sprint plan, REQUIREMENTS, design notes, job docs, code TODOs, memory), triaged with Kate:
+   - **Priorities are GitHub labels:** `priority: high`, `priority: medium`, `priority: low`, `to-investigate` (created this session). Every triaged issue has a **"Triage 2026-10-22"** comment with Kate's note and the answer to her question. Read those before re-deriving anything: `command gh issue list --label "priority: high"`.
+   - **Closed:** #246 (fixed in c8b5c72), #238 (done in #240/#283; vitest 5 stays as PR #285), #145 (eslint 10 done; plugin-react 6 is #284), #293 (superseded by #324), #10 (hooks enforce it), #257 (folded into #321).
+   - **Filed:** #337 (clean-up of unused secrets, env vars, the duplicate Vercel project; Kate, high) and **#338 portfolio** (high, public; names Claude Code openly, which Kate OK'd for that issue only).
+3. **New `docs/SPRINT_PLAN.md` (v7), approved by Kate.** The May plan is archived at `docs/archive/SPRINT_PLAN-2026-05.md`. Four 2-week sprints with a top 3 each, milestones M1 UAT-ready (11-13), M2 in use (January), M3 #318 done (~12-09), M4 portfolio (end of December), and an investigation queue.
+4. **Kate's decisions (2026-10-22):**
+   - **Start UAT now on today's sync; build #318 alongside it.** #318 is **done at build step 6** (retire old paths). Steps 7 (#317/#311) and 8 (#313) are separate work after M3.
+   - **The engine (#318 step 3) moves up to Sprint 2.** A Sync Now break during UAT is an accepted risk.
+   - **Clear (#324): only Kate may press it now; later, only admins.** Today any signed-in user can (`api/site-access.js` checks sign-in only).
+   - **DST must not need code edits:** 7am, 8:30am and Friday pm move to the Vercel Pacific-hour pattern of REQ-658 (#321). If not merged by **Fri 10-30**, hand-edit the GitHub crons for PST (table in `docs/job_docs/notify-jobs.md` "DST Note"). Never move `notify-4am.yml` off 14:00 UTC.
+   - **Telegram won't work for Charlie.** Kate forwards the roster image by hand until #260 finds a real channel.
+   - **#8 (calendar look):** Kate does it herself with a browser agent.
+   - **#13** now carries the UAT plan plus a step-by-step script for Charlie, which Claude dry-runs on production first.
+   - **ADRs:** Kate wants them. 004–007 are planned (sync redesign superseding 002, breaker + single login, roster claim row, Telegram alerts), and every architect-gated decision gets one from now on.
+   - Commits and PRs still carry no AI attribution.
+5. **Found:** the 10-22 Integration Check alert "Missing from DB" for C63QhL5g and C63QhLI1 (title "10/19-22") was a false positive. Both are 6-hour day visits the sync correctly skipped (`sync_queue.meta.detail_skip = same_day`); the check reads only the title. That's #315 recurring, now high priority.
+6. **Docs fixed:** REQ-652 status → Complete; the job docs' G-1 WhatsApp delivery-alert backlog item and the already-done `window` rename removed.
+7. **Two TechPM role files** in the repo root (`TechPM.md` untracked, `TechPM_1.md` tracked): Kate wants that role (2-week sprints, the top 3 tickets each session, hardening before features, ADR reminders, challenge low-value effort).
+
+### Session 43 (reference): what happened
 1. **First-day checks on #324 A+B: all clean.** No cron ran between 04:07 and 17:00 UTC (expected). `site_access` never tripped (session good to 10-23 06:37 UTC). Integration Check's 08:00 run started at 13:18 UTC (5 h late) and was green. ops-watch 10-22 17:36: only the two expected queue findings (**55 pending, up from 45**; Kate: leave the limit). No browser Sync Now since PR B, so the Edge 302 is still unproven; Kate needn't press it just for that (the check only fires when a booking has vanished).
 2. **PR #333 merged (06acd40):** `sessionCache.js` and its test deleted; **migration 029** dropped `sync_settings.session_cookies` / `session_expires_at`. **Kate ran the SQL** ~15:50 UTC; verified gone, `site_access` intact. Reviewer: no blockers; stale docs fixed.
 3. **The 4am roster arrived at 8:48 PDT** (GitHub started it 4 h 48 m late). Kate's manual `gh workflow run` created no run.
@@ -49,7 +71,7 @@
 ### Sessions 41–42 (reference)
 #322 merged (PR #327). #324 plan (PR #328), PR A (#329, paced fetch, stop on 429/403, reconcile only on a 302 to `/schedule`), PR B (#331, `site_access` table + breaker + Clear on Settings, one login via `loginToSite`, migration 028). First night on A+B (10-22) clean: `auth` `refreshed`, breaker never tripped. Details: git history of this file.
 
-## Current reference (still true after session 42)
+## Current reference (still true after session 44)
 
 ### Telegram alerts (#265, live, proven 2026-10-19)
 - **The bot is `@qap_alert_bot`** (neutral name, Kate's).
@@ -82,96 +104,25 @@
 - **#239 `pictureOfDay.js`** (51.13% in CI): parked by Kate until UAT starts.
 
 ### Issues
-- **#318 sync redesign (top priority):** research → design note → architect → Kate decides → build. Covers #316, #317 (high), #311, #294; touches #313, #315, #312.
-- **UAT fixes:** #312 ($0 rate, before UAT), #314 (pay breakdown image), #313 (hand edits; after the redesign decides who wins), #319 (Sync Details window off-screen, can't scroll).
-- **#299** (alert when a merge doesn't reach production; architect gate; needs `INTERNAL_API_TOKEN` in the workflow since #301).
-- **#260:** Twilio SMS roster. Kate starts the Twilio upgrade (A2P needs a paid account; no registered business, and messages can't be tied to Charlie's, so check the sole-proprietor or toll-free route). PR #291 holds the design and Kate's open decisions.
-- **#307:** remove invite-code management from Settings (sign-up is gone since #301).
-- **#257** (fold into #260), **#293, #295** (low), **#285** vitest 5 / **#284** vite 8 (parked), **#246** (close after #260).
-- **January issues #6–#24:** triage with Charlie at the first UAT check-in (`docs/UAT_PLAN.md`).
+Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`. Baseline: `git status`, `npm run test:run`, open PRs.
-2. **Check the on-time 4am roster** (first run Fri 10-23; on later days check the latest weekday). Read real timestamps (`date -u`):
-   - `SELECT status, result, error_msg, updated_at FROM cron_health WHERE cron_name = 'notify-4am-claim';` → `success`, `result.trigger = 'vercel'`, `result.at` between 11:00 and 12:59 UTC (PDT; from 11-02, 12:00–13:59).
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs.
+2. **Check the on-time 4am roster** (first run Fri 10-23; on later days the latest weekday; first PST run Mon 11-02, from the 12:00 UTC cron, so 12:00–12:59 UTC). Read real timestamps (`date -u`):
+   - `SELECT status, result, error_msg, updated_at FROM cron_health WHERE cron_name = 'notify-4am-claim';` → `success`, `result.trigger = 'vercel'`, `result.at` between 11:00 and 12:59 UTC (PDT).
    - `message_log`: one `notify-4am` `sent` in that window, and no `notify-4am-alert` row.
    - The 14:00 UTC `notify-4am` run (Actions) logs `already_sent` (`command gh run view <id> --log | grep -i skipped`).
-   - Ask Kate when the roster arrived. If anything's off, use `docs/RUNBOOK.md` "How the 4am roster is sent".
-   - Also: the overnight crons (`auth` `refreshed`, `schedule` / `detail` success, `site_access.blocked_at` NULL), ops-watch's latest row.
-3. **Kate's main goal for the session: one complete TBD list before UAT.** Build it **before** changing anything, then prune and prioritise it with her. Sources, all of them:
-   - Open GitHub issues (39 on 10-22: `command gh issue list --state open --limit 200`) and open PRs (#291 SMS design, #285 vitest 5).
-   - "Open TODOs" below, "Issues" under Current reference, and `docs/UAT_PLAN.md` (open decisions, the January issues #6–#24 to triage with the client).
-   - `docs/SPRINT_PLAN.md`, `docs/REQUIREMENTS.md` (anything Planned/Deferred), the design notes' "Not in this change" / open questions (`docs/specs/*-design-note.md`, `sync-redesign-findings.md`), `docs/job_docs/*` "Known Issues / Backlog", and `grep -rn "TODO\|FIXME" api src scripts`.
-   - Memory notes (Kate's earlier decisions and asks).
-   - **Present it as one table:** item, source (issue # / doc), what it is in one line, status (open / partly done / probably stale), and a suggested group (before UAT / during UAT / after UAT / close). Flag duplicates and issues that are already done (e.g. #324's code is done: what's left is Kate's Clear decision, the unproven Sync Now 302 and optional secret clean-up; #321's 4am part is done, 7am/8:30 still late). Then work through it with Kate: close, merge, re-word, prioritise. Update the issues and this file with the result.
-4. **Decision for Kate before Sun 11-01 (DST):** the 7am, 8:30am, Friday-pm and intraday GitHub crons are UTC and fire an hour early from 11-01 unless edited (table in `docs/job_docs/notify-jobs.md` "DST Note"). Options: edit the four crons on 10-31 (ask before changing any schedule), or move 7am/8:30am to the Vercel pattern (REQ-658: one cron line each plus their Pacific hour; note 8:30 can't be hit exactly on Hobby, which fires anywhere in the hour). **Never move `notify-4am.yml` off 14:00 UTC.**
-5. Then, per Kate's priorities from step 3. The sync redesign's build order was: #323 private job logs (architect gate: new table) → engine → full pass → near-term (+#321 rest) → retire old paths → button (#317/#311) → drift list (#313). UAT prep: #312 before UAT; Kate creates the client's and her admin's accounts.
+   - Also: overnight crons (`auth` `refreshed`, `schedule`/`detail` success), `site_access.blocked_at` NULL, ops-watch's latest row.
+   - Ask Kate when the roster arrived. If anything's off: `docs/RUNBOOK.md` "How the 4am roster is sent". Report in a few lines; fix nothing without asking.
+3. **Tell Kate the Sprint 1 top 3** (the TechPM habit), then work them in this order:
+   1. **#321 (deadline Fri 10-30):** 7am, 8:30am, Friday pm to the Vercel pattern (REQ-658: two crons for PDT/PST, the code sends only in the right Pacific hour, a claim row, a failure alert; #257 folded in). Write a short addendum to `docs/specs/roster-trigger-design-note.md`, run the architect, then build. Notes: Hobby fires anywhere in the hour (8:30 can land 8:00–8:59); intraday sends nothing while the channel is telegram (leave it, note its DST); count Vercel crons against Hobby's limit. **If it can't merge by 10-30, ask Kate, then hand-edit the GitHub crons for PST.**
+   2. **#13 UAT script:** Kate books watch-first (week of 11-09). Write a step-by-step script for Charlie (and her admin) from `docs/UAT_PLAN.md`, including Send a Question and what happens next; dry-run it on production (Kate's Chrome, with her OK).
+   3. **#323 private job logs** (#318 step 2): new table, so design note + architect gate; Kate runs the migration. Must merge before #318 step 4.
+   - Also in Sprint 1: #324 leftovers (Clear for Kate only; the Sync Now 302 proof when it happens); investigations batch A (`docs/SPRINT_PLAN.md`); if #321 lands early, start #318 step 3 with the parser parity test.
+4. **Kate's own Sprint 1 items:** #337 chores, #8 calendar, booking watch-first, forwarding the roster to Charlie.
 
 ## Open TODOs
-- [ ] **#318 sync redesign: DECIDED 2026-10-21 (option 3), build in order:** ~~#322~~ → ~~#324~~ → ~~4am roster trigger~~ (#335) → #323 → engine → full pass → near-term (+#321 rest) → retire old paths → button (#317/#311) → drift list (#313). Covers #316, #294
-- [ ] #324: code done (A #329, B #331, 029 #333; first night clean). Left: Kate decides who may press Clear; the browser Sync Now 302 is unproven (check `sync_logs` after her next natural Sync Now); optionally delete the unused `EXTERNAL_SITE_*` GitHub secrets; then close #324
-- [ ] 4am roster on time: live (#335, REQ-658). Check the first runs (Fri 10-23; first PST run Mon 11-02). 7am/8:30am/Friday/intraday: DST edit or move to Vercel before 11-01 (Kate decides)
-- [ ] #326 flag past boardings that change after an employee worked them
-- [ ] #323 private job logs (30-day delete); then delete old public run logs with names (ask Kate)
-- [ ] #321 scheduled runs 4–6 h late: 4am fixed (#335); 7am/8:30am/Friday/intraday still on GitHub
-- [ ] #299
-- [ ] UAT: Kate reviews `docs/UAT_PLAN.md` decisions, creates the admin account, runs "watch first" with Charlie and her admin; triage #6–#24 at the first check-in
-- [ ] #312 a dog with no rate counts as $0, silently (before UAT)
-- [ ] #313 a correction by hand must survive the next sync
-- [ ] #314 pay breakdown image per employee (Charlie sends it; the app never does)
-- [ ] Maybe: notify Charlie when her admin adds or changes boarding info
-- [ ] Maybe: a clear "something looks wrong at 9pm" path (Send a Question, made obvious, with what happens next)
-- [ ] #307 invite-code management
-- [ ] #319 Sync Details window off-screen, can't scroll (UAT bug)
-- [ ] #260 Twilio (Kate: upgrade + A2P; #291 decisions)
-- [ ] #311 Sync History page usable (someday, after UAT starts)
-- [ ] #239 backfill: parked until UAT (Kate revisits)
-- [ ] #257, #293, #295
-- [ ] #285 vitest 5: wait for stryker-js #6214; #284 vite 8
-- [ ] #315 Integration Check: skip same-day-visit candidates
-- [ ] `mutate:changed` PR check (80% on changed lines)
-- [ ] Kate: delete the `META_*` Vercel vars with #260; optionally delete the disconnected `dog-boarding` Vercel project; remove the stale `INTEGRATION_CHECK_RECIPIENTS`/`TWILIO_*` GitHub secrets; `GH_ACTIONS_TOKEN` expires 2027-10-19
-
----
-
-## Session 32 State (2026-05-19, reference)
-
-
-- **v6 OPEN** — theme: *Client-driven operational intelligence*
-- **1065 tests, 61 files, 0 failures**
-- **main clean** — PR #208 (U-2) + PR #209 (C-1) both merged today
-- Live at [qboarding.vercel.app](https://qboarding.vercel.app)
-
-### Session 32 Summary (this session)
-| Item | Status |
-|---|---|
-| U-2 — "Send a Question" button in nav user dropdown | ✅ Done. PR #208 merged. `api/send-question.js` + `QuestionModal` in `Layout.jsx`. 7 tests (REQ-700). WhatsApp to Kate via `getAlertRecipients()`. |
-| OVERVIEW.md corrections — Vercel cron times were wrong | ✅ Done. Fixed all cron times (midnight UTC = 5 PM PDT, not midnight PDT). Added "When Does the DB Get Updated From AGYD?" section. Updated "A Real Weekday" timeline. Removed stale Claude vision reference. |
-| C-1 — Employee overnight calendar grid | ✅ Done. PR #209 merged. Second calendar grid below dog calendar on CalendarPage. Colored name chips, N/A pill, blank for unassigned. 7 tests (REQ-701). Vercel deploy pending verification. |
-
-### Session 31 Summary (reference)
-| Item | Status |
-|---|---|
-| Integration check alert — "Missing from DB: one boarding 6/15-7/3 (C63Qglz7)" | ✅ Diagnosed. Bad booking in AGYD — same-day filter correctly skipped it. Kate confirmed bad entry; B-3 will re-queue on URL timestamp change. No code change needed. |
-| Integration check WINDOW_DAYS=7 too narrow for far-future boardings | ⏸ Deferred. Fix: `WINDOW_DAYS = 7 → 90` in `scripts/integration-check.js`. Kate monitoring. |
-| "Day boarding {date}" label rename — EmployeeDropdown checkbox | ✅ Done. PR #206 merged. |
-
----
-
-### Session 32 next steps (superseded)
-
-1. **Verify Vercel deploy** — go to [qboarding.vercel.app](https://qboarding.vercel.app) → Calendar page → confirm "Overnight Staff" grid renders below the dog calendar with colored name chips and N/A pills
-2. **Kate picks G-1 or G-3** — see specs in SPRINT_PLAN.md
-
----
-
-## Upcoming Tickets
-
-| # | Ticket | Complexity | Notes |
-|---|--------|------------|-------|
-| G-1 | Alert on failed wamid — `message_delivery_status` table exists but nothing fires on `status='failed'` | Medium | Kate to pick this or G-3 |
-| G-3 | Client-facing status page — last cron run, last notify sent, last delivery status | Medium | Kate to pick this or G-1 |
-| B-4 | Integration check WINDOW_DAYS too narrow — change `WINDOW_DAYS = 7 → 90` in `scripts/integration-check.js` | Trivial | Deferred — do if repeated false alerts on far-future bookings |
+The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.
 
 ---
 
@@ -186,13 +137,3 @@
 - **K-8 closed by events:** Meta disabled the test WhatsApp account on 2026-10-18. The roster moves to SMS (#260), and Kate's alerts are on Telegram (#265).
 
 ---
-
-## Session 30 Summary (reference)
-| Item | Status |
-|---|---|
-| B-3 — re-sync appointments modified on AGYD after initial sync | ✅ Done + verified. PR #205 merged. `enqueue()` re-queues `done` items when URL timestamp changes. |
-
-## Session 28 Summary (reference)
-| Item | Status |
-|---|---|
-| B-2 — removed Check 3 (Claude vision) entirely | ✅ PR #202 merged. Integration check now: DOM ID match + unknown name + daytime check. |

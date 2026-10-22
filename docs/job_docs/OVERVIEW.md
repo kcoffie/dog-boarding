@@ -239,7 +239,7 @@ Three independent paths ensure a failure surfaces before it causes a missed noti
 | Vercel cron didn't run / threw an error | `cron-health-check` | Telegram alert to Kate at 5:30 PM PDT (00:30 UTC) |
 | GH Actions workflow failed (any workflow) | `gmail-monitor` | Telegram alert to Kate within 1 hour |
 | Sync ran but missed a booking (silent data bug) | `integration-check` | Telegram report to Kate at 1am/9am/5pm |
-| Morning notify fired but image never delivered to phone | F-1 webhook + `message_delivery_status` table | (G-1 alert not yet implemented) |
+| Morning notify fired but image never delivered to phone | F-1 webhook + `message_delivery_status` table | WhatsApp is locked since 2026-10-17; no delivery alert (G-1 dropped 2026-10-22, #260) |
 
 ---
 
