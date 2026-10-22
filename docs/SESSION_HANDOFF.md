@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 21, 2026, ~22:55 UTC (session 42, end). **Production = main (`aa4c3da`, #331).** The roster reaches Kate on **Telegram**. WhatsApp is locked (since 2026-10-17). **Sync redesign (#318): #322 and #324 parts A and B are live. The first night on A + B (10-22) was clean (checked 04:07 UTC); finish the daytime checks, then the on-time roster trigger.**
+**Last updated:** October 22, 2026, ~17:50 UTC (session 43, end). **Production = main (`6ff56de`, #335).** The roster reaches Kate on **Telegram**. WhatsApp is locked (since 2026-10-17). **#324 is done (migration 029 ran). The 4am roster is now sent on time by Vercel (REQ-658, #335); its first live run is Fri 10-23 11:00–12:59 UTC. Next session: check that run, then build the full TBD list with Kate before UAT.**
 
 **The goal for the next few sessions:** get the app back to where it was in May (the roster reaches staff every morning, unattended, and a failure alerts Kate), then **start real UAT with the end user**, and prioritise the remaining work from UAT feedback. Do what's needed, simply; nothing more.
 
@@ -26,42 +26,28 @@
 
 ---
 
-## Current State (2026-10-21 ~22:55 UTC, end of session 42)
+## Current State (2026-10-22 ~17:50 UTC, end of session 43)
 
-### Session 42: what happened
-1. **The first night on PR A could not be checked yet:** the session ran 21:20–22:55 UTC on 10-21, before the 10-22 00:00 UTC crons.
-2. **#324 PR B merged** (PR #331, `aa4c3da`, 22:40 UTC; `check:deploy` OK; `/api/site-access` and `/api/sync-proxy` answer 401 without sign-in, so both are live). What it does:
-   - **`site_access` table** (migration 028, **run by Kate in the Supabase SQL editor 10-21 ~22:30 UTC**): one row (boolean PK, RLS on, no policies, service key only). It holds the booking-site session (moved from `sync_settings`, whose session columns are now NULL) and the breaker (`blocked_at`, `blocked_reason`, `cleared_at`, `cleared_by`). Verified: row present, session copied (stamp 10-22 00:37 UTC), not blocked, anon key reads 0 rows.
-   - **One login:** `loginToSite()` in `src/lib/scraper/siteLogin.js`, used only by `cron-auth` and Clear. It reads the breaker first and never logs in while blocked. A rejected login (incl. a redirect back to /login) or a 429/403 trips the breaker; a 5xx or missing credentials fails without tripping. Session stamp 30 h.
-   - **Everything else reads the session** with `getSiteSession()` (`src/lib/scraper/siteAccess.js`), which fails closed (`SiteAccessError` SITE_BLOCKED / NO_SESSION; a missing row throws). A 429/403 anywhere (Node fetch, `sync-proxy`, the Integration Check's Playwright load) trips the breaker. `tripBreaker` never throws and alerts once per trip (first trip wins).
-   - **The browser never logs in or sees the cookie:** `api/sync-proxy.js` (Edge) adds the cookie server-side, allows only the sync paths (anchored allowlist; https, no port, no userinfo), `redirect: 'manual'`, answers 423 when blocked and 503 with no session.
-   - **Clear** on Settings (`SiteAccessCard`, `GET`/`POST /api/site-access`): one conditional update (two presses clear once), records who, then logs in at once. A refused login re-trips and alerts.
-   - **ops-watch** reports a tripped breaker; `site-access` is in `ALERT_JOBS`. A blocked run records `site_blocked` as success (no red cron, no alert storm: the one breaker alert is the signal).
-   - Runbook: `docs/RUNBOOK.md` "Booking site blocked". REQ-657 part B criteria in `docs/REQUIREMENTS.md`; REQ-641 superseded.
-   - Gates: reviewer agent (10 findings, all fixed in the PR). Suite 1817 passed / 1 skipped. **Scoped Stryker (TZ=UTC):** `siteAccess.js` 96.5%, `siteLogin.js` 87.5%, `api/site-access.js` 82.35%, `api/sync-proxy.js` 75.88%, `opsWatch.js` 100%, `cron-auth.js` 93.65%.
-3. **Not done (Kate):** `src/lib/scraper/sessionCache.js` and `src/__tests__/scraper/sessionCache.test.js` are dead code since PR B. The hook blocks Claude from deleting them, and Kate's `! git rm` didn't take; she deletes them from a normal terminal later, then they're committed on a branch.
-4. **First night on PR A + B, checked 10-22 04:07 UTC (all good):**
-   - `schedule` 00:14:59 success (236 found, 115 queued, 2 pages), on the session the migration copied.
-   - `detail` 00:16 and 00:50 success (`skipped`; queue 94 → 93).
-   - `auth` 00:37:54 success, `refreshed`: the first `loginToSite()` login. `site_access.session_expires_at` = 10-23 06:37:53 UTC (30 h). `blocked_at` NULL, never tripped.
-   - Integration Check 02:43 UTC success; its report reached Telegram 02:53.
-   - **Not yet checkable at 04:07 UTC:** ops-watch's 10-22 row (~17:30 UTC), the 4am roster (11:00 UTC is 4am Pacific; it ran late at ~15:50 UTC on 10-21, #321), the first browser Sync Now on PR B.
-5. **Open decision (Kate):** may any signed-in user press Clear, or only Kate? Today: any signed-in user (sign-up is off, so that's Kate, and later Charlie and her admin).
+### Session 43: what happened
+1. **First-day checks on #324 A+B: all clean.** No cron ran between 04:07 and 17:00 UTC (expected). `site_access` never tripped (session good to 10-23 06:37 UTC). Integration Check's 08:00 run started at 13:18 UTC (5 h late) and was green. ops-watch 10-22 17:36: only the two expected queue findings (**55 pending, up from 45**; Kate: leave the limit). No browser Sync Now since PR B, so the Edge 302 is still unproven; Kate needn't press it just for that (the check only fires when a booking has vanished).
+2. **PR #333 merged (06acd40):** `sessionCache.js` and its test deleted; **migration 029** dropped `sync_settings.session_cookies` / `session_expires_at`. **Kate ran the SQL** ~15:50 UTC; verified gone, `site_access` intact. Reviewer: no blockers; stale docs fixed.
+3. **The 4am roster arrived at 8:48 PDT** (GitHub started it 4 h 48 m late). Kate's manual `gh workflow run` created no run.
+4. **Roster trigger, option A (4am only), Kate 2026-10-22.** Design note PR #334 (architect: proceed with changes, all folded in). Kate approved: fallback cron 11:00 → 14:00 UTC; a `force` checkbox for manual re-sends.
+5. **PR #335 merged (6ff56de, ~17:40 UTC), REQ-658, `check:deploy` OK.** How it works:
+   - Vercel crons call `/api/notify` at 11:00 and 12:00 UTC. `Authorization: Bearer $CRON_SECRET` = the on-time trigger (fails closed; 4am only). It sends only 04:00–05:59 Pacific, Mon–Fri, so **DST needs no edit for the 4am roster**.
+   - Every automatic 4am call claims the Pacific day on the `cron_health` row **`notify-4am-claim`** (one conditional update) before any work. "Already sent" needs `notify.lastDate` = today **and** `sentAt` on today's Pacific date.
+   - **GitHub `notify-4am.yml` is now the fallback at `0 14 * * 1-5`** (weekdays, from 06:00 Pacific). It sends only if the on-time send didn't, and then alerts Kate why (job **`notify-4am-alert`**, in ops-watch's `ALERT_JOBS`). Manual run: tick **force**.
+   - No roster data at 4am now alerts Kate (once a day). A `notify` failure no longer wipes the 7am baseline (`writeCronHealth(..., { keepResult: true })`).
+   - The trigger fetches the roster image from `https://qboarding.vercel.app` (`PROD_URL`).
+   - Evidence: every DB behaviour checked on production with a throwaway row (deleted); 3 concurrent claims → exactly 1 won. Suite 1935 passed / 1 skipped. **Scoped Stryker (TZ=UTC): changed lines 93.5%**, `rosterTrigger.js` 93.37%, `notify.js` 85.77%. Reviewer ran twice (1 must-fix found and fixed: a `date=` preview would have blocked the next 4am).
+   - **Known and accepted:** 7am and the fallback both run at 14:00 UTC, so on a failure day both may send.
+   - Runbook: "I didn't get the roster this morning" → "How the 4am roster is sent". Design: `docs/specs/roster-trigger-design-note.md`.
+6. **Not verified yet:** the live trigger (no `CRON_SECRET` locally; it's only in Vercel). Its first run is Fri 10-23.
+7. **Don't run `notify-4am` without force on 10-22:** today's roster went out before the claim row existed, so an unforced run sends a false "didn't go out on time" alert.
+8. **Tool notes:** the classifier blocked `gh pr merge` for #333 ("Merge Without Review") but allowed #334/#335 once Kate said to merge. macOS has no `timeout` command.
 
-### Session 41: what happened
-1. **Checks (UTC):** ops-watch 10-21 17:36: the old undelivered-alert finding is gone; two queue findings (45 pending, limit 30, oldest 17 h). **Kate: leave the limit** until the old sync paths retire (daily alert expected until then). `auth` 00:37, `schedule` 00:15, `detail` 00:16/00:50, Integration Check 02:45 and 13:19 green, 4am roster sent 15:51.
-2. **#322 merged** (PR #327, 93dc821): a boarding with `cancelled_at` is left out of both rosters, payroll (night pay + daytime credit), and the matrix page's employee totals, summary cards and revenue table. Rows are never deleted. Rule in REQ-108. Two boardings are marked: `C63QhHuu` (off the roster from 10-22) and `C63QgVl9` (March; its pay period drops). Flagging past changes like that: **#326** (filed).
-3. **#324 plan merged** (PR #328): code map of every booking-site path, evidence, Kate's decisions, two-PR plan. Architect ("proceed with changes") and reviewer passed. **Evidence (one request, Kate's OK): a removed booking's URL answers 302 → `/schedule`.**
-4. **#324 PR A merged** (PR #329, e247638, live 20:15 UTC): one paced fetch (1.5 s, promise chain), `SiteThrottled` stop on 429/403 that loops can't swallow, `withRetry` removed, 0 appointments fails the run, reconciliation marks gone only on a redirect to `/schedule` on the site's host (>10 candidates: none opened; >3 gone: none marked; check all first), historical import and the dev login proxy removed, two old debug scripts deleted. New **REQ-657**. Scoped Stryker: 84% on changed lines. **Tonight's 00:00–01:00 UTC crons are the first on PR A.**
-5. **Kate's #324 decisions:** only lockout risks trip the breaker (rejected login, 429/403); an unrecognised page stops without tripping; Clear lives on Settings and logs in at once; >10 candidates skip; mark at most 3; remove the historical import; session stamp 30 h.
-6. **Accounts:** the booking site is still Charlie's business account (the load limit stands), but the app signs in as **its own user** on it, not with Charlie's personal login. Charlie's old sign-in to this app was blocked; Kate creates her a new account at UAT (sign-up is off).
-7. Kate approved: **the on-time roster trigger** (a Vercel cron that dispatches the roster) right after PR B.
-
-### Session 40 (reference)
-Sync redesign decided (option 3, design note); #321–#324 filed; first overnight checks after #301. Details: git history of this file.
-
-### Session 39 (reference)
-#301 merged and rotated (PR #310); sync findings written; #311–#319 filed. Details: git history of this file.
+### Sessions 41–42 (reference)
+#322 merged (PR #327). #324 plan (PR #328), PR A (#329, paced fetch, stop on 429/403, reconcile only on a 302 to `/schedule`), PR B (#331, `site_access` table + breaker + Clear on Settings, one login via `loginToSite`, migration 028). First night on A+B (10-22) clean: `auth` `refreshed`, breaker never tripped. Details: git history of this file.
 
 ## Current reference (still true after session 42)
 
@@ -105,27 +91,29 @@ Sync redesign decided (option 3, design note); #321–#324 filed; first overnigh
 - **January issues #6–#24:** triage with Charlie at the first UAT check-in (`docs/UAT_PLAN.md`).
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`.
-2. **Finish the first-day checks on PR A + B** (the overnight crons were clean; see Session 42 item 4). Use real timestamps:
-   - `cron_health` / `cron_health_log` since the last check: `auth` `refreshed` each night, `schedule` / `detail` success. `site_blocked` means the breaker is tripped.
-   - `site_access`: `blocked_at` still NULL. Use the service key (recipe in memory `supabase-local-queries`); the anon key sees nothing by design.
-   - ops-watch's 10-22 row (no `site-access` finding; the queue findings are expected), Integration Check runs, the 4am roster (ask Kate).
-   - The first browser **Sync Now** after PR B: Edge `redirect: 'manual'` should hand back a real 302 + `Location` (the removed-booking check depends on it). Ask Kate to press it once, then read `sync_logs`.
-   - If the breaker tripped: read `blocked_reason`, follow `docs/RUNBOOK.md` "Booking site blocked". Kate presses Clear; don't clear it from code.
-3. **The good night is in (10-22), so:** small PR, migration 029, dropping `sync_settings.session_cookies` and `session_expires_at` (Kate runs the SQL; outside 23:30–01:30 UTC). Grep first that no code reads them.
-4. **Commit Kate's deletion** of `sessionCache.js` + its test on a branch once she's run it (`git status` shows `D`).
-5. **On-time roster trigger** (Kate: yes): a Vercel cron that dispatches `notify-4am` on time (#321). Architect gate (new job). Ask before changing any schedule.
-6. **#323 private job logs:** `job_logs` table (architect gate: new table), 30-day delete, Node entry point redirects `console.*` before imports, a test that fails if a fixture name reaches stdout. Deleting old public run logs needs Kate's OK.
-7. Then the design note's build order: engine → full pass → near-term → retire old paths → button (#317/#311) → drift list (#313).
-8. UAT prep (`docs/UAT_PLAN.md`): #312 before UAT; Kate creates the client's new account and her admin's.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`. Baseline: `git status`, `npm run test:run`, open PRs.
+2. **Check the on-time 4am roster** (first run Fri 10-23; on later days check the latest weekday). Read real timestamps (`date -u`):
+   - `SELECT status, result, error_msg, updated_at FROM cron_health WHERE cron_name = 'notify-4am-claim';` → `success`, `result.trigger = 'vercel'`, `result.at` between 11:00 and 12:59 UTC (PDT; from 11-02, 12:00–13:59).
+   - `message_log`: one `notify-4am` `sent` in that window, and no `notify-4am-alert` row.
+   - The 14:00 UTC `notify-4am` run (Actions) logs `already_sent` (`command gh run view <id> --log | grep -i skipped`).
+   - Ask Kate when the roster arrived. If anything's off, use `docs/RUNBOOK.md` "How the 4am roster is sent".
+   - Also: the overnight crons (`auth` `refreshed`, `schedule` / `detail` success, `site_access.blocked_at` NULL), ops-watch's latest row.
+3. **Kate's main goal for the session: one complete TBD list before UAT.** Build it **before** changing anything, then prune and prioritise it with her. Sources, all of them:
+   - Open GitHub issues (39 on 10-22: `command gh issue list --state open --limit 200`) and open PRs (#291 SMS design, #285 vitest 5).
+   - "Open TODOs" below, "Issues" under Current reference, and `docs/UAT_PLAN.md` (open decisions, the January issues #6–#24 to triage with the client).
+   - `docs/SPRINT_PLAN.md`, `docs/REQUIREMENTS.md` (anything Planned/Deferred), the design notes' "Not in this change" / open questions (`docs/specs/*-design-note.md`, `sync-redesign-findings.md`), `docs/job_docs/*` "Known Issues / Backlog", and `grep -rn "TODO\|FIXME" api src scripts`.
+   - Memory notes (Kate's earlier decisions and asks).
+   - **Present it as one table:** item, source (issue # / doc), what it is in one line, status (open / partly done / probably stale), and a suggested group (before UAT / during UAT / after UAT / close). Flag duplicates and issues that are already done (e.g. #324's code is done: what's left is Kate's Clear decision, the unproven Sync Now 302 and optional secret clean-up; #321's 4am part is done, 7am/8:30 still late). Then work through it with Kate: close, merge, re-word, prioritise. Update the issues and this file with the result.
+4. **Decision for Kate before Sun 11-01 (DST):** the 7am, 8:30am, Friday-pm and intraday GitHub crons are UTC and fire an hour early from 11-01 unless edited (table in `docs/job_docs/notify-jobs.md` "DST Note"). Options: edit the four crons on 10-31 (ask before changing any schedule), or move 7am/8:30am to the Vercel pattern (REQ-658: one cron line each plus their Pacific hour; note 8:30 can't be hit exactly on Hobby, which fires anywhere in the hour). **Never move `notify-4am.yml` off 14:00 UTC.**
+5. Then, per Kate's priorities from step 3. The sync redesign's build order was: #323 private job logs (architect gate: new table) → engine → full pass → near-term (+#321 rest) → retire old paths → button (#317/#311) → drift list (#313). UAT prep: #312 before UAT; Kate creates the client's and her admin's accounts.
 
 ## Open TODOs
-- [ ] **#318 sync redesign: DECIDED 2026-10-21 (option 3), build in order:** ~~#322~~ → ~~#324~~ (A+B live; first night 10-22) → roster trigger → #323 → engine → full pass → near-term (+#321) → retire old paths → button (#317/#311) → drift list (#313). Covers #316, #294
-- [ ] #324: A (#329) and B (#331) live. Left: first night clean (10-22); finish the daytime checks + Sync Now 302; migration 029 drops the old `sync_settings` session columns; commit Kate's `sessionCache.js` deletion; Kate decides who may press Clear; optionally delete the unused `EXTERNAL_SITE_*` GitHub secrets
-- [ ] On-time roster trigger (Kate approved; next after the #324 first-night check)
+- [ ] **#318 sync redesign: DECIDED 2026-10-21 (option 3), build in order:** ~~#322~~ → ~~#324~~ → ~~4am roster trigger~~ (#335) → #323 → engine → full pass → near-term (+#321 rest) → retire old paths → button (#317/#311) → drift list (#313). Covers #316, #294
+- [ ] #324: code done (A #329, B #331, 029 #333; first night clean). Left: Kate decides who may press Clear; the browser Sync Now 302 is unproven (check `sync_logs` after her next natural Sync Now); optionally delete the unused `EXTERNAL_SITE_*` GitHub secrets; then close #324
+- [ ] 4am roster on time: live (#335, REQ-658). Check the first runs (Fri 10-23; first PST run Mon 11-02). 7am/8:30am/Friday/intraday: DST edit or move to Vercel before 11-01 (Kate decides)
 - [ ] #326 flag past boardings that change after an employee worked them
 - [ ] #323 private job logs (30-day delete); then delete old public run logs with names (ask Kate)
-- [ ] #321 scheduled runs 4–6 h late (fixed by the redesign's Vercel triggers)
+- [ ] #321 scheduled runs 4–6 h late: 4am fixed (#335); 7am/8:30am/Friday/intraday still on GitHub
 - [ ] #299
 - [ ] UAT: Kate reviews `docs/UAT_PLAN.md` decisions, creates the admin account, runs "watch first" with Charlie and her admin; triage #6–#24 at the first check-in
 - [ ] #312 a dog with no rate counts as $0, silently (before UAT)
