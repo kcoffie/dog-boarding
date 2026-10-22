@@ -40,7 +40,7 @@ Runs the schedule sync and drains the detail queue **before** the Playwright com
 **No login (#324):** Step 0 and Step 1 use the session `cron-auth` stored in `site_access` (`getSiteSession`); the check never logs in, so the `EXTERNAL_SITE_*` GitHub secrets are no longer used by it. With no usable session, Step 0 records `session_failed` and Step 1 reports "skipped". While the booking-site breaker is tripped, Step 0 does nothing and the check exits before the browser load, without a report (the breaker alerted, and ops-watch repeats it daily).
 
 ### Step 1 — Load session cookies
-Reads `session_cookies` from `sync_settings` in Supabase — the same auth token the midnight cron uses. If missing or expired, sends WhatsApp and exits. The session is refreshed by `cron-auth.js` which runs at midnight.
+Reads the session from `site_access` with `getSiteSession` (the one `cron-auth` stores at midnight; see the #324 note above). If missing or expired, Step 1 reports "skipped".
 
 ### Step 2 — Playwright scrapes the live schedule
 - Launches headless Chromium in GH Actions
@@ -97,7 +97,7 @@ Sends to Kate through `sendAlert` (Telegram, REQ-652). If a report was needed an
 
 | Gotcha | Detail |
 |---|---|
-| **Session cookie is a live auth credential** | `session_cookies` from `sync_settings` must never be logged — only log hours remaining |
+| **Session cookie is a live auth credential** | `site_access.session_cookies` must never be logged — only log hours remaining |
 | **Past-week departures still visible on schedule** | DB query uses 7-days-ago as lower bound. The AGYD schedule page shows ~2 weeks. If you narrow the lower bound to midnight today, past-departed boardings still on the page will be falsely flagged as missing |
 | **NON_BOARDING_PATTERNS must be case-insensitive** | `ADD` is uppercase on the schedule. `/\badd\b/i` not `/\badd\b/`. Same fix needed in `cron-schedule.js` |
 | **NON_BOARDING_PATTERNS are shared, not duplicated** | `integration-check.js` imports `SCRAPER_CONFIG.nonBoardingPatterns` from `src/lib/scraper/config.js`. Signal isolation is at the scraping level (Playwright DOM vs regex HTML parser), not the filter level. Updating `config.js` automatically applies to the integration check. |
