@@ -1,6 +1,6 @@
 /**
  * Tests for the cron health write helper.
- * @requirements REQ-401, REQ-402, REQ-630, REQ-642
+ * @requirements REQ-401, REQ-402, REQ-630, REQ-642, REQ-658
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -93,5 +93,28 @@ describe('REQ-401: Cron Health Monitoring — writeCronHealth', () => {
     await expect(
       writeCronHealth(supabase, 'schedule', 'success', {}, null)
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('REQ-658: a failure can keep the stored result', () => {
+  it('keepResult leaves result out of the upsert, so the stored lastHash/lastDate survive', async () => {
+    const { supabase, upsert } = makeMockSupabase();
+    await writeCronHealth(supabase, 'notify', 'failure', null, 'boom', { keepResult: true });
+    const [payload] = upsert.mock.calls[0];
+    expect(Object.keys(payload).sort()).toEqual(['cron_name', 'error_msg', 'last_ran_at', 'status', 'updated_at']);
+    expect(payload.status).toBe('failure');
+    expect(payload.error_msg).toBe('boom');
+  });
+
+  it('without keepResult the result is written, as before (null on a failure)', async () => {
+    const { supabase, upsert } = makeMockSupabase();
+    await writeCronHealth(supabase, 'notify', 'failure', null, 'boom');
+    expect(upsert.mock.calls[0][0]).toHaveProperty('result', null);
+  });
+
+  it('keepResult still writes the history row', async () => {
+    const { supabase, insert } = makeMockSupabase();
+    await writeCronHealth(supabase, 'notify', 'failure', null, 'boom', { keepResult: true });
+    expect(insert.mock.calls[0][0]).toMatchObject({ cron_name: 'notify', status: 'failure', result: null, error_msg: 'boom' });
   });
 });

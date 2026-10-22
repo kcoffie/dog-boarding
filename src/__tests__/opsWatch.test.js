@@ -1,6 +1,6 @@
 /**
  * Ops watch: outcome checks that run outside GitHub. Expected values come from REQ-651.
- * @requirements REQ-651, REQ-657
+ * @requirements REQ-651, REQ-657, REQ-658
  *
  * Boundaries (Supabase, GitHub, the image endpoint, Kate's alert channel) are fakes passed to runOpsWatch.
  */
@@ -416,8 +416,12 @@ describe('REQ-652: undelivered alerts', () => {
     expect(checkFailedAlerts(rows)).toEqual(['Alerts not delivered in the last 24h: 3 (gmail-monitor, send-question)']);
   });
 
-  it('the alert jobs watched are the six that alert Kate (REQ-655 adds the refresh alert, REQ-657 the breaker)', () => {
-    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access']);
+  it('the alert jobs watched are the seven that alert Kate (REQ-655 adds the refresh alert, REQ-657 the breaker, REQ-658 the 4am alert)', () => {
+    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert']);
+  });
+
+  it("the 4am roster's own alerts can't count as the roster: notify-4am is not an alert job", () => {
+    expect(ALERT_JOBS).not.toContain('notify-4am');
   });
 
   it('runOpsWatch reports failed alerts from the alert log', async () => {
