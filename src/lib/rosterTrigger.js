@@ -19,6 +19,7 @@ export const STALE_CLAIM_MS = 10 * 60 * 1000;
 export const NEVER = '1970-01-01';
 
 const PACIFIC = 'America/Los_Angeles';
+const UNREADABLE = { unreadable: true };
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const ON_TIME_HOURS = [4, 5];
 const FALLBACK_FROM_HOUR = 6;
@@ -55,9 +56,26 @@ export function fallbackHourReached(clock) {
   return clock.hour >= FALLBACK_FROM_HOUR;
 }
 
+/** The fallback runs Monday to Friday, like the on-time trigger (a manual weekend send uses force=1). */
+export function isWeekday(clock) {
+  return WEEKDAYS.includes(clock.weekday);
+}
+
 /**
- * The claim row as it is now, or null when it doesn't exist or can't be read. Used only to word an
- * alert; the claim itself (claimDay) is what decides who sends.
+ * A roster already went out today: the stored send is for today's Pacific date AND was made today.
+ * A roster sent earlier for a future date (a `date=` preview) doesn't count, or it would stop that
+ * day's 4am send. A send with no recorded time doesn't count either (the claim still dedupes).
+ *
+ * @param {{ lastDate: string, sentAt?: string|null }|null} lastState  the `notify` row's last send
+ */
+export function rosterSentToday(lastState, clock) {
+  if (lastState?.lastDate !== clock.date || !lastState.sentAt) return false;
+  return pacificClock(new Date(lastState.sentAt)).date === clock.date;
+}
+
+/**
+ * The claim row as it is now: null when there is none, { unreadable: true } when it can't be read.
+ * Used only to word an alert; the claim itself (claimDay) is what decides who sends.
  */
 export async function readClaim(supabase) {
   try {
@@ -68,12 +86,12 @@ export async function readClaim(supabase) {
       .maybeSingle();
     if (error) {
       console.warn(`[RosterTrigger] Could not read the claim: ${error.message}`);
-      return null;
+      return UNREADABLE;
     }
     return data ?? null;
   } catch (err) {
     console.warn(`[RosterTrigger] Could not read the claim: ${err.message}`);
-    return null;
+    return UNREADABLE;
   }
 }
 
@@ -138,6 +156,7 @@ export async function finishClaim(supabase, { date, trigger, status, outcome, er
  * @returns {string|null}  null when today's on-time send succeeded
  */
 export function missReason(prior, date) {
+  if (prior?.unreadable) return "couldn't be checked (the claim row couldn't be read)";
   const r = prior?.result;
   if (!prior || r?.date !== date) return 'never ran today';
   if (prior.status === 'success') return null;
@@ -165,7 +184,7 @@ export function missedAlert(clock, reason) {
 /** A claimed 4am call found no roster to send. */
 export function noDataAlert(clock, trigger) {
   const next = trigger === 'vercel'
-    ? 'Later calls will try again (the 5am retry, then the GitHub fallback after 6am).'
+    ? 'Later calls will try again, up to the GitHub fallback after 6am.'
     : 'The 7am and 8:30am windows send it once the data is there.';
   return `⚠️ No roster data for ${clock.date} at ${clock.time}, so the 4am roster wasn't sent. ${next}`;
 }

@@ -69,5 +69,13 @@ No new secret. `CRON_SECRET` can now also start one 4am send a day, only inside 
 ## Tests (from this note, before code)
 Gate edges at both DST instants; the trigger comes from the credential (CRON_SECRET without any param is still gated; `trigger=vercel` on the token path changes nothing); CRON_SECRET unset fails closed; CRON_SECRET with `date=` or another window is rejected; two claims race and only one sends; a stale `started` claim is taken over after 10 min; a failed send releases the claim; the fallback skips after a 7am send; a fallback failure leaves `lastHash`/`lastDate` intact; `no_data` alerts; the late alert names its reason; `force=1` only on the token path.
 
+## Changes after the code review (2026-10-22)
+- **"Already sent today" also needs the send to have been made today** (`notify.result.sentAt` on today's Pacific date). Without it, a `date=` preview sent the evening before would have stopped the next morning's 4am send all day.
+- **The trigger renders the image from `https://qboarding.vercel.app`** (`PROD_URL`). A cron's own host can be the deployment's generated URL, which Deployment Protection may answer with 401.
+- **The fallback is weekdays only** (`not_a_weekday`), like the trigger.
+- **An unreadable claim row** is worded as such in the alert, not as "never ran".
+- **The no-data alert promises no 5am retry** (in PST there is none).
+- **Known and accepted:** 7am and the fallback both run at 14:00 UTC, so on a day the on-time send failed both may send (a duplicate on a failure day). A second no-data alert is possible if a different failure falls between two no-data calls.
+
 ## Not in this change
 7am and 8:30am (later: one cron line each plus their Pacific hour), Friday pm, intraday (off while the roster goes to Telegram).

@@ -81,8 +81,9 @@ function picture({ dogs = ['S1'], boarders = ['Biscuit'], workers = 1 } = {}) {
 }
 
 /** The cron_health 'notify' row left by an earlier send of `data` on `date`. */
-function sentEarlier(data, date = TODAY, snapshot = [{ workerId: 1, dogs: [] }]) {
-  cronRows.notify = { result: { lastHash: hashPicture(data), lastDate: date, snapshot } };
+/** The cron_health 'notify' row left by an earlier send of `data` for `date`, made at `sentAt` (default: now). */
+function sentEarlier(data, date = TODAY, snapshot = [{ workerId: 1, dogs: [] }], sentAt = new Date().toISOString()) {
+  cronRows.notify = { result: { lastHash: hashPicture(data), lastDate: date, snapshot, sentAt } };
 }
 
 function call(query, { method = 'GET', headers = { host: 'qb.example.com' } } = {}) {
@@ -340,8 +341,14 @@ describe('REQ-611: weekday roster send', () => {
   });
 
   it('the image URL defaults to https and prefers the forwarded host', async () => {
-    await onTime({}, { headers: { host: 'internal', 'x-forwarded-host': 'qb.example.com' } });
+    await call({ window: '7am' }, { headers: { host: 'internal', 'x-forwarded-host': 'qb.example.com' } });
     expect(new URL(sentImageUrl()).origin).toBe('https://qb.example.com');
+  });
+
+  it("the on-time trigger renders from the production domain, not the cron's own host (REQ-658)", async () => {
+    await onTime({}, { headers: { host: 'qboard-abc123.vercel.app' } });
+    expect(new URL(sentImageUrl()).origin).toBe('https://qboarding.vercel.app');
+    expect(new URL(sentImageUrl()).searchParams.get('token')).toBe(TOKEN);
   });
 
   it("a 7am resend carries the earlier send's roster so the image can mark what changed", async () => {
@@ -881,6 +888,14 @@ describe('REQ-658: the Pacific hour', () => {
     expect(sendRoster).toHaveBeenCalledTimes(1);
   });
 
+  it('the fallback skips on a weekend without touching the database (force=1 still sends)', async () => {
+    at('2026-10-24T14:00:00Z'); // Sat 7:00 PDT
+    const res = await call({ window: '4am' });
+    expect(res.body).toStrictEqual({ ok: true, action: 'skipped', reason: 'not_a_weekday', window: '4am' });
+    expect(createClient).not.toHaveBeenCalled();
+    expect((await call({ window: '4am', force: '1' })).body.action).toBe('sent');
+  });
+
   it('the fallback skips before 06:00 Pacific without touching the database', async () => {
     at('2026-10-19T12:59:00Z'); // 5:59 PDT
     const res = await call({ window: '4am' });
@@ -923,6 +938,24 @@ describe('REQ-658: once per Pacific day', () => {
     expect(claimRow()).toBeUndefined();
   });
 
+  it("a roster sent earlier for today's date as a preview (the day before) doesn't stop today's send", async () => {
+    sentEarlier(picture(), TODAY, undefined, '2026-10-18T23:00:00Z'); // Sun 16:00 PDT, a date=2026-10-19 send
+    const res = await onTime();
+    expect(res.body.action).toBe('sent');
+    expect(sendRoster).toHaveBeenCalledTimes(1);
+  });
+
+  it("a stored send with no time recorded doesn't count as sent today (the claim still dedupes)", async () => {
+    sentEarlier(picture(), TODAY, undefined, null);
+    const res = await onTime();
+    expect(res.body.action).toBe('sent');
+  });
+
+  it('a send is stored with the time it was made', async () => {
+    await onTime();
+    expect(healthWrites('notify')[0][3].sentAt).toBe('2026-10-19T11:00:00.000Z');
+  });
+
   it("yesterday's roster doesn't count as today's", async () => {
     sentEarlier(picture(), '2026-10-16');
     const res = await onTime();
@@ -943,7 +976,7 @@ describe('REQ-658: once per Pacific day', () => {
   });
 
   it('the roster is for the claimed day, even if Pacific midnight passes during the claim', async () => {
-    at('2026-10-19T06:59:59Z'); // Sun 2026-10-18 23:59:59 PDT: a very late GitHub fallback
+    at('2026-10-20T06:59:59Z'); // Mon 2026-10-19 23:59:59 PDT: a very late GitHub fallback
     createClient.mockImplementation(() => {
       const real = fakeSupabase();
       return {
@@ -951,15 +984,15 @@ describe('REQ-658: once per Pacific day', () => {
         from: (table) => {
           const q = real.from(table);
           const update = q.update;
-          q.update = (patch) => { vi.setSystemTime(new Date('2026-10-19T07:00:01Z')); return update(patch); };
+          q.update = (patch) => { vi.setSystemTime(new Date('2026-10-20T07:00:01Z')); return update(patch); };
           return q;
         },
       };
     });
     await call({ window: '4am' });
     const date = getPictureOfDay.mock.calls[0][1];
-    expect([date.getFullYear(), date.getMonth() + 1, date.getDate()]).toEqual([2026, 10, 18]);
-    expect(claimRow().result.date).toBe('2026-10-18');
+    expect([date.getFullYear(), date.getMonth() + 1, date.getDate()]).toEqual([2026, 10, 19]);
+    expect(claimRow().result.date).toBe('2026-10-19');
   });
 
   it('the already-sent check comes before the channel check, the refresh and the build', async () => {
@@ -1049,7 +1082,7 @@ describe('REQ-658: no roster data at 4am', () => {
     expect(claimRow().result.outcome).toBe('no_data');
     expect(claimRow().result.error).toBe('No roster data');
     expect(alerts()).toStrictEqual([
-      "⚠️ No roster data for 2026-10-19 at 4:00 AM, so the 4am roster wasn't sent. Later calls will try again (the 5am retry, then the GitHub fallback after 6am).",
+      "⚠️ No roster data for 2026-10-19 at 4:00 AM, so the 4am roster wasn't sent. Later calls will try again, up to the GitHub fallback after 6am.",
     ]);
   });
 

@@ -10,7 +10,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { fakeCronHealth } from './fakeCronHealth.js';
 import {
   CLAIM_ROW, NEVER, pacificClock, onTimeWindowOpen, fallbackHourReached, readClaim, claimDay,
-  finishClaim, missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert,
+  finishClaim, missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert, isWeekday,
+  rosterSentToday,
 } from '../lib/rosterTrigger.js';
 
 const at = (iso) => pacificClock(new Date(iso));
@@ -230,12 +231,12 @@ describe('readClaim', () => {
     expect(await readClaim(db())).toBeNull();
   });
 
-  it('a read error reads as null', async () => {
-    expect(await readClaim(db({ [CLAIM_ROW]: { error: { message: 'boom' } } }))).toBeNull();
+  it('a read error reads as unreadable, not as "no claim"', async () => {
+    expect(await readClaim(db({ [CLAIM_ROW]: { error: { message: 'boom' } } }))).toStrictEqual({ unreadable: true });
   });
 
-  it('a read that throws reads as null', async () => {
-    expect(await readClaim(db({ [CLAIM_ROW]: { throws: 'network' } }))).toBeNull();
+  it('a read that throws reads as unreadable', async () => {
+    expect(await readClaim(db({ [CLAIM_ROW]: { throws: 'network' } }))).toStrictEqual({ unreadable: true });
   });
 });
 
@@ -251,6 +252,10 @@ describe('why the on-time send did not go out', () => {
     ["today's claim left started", { status: 'started', result: { date: D } }, "started but didn't finish"],
   ])('%s → %s', (_, prior, reason) => {
     expect(missReason(prior, D)).toBe(reason);
+  });
+
+  it('an unreadable claim says so instead of guessing', () => {
+    expect(missReason({ unreadable: true }, D)).toBe("couldn't be checked (the claim row couldn't be read)");
   });
 
   it("today's sent claim has no miss", () => {
@@ -281,13 +286,55 @@ describe('alert wording', () => {
       .toBe("⚠️ The 4am roster didn't go out on time on 2026-10-23: the on-time send found no roster data. A later roster already went out, so nothing was re-sent.");
   });
 
-  it('no data at 4am says the 5am retry and the fallback will try again', () => {
+  it('no data at 4am says later calls will try, up to the fallback (no 5am retry is promised: PST has none)', () => {
     expect(noDataAlert(at('2026-10-23T11:05:00Z'), 'vercel'))
-      .toBe("⚠️ No roster data for 2026-10-23 at 4:05 AM, so the 4am roster wasn't sent. Later calls will try again (the 5am retry, then the GitHub fallback after 6am).");
+      .toBe("⚠️ No roster data for 2026-10-23 at 4:05 AM, so the 4am roster wasn't sent. Later calls will try again, up to the GitHub fallback after 6am.");
   });
 
   it('no data on the fallback points to the 7am and 8:30am windows', () => {
     expect(noDataAlert(clock, 'github'))
       .toBe("⚠️ No roster data for 2026-10-23 at 7:02 AM, so the 4am roster wasn't sent. The 7am and 8:30am windows send it once the data is there.");
+  });
+});
+
+describe('isWeekday', () => {
+  it.each([
+    ['2026-10-26T14:00:00Z', true, 'Mon'], ['2026-10-27T14:00:00Z', true, 'Tue'], ['2026-10-28T14:00:00Z', true, 'Wed'],
+    ['2026-10-29T14:00:00Z', true, 'Thu'], ['2026-10-30T14:00:00Z', true, 'Fri'],
+    ['2026-10-31T14:00:00Z', false, 'Sat'], ['2026-11-01T14:00:00Z', false, 'Sun'],
+  ])('%s is %s (%s, Pacific)', (iso, weekday) => {
+    expect(isWeekday(at(iso))).toBe(weekday);
+  });
+
+  it('uses the Pacific day: Friday 18:00 PDT is Saturday in UTC but still a weekday', () => {
+    expect(isWeekday(at('2026-10-31T01:00:00Z'))).toBe(true);
+  });
+});
+
+describe('rosterSentToday', () => {
+  const clock = at('2026-10-23T14:00:00Z'); // Fri 7:00 PDT
+
+  it("a send for today, made today, counts", () => {
+    expect(rosterSentToday({ lastDate: '2026-10-23', sentAt: '2026-10-23T11:02:00Z' }, clock)).toBe(true);
+  });
+
+  it("a send for today made the evening before (a date= preview) doesn't count", () => {
+    expect(rosterSentToday({ lastDate: '2026-10-23', sentAt: '2026-10-23T03:00:00Z' }, clock)).toBe(false); // Thu 20:00 PDT
+  });
+
+  it("a send made just after Pacific midnight counts", () => {
+    expect(rosterSentToday({ lastDate: '2026-10-23', sentAt: '2026-10-23T07:00:00Z' }, clock)).toBe(true);
+  });
+
+  it("yesterday's send doesn't count", () => {
+    expect(rosterSentToday({ lastDate: '2026-10-22', sentAt: '2026-10-22T11:02:00Z' }, clock)).toBe(false);
+  });
+
+  it("a send with no time recorded doesn't count", () => {
+    expect(rosterSentToday({ lastDate: '2026-10-23', sentAt: null }, clock)).toBe(false);
+  });
+
+  it('no stored send at all is not sent today', () => {
+    expect(rosterSentToday(null, clock)).toBe(false);
   });
 });

@@ -17,7 +17,7 @@ All automated work in this system runs as either Vercel cron jobs (nightly, insi
 | `cron-health-check` | GH Actions | 5:30 PM daily (00:30 UTC) | When issues found | Kate only |
 | `integration-check` | GH Actions | 1am, 9am, 5pm | Always | Kate only |
 | `gmail-monitor` | GH Actions | Hourly at :15 | When issues found | Kate only |
-| `notify-4am` | GH Actions | 4:00 AM Mon–Fri | Always | Full team |
+| `notify-4am` | Vercel crons (11:00 + 12:00 UTC), GH Actions fallback (14:00 UTC) | 4:00–5:59 AM Mon–Fri | Once a day (REQ-658) | Full team |
 | `notify-7am` | GH Actions | 7:00 AM Mon–Fri | On change | Full team |
 | `notify-830am` | GH Actions | 8:30 AM Mon–Fri | On change | Full team |
 | `notify-friday-pm` | GH Actions | 3:00 PM Fri | Always | Full team |
@@ -156,11 +156,11 @@ Five workflows send WhatsApp notifications to the full team. Together they answe
 - "Did anything change since this morning?" (intraday delta)
 
 ### `notify-4am` — 4:00 AM Mon–Fri
-**What:** Always sends. Delivers the daily roster image — one dog per worker, today's boarding dogs in the Q Boarding card.
+**What:** Delivers the daily roster image — one dog per worker, today's boarding dogs in the Q Boarding card. Sent once a day (REQ-658): Vercel crons at 11:00 and 12:00 UTC call `/api/notify`, and the one in the 4am Pacific hour sends (no DST edits). The GitHub workflow at 14:00 UTC is the fallback: it sends only if the on-time send didn't, and alerts Kate why.
 
 **Key behavior:** No UPDATED! badge (no prior send exists to compare against). No blue overlay. This is the day's baseline.
 
-**File:** `api/notify.js` (`window=4am`) | **Workflow:** `.github/workflows/notify-4am.yml`
+**File:** `api/notify.js` (`window=4am`), `src/lib/rosterTrigger.js` | **Schedule:** `vercel.json` crons | **Fallback:** `.github/workflows/notify-4am.yml`
 
 ---
 

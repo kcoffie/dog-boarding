@@ -45,6 +45,9 @@ SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'notify';
 - **"… found no roster data":** 0 workers at 4–6am. You also got a "No roster data for …" alert at 4am. Check the midnight crons (`cron_health` `schedule` / `detail`) and the daytime refresh.
 - **"… failed: <error>":** the error is the on-time call's 500 (see the 500s below).
 - **"… started but didn't finish":** the on-time call crashed or timed out mid-send (it may have sent; you may get two rosters).
+- **"… couldn't be checked":** the claim row couldn't be read when the fallback ran (a Supabase blip); read it now (below).
+- **Two rosters on a bad morning:** 7am and the fallback both run at 14:00 UTC; on a day the on-time send failed, both may send. Expected, and only on failure days.
+- **"Roster image fetch failed: HTTP 401/403"** on the on-time call: the trigger renders from `https://qboarding.vercel.app`; check that domain is still the production domain and not behind Deployment Protection.
 - **"didn't go out on time … A later roster already went out":** nothing was re-sent; read the reason the same way.
 - **No roster and no alert:** Vercel didn't send and the GitHub fallback didn't run either. ops-watch reports "No morning roster sent today" at 17:00 UTC. Send it now with the forced run (Manual operations).
 - **Claim row:** `SELECT status, result, error_msg, updated_at FROM cron_health WHERE cron_name = 'notify-4am-claim';` — `success` + today's `result.date` = sent (by `result.trigger`: `vercel` on time, `github` late); `failure` = the day is open and a later call retries; `started` = in progress (or crashed; taken over after 10 minutes).
@@ -214,7 +217,7 @@ Settings → External Sync → set date range → Sync Now. Or use the "Full syn
 
 ### Trigger the notify pipeline manually
 
-GitHub Actions → `notify-4am` → Run workflow. **Tick "force"** to send now: without it, a run before 06:00 Pacific, or on a day the 4am roster already went out, sends nothing (it answers 200 `skipped`). A forced run doesn't touch the 4am claim and sends no "late" alert.
+GitHub Actions → `notify-4am` → Run workflow. **Tick "force"** to send now: without it, a run on a weekend, before 06:00 Pacific, or on a day the 4am roster already went out sends nothing (it answers 200 `skipped`). **Don't run it without force on a day the roster already went out**: if the on-time claim doesn't show it, you get a "didn't go out on time" alert. A forced run doesn't touch the 4am claim and sends no alert.
 
 ### Check what was sent today
 

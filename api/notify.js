@@ -36,8 +36,9 @@ import { writeCronHealth } from './_cronHealth.js';
 import { refreshDaytimeSchedule } from '../src/lib/notifyHelpers.js';
 import {
   ALERT_JOB, pacificClock, onTimeWindowOpen, fallbackHourReached, readClaim, claimDay, finishClaim,
-  missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert,
+  missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert, isWeekday, rosterSentToday,
 } from '../src/lib/rosterTrigger.js';
+import { PROD_URL } from '../src/lib/deployCheck.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -185,6 +186,7 @@ async function readLastSentState(supabase) {
     lastDate: data.result.lastDate || '',
     lastSnapshot: data.result.snapshot || null,
     window: data.result.window || null,
+    sentAt: data.result.sentAt || null,
   };
 }
 
@@ -289,6 +291,10 @@ export default async function handler(req, res) {
       console.log(`[Notify] On-time trigger at ${clock.weekday} ${clock.time} Pacific: outside 04:00–05:59 Mon–Fri, skipping`);
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'outside_window', window });
     }
+    if (!isTrigger && !isWeekday(clock)) {
+      console.log(`[Notify] Fallback on a ${clock.weekday}: the 4am roster is weekdays only (force=1 sends anyway)`);
+      return res.status(200).json({ ok: true, action: 'skipped', reason: 'not_a_weekday', window });
+    }
     if (!isTrigger && !fallbackHourReached(clock)) {
       console.log(`[Notify] Fallback at ${clock.time} Pacific: before 06:00, leaving the 4am send to the on-time trigger`);
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'before_fallback_hour', window });
@@ -301,7 +307,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, action: 'skipped', reason: 'already_sent', window, date: clock.date });
       }
       const lastState = await readLastSentState(supabase);
-      if (lastState?.lastDate === clock.date) {
+      if (rosterSentToday(lastState, clock)) {
         console.log(`[Notify] A roster already went out on ${clock.date} (${lastState.window ?? 'window not recorded'}) — skipping the 4am send`);
         if (!isTrigger) {
           await alertAndLog(supabase, ALERT_JOB, missedAlert(clock, missReason(prior, clock.date)));
@@ -492,13 +498,14 @@ export default async function handler(req, res) {
     // ts param passes the job run time to roster-image.js for the "as of" header line.
     // sendWindow drives badge suppression (4am has no prior send to diff against).
     // lastSnapshot (7am/8:30am only) enables the blue intra-day overlay in roster-image.js.
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    let imageUrl = `${protocol}://${host}/api/roster-image?date=${dateStr}&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}`;
+    // The trigger renders from the production domain: a cron's own host can be the deployment's
+    // generated URL, which Vercel's Deployment Protection may answer with 401.
+    const origin = isTrigger ? PROD_URL : `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers['x-forwarded-host'] || req.headers.host}`;
+    let imageUrl = `${origin}/api/roster-image?date=${dateStr}&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}`;
     if (lastSnapshot) {
       imageUrl += `&lastSnapshot=${Buffer.from(JSON.stringify(lastSnapshot)).toString('base64')}`;
     }
-    console.log(`[Notify] Image URL: ${protocol}://${host}/api/roster-image?date=${dateStr}&token=***&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}${lastSnapshot ? '&lastSnapshot=<snapshot>' : ''}`);
+    console.log(`[Notify] Image URL: ${origin}/api/roster-image?date=${dateStr}&token=***&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}${lastSnapshot ? '&lastSnapshot=<snapshot>' : ''}`);
 
     // --- Render once, store, send the same bytes ---
     const png = await fetchRosterPng(imageUrl);
