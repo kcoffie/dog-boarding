@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 21, 2026, ~21:20 UTC (session 41, end). **Production = main (`e247638`, #329).** The roster reaches Kate on **Telegram**. WhatsApp is locked (since 2026-10-17). **Sync redesign (#318): #322 and #324 part A are live; next is #324 part B (the breaker table), then the on-time roster trigger.**
+**Last updated:** October 21, 2026, ~22:55 UTC (session 42, end). **Production = main (`aa4c3da`, #331).** The roster reaches Kate on **Telegram**. WhatsApp is locked (since 2026-10-17). **Sync redesign (#318): #322 and #324 parts A and B are live. The first night on A + B (10-22) was clean (checked 04:07 UTC); finish the daytime checks, then the on-time roster trigger.**
 
 **The goal for the next few sessions:** get the app back to where it was in May (the roster reaches staff every morning, unattended, and a failure alerts Kate), then **start real UAT with the end user**, and prioritise the remaining work from UAT feedback. Do what's needed, simply; nothing more.
 
@@ -26,7 +26,27 @@
 
 ---
 
-## Current State (2026-10-21 ~21:20 UTC, end of session 41)
+## Current State (2026-10-21 ~22:55 UTC, end of session 42)
+
+### Session 42: what happened
+1. **The first night on PR A could not be checked yet:** the session ran 21:20–22:55 UTC on 10-21, before the 10-22 00:00 UTC crons.
+2. **#324 PR B merged** (PR #331, `aa4c3da`, 22:40 UTC; `check:deploy` OK; `/api/site-access` and `/api/sync-proxy` answer 401 without sign-in, so both are live). What it does:
+   - **`site_access` table** (migration 028, **run by Kate in the Supabase SQL editor 10-21 ~22:30 UTC**): one row (boolean PK, RLS on, no policies, service key only). It holds the booking-site session (moved from `sync_settings`, whose session columns are now NULL) and the breaker (`blocked_at`, `blocked_reason`, `cleared_at`, `cleared_by`). Verified: row present, session copied (stamp 10-22 00:37 UTC), not blocked, anon key reads 0 rows.
+   - **One login:** `loginToSite()` in `src/lib/scraper/siteLogin.js`, used only by `cron-auth` and Clear. It reads the breaker first and never logs in while blocked. A rejected login (incl. a redirect back to /login) or a 429/403 trips the breaker; a 5xx or missing credentials fails without tripping. Session stamp 30 h.
+   - **Everything else reads the session** with `getSiteSession()` (`src/lib/scraper/siteAccess.js`), which fails closed (`SiteAccessError` SITE_BLOCKED / NO_SESSION; a missing row throws). A 429/403 anywhere (Node fetch, `sync-proxy`, the Integration Check's Playwright load) trips the breaker. `tripBreaker` never throws and alerts once per trip (first trip wins).
+   - **The browser never logs in or sees the cookie:** `api/sync-proxy.js` (Edge) adds the cookie server-side, allows only the sync paths (anchored allowlist; https, no port, no userinfo), `redirect: 'manual'`, answers 423 when blocked and 503 with no session.
+   - **Clear** on Settings (`SiteAccessCard`, `GET`/`POST /api/site-access`): one conditional update (two presses clear once), records who, then logs in at once. A refused login re-trips and alerts.
+   - **ops-watch** reports a tripped breaker; `site-access` is in `ALERT_JOBS`. A blocked run records `site_blocked` as success (no red cron, no alert storm: the one breaker alert is the signal).
+   - Runbook: `docs/RUNBOOK.md` "Booking site blocked". REQ-657 part B criteria in `docs/REQUIREMENTS.md`; REQ-641 superseded.
+   - Gates: reviewer agent (10 findings, all fixed in the PR). Suite 1817 passed / 1 skipped. **Scoped Stryker (TZ=UTC):** `siteAccess.js` 96.5%, `siteLogin.js` 87.5%, `api/site-access.js` 82.35%, `api/sync-proxy.js` 75.88%, `opsWatch.js` 100%, `cron-auth.js` 93.65%.
+3. **Not done (Kate):** `src/lib/scraper/sessionCache.js` and `src/__tests__/scraper/sessionCache.test.js` are dead code since PR B. The hook blocks Claude from deleting them, and Kate's `! git rm` didn't take; she deletes them from a normal terminal later, then they're committed on a branch.
+4. **First night on PR A + B, checked 10-22 04:07 UTC (all good):**
+   - `schedule` 00:14:59 success (236 found, 115 queued, 2 pages), on the session the migration copied.
+   - `detail` 00:16 and 00:50 success (`skipped`; queue 94 → 93).
+   - `auth` 00:37:54 success, `refreshed`: the first `loginToSite()` login. `site_access.session_expires_at` = 10-23 06:37:53 UTC (30 h). `blocked_at` NULL, never tripped.
+   - Integration Check 02:43 UTC success; its report reached Telegram 02:53.
+   - **Not yet checkable at 04:07 UTC:** ops-watch's 10-22 row (~17:30 UTC), the 4am roster (11:00 UTC is 4am Pacific; it ran late at ~15:50 UTC on 10-21, #321), the first browser Sync Now on PR B.
+5. **Open decision (Kate):** may any signed-in user press Clear, or only Kate? Today: any signed-in user (sign-up is off, so that's Kate, and later Charlie and her admin).
 
 ### Session 41: what happened
 1. **Checks (UTC):** ops-watch 10-21 17:36: the old undelivered-alert finding is gone; two queue findings (45 pending, limit 30, oldest 17 h). **Kate: leave the limit** until the old sync paths retire (daily alert expected until then). `auth` 00:37, `schedule` 00:15, `detail` 00:16/00:50, Integration Check 02:45 and 13:19 green, 4am roster sent 15:51.
@@ -43,7 +63,7 @@ Sync redesign decided (option 3, design note); #321–#324 filed; first overnigh
 ### Session 39 (reference)
 #301 merged and rotated (PR #310); sync findings written; #311–#319 filed. Details: git history of this file.
 
-## Current reference (still true after session 41)
+## Current reference (still true after session 42)
 
 ### Telegram alerts (#265, live, proven 2026-10-19)
 - **The bot is `@qap_alert_bot`** (neutral name, Kate's).
@@ -71,7 +91,7 @@ Sync redesign decided (option 3, design note); #321–#324 filed; first overnigh
 
 ### Mutation
 - **CI on main: 52.06%** (e0fe16a, #310, incremental, 2026-10-20); last full run 50.64% (0239e22). **Ratchet 50** (#306). Score log: `docs/ENGINEERING_PROCESS.md`. Incremental cache now seeded; a `package-lock`/`stryker.config` change forces a full run (~55–60 min). Don't merge on top of a Mutation run whose score you need: the next push to main cancels it.
-- **Scoped, local, TZ=UTC:** `rosterChannel.js`, `opsWatch.js`, `syncSettingsRow.js`, `deployCheck.js` 100%; `cron-schedule.js` 98.7%; `verifyUser.js` 98.3%; `send-question` 87.8%; `syncRunner.js` 83.6%; `alertKate` 82%; `notify.js` 81.2%; `sessionCache.js` 71.8%; `syncQueue.js` 69.3%; `notify-intraday.js` 66.9%.
+- **Scoped, local, TZ=UTC:** `rosterChannel.js`, `opsWatch.js`, `syncSettingsRow.js`, `deployCheck.js` 100%; `cron-schedule.js` 98.7%; `verifyUser.js` 98.3%; `send-question` 87.8%; `syncRunner.js` 83.6%; `alertKate` 82%; `notify.js` 81.2%; `syncQueue.js` 69.3%; `notify-intraday.js` 66.9%.
 - **Never bump vitest to 5** until the Stryker runner ships #6214 (held in Dependabot's `ignore`). Check "tests per mutant" > 0 after any test-runner change.
 - **#239 `pictureOfDay.js`** (51.13% in CI): parked by Kate until UAT starts.
 
@@ -85,18 +105,24 @@ Sync redesign decided (option 3, design note); #321–#324 filed; first overnigh
 - **January issues #6–#24:** triage with Charlie at the first UAT check-in (`docs/UAT_PLAN.md`).
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, and `docs/specs/sync-redesign-design-note.md` section "Before any unattended run" (the #324 plan; PR A is done, **PR B is next**).
-2. **Check the first night on PR A (real timestamps):** `cron_health` / `cron_health_log` for `auth`, `schedule`, `detail` since 10-22 00:00 UTC (a 429/403 or "0 appointments" now fails loudly); ops-watch's 10-22 row; Integration Check runs; the 4am roster (ask Kate). If anything broke, fix that before PR B.
-3. **#324 PR B** (plan: the note's "The plan" + "Two PRs" B + "Tests"). Build on a branch: `site_access` table (one row, boolean PK, RLS on, no policies; session moved from `sync_settings`; `blocked_at`, `blocked_reason`, `cleared_at`, `cleared_by`), `getSiteSession()` replacing `ensureSession` (never logs in, fails closed), breaker trips in `authenticatedFetch` (Node) and `sync-proxy` (browser path), only `cron-auth` and Clear log in (one shared login function), `sync-proxy` adds the cookie server-side + path allowlist + no redirects, Clear on Settings (`GET`/`POST /api/site-access`, conditional update, then logs in), the alert (once per trip; "update the password in Vercel before Clear" for a rejected login), ops-watch finding + `site-access` in `ALERT_JOBS`, 30 h stamp, remove the browser `isAuthenticated()` checks. Migration written against production's real schema (the session columns were added by hand). **Order: migration, then deploy B, then drop the old columns in a later PR after one good night; all outside 23:30–01:30 UTC.** Reviewer, merge, `check:deploy`.
-4. **On-time roster trigger** (Kate: yes): a Vercel cron that dispatches `notify-4am` on time (#321). Ask before changing any schedule.
-5. **#323 private job logs:** `job_logs` table (architect gate: new table), 30-day delete, Node entry point redirects `console.*` before imports, a test that fails if a fixture name reaches stdout. Deleting old public run logs needs Kate's OK.
-6. Then the design note's build order: engine → full pass → near-term → retire old paths → button (#317/#311) → drift list (#313).
-7. UAT prep (`docs/UAT_PLAN.md`): #312 before UAT; Kate creates the client's new account and her admin's.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`.
+2. **Finish the first-day checks on PR A + B** (the overnight crons were clean; see Session 42 item 4). Use real timestamps:
+   - `cron_health` / `cron_health_log` since the last check: `auth` `refreshed` each night, `schedule` / `detail` success. `site_blocked` means the breaker is tripped.
+   - `site_access`: `blocked_at` still NULL. Use the service key (recipe in memory `supabase-local-queries`); the anon key sees nothing by design.
+   - ops-watch's 10-22 row (no `site-access` finding; the queue findings are expected), Integration Check runs, the 4am roster (ask Kate).
+   - The first browser **Sync Now** after PR B: Edge `redirect: 'manual'` should hand back a real 302 + `Location` (the removed-booking check depends on it). Ask Kate to press it once, then read `sync_logs`.
+   - If the breaker tripped: read `blocked_reason`, follow `docs/RUNBOOK.md` "Booking site blocked". Kate presses Clear; don't clear it from code.
+3. **The good night is in (10-22), so:** small PR, migration 029, dropping `sync_settings.session_cookies` and `session_expires_at` (Kate runs the SQL; outside 23:30–01:30 UTC). Grep first that no code reads them.
+4. **Commit Kate's deletion** of `sessionCache.js` + its test on a branch once she's run it (`git status` shows `D`).
+5. **On-time roster trigger** (Kate: yes): a Vercel cron that dispatches `notify-4am` on time (#321). Architect gate (new job). Ask before changing any schedule.
+6. **#323 private job logs:** `job_logs` table (architect gate: new table), 30-day delete, Node entry point redirects `console.*` before imports, a test that fails if a fixture name reaches stdout. Deleting old public run logs needs Kate's OK.
+7. Then the design note's build order: engine → full pass → near-term → retire old paths → button (#317/#311) → drift list (#313).
+8. UAT prep (`docs/UAT_PLAN.md`): #312 before UAT; Kate creates the client's new account and her admin's.
 
 ## Open TODOs
-- [ ] **#318 sync redesign: DECIDED 2026-10-21 (option 3), build in order:** ~~#322~~ → #324 (A done, B next) → roster trigger → #323 → engine → full pass → near-term (+#321) → retire old paths → button (#317/#311) → drift list (#313). Covers #316, #294
-- [ ] #324 booking-site safety: part A done (#329); **part B next** (breaker table, Clear, single login)
-- [ ] On-time roster trigger (Kate approved; after #324 B)
+- [ ] **#318 sync redesign: DECIDED 2026-10-21 (option 3), build in order:** ~~#322~~ → ~~#324~~ (A+B live; first night 10-22) → roster trigger → #323 → engine → full pass → near-term (+#321) → retire old paths → button (#317/#311) → drift list (#313). Covers #316, #294
+- [ ] #324: A (#329) and B (#331) live. Left: first night clean (10-22); finish the daytime checks + Sync Now 302; migration 029 drops the old `sync_settings` session columns; commit Kate's `sessionCache.js` deletion; Kate decides who may press Clear; optionally delete the unused `EXTERNAL_SITE_*` GitHub secrets
+- [ ] On-time roster trigger (Kate approved; next after the #324 first-night check)
 - [ ] #326 flag past boardings that change after an employee worked them
 - [ ] #323 private job logs (30-day delete); then delete old public run logs with names (ask Kate)
 - [ ] #321 scheduled runs 4–6 h late (fixed by the redesign's Vercel triggers)
