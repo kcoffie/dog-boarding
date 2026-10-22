@@ -25,10 +25,21 @@
     {
       "path": "/api/ops-watch",
       "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/notify",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/notify",
+      "schedule": "0 12 * * *"
     }
   ],
   "functions": {
     "api/ops-watch.js": {
+      "maxDuration": 60
+    },
+    "api/notify.js": {
       "maxDuration": 60
     }
   },

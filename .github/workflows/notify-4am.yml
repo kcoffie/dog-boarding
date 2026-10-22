@@ -1,15 +1,19 @@
-# Sends the daily roster image at 4am PST (12:00 UTC, or 11:00 UTC during PDT).
-# This is the mandatory first send — always fires regardless of changes.
-# DST note: Pacific Standard Time = UTC-8 (4am PST = 12:00 UTC).
-#           Pacific Daylight Time  = UTC-7 (4am PDT = 11:00 UTC).
-#           Update the cron below each March and November DST transition.
+# The late fallback for the 4am roster (REQ-658). Vercel crons send it on time, in the 4am Pacific
+# hour (11:00 and 12:00 UTC; /api/notify picks the right one through daylight time). This run comes
+# at 14:00 UTC (7am PDT / 6am PST): /api/notify skips it when today's roster already went out, and
+# otherwise sends late and alerts Kate why the on-time send didn't happen. No DST edits needed.
 name: Notify 4am PST
 
 on:
   schedule:
-    # 11:00 UTC = 4am PDT (daylight time, Mar–Nov) — weekdays only
-    - cron: '0 11 * * 1-5'
-  workflow_dispatch:  # Allow manual trigger for testing
+    # 14:00 UTC = 7am PDT / 6am PST, weekdays only. Never before 06:00 Pacific (the endpoint enforces it too).
+    - cron: '0 14 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Send now even if today''s 4am roster already went out'
+        type: boolean
+        default: false
 
 jobs:
   notify:
@@ -17,9 +21,11 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Send roster image
+        env:
+          FORCE: ${{ inputs.force && '&force=1' || '' }}
         run: |
           RESPONSE=$(curl -s -o /tmp/notify_response.json -w "%{http_code}" \
-            "${{ secrets.APP_URL }}/api/notify?window=4am&token=${{ secrets.INTERNAL_API_TOKEN }}")
+            "${{ secrets.APP_URL }}/api/notify?window=4am&token=${{ secrets.INTERNAL_API_TOKEN }}${FORCE}")
           echo "HTTP status: $RESPONSE"
           cat /tmp/notify_response.json
           if [ "$RESPONSE" != "200" ]; then

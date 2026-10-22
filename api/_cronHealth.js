@@ -17,24 +17,25 @@
  * @param {'success'|'failure'} status
  * @param {object|null} result - Stats/metadata to store as JSONB
  * @param {string|null} errorMsg - Error message on failure
+ * @param {{ keepResult?: boolean }} [options] - keepResult: leave cron_health.result as stored (the
+ *   upsert only sets the columns it's given). notify's failures use it so the 7am/8:30am baseline
+ *   (lastHash/lastDate) survives a failed run (REQ-658). The log row still records `result`.
  */
-export async function writeCronHealth(supabase, cronName, status, result, errorMsg) {
+export async function writeCronHealth(supabase, cronName, status, result, errorMsg, { keepResult = false } = {}) {
   const now = new Date().toISOString();
 
   // ── cron_health: single-row upsert (latest run per cron) ──────────────────
+  const row = {
+    cron_name:   cronName,
+    last_ran_at: now,
+    status,
+    error_msg:   errorMsg ?? null,
+    updated_at:  now,
+  };
+  if (!keepResult) row.result = result ?? null;
   const { error: upsertError } = await supabase
     .from('cron_health')
-    .upsert(
-      {
-        cron_name:   cronName,
-        last_ran_at: now,
-        status,
-        result:      result ?? null,
-        error_msg:   errorMsg ?? null,
-        updated_at:  now,
-      },
-      { onConflict: 'cron_name' }
-    );
+    .upsert(row, { onConflict: 'cron_name' });
 
   if (upsertError) {
     console.error(`[CronHealth] ⚠️ Failed to upsert health for '${cronName}':`, upsertError.message);

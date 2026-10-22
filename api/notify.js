@@ -1,11 +1,14 @@
 /**
  * Notification orchestrator — sends the daily roster image on the ROSTER_CHANNEL (REQ-655).
  *
- * GET /api/notify?window=4am&token=SECRET[&date=YYYY-MM-DD]
+ * GET /api/notify?window=4am&token=SECRET[&date=YYYY-MM-DD][&force=1]
+ * GET /api/notify with `Authorization: Bearer $CRON_SECRET` — the on-time 4am trigger (Vercel cron, REQ-658)
  *
- * Called by three GitHub Actions workflows at 4am, 7am, and 8:30am PST.
+ * The 4am roster: Vercel crons at 11:00 and 12:00 UTC send it in the 4am Pacific hour; the GitHub
+ * workflow (14:00 UTC) is the late fallback. Both claim the Pacific day first, so it goes out once
+ * (src/lib/rosterTrigger.js). The 7am and 8:30am windows are GitHub workflows.
  * The `window` param drives the send gate:
- *   4am     → always send (first send of the day)
+ *   4am     → send whatever the hash (first send of the day), once a day for the automatic calls
  *   7am     → send only if data changed since last send
  *   8:30am  → send only if data changed since last send
  *
@@ -13,11 +16,11 @@
  * cron_health table (cron_name='notify') under result.lastHash + lastDate.
  * Subsequent sends within the same calendar date compare against this hash.
  *
- * Image: rendered by our own /api/roster-image (URL built from the request's Host header), fetched
- * once, stored, and those same bytes are sent. The URL carries the token, so it never goes to the
+ * Image: rendered by our own /api/roster-image (on the request's host; the on-time trigger uses the
+ * production domain), fetched once, stored, and those same bytes are sent. The URL carries the token, so it never goes to the
  * channel or into an error.
  *
- * @requirements REQ-v4.1, REQ-v5.0-M0, REQ-655
+ * @requirements REQ-v4.1, REQ-v5.0-M0, REQ-655, REQ-658
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -31,6 +34,11 @@ import { alertAndLog } from '../src/lib/alertKate.js';
 import { recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
 import { writeCronHealth } from './_cronHealth.js';
 import { refreshDaytimeSchedule } from '../src/lib/notifyHelpers.js';
+import {
+  ALERT_JOB, pacificClock, onTimeWindowOpen, fallbackHourReached, readClaim, claimDay, finishClaim,
+  missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert, isWeekday, rosterSentToday,
+} from '../src/lib/rosterTrigger.js';
+import { PROD_URL } from '../src/lib/deployCheck.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -157,7 +165,7 @@ async function storeRosterImage(supabase, buffer, jobName, jobRunAt) {
  * (conservative: better to send a duplicate than to silently block).
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
- * @returns {Promise<{lastHash: string, lastDate: string}|null>}
+ * @returns {Promise<{lastHash: string, lastDate: string, lastSnapshot: Array|null, window: string|null}|null>}
  */
 async function readLastSentState(supabase) {
   const { data, error } = await supabase
@@ -177,6 +185,8 @@ async function readLastSentState(supabase) {
     lastHash: data.result.lastHash,
     lastDate: data.result.lastDate || '',
     lastSnapshot: data.result.snapshot || null,
+    window: data.result.window || null,
+    sentAt: data.result.sentAt || null,
   };
 }
 
@@ -230,6 +240,11 @@ async function persistSentState(supabase, hash, dateStr, window, sendResults, wo
   }, null);
 }
 
+/** The claim fields finishClaim needs, stamped now. */
+function claimEnd(claim) {
+  return { date: claim.date, trigger: claim.trigger, now: new Date() };
+}
+
 // ---------------------------------------------------------------------------
 // HTTP handler
 // ---------------------------------------------------------------------------
@@ -239,19 +254,79 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // --- Auth: token validation ---
-  const providedToken = req.query.token || '';
+  // --- Auth: the on-time trigger (Vercel cron's CRON_SECRET), else the token (REQ-658) ---
+  // Only the credential decides who is calling; nothing in the query can make a call the trigger.
+  // Stryker disable next-line StringLiteral: any fallback no request sends works; '' plus Boolean() below fails closed
+  const cronSecret = process.env.CRON_SECRET || '';
+  const isTrigger = Boolean(cronSecret) && req.headers.authorization === `Bearer ${cronSecret}`;
   const expectedToken = process.env.INTERNAL_API_TOKEN || '';
-  if (!expectedToken || providedToken !== expectedToken) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  if (!isTrigger) {
+    const providedToken = req.query.token || '';
+    if (!expectedToken || providedToken !== expectedToken) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
   }
 
-  // --- Input validation: window param ---
-  const window = req.query.window || '';
+  // --- Input validation: window param (the trigger sends the 4am roster only) ---
+  const window = req.query.window || (isTrigger ? '4am' : '');
+  if (isTrigger && (window !== '4am' || req.query.date !== undefined || req.query.force !== undefined)) {
+    return res.status(400).json({ error: 'The on-time trigger sends the 4am roster only, with no date or force' });
+  }
   if (!VALID_WINDOWS.includes(window)) {
     return res.status(400).json({
       error: `Invalid window: "${window}". Must be one of: ${VALID_WINDOWS.join(', ')}`,
     });
+  }
+
+  // --- The automatic 4am send: gate on the Pacific hour, then claim the day (REQ-658) ---
+  // Today's 4am roster from the trigger or the GitHub fallback. A date or force=1 (token only) is a
+  // manual send: no gate, no claim. All of this comes before any other work, so a call that
+  // mustn't send does nothing that could fail or overwrite state.
+  const force = !isTrigger && req.query.force === '1';
+  let claim = null; // { date, trigger, prior, clock } once this call owns today's 4am send
+  if (window === '4am' && !req.query.date && !force) {
+    const clock = pacificClock(new Date());
+    const trigger = isTrigger ? 'vercel' : 'github';
+    if (isTrigger && !onTimeWindowOpen(clock)) {
+      console.log(`[Notify] On-time trigger at ${clock.weekday} ${clock.time} Pacific: outside 04:00–05:59 Mon–Fri, skipping`);
+      return res.status(200).json({ ok: true, action: 'skipped', reason: 'outside_window', window });
+    }
+    if (!isTrigger && !isWeekday(clock)) {
+      console.log(`[Notify] Fallback on a ${clock.weekday}: the 4am roster is weekdays only (force=1 sends anyway)`);
+      return res.status(200).json({ ok: true, action: 'skipped', reason: 'not_a_weekday', window });
+    }
+    if (!isTrigger && !fallbackHourReached(clock)) {
+      console.log(`[Notify] Fallback at ${clock.time} Pacific: before 06:00, leaving the 4am send to the on-time trigger`);
+      return res.status(200).json({ ok: true, action: 'skipped', reason: 'before_fallback_hour', window });
+    }
+    try {
+      const supabase = getSupabase();
+      const prior = await readClaim(supabase);
+      if (prior?.status === 'success' && prior.result?.date === clock.date) {
+        console.log(`[Notify] 4am roster for ${clock.date} already sent (by ${prior.result.trigger}) — skipping`);
+        return res.status(200).json({ ok: true, action: 'skipped', reason: 'already_sent', window, date: clock.date });
+      }
+      const lastState = await readLastSentState(supabase);
+      if (rosterSentToday(lastState, clock)) {
+        console.log(`[Notify] A roster already went out on ${clock.date} (${lastState.window ?? 'window not recorded'}) — skipping the 4am send`);
+        // The fallback says the 4am send missed, unless the claim couldn't be read and the stored send
+        // is the 4am one (it went out; only the claim row was unreadable).
+        if (!isTrigger && !(prior?.unreadable && lastState.window === '4am')) {
+          await alertAndLog(supabase, ALERT_JOB, missedAlert(clock, missReason(prior, clock.date)));
+        }
+        return res.status(200).json({ ok: true, action: 'skipped', reason: 'already_sent', window, date: clock.date });
+      }
+      if (!(await claimDay(supabase, { date: clock.date, trigger, now: new Date() }))) {
+        return res.status(200).json({ ok: true, action: 'skipped', reason: 'already_claimed', window, date: clock.date });
+      }
+      claim = { date: clock.date, trigger, prior, clock };
+    } catch (err) {
+      console.error('[Notify] ❌ 4am claim error:', err.message);
+      try {
+        await writeCronHealth(getSupabase(), 'notify', 'failure', null, err.message.slice(0, 500), { keepResult: true });
+      } catch { /* ignore — the 500 below is the signal */ }
+      return res.status(500).json({ error: err.message });
+    }
   }
 
   // --- Channel: required, checked before any work so a skipped window can't hide a bad value ---
@@ -259,7 +334,14 @@ export default async function handler(req, res) {
   if (channelError) {
     console.error(`[Notify] ${channelError}`);
     try {
-      await writeCronHealth(getSupabase(), window === 'friday-pm' ? 'notify-friday-pm' : 'notify', 'failure', null, channelError);
+      const supabase = getSupabase();
+      if (window === 'friday-pm') {
+        await writeCronHealth(supabase, 'notify-friday-pm', 'failure', null, channelError);
+      } else {
+        await writeCronHealth(supabase, 'notify', 'failure', null, channelError, { keepResult: true });
+      }
+      // Stryker disable next-line ConditionalExpression: without a claim, claimEnd(null) throws into this catch, which ignores it
+      if (claim) await finishClaim(supabase, { ...claimEnd(claim), status: 'failure', outcome: 'failed', error: channelError });
     } catch { /* ignore — the 500 below is the signal */ }
     return res.status(500).json({ error: channelError });
   }
@@ -309,7 +391,10 @@ export default async function handler(req, res) {
   // --- Input validation: date param (defaults to today) ---
   let date;
   const dateParam = req.query.date;
-  if (dateParam) {
+  if (claim) {
+    // The claimed day: the same Pacific date the claim was made for.
+    date = parseDateParam(claim.date);
+  } else if (dateParam) {
     try {
       date = parseDateParam(dateParam);
     } catch (err) {
@@ -364,6 +449,14 @@ export default async function handler(req, res) {
     // window (7am or 8:30am) retry after the cron has had time to complete.
     if (data.workers.length === 0) {
       console.warn(`[Notify] No worker data for today — skipping send (refreshed=${refresh.refreshed}, rowCount=${refresh.rowCount})`);
+      if (claim) {
+        // A claimed 4am call that finds nothing to send is a failure Kate hears about (once a day),
+        // and the day stays open for a later call.
+        await finishClaim(supabase, { ...claimEnd(claim), status: 'failure', outcome: 'no_data', error: 'No roster data' });
+        if (!noDataAlreadyReported(claim.prior, claim.date)) {
+          await alertAndLog(supabase, ALERT_JOB, noDataAlert(claim.clock, claim.trigger));
+        }
+      }
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_data' });
     }
 
@@ -403,17 +496,19 @@ export default async function handler(req, res) {
     }
 
     // --- Construct image URL ---
-    // Use the request's own host so this works for any deployment (prod, preview, local).
+    // The request's own host, so this works for any deployment (prod, preview, local); the on-time
+    // trigger uses the production domain (below).
     // ts param passes the job run time to roster-image.js for the "as of" header line.
     // sendWindow drives badge suppression (4am has no prior send to diff against).
     // lastSnapshot (7am/8:30am only) enables the blue intra-day overlay in roster-image.js.
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    let imageUrl = `${protocol}://${host}/api/roster-image?date=${dateStr}&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}`;
+    // The trigger renders from the production domain: a cron's own host can be the deployment's
+    // generated URL, which Vercel's Deployment Protection may answer with 401.
+    const origin = isTrigger ? PROD_URL : `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers['x-forwarded-host'] || req.headers.host}`;
+    let imageUrl = `${origin}/api/roster-image?date=${dateStr}&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}`;
     if (lastSnapshot) {
       imageUrl += `&lastSnapshot=${Buffer.from(JSON.stringify(lastSnapshot)).toString('base64')}`;
     }
-    console.log(`[Notify] Image URL: ${protocol}://${host}/api/roster-image?date=${dateStr}&token=***&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}${lastSnapshot ? '&lastSnapshot=<snapshot>' : ''}`);
+    console.log(`[Notify] Image URL: ${origin}/api/roster-image?date=${dateStr}&token=***&ts=${encodeURIComponent(jobRunAt)}&sendWindow=${window}${lastSnapshot ? '&lastSnapshot=<snapshot>' : ''}`);
 
     // --- Render once, store, send the same bytes ---
     const png = await fetchRosterPng(imageUrl);
@@ -431,6 +526,14 @@ export default async function handler(req, res) {
 
     // --- Persist state (non-fatal) ---
     await persistSentState(supabase, currentHash, dateStr, window, sendResults, data.workers);
+
+    if (claim) {
+      await finishClaim(supabase, { ...claimEnd(claim), status: 'success', outcome: 'sent' });
+      if (claim.trigger === 'github') {
+        // The fallback only gets here when the on-time send didn't happen: say so, and why.
+        await alertAndLog(supabase, ALERT_JOB, lateSendAlert(pacificClock(new Date()), missReason(claim.prior, claim.date)));
+      }
+    }
 
     const sentCount = sendResults.filter(r => r.status === 'sent').length;
     const failedCount = sendResults.filter(r => r.status === 'failed').length;
@@ -450,7 +553,10 @@ export default async function handler(req, res) {
     console.error('[Notify] ❌ Unhandled error:', err.message, err.stack);
     try {
       const supabase = getSupabase();
-      await writeCronHealth(supabase, 'notify', 'failure', null, err.message.slice(0, 500));
+      // keepResult: the 7am/8:30am baseline (lastHash/lastDate) survives a failed run (REQ-658).
+      await writeCronHealth(supabase, 'notify', 'failure', null, err.message.slice(0, 500), { keepResult: true });
+      // Stryker disable next-line ConditionalExpression: without a claim, claimEnd(null) throws into this catch, which ignores it
+      if (claim) await finishClaim(supabase, { ...claimEnd(claim), status: 'failure', outcome: 'failed', error: err.message.slice(0, 500) });
     } catch { /* ignore — health write failure should not mask the original error */ }
     return res.status(500).json({ error: err.message });
   }

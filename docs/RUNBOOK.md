@@ -39,6 +39,19 @@ SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'notify';
 ### "I didn't get the roster this morning"
 
 **Since 2026-10-20 the roster comes to Kate's Telegram** (`ROSTER_CHANNEL=telegram`, REQ-655). The WhatsApp steps further down are kept for reference only.
+
+**How the 4am roster is sent (REQ-658, #321):** two Vercel crons call `/api/notify` at 11:00 and 12:00 UTC; the one that lands in 04:00–05:59 Pacific (Mon–Fri) sends. The GitHub `notify-4am` workflow at 14:00 UTC (7am PDT / 6am PST) is the fallback: it sends only if the on-time send didn't, and then Telegram says **"The 4am roster went out late … The on-time send <reason>."** Every 4am call first claims the day on the `cron_health` row `notify-4am-claim`, so the roster goes out once.
+- **"went out late … never ran today":** Vercel didn't call (cron missing from the deploy, or a Vercel outage). Check Vercel → qboard → Settings → Cron Jobs lists two `/api/notify` entries, and the claim row (below).
+- **"… found no roster data":** 0 workers at 4–6am. You also got a "No roster data for …" alert at 4am. Check the midnight crons (`cron_health` `schedule` / `detail`) and the daytime refresh.
+- **"… failed: <error>":** the error is the on-time call's 500 (see the 500s below).
+- **"… started but didn't finish":** the on-time call crashed or timed out mid-send (it may have sent; you may get two rosters).
+- **"… couldn't be checked":** the claim row couldn't be read when the fallback ran (a Supabase blip); read it now (below).
+- **Two rosters on a bad morning:** 7am and the fallback both run at 14:00 UTC; on a day the on-time send failed, both may send. Expected, and only on failure days.
+- **"Roster image fetch failed: HTTP 401/403"** on the on-time call: the trigger renders from `https://qboarding.vercel.app`; check that domain is still the production domain and not behind Deployment Protection.
+- **"didn't go out on time … A later roster already went out":** nothing was re-sent; read the reason the same way.
+- **No roster and no alert:** Vercel didn't send and the GitHub fallback didn't run either. ops-watch reports "No morning roster sent today" at 17:00 UTC. Send it now with the forced run (Manual operations).
+- **Claim row:** `SELECT status, result, error_msg, updated_at FROM cron_health WHERE cron_name = 'notify-4am-claim';` — `success` + today's `result.date` = sent (by `result.trigger`: `vercel` on time, `github` late); `failure` = the day is open and a later call retries; `started` = in progress (or crashed; taken over after 10 minutes).
+- **Daylight time needs nothing:** after a change, the other UTC cron becomes the 4am one. To check, read the claim row's `result.at` the next weekday.
 - **500 `ROSTER_CHANNEL is not set…` or `is "…"`:** set `ROSTER_CHANNEL` in Vercel (qboard → Production) to `telegram`, then redeploy (env changes apply only after a deploy).
 - **500 `Roster image fetch failed: HTTP …`:** the image endpoint is broken. Check `/api/roster-image?type=weekend&token=…` (see "Roster image broken").
 - **500 `No recipient received the roster (1 of 1 sends failed): Telegram sendPhoto …`:** Telegram refused it. `400 … chat not found` means `TELEGRAM_ALERT_CHAT_ID` is wrong; `401` means `TELEGRAM_BOT_TOKEN` is wrong. No hash was stored, so the next window sends again.
@@ -59,7 +72,7 @@ Go to the repo → Actions → `notify-4am` → latest run.
 **Step 2: Check Vercel logs**
 
 Vercel dashboard → Functions tab → filter for `/api/notify`. Look for:
-- `[Notify] shouldSend: false` — the hash matched (nothing changed since last send). This is correct behavior for 7am/8:30am. Not correct for 4am — that window always sends.
+- `[Notify] shouldSend: false` — the hash matched (nothing changed since last send). This is correct behavior for 7am/8:30am. The 4am window never hash-gates (since REQ-658 it skips only as `already_sent` / `already_claimed` / outside its hour).
 - `[NotifyWA] Meta API credentials not configured` — `META_PHONE_NUMBER_ID` or `META_WHATSAPP_TOKEN` is missing from Vercel env vars.
 - `[NotifyWA] Failed to send to ***-***-XXXX: Meta API error 401` — token is invalid or expired. Regenerate the system user token in Meta Business Settings.
 - `[Notify/Refresh]` errors — the live schedule refresh failed. Non-fatal; notify should still proceed with DB data.
@@ -109,7 +122,7 @@ The breaker (#324, REQ-657) tripped: the booking site refused the app's login, o
 - **Schedule scan … (failed / hung / got the login page / found no appointments / last run Nh ago):** the nightly `cron-schedule` didn't do its job (#275). `SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'schedule';` For `sync_settings read failed`, check Supabase. For `N enqueue(s) failed`, `result.failedEnqueueIds` names them. For the login page, check AGYD's login (cron-auth's row). One night's miss is caught up by the next scans.
 - **Sync backlog / Sync queue deep / Sync stalled:** the detail queue isn't draining (oldest pending over 16 h, more than 30 pending, or nothing processed in 36 h). If `requeuedEdited` in the `schedule` `cron_health` row is large, unchanged appointments are being re-queued again (#278). See "Queue is backed up". To drain by hand: `node scripts/drain-queue.js` with `.env.local` loaded (sends nothing, about 7–10 s per item).
 - **Booking site blocked since … Nothing syncs until Clear in Settings:** the breaker is tripped. See "Booking site blocked".
-- **No morning roster / not delivered:** check today's `notify-4am` run in Actions and the `message_delivery_status` rows. "Not delivered" with Meta errors usually means a token or template problem.
+- **No morning roster / not delivered:** the 4am roster is sent by Vercel's crons (REQ-658): read the `notify-4am-claim` row first (see "I didn't get the roster this morning"), then today's `notify-4am` fallback run in Actions, and the `message_delivery_status` rows. "Not delivered" with Meta errors usually means a token or template problem.
 - **Workflow X: last success Nh ago:** open that workflow in Actions. If it's disabled, enable it. If it's failing, read the error (an expired Gmail token is a common one).
 - **Roster image broken:** call `/api/roster-image?type=weekend&token=…`. A 500 with `FUNCTION_INVOCATION_FAILED` means the function crashed on load. The last time (#246) a dependency bump caused it.
 - **Couldn't check …:** the check itself failed. Fix that first: missing `GH_ACTIONS_TOKEN`, an expired token, or Supabase down.
@@ -204,13 +217,13 @@ Settings → External Sync → set date range → Sync Now. Or use the "Full syn
 
 ### Trigger the notify pipeline manually
 
-GitHub Actions → `notify-4am` → Run workflow.
+GitHub Actions → `notify-4am` → Run workflow. **Tick "force"** to send now: without it, a run on a weekend, before 06:00 Pacific, or on a day the 4am roster already went out sends nothing (it answers 200 `skipped`). **Don't run it without force on a day the roster already went out**: if the on-time claim doesn't show it, you get a "didn't go out on time" alert. A forced run doesn't touch the 4am claim and sends no alert.
 
 ### Check what was sent today
 
 ```sql
 SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'notify';
--- status 'failure' = the last window failed (result is null; error_msg says why)
+-- status 'failure' = the last window failed (error_msg says why; result keeps the last good send, REQ-658)
 -- result.lastHash = hash of last roster sent
 -- result.lastDate = date of last send
 ```

@@ -1,7 +1,7 @@
 # Notify Jobs (Roster)
 
-**Status:** Live (weekdays + Friday PM + hourly intraday, PDT schedule — update UTC times each DST transition)
-**Last reviewed:** October 19, 2026 (channel switch, REQ-655)
+**Status:** Live (weekdays + Friday PM + hourly intraday). The 4am roster needs no DST edits (REQ-658); the other GitHub windows still do
+**Last reviewed:** October 22, 2026 (on-time 4am roster, REQ-658)
 
 ---
 
@@ -22,7 +22,8 @@ Five GitHub Actions workflows send WhatsApp notifications. Three fire on weekday
 
 | Workflow         | File                   | Time (PDT)     | UTC             | Days     | Behavior                                                    |
 | ---------------- | ---------------------- | -------------- | --------------- | -------- | ----------------------------------------------------------- |
-| Notify 4am       | `notify-4am.yml`       | 4:00 AM        | 11:00           | Mon–Fri  | Always sends — daily roster image                           |
+| Notify 4am (on time) | Vercel crons → `/api/notify` | 4:00–5:59 AM | 11:00 and 12:00 | Mon–Fri | The one in the 4am Pacific hour sends; once a day (REQ-658) |
+| Notify 4am (fallback) | `notify-4am.yml`     | 7:00 AM PDT / 6:00 AM PST | 14:00 | Mon–Fri  | Sends only if the on-time send didn't, and alerts Kate why    |
 | Notify 7am       | `notify-7am.yml`       | 7:00 AM        | 14:00           | Mon–Fri  | Sends only if roster changed                                |
 | Notify 8:30am    | `notify-830am.yml`     | 8:30 AM        | 15:30           | Mon–Fri  | Sends only if roster changed; also stores boarders snapshot |
 | Notify Friday PM | `notify-friday-pm.yml` | 3:00 PM        | 22:00           | Fri only | Always sends — weekend boarding preview image               |
@@ -58,7 +59,7 @@ The endpoint orchestrates the full notify flow:
 3. **Compute worker diff** — calls `computeWorkerDiff()` to compare today's roster against yesterday's (stored in `cron_health`). Returns which workers have new dogs and which lost dogs since the previous send.
 
 4. **Window gate:**
-   - `window=4am` → always proceeds to send daily roster image
+   - `window=4am` → no hash gate. The automatic calls (the Vercel trigger and the GitHub fallback) first check the Pacific hour (trigger 04:00–05:59, fallback from 06:00, both Mon–Fri), skip if a roster already went out today, and claim the day on `cron_health` `notify-4am-claim` so it goes out once. `force=1` or `date=` (token) skip all that. See REQ-658 and `src/lib/rosterTrigger.js`
    - `window=7am` or `window=8:30am` → hashes the current roster; if hash matches stored hash in `cron_health`, skips sending
    - `window=friday-pm` → always sends; generates a weekend-themed image (arrivals + departures Sat–Sun) instead of the daily roster. Writes health record to `cron_health WHERE cron_name = 'notify-friday-pm'`
 
@@ -130,12 +131,14 @@ SELECT result FROM cron_health WHERE cron_name = 'notify-intraday';
 
 ## DST Note
 
-The UTC times in the workflow `cron:` fields must be updated manually twice a year:
+**The 4am roster needs no edits (REQ-658).** Its two Vercel crons (11:00 and 12:00 UTC) cover both seasons, and `/api/notify` sends from the one in the 4am Pacific hour. **Never move `notify-4am.yml` off `0 14 * * 1-5`:** it's the fallback, and before 06:00 Pacific it skips (`before_fallback_hour`), so a 4am-PST cron would leave it skipping every day while staying green.
 
-| Season | UTC offset | 4am | 7am | 8:30am | Fri 3pm |
-|---|---|---|---|---|---|
-| Standard (Nov–Mar) | UTC-8 | `0 12 * * 1-5` | `0 15 * * 1-5` | `30 16 * * 1-5` | `0 23 * * 5` |
-| Daylight (Mar–Nov) | UTC-7 | `0 11 * * 1-5` | `0 14 * * 1-5` | `30 15 * * 1-5` | `0 22 * * 5` |
+The other GitHub windows still need their UTC times edited by hand twice a year:
+
+| Season | UTC offset | 7am | 8:30am | Fri 3pm |
+|---|---|---|---|---|
+| Standard (Nov–Mar) | UTC-8 | `0 15 * * 1-5` | `30 16 * * 1-5` | `0 23 * * 5` |
+| Daylight (Mar–Nov) | UTC-7 | `0 14 * * 1-5` | `30 15 * * 1-5` | `0 22 * * 5` |
 
 Currently set to **PDT** (daylight). Transition dates: second Sunday in March and first Sunday in November.
 
@@ -167,7 +170,9 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 
 | File | Purpose |
 |---|---|
-| `.github/workflows/notify-4am.yml` | 4am weekday workflow — always sends daily roster |
+| `vercel.json` (`crons`) | The on-time 4am trigger: `/api/notify` at 11:00 and 12:00 UTC (REQ-658) |
+| `.github/workflows/notify-4am.yml` | The 4am fallback at 14:00 UTC; manual run with a `force` checkbox |
+| `src/lib/rosterTrigger.js` | The 4am Pacific-hour gates, the once-a-day claim, and the late/missed/no-data alert text |
 | `.github/workflows/notify-7am.yml` | 7am weekday workflow — sends on change |
 | `.github/workflows/notify-830am.yml` | 8:30am weekday workflow — sends on change; triggers boarders snapshot |
 | `.github/workflows/notify-friday-pm.yml` | Friday 3pm workflow — always sends weekend boarding preview |
@@ -185,5 +190,6 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 ## Known Issues / Backlog
 
 - **WhatsApp delivery receipts:** a `wamid` returned by Meta proves the message was accepted, not that it was delivered to the phone. Post-acceptance delivery failures are silent. F-1 (PR #165, April 3) implemented the webhook endpoint and `message_delivery_status` table — delivery events are now stored. Alerting on `status=failed` is not yet implemented (G-1 backlog).
-- **DST manual update:** each March and November, the UTC times in all **five** `.yml` files need to be updated by hand. No automation exists for this.
+- **DST manual update:** each March and November, the UTC times in the 7am, 8:30am, Friday and intraday `.yml` files need to be updated by hand. The 4am roster no longer does (REQ-658).
+- **7am and the 4am fallback share 14:00 UTC.** On a day the on-time send failed, GitHub can start both together; neither has recorded a send yet, so both may send (two rosters plus the late alert). A duplicate on a failure day is the accepted direction.
 - **`shouldSendNotification` `window` param shadowing:** the parameter named `window` shadows the browser global. Low-priority rename to `sendWindow`.

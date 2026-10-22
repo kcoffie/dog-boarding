@@ -28,16 +28,16 @@ Kate chose **option A (2026-10-22): the 4am roster only.** The 7am and 8:30am ro
 ### Once a day: the claim
 - **Storage: one `cron_health` row, `cron_name = 'notify-4am-claim'`, no migration.**
   - The code seeds it once with `ON CONFLICT DO NOTHING` and date `1970-01-01`, so the date comparison is never NULL.
-  - **The claim is one conditional UPDATE** with `.select()`. It matches when `result->>date <> today` OR (`status = 'started'` AND `updated_at` older than 10 min).
+  - **The claim is one conditional UPDATE** with `.select()`. It matches when `result->>date` is NULL or `<> today`, OR `status = 'failure'`, OR (`status = 'started'` AND `updated_at` older than 10 min). (A missing JSON key is NULL, and `neq` never matches NULL, so the NULL case is explicit.)
   - Exactly one row back means the claim is ours. Postgres row locking makes a concurrent second UPDATE re-check and match 0 rows.
-  - The statuses used are `started` and `success`, both already allowed by the CHECK. One row in the Settings health list is fine (per-date rows would not be).
+  - The statuses used are `started`, `success` and `failure`, all already allowed by the CHECK (migration 022). One row in the Settings health list is fine (per-date rows would not be).
 - **"Today" is the actual Pacific date.** Explicit `date=` calls (manual, token path only) skip the claim.
 - **The order inside `notify` for `4am`** is window validation, then the claim, then the channel check, the daytime refresh and the picture build. A call that loses the claim does no work that could throw.
 - **Outcomes:**
   - After `sendRoster` succeeds: `success`, recording `{date, trigger, sentAt}`.
   - On failure: the claim is released, so the 5am call or the fallback tries again.
-  - `no_data` (0 workers on a weekday): `success` with `outcome: 'no_data'`, plus **an alert at once** (`alertAndLog`, job `notify-4am`). Today this case is silent.
-- **A crash after a successful send** (timeout) leaves the claim `started`. After 10 min it can be taken over, which allows one duplicate. That's the intended direction: a duplicate beats a missing roster. `api/notify.js` gets `maxDuration: 60` in `vercel.json`, so the 10-minute takeover is always above the function limit.
+  - `no_data` (0 workers on a weekday): `failure` with `outcome: 'no_data'`, so later calls retry, plus **an alert at once** (`alertAndLog`, job `notify-4am-alert`), once per day. Today this case is silent.
+- **A crash after a successful send** (timeout) leaves the claim `started`. After 10 min it can be taken over, which allows one duplicate. That's the intended direction: a duplicate beats a missing roster. `api/notify.js` gets `maxDuration: 60` in `vercel.json` (a send took 9–10 s in the last four runs), so the 10-minute takeover is always above the function limit.
 
 ### The 7am / 8:30am baseline
 - Today a `notify` failure write (`writeCronHealth(..., 'failure', null, ...)`) blindly sets `result: null` on the `notify` row and wipes `lastHash`/`lastDate`. 7am then has no baseline and re-sends an unchanged roster.
@@ -47,7 +47,7 @@ Kate chose **option A (2026-10-22): the 4am roster only.** The 7am and 8:30am ro
 - **`notify-4am.yml` moves to `0 14 * * 1-5`** (7am PDT / 6am PST) before 2026-11-01 (Kate approved, 2026-10-22).
 - **A token-path 4am call sends only at or after 06:00 Pacific** (`force=1` overrides it for a manual re-send). It can't beat Vercel's 4–6am window, and it can't send at 3am even if the cron isn't moved.
 - **It skips when any roster already went out today:** the claim's date is today, or the `notify` row's `lastDate` is today, which covers GitHub running 7am first.
-- **When it does send, it alerts Kate** through `alertAndLog`, job `notify-4am-late`, which is added to ops-watch's `ALERT_JOBS` so an undelivered alert is a finding. The text names the reason: the on-time call never ran, sent nothing (no data), or failed (the claim's last error).
+- **When it does send, it alerts Kate** through `alertAndLog`, job `notify-4am-alert`, which is added to ops-watch's `ALERT_JOBS` so an undelivered alert is a finding. **Not `notify-4am`:** ops-watch reads `message_log` `notify-4am` `sent` as "the roster went out", so an alert logged under it would hide a missing roster (found while building). The text names the reason: the on-time call never ran, sent nothing (no data), or failed (the claim's last error).
 - `force=1` (token path only) re-sends past the claim and the floor. `notify-4am.yml`'s `workflow_dispatch` gets a `force` checkbox that passes it (Kate approved, 2026-10-22).
 
 ## What breaks
@@ -63,11 +63,19 @@ No new secret. `CRON_SECRET` can now also start one 4am send a day, only inside 
 - The claim row shows `success`, `trigger: vercel`, with `sentAt` at 04:00–05:59 Pacific.
 - `message_log` has `notify-4am` `sent` in that window.
 - The GitHub run logs `already_sent`.
-- Failure signals: the `notify-4am-late` alert, the `no_data` alert, ops-watch's no-roster finding.
+- Failure signals: the `notify-4am-alert` alerts (late send, missed, no data), ops-watch's no-roster finding.
 - First live runs: Fri 2026-10-23 at 11:00–12:59 UTC (check Vercel received both calls with no query string). First PST run: Mon 2026-11-02 at 12:00–13:59 UTC.
 
 ## Tests (from this note, before code)
 Gate edges at both DST instants; the trigger comes from the credential (CRON_SECRET without any param is still gated; `trigger=vercel` on the token path changes nothing); CRON_SECRET unset fails closed; CRON_SECRET with `date=` or another window is rejected; two claims race and only one sends; a stale `started` claim is taken over after 10 min; a failed send releases the claim; the fallback skips after a 7am send; a fallback failure leaves `lastHash`/`lastDate` intact; `no_data` alerts; the late alert names its reason; `force=1` only on the token path.
+
+## Changes after the code review (2026-10-22)
+- **"Already sent today" also needs the send to have been made today** (`notify.result.sentAt` on today's Pacific date). Without it, a `date=` preview sent the evening before would have stopped the next morning's 4am send all day.
+- **The trigger renders the image from `https://qboarding.vercel.app`** (`PROD_URL`). A cron's own host can be the deployment's generated URL, which Deployment Protection may answer with 401.
+- **The fallback is weekdays only** (`not_a_weekday`), like the trigger.
+- **An unreadable claim row** is worded as such in the alert, not as "never ran".
+- **The no-data alert promises no 5am retry** (in PST there is none).
+- **Known and accepted:** 7am and the fallback both run at 14:00 UTC, so on a day the on-time send failed both may send (a duplicate on a failure day). A second no-data alert is possible if a different failure falls between two no-data calls.
 
 ## Not in this change
 7am and 8:30am (later: one cron line each plus their Pacific hour), Friday pm, intraday (off while the roster goes to Telegram).
