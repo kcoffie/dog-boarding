@@ -23,6 +23,7 @@
    - Delete files: a hook blocks `git rm`/`rm` in this repo.
    - Dispatch a workflow that sends a message (e.g. `notify-4am.yml`), and push to a Dependabot branch: the permission classifier blocks both even with Kate's OK in chat.
    - Read Vercel env or logs.
+   - Run SQL or migrations against production: Kate runs them (the classifier blocks Claude in the Supabase SQL editor).
 
 ---
 
@@ -107,7 +108,7 @@ Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-inve
 
 ## Immediate Next Steps
 1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs.
-2. **Check the on-time 4am roster** (first run Fri 10-23; on later days the latest weekday; first PST run Mon 11-02, 12:00–13:59 UTC). Read real timestamps (`date -u`):
+2. **Check the on-time 4am roster** (first run Fri 10-23; on later days the latest weekday; first PST run Mon 11-02, from the 12:00 UTC cron, so 12:00–12:59 UTC). Read real timestamps (`date -u`):
    - `SELECT status, result, error_msg, updated_at FROM cron_health WHERE cron_name = 'notify-4am-claim';` → `success`, `result.trigger = 'vercel'`, `result.at` between 11:00 and 12:59 UTC (PDT).
    - `message_log`: one `notify-4am` `sent` in that window, and no `notify-4am-alert` row.
    - The 14:00 UTC `notify-4am` run (Actions) logs `already_sent` (`command gh run view <id> --log | grep -i skipped`).

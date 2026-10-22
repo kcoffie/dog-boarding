@@ -35,7 +35,7 @@ Each stage feeds the next. Real use is the portfolio's strongest evidence, so po
 - [ ] No unexplained alerts for a week
 - [ ] A dog with no rate alerts Kate (#312 step 1)
 - [ ] The pay breakdown prints and can be sent to a phone (#314)
-- [ ] Invite-code management removed; the admin's account exists and the invite was dry-run (#307)
+- [ ] Invite-code management removed; Charlie's and her admin's accounts exist and the invite was dry-run (#307)
 - [ ] Payment history sortable (#9); calendar refresh done (#8, Kate)
 - [ ] Job logs private (#323)
 - [ ] UAT script written and dry-run end to end on production (#13)
@@ -66,12 +66,12 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 **Top 3:**
 1. **#321:** 7am, 8:30am and Friday pm move to the Vercel pattern used by the 4am roster (REQ-658), so DST needs no edits and each window has a failure alert (#257 folded in). Short addendum to the roster-trigger design note, then architect. **Merged by Fri 10-30, or the GitHub crons are hand-edited for PST.**
 2. **#13 UAT:** Kate books watch-first with Charlie (week of 11-09). Claude writes the UAT script for Charlie, including where "something looks wrong" goes (Send a Question) and what happens next, and dry-runs it on production.
-3. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration.
+3. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
 - #324 leftovers: Clear for Kate only (server-side check); the Sync Now 302 proof when it next happens naturally
-- Docs PR: this plan, the archive of the May plan, the handoff, REQ-652 status, removing the WhatsApp-era items (G-1, K-8, M3-7, N-1)
+- Docs PR: this plan, the archive of the May plan, the handoff, REQ-652 status, the G-1 WhatsApp delivery-alert item (K-8, M3-7, N-1 are history and stay where they are)
 - Investigations, batch A (below)
 - If #321 lands early: start #318 step 3 with the parser parity test
 - Kate: #337 chores, #8 calendar (browser agent), forward the roster to Charlie by hand
@@ -118,7 +118,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 | PR #291 | Close if #260 doesn't go to SMS |
 | G-3 status page | Still needed now that ops-watch and Telegram exist? |
 | `mutate:changed` PR check | Worth adding for #338? |
-| Small leftovers | Appointment status parses as null; optional token rename; job doc still lists the renamed `window` param |
+| Small leftovers | Appointment status parses as null; optional token rename |
 
 **Batch B (re-check as #318 steps ship):**
 | Item | Re-check after |
