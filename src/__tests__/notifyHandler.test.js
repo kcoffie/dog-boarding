@@ -1152,6 +1152,28 @@ describe('REQ-658: the GitHub fallback', () => {
     ]);
   });
 
+  it('when the claim row cannot be read and the stored send is the 4am one, it skips without a false "missed" alert', async () => {
+    cronRows[CLAIM_ROW] = { error: { message: 'read timeout' } };
+    cronRows.notify = { result: { lastHash: hashPicture(picture()), lastDate: TODAY, window: '4am', sentAt: '2026-10-19T11:03:00Z' } };
+    const res = await call({ window: '4am' });
+    expect(res.body.reason).toBe('already_sent');
+    expect(alertAndLog).not.toHaveBeenCalled();
+  });
+
+  it('when the claim row cannot be read and only a later window sent, the alert says the on-time send could not be checked', async () => {
+    cronRows[CLAIM_ROW] = { error: { message: 'read timeout' } };
+    cronRows.notify = { result: { lastHash: hashPicture(picture()), lastDate: TODAY, window: '7am', sentAt: '2026-10-19T14:00:00Z' } };
+    await call({ window: '4am' });
+    expect(alerts()).toStrictEqual([
+      "⚠️ The 4am roster didn't go out on time on 2026-10-19: the on-time send couldn't be checked (the claim row couldn't be read). A later roster already went out, so nothing was re-sent.",
+    ]);
+  });
+
+  it('the weekday check comes before the hour check: Saturday 5:00 PDT is not_a_weekday', async () => {
+    at('2026-10-24T12:00:00Z');
+    expect((await call({ window: '4am' })).body.reason).toBe('not_a_weekday');
+  });
+
   it('an undelivered late alert does not fail the send', async () => {
     alertAndLog.mockResolvedValue(false);
     const res = await call({ window: '4am' });

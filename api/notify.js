@@ -16,8 +16,8 @@
  * cron_health table (cron_name='notify') under result.lastHash + lastDate.
  * Subsequent sends within the same calendar date compare against this hash.
  *
- * Image: rendered by our own /api/roster-image (URL built from the request's Host header), fetched
- * once, stored, and those same bytes are sent. The URL carries the token, so it never goes to the
+ * Image: rendered by our own /api/roster-image (on the request's host; the on-time trigger uses the
+ * production domain), fetched once, stored, and those same bytes are sent. The URL carries the token, so it never goes to the
  * channel or into an error.
  *
  * @requirements REQ-v4.1, REQ-v5.0-M0, REQ-655, REQ-658
@@ -309,7 +309,9 @@ export default async function handler(req, res) {
       const lastState = await readLastSentState(supabase);
       if (rosterSentToday(lastState, clock)) {
         console.log(`[Notify] A roster already went out on ${clock.date} (${lastState.window ?? 'window not recorded'}) — skipping the 4am send`);
-        if (!isTrigger) {
+        // The fallback says the 4am send missed, unless the claim couldn't be read and the stored send
+        // is the 4am one (it went out; only the claim row was unreadable).
+        if (!isTrigger && !(prior?.unreadable && lastState.window === '4am')) {
           await alertAndLog(supabase, ALERT_JOB, missedAlert(clock, missReason(prior, clock.date)));
         }
         return res.status(200).json({ ok: true, action: 'skipped', reason: 'already_sent', window, date: clock.date });
@@ -494,7 +496,8 @@ export default async function handler(req, res) {
     }
 
     // --- Construct image URL ---
-    // Use the request's own host so this works for any deployment (prod, preview, local).
+    // The request's own host, so this works for any deployment (prod, preview, local); the on-time
+    // trigger uses the production domain (below).
     // ts param passes the job run time to roster-image.js for the "as of" header line.
     // sendWindow drives badge suppression (4am has no prior send to diff against).
     // lastSnapshot (7am/8:30am only) enables the blue intra-day overlay in roster-image.js.
