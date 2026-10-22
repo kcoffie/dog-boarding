@@ -304,3 +304,24 @@ describe.skipIf(code === null)('migration 028: only the server can read or write
     expect(code).toMatch(/id\s+boolean\s+PRIMARY KEY DEFAULT true CHECK \(id\)/);
   });
 });
+
+const DROP_MIGRATION = resolve(process.cwd(), 'supabase/migrations/029_drop_sync_settings_session.sql');
+
+const dropCode = existsSync(DROP_MIGRATION)
+  ? readFileSync(DROP_MIGRATION, 'utf8').split('\n').filter((l) => !l.trim().startsWith('--')).join('\n')
+  : null;
+
+describe.skipIf(dropCode === null)('migration 029: the old session columns leave sync_settings only', () => {
+  it('drops session_cookies and session_expires_at from sync_settings', () => {
+    expect(dropCode).toMatch(/ALTER TABLE sync_settings DROP COLUMN IF EXISTS session_cookies;/);
+    expect(dropCode).toMatch(/ALTER TABLE sync_settings DROP COLUMN IF EXISTS session_expires_at;/);
+  });
+
+  it('never touches site_access, where the session lives now', () => {
+    expect(dropCode).not.toMatch(/site_access/);
+  });
+
+  it('drops nothing else', () => {
+    expect(dropCode.match(/DROP/gi)).toHaveLength(2);
+  });
+});

@@ -36,6 +36,8 @@ This was not a default choice — it was the only viable option. But the impleme
 
 **Session management:** authentication takes ~4.5s and produces a cookie with a ~24h TTL. We cache the session in Supabase (`sync_settings` table) and check the TTL before every operation. `ensureSession()` in `sessionCache.js` is the single entry point for all scraper modules — it returns a valid session or re-authenticates transparently. No scraper module handles auth failure; they all call `ensureSession()` and proceed.
 
+*Superseded (#324, REQ-657, 2026-10-21):* the session now lives in the `site_access` table, read with `getSiteSession()`. Only `cron-auth` and Clear log in (`loginToSite()`), and a rejected login or a 429/403 trips a breaker. `sessionCache.js` and the `sync_settings` session columns are gone (migration 029).
+
 **Regex parsing, not DOM:** the sync crons run in a Node.js serverless runtime where `DOMParser` is unavailable. All parsing uses regex against raw HTML strings. This is more fragile than DOM queries in theory, but is deterministic and testable — we capture real HTML pages as test fixtures and run parsers against them. When the external site changes its structure, a fixture test fails immediately, before the change reaches production.
 
 **HTML fixtures for every behavior:** every parser has a corresponding `.html` fixture in `src/__tests__/fixtures/`. Any change to the external site's HTML structure will fail a test before it silently breaks the sync.

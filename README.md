@@ -280,7 +280,8 @@ src/
 │       ├── mapping.js           # Scraped data → DB schema (upsert logic, multi-pet)
 │       ├── forms.js             # Boarding form fetch, parse, 7-day match window
 │       ├── reconcile.js         # Detects and archives amended appointments
-│       ├── sessionCache.js      # TTL-aware session cookie cache in Supabase
+│       ├── siteAccess.js        # Booking-site session + breaker (site_access table)
+│       ├── siteLogin.js         # loginToSite: the one login (cron-auth, Clear)
 │       └── syncQueue.js         # Queue management (enqueue, dequeue, markDone, resetStuck)
 
 api/
