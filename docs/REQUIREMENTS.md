@@ -1584,6 +1584,25 @@ The 7am, 8:30am and Friday 3pm rosters were GitHub schedules, 4–6 h late and P
 
 ---
 
+### REQ-660: Booking pages read without following redirects
+**Added:** v6.9.0 | **Status:** Complete (#344, PR 1)
+
+The server's fetch followed redirects. A booking URL the site won't show (an edited stay's old timestamp, some playgroup series) answers 302 → `/schedule`, and the sync read the whole week's schedule as that booking: a dog got another pet's ID, a dog was renamed, and $0 dogs were created (74 of 481 saved bookings, 2026-02 to 2026-10). Design: `docs/specs/344-pet-id-design-note.md` (architect-reviewed, approved by Kate 2026-10-23). Decision record: `docs/adr/008-dog-identity-is-the-pet-id.md`.
+
+**Acceptance Criteria:**
+- Booking pages (`fetchAppointmentDetails`) and boarding form pages are fetched with `redirect: 'manual'` on every path (cron-detail, cron-detail-2, the Integration Check, Sync Now). One shared classifier (`src/lib/scraper/redirects.js`) reads the answer; reconciliation uses it too, unchanged
+- **A redirect to exactly `/schedule`:** nothing is written (no dog, boarding or sync row). The queue item is marked done with `meta.detail_redirect = { kind, url }`, never `detail_skip`, so the next scan re-queues it when its URL changes (an edited stay is read again). Result `redirected_to_schedule`, not a failure
+- **A redirect to `/login`:** the session-expired error, as before (session cleared, item re-queued). A form page's login redirect does the same
+- **Any other redirect:** nothing is written; result `redirected_elsewhere`; marked done, not retried as a failure. A form page that redirects fails the form job and stores no form
+- **A booking page with no check-in or no check-out writes nothing** (checked before the dog is saved); result `dateless_page`, marked done with `meta.detail_dateless = url`, no `detail_skip`
+- **Kate is told once per URL** (job `sync-detail`, in ops-watch's `ALERT_JOBS`): a `/schedule` redirect for a booking that last held a stay (a boarding under its ID, or dates on its sync row; when that can't be read, it's assumed), any other redirect, and a dateless page. **One message per run:** cron-detail (one item a run) and the Integration Check's drain (up to 20 items) each send a single summary, `⚠️ Q Boarding sync: <n> booking page(s) not read` with one line per booking
+- Sync Now counts a redirected or dateless page as skipped, not failed, and writes nothing for it
+- Booking-site load: a redirected booking costs 1 request instead of 2 (the schedule is no longer fetched after it)
+
+**Tests:** `src/__tests__/scraper/redirects.test.js` (real Node fetch against a local server), `src/__tests__/scraper/detailRedirect.test.js`, `src/__tests__/scraper/syncQueue.test.js`, `src/__tests__/scraper/runSyncSafety.test.js`, `src/__tests__/syncCronHandlers.test.js`, `src/__tests__/opsWatch.test.js`
+
+---
+
 ## How to Add a New Requirement
 
 1. Add entry to this document with next available ID in the appropriate section

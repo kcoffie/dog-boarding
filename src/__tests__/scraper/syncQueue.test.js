@@ -280,6 +280,14 @@ describe('REQ-109: enqueue() edit detection (B-3, #278)', () => {
     expect(row.meta).toEqual({ external_pet_id: '10001', detail_skip: 'same_day' });
   });
 
+  it('REQ-660: a moved URL on an item whose page redirected is an edit: re-queued, so an edited stay is read again', async () => {
+    const supabase = createMockSupabase([doneItem({ title: '10/29pm-11/1', meta: { external_pet_id: '10001', detail_redirect: { kind: 'schedule', url: STAY_URL } } })]);
+    const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '10/29pm-11/1' });
+    expect(outcome).toBe('requeued_edited');
+    expect(supabase._rows[0].status).toBe('pending');
+    expect(supabase._rows[0].source_url).toBe(NEXT_DAY_URL);
+  });
+
   it('an empty detail_skip does not count as skipped', async () => {
     const supabase = createMockSupabase([doneItem({ meta: { detail_skip: '' } })]);
     const outcome = await enqueue(supabase, { external_id: 'AAA', source_url: NEXT_DAY_URL, title: '10/19-22' });

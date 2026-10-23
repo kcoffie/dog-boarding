@@ -1,6 +1,6 @@
 /**
  * /api/ops-watch handler: auth, dry run, cron_health, and the data it hands to the rules (REQ-651).
- * @requirements REQ-651, REQ-652, REQ-657, REQ-658, REQ-659
+ * @requirements REQ-651, REQ-652, REQ-657, REQ-658, REQ-659, REQ-660
  *
  * Boundaries faked: Supabase (a chainable fake returning queued results per table), fetch
  * (GitHub + the roster image), Kate's alert channel (alertAndLog), and the cron_health writer.
@@ -262,12 +262,12 @@ describe("REQ-652: Kate's alert channel", () => {
     ]);
   });
 
-  it('failed alerts are read from message_log: status failed, the eight alert jobs, the last 24 hours', async () => {
+  it('failed alerts are read from message_log: status failed, the nine alert jobs, the last 24 hours', async () => {
     await call(AUTH, { dryRun: '1' });
     const q = calls.filter(([t]) => t === 'message_log').map(([, m, ...a]) => [m, ...a]);
     expect(q.slice(-4)).toEqual([
       ['select', 'job_name'], ['eq', 'status', 'failed'],
-      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert']],
+      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert', 'sync-detail']],
       ['gte', 'sent_at', '2026-10-15T17:00:00.000Z'],
     ]);
   });

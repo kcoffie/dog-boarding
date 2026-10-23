@@ -1,7 +1,8 @@
 /**
  * Sync Now (runSync) stops safely: an empty schedule and a 429/403 end the run before
  * reconciliation, and a stopped reconciliation is reported (#324).
- * @requirements REQ-657
+ * A booking page that redirected or had no dates is skipped, not failed, and nothing is written (#344).
+ * @requirements REQ-657, REQ-660
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -27,6 +28,7 @@ vi.mock('../../lib/scraper/logger.js', () => ({
 }));
 
 import { runSync } from '../../lib/scraper/sync.js';
+import { DetailRedirected } from '../../lib/scraper/redirects.js';
 import { SiteThrottled, resetSiteStop } from '../../lib/scraper/auth.js';
 import { fetchAllSchedulePages } from '../../lib/scraper/schedule.js';
 import { fetchAppointmentDetails } from '../../lib/scraper/extraction.js';
@@ -129,5 +131,45 @@ describe('REQ-657: Sync Now stops safely', () => {
     const db = makeDb();
     await runSync({ supabase: db });
     expect(db.settingsUpdates.at(-1).last_sync_message).toBe(`Synced 1 appointments. ${note}`);
+  });
+});
+
+describe('REQ-660: Sync Now and pages that are not the booking', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mapAndSaveAppointment.mockResolvedValue({ stats: { syncCreated: true } });
+    reconcileArchivedAppointments.mockResolvedValue({ archived: 0, warnings: 0, errors: 0, skipped: null });
+    dequeueOne.mockResolvedValue(null);
+  });
+
+  it('a booking page that redirects is skipped, not failed, and nothing is saved for it', async () => {
+    fetchAllSchedulePages.mockResolvedValue([appt('A'), appt('B')]);
+    fetchAppointmentDetails
+      .mockRejectedValueOnce(new DetailRedirected('schedule', '/schedule'))
+      .mockResolvedValueOnce({ pet_name: 'Dog B', check_in_datetime: '2026-10-24T17:00:00Z' });
+    const result = await runSync({ supabase: makeDb() });
+    expect(result.appointmentsSkipped).toBe(1);
+    expect(result.appointmentsFailed).toBe(0);
+    expect(result.appointmentsCreated).toBe(1);
+    expect(mapAndSaveAppointment).toHaveBeenCalledTimes(1);
+  });
+
+  it('any other error on a booking is still a failure, not a skip', async () => {
+    fetchAllSchedulePages.mockResolvedValue([appt('A')]);
+    fetchAppointmentDetails.mockRejectedValue(new Error('Failed to fetch appointment A: 500'));
+    const result = await runSync({ supabase: makeDb() });
+    expect(result.appointmentsFailed).toBe(1);
+    expect(result.appointmentsSkipped).toBe(0);
+  });
+
+  it('a page the mapper skipped for having no dates counts as skipped, not created', async () => {
+    fetchAllSchedulePages.mockResolvedValue([appt('A')]);
+    fetchAppointmentDetails.mockResolvedValue({ pet_name: 'Dog A', check_in_datetime: null });
+    mapAndSaveAppointment.mockResolvedValue({ skipped: 'dateless_page', stats: {} });
+    const result = await runSync({ supabase: makeDb() });
+    expect(result.appointmentsSkipped).toBe(1);
+    expect(result.appointmentsCreated).toBe(0);
+    expect(result.appointmentsFailed).toBe(0);
   });
 });

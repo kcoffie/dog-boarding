@@ -5,6 +5,7 @@
 
 import { SCRAPER_CONFIG } from './config.js';
 import { authenticatedFetch } from './auth.js';
+import { classifyRedirect, DetailRedirected, SESSION_EXPIRED_MESSAGE } from './redirects.js';
 
 /**
  * Parse check-in and check-out dates from a service_type string.
@@ -156,15 +157,22 @@ export function parseAppointmentPage(html, sourceUrl = '') {
  * @param {string} appointmentId - External appointment ID
  * @param {string} [timestamp] - Timestamp from URL (if required)
  * @returns {Promise<Object>} Extracted appointment data
+ * @throws {DetailRedirected} when the page redirects instead of showing the booking (#344)
  */
 export async function fetchAppointmentDetails(appointmentId, timestamp = '') {
   const url = timestamp
     ? `${SCRAPER_CONFIG.baseUrl}/schedule/a/${appointmentId}/${timestamp}`
     : `${SCRAPER_CONFIG.baseUrl}/schedule/a/${appointmentId}`;
 
+  // Never follow a redirect: /schedule would be parsed as this booking (#344)
   const response = await authenticatedFetch(url, {
     timeout: SCRAPER_CONFIG.pageTimeout,
+    redirect: 'manual',
   });
+
+  const redirect = classifyRedirect(response);
+  if (redirect === 'login') throw new Error(SESSION_EXPIRED_MESSAGE);
+  if (redirect) throw new DetailRedirected(redirect, response.headers.get('location'));
 
   if (!response.ok) {
     throw new Error(`Failed to fetch appointment ${appointmentId}: ${response.status}`);

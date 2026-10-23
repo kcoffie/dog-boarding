@@ -54,6 +54,8 @@ import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from './daytimeSc
 import { fetchAppointmentDetails } from './extraction.js';
 import { mapAndSaveAppointment } from './mapping.js';
 import { fetchAndStoreBoardingForm } from './forms.js';
+import { DetailRedirected } from './redirects.js';
+import { alertAndLog } from '../alertKate.js';
 
 const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com';
 const CURSOR_WINDOW_WEEKS = 8;
@@ -406,6 +408,118 @@ async function requeueAndStop(supabase, item, err) {
   throw err;
 }
 
+/** The job name on alerts about booking pages the detail step couldn't read (ops-watch ALERT_JOBS). */
+export const DETAIL_ALERT_JOB = 'sync-detail';
+
+/**
+ * One alert per run for the booking pages the detail step couldn't read (#344; Kate: one summary per
+ * run). Each caller passes the `notice` of every runDetailSync call it made.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {Array<string|null|undefined>} notices
+ * @returns {Promise<boolean|null>} null when there was nothing to send
+ */
+export async function alertDetailNotices(supabase, notices) {
+  const lines = notices.filter(Boolean);
+  if (lines.length === 0) return null;
+  return alertAndLog(supabase, DETAIL_ALERT_JOB,
+    `⚠️ Q Boarding sync: ${lines.length} booking page(s) not read\n• ${lines.join('\n• ')}`);
+}
+
+/** Results that end a drain: nothing left, or no usable session. */
+export const DRAIN_STOP_ACTIONS = ['idle', 'session_cleared', 'session_failed', 'site_blocked'];
+
+/**
+ * Process queue items one at a time until a stop action or `maxItems`, then send the run's one alert
+ * for pages that couldn't be read. The alert goes out even when an item throws (a 429 stop, a database
+ * error): those items are already marked as reported, so a notice lost here would never come back (#344).
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ maxItems: number, pauseMs?: number, onItem?: (result: Object, index: number) => void }} options
+ * @returns {Promise<Object[]>} each item's runDetailSync result
+ */
+export async function drainDetailQueue(supabase, { maxItems, pauseMs = 0, onItem = () => {} }) {
+  const results = [];
+  try {
+    for (let i = 0; i < maxItems; i++) {
+      const result = await runDetailSync(supabase, { runResetStuck: false });
+      results.push(result);
+      onItem(result, i);
+      if (DRAIN_STOP_ACTIONS.includes(result.action)) break;
+      if (pauseMs > 0) await new Promise((resolve) => setTimeout(resolve, pauseMs));
+    }
+  } finally {
+    await alertDetailNotices(supabase, results.map((r) => r.notice));
+  }
+  return results;
+}
+
+// Whether this booking last held a real stay: a boarding under its ID, or dates on its sync row or
+// in that row's previous version (a week page overwrote some rows' dates before #344).
+// When that can't be read, assume it did, so Kate hears about it rather than nothing.
+async function heldAStay(supabase, externalId) {
+  try {
+    const [boardings, syncRow] = await Promise.all([
+      supabase.from('boardings').select('id').eq('external_id', externalId).limit(1),
+      supabase.from('sync_appointments').select('check_in_datetime, previous_data').eq('external_id', externalId).maybeSingle(),
+    ]);
+    // Stryker disable next-line ConditionalExpression: on an error Supabase's data is null, so .length throws into the same catch
+    if (boardings.error) throw boardings.error;
+    if (syncRow.error) throw syncRow.error;
+    return boardings.data.length > 0
+      || Boolean(syncRow.data?.check_in_datetime)
+      || Boolean(syncRow.data?.previous_data?.check_in_datetime);
+  } catch (err) {
+    console.error(`[SyncRunner:Detail] ⚠️ Couldn't check whether ${externalId} held a stay: ${errorText(err)}`);
+    return true;
+  }
+}
+
+// A booking page that redirected: nothing is written (#344). The item is marked `detail_redirect`, not
+// `detail_skip`, because syncQueue ignores URL changes on skipped items and an edited stay's new URL
+// must still be read. Kate hears once per URL about a stay that can't be read or an unknown target.
+async function finishRedirected(supabase, item, err) {
+  const action = err.kind === 'schedule' ? 'redirected_to_schedule' : 'redirected_elsewhere';
+  console.log(`[SyncRunner:Detail] ↪️ ${item.external_id}: ${err.message}, nothing written`);
+  const title = item.title || '';
+  let notice = null;
+  if (item.meta?.detail_redirect?.url !== item.source_url) {
+    if (err.kind !== 'schedule') {
+      notice = `${item.external_id} "${title}": its page redirected to ${err.location || 'nowhere'}, so it wasn't read.`;
+    } else if (await heldAStay(supabase, item.external_id)) {
+      notice = `${item.external_id} "${title}": its page now redirects to the schedule (stay moved or cancelled?), so it can't be read. Its boarding is unchanged until checked.`;
+    }
+  }
+  const meta = { ...(item.meta || {}), detail_redirect: { kind: err.kind, url: item.source_url } };
+  delete meta.detail_skip;
+  await markDone(supabase, item.id, { meta });
+  const queueDepth = await getQueueDepth(supabase);
+  return { action, externalId: item.external_id, queueDepth, notice };
+}
+
+// A page that was read: drop any earlier redirect or dateless mark, so the same URL failing again later
+// is reported again (#344). Undefined (meta untouched) when there's nothing to drop.
+function readAgainMeta(item) {
+  if (!item.meta || !('detail_redirect' in item.meta || 'detail_dateless' in item.meta)) return undefined;
+  const meta = { ...item.meta };
+  delete meta.detail_redirect;
+  delete meta.detail_dateless;
+  return { meta };
+}
+
+// A page without check-in/check-out isn't a booking page; the site's layout may have changed. Nothing
+// was written (#344). No `detail_skip`, so a URL change still re-queues it. Kate hears once per URL.
+async function finishDateless(supabase, item) {
+  console.warn(`[SyncRunner:Detail] ⛔ ${item.external_id}: no dates on the page, nothing written`);
+  const notice = item.meta?.detail_dateless === item.source_url ? null
+    : `${item.external_id} "${item.title || ''}": its page had no check-in/check-out dates, so nothing was saved. The booking site's page layout may have changed.`;
+  const meta = { ...(item.meta || {}), detail_dateless: item.source_url };
+  delete meta.detail_skip;
+  await markDone(supabase, item.id, { meta });
+  const queueDepth = await getQueueDepth(supabase);
+  return { action: 'dateless_page', externalId: item.external_id, queueDepth, notice };
+}
+
 /**
  * Dequeue and process one item from the sync queue.
  *
@@ -421,7 +535,8 @@ async function requeueAndStop(supabase, item, err) {
  *   before dequeuing. Pass false when looping to avoid redundant DB queries
  *   on every iteration — the caller should call resetStuck once before the loop.
  * @returns {Promise<{
- *   action: 'idle'|'created'|'updated'|'unchanged'|'form_stored'|'skipped'|'failed'|'form_failed'|'save_failed'|'session_failed'|'session_cleared'|'site_blocked',
+ *   action: 'idle'|'created'|'updated'|'unchanged'|'form_stored'|'skipped'|'failed'|'form_failed'|'save_failed'|'session_failed'|'session_cleared'|'site_blocked'|'redirected_to_schedule'|'redirected_elsewhere'|'dateless_page',
+ *   notice?: string|null,  // a page that couldn't be read, for the caller's one alert per run (#344)
  *   externalId?: string,
  *   queueDepth?: number,
  *   error?: string,
@@ -511,6 +626,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
     details = await fetchAppointmentDetails(appointmentId, timestamp);
   } catch (err) {
     if (err instanceof SiteThrottled) await requeueAndStop(supabase, item, err);
+    if (err instanceof DetailRedirected) return finishRedirected(supabase, item, err);
     if (err?.message && err.message.includes('Session expired')) {
       console.log('[SyncRunner:Detail] 🔒 SESSION_EXPIRED during detail fetch — clearing session + re-queuing item');
       await clearSiteSession(supabase);
@@ -542,7 +658,10 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
 
   try {
     const saveResult = await mapAndSaveAppointment(details, { supabase, externalPetId });
-    await markDone(supabase, item.id);
+    if (saveResult.skipped === 'dateless_page') return finishDateless(supabase, item);
+    const readAgain = readAgainMeta(item);
+    if (readAgain) await markDone(supabase, item.id, readAgain);
+    else await markDone(supabase, item.id);
 
     const { stats } = saveResult;
     const action = stats.syncCreated ? 'created'

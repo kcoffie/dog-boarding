@@ -39,7 +39,7 @@
 import { chromium } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
 import { alertAndLog, exitCodeAfterAlert } from '../src/lib/alertKate.js';
-import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
+import { runScheduleSync, drainDetailQueue, DRAIN_STOP_ACTIONS } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 import { getSiteSession, tripBreaker, throttleReason } from '../src/lib/scraper/siteAccess.js';
 import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
@@ -485,25 +485,21 @@ async function main() {
       // on subsequent iterations to avoid 20 redundant DB queries (Gap 3 fix).
       const MAX_DETAIL_ITERATIONS = 20;
       await resetStuck(supabase);
-      let drained = 0;
-      for (let i = 0; i < MAX_DETAIL_ITERATIONS; i++) {
-        const detailResult = await runDetailSync(supabase, { runResetStuck: false });
-        console.log(
+      // drainDetailQueue sends one alert for the run's unreadable booking pages, even if an item throws (#344)
+      const detailResults = await drainDetailQueue(supabase, {
+        maxItems: MAX_DETAIL_ITERATIONS,
+        onItem: (detailResult, i) => console.log(
           '[IntegCheck] Step 0 detail [%d/%d]: action=%s queueDepth=%d',
           i + 1,
           MAX_DETAIL_ITERATIONS,
           detailResult.action,
           detailResult.queueDepth ?? 0,
-        );
-        drained++;
-        if (['idle', 'session_cleared', 'session_failed', 'site_blocked'].includes(detailResult.action)) {
-          break;
-        }
-        if (i === MAX_DETAIL_ITERATIONS - 1) {
-          console.warn('[IntegCheck] ⚠️ Step 0 detail: hit %d-iteration cap without reaching idle — queue may still have items', MAX_DETAIL_ITERATIONS);
-        }
+        ),
+      });
+      if (detailResults.length === MAX_DETAIL_ITERATIONS && !DRAIN_STOP_ACTIONS.includes(detailResults.at(-1).action)) {
+        console.warn('[IntegCheck] ⚠️ Step 0 detail: hit %d-iteration cap without reaching idle — queue may still have items', MAX_DETAIL_ITERATIONS);
       }
-      console.log('[IntegCheck] Step 0 done: %d detail iteration(s)', drained);
+      console.log('[IntegCheck] Step 0 done: %d detail iteration(s)', detailResults.length);
     }
   } catch (step0Err) {
     // A 429/403 from the booking site tripped the breaker, which alerted Kate: no browser page load
