@@ -1,6 +1,6 @@
 /**
  * cron-health-check main(): who gets the alert, and what an undelivered alert does to the run (REQ-652).
- * @requirements REQ-652
+ * @requirements REQ-652, REQ-659
  *
  * Boundaries faked: Supabase (cron_health / cron_health_log rows) and alertAndLog (tested in alertKate.test.js).
  */
@@ -59,5 +59,30 @@ describe('REQ-652: cron-health-check alerting', () => {
     healthRows = [ranTonight('schedule'), ranTonight('detail'), opsWatchFresh];
     alertAndLog.mockResolvedValue(false);
     expect(await main()).toBe(1);
+  });
+});
+
+describe('REQ-659: the roster windows, checked from GitHub', () => {
+  // Tue 00:30 UTC = Mon 17:30 PDT: Monday's 7am and 8:30am should have run.
+  const MONDAY_EVENING = '2026-10-20T00:30:00.000Z';
+  const ranMon = (cron_name) => ({ cron_name, last_ran_at: '2026-10-20T00:10:00.000Z', status: 'success' });
+  const claim = (cron_name, status, date) => ({ cron_name, last_ran_at: '2026-10-19T14:20:00.000Z', status, result: { date } });
+
+  beforeEach(() => {
+    vi.setSystemTime(new Date(MONDAY_EVENING));
+    healthRows = [ranMon('auth'), ranMon('schedule'), ranMon('detail'), { ...opsWatchFresh, last_ran_at: '2026-10-19T17:20:00.000Z' }];
+  });
+
+  it('both weekday windows finished today: no alert', async () => {
+    healthRows.push(claim('notify-7am-claim', 'success', '2026-10-19'), claim('notify-830am-claim', 'success', '2026-10-19'));
+    expect(await main()).toBe(0);
+    expect(alertAndLog).not.toHaveBeenCalled();
+  });
+
+  it('a window that never ran today is one line of the alert', async () => {
+    healthRows.push(claim('notify-7am-claim', 'success', '2026-10-19'), claim('notify-830am-claim', 'success', '2026-10-16'));
+    alertAndLog.mockResolvedValue(true);
+    expect(await main()).toBe(0);
+    expect(alertAndLog.mock.calls[0][2]).toBe("⚠️ Cron health check (10/20)\n• The 8:30am roster didn't run on 2026-10-19");
   });
 });

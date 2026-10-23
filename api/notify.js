@@ -2,11 +2,13 @@
  * Notification orchestrator — sends the daily roster image on the ROSTER_CHANNEL (REQ-655).
  *
  * GET /api/notify?window=4am&token=SECRET[&date=YYYY-MM-DD][&force=1]
- * GET /api/notify with `Authorization: Bearer $CRON_SECRET` — the on-time 4am trigger (Vercel cron, REQ-658)
+ * GET /api/notify with `Authorization: Bearer $CRON_SECRET` — the on-time trigger (Vercel crons, REQ-658, REQ-659)
  *
- * The 4am roster: Vercel crons at 11:00 and 12:00 UTC send it in the 4am Pacific hour; the GitHub
- * workflow (14:00 UTC) is the late fallback. Both claim the Pacific day first, so it goes out once
- * (src/lib/rosterTrigger.js). The 7am and 8:30am windows are GitHub workflows.
+ * The on-time trigger: Vercel crons call with no query string, and the Pacific hour picks the
+ * window (4am, 7am, 8:30am, Friday pm; triggerWindow in src/lib/rosterTrigger.js). Each window claims
+ * its own row for the day first, so a duplicate cron delivery sends nothing, and a failed call alerts
+ * Kate. The 4am roster also has the GitHub workflow (14:00 UTC) as its late fallback, which claims
+ * the same 4am row. The other GitHub workflows are manual runs (token path, no claim).
  * The `window` param drives the send gate:
  *   4am     → send whatever the hash (first send of the day), once a day for the automatic calls
  *   7am     → send only if data changed since last send
@@ -20,7 +22,7 @@
  * production domain), fetched once, stored, and those same bytes are sent. The URL carries the token, so it never goes to the
  * channel or into an error.
  *
- * @requirements REQ-v4.1, REQ-v5.0-M0, REQ-655, REQ-658
+ * @requirements REQ-v4.1, REQ-v5.0-M0, REQ-655, REQ-658, REQ-659
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -35,8 +37,9 @@ import { recordMessageLog } from '../src/lib/messageDeliveryStatus.js';
 import { writeCronHealth } from './_cronHealth.js';
 import { refreshDaytimeSchedule } from '../src/lib/notifyHelpers.js';
 import {
-  ALERT_JOB, pacificClock, onTimeWindowOpen, fallbackHourReached, readClaim, claimDay, finishClaim,
-  missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert, isWeekday, rosterSentToday,
+  ALERT_JOB, WINDOW_ALERT_JOB, CLAIM_ROWS, pacificClock, triggerWindow, fallbackHourReached, readClaim,
+  claimDay, finishClaim, missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert,
+  windowFailedAlert, isWeekday, rosterSentToday,
 } from '../src/lib/rosterTrigger.js';
 import { PROD_URL } from '../src/lib/deployCheck.js';
 
@@ -242,7 +245,21 @@ async function persistSentState(supabase, hash, dateStr, window, sendResults, wo
 
 /** The claim fields finishClaim needs, stamped now. */
 function claimEnd(claim) {
-  return { date: claim.date, trigger: claim.trigger, now: new Date() };
+  return { row: claim.row, date: claim.date, trigger: claim.trigger, now: new Date() };
+}
+
+/**
+ * Alert Kate when an on-time 7am, 8:30am or Friday pm call fails (REQ-659): on Vercel a 500 is
+ * silent, unlike a red GitHub run. The 4am window has its own path (the fallback sends and alerts).
+ * Never throws.
+ */
+async function alertWindowFailure(supabase, isTrigger, window, error) {
+  if (!isTrigger || window === '4am') return;
+  try {
+    await alertAndLog(supabase, WINDOW_ALERT_JOB, windowFailedAlert(window, pacificClock(new Date()), error));
+  } catch (err) {
+    console.warn(`[Notify] Could not alert the ${window} failure: ${err.message}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -267,10 +284,18 @@ export default async function handler(req, res) {
     }
   }
 
-  // --- Input validation: window param (the trigger sends the 4am roster only) ---
-  const window = req.query.window || (isTrigger ? '4am' : '');
-  if (isTrigger && (window !== '4am' || req.query.date !== undefined || req.query.force !== undefined)) {
-    return res.status(400).json({ error: 'The on-time trigger sends the 4am roster only, with no date or force' });
+  // --- Input validation: window param (for the trigger, the Pacific hour picks it) ---
+  if (isTrigger && (req.query.window !== undefined || req.query.date !== undefined || req.query.force !== undefined)) {
+    return res.status(400).json({ error: 'The on-time trigger takes no window, date or force: the Pacific hour picks the window' });
+  }
+  let window = req.query.window || '';
+  if (isTrigger) {
+    const clock = pacificClock(new Date());
+    window = triggerWindow(clock);
+    if (!window) {
+      console.log(`[Notify] On-time trigger at ${clock.weekday} ${clock.time} Pacific: no roster window this hour, skipping`);
+      return res.status(200).json({ ok: true, action: 'skipped', reason: 'outside_window' });
+    }
   }
   if (!VALID_WINDOWS.includes(window)) {
     return res.status(400).json({
@@ -283,14 +308,10 @@ export default async function handler(req, res) {
   // manual send: no gate, no claim. All of this comes before any other work, so a call that
   // mustn't send does nothing that could fail or overwrite state.
   const force = !isTrigger && req.query.force === '1';
-  let claim = null; // { date, trigger, prior, clock } once this call owns today's 4am send
+  let claim = null; // { row, window, date, trigger, prior, clock } once this call owns today's send
   if (window === '4am' && !req.query.date && !force) {
     const clock = pacificClock(new Date());
     const trigger = isTrigger ? 'vercel' : 'github';
-    if (isTrigger && !onTimeWindowOpen(clock)) {
-      console.log(`[Notify] On-time trigger at ${clock.weekday} ${clock.time} Pacific: outside 04:00–05:59 Mon–Fri, skipping`);
-      return res.status(200).json({ ok: true, action: 'skipped', reason: 'outside_window', window });
-    }
     if (!isTrigger && !isWeekday(clock)) {
       console.log(`[Notify] Fallback on a ${clock.weekday}: the 4am roster is weekdays only (force=1 sends anyway)`);
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'not_a_weekday', window });
@@ -319,12 +340,27 @@ export default async function handler(req, res) {
       if (!(await claimDay(supabase, { date: clock.date, trigger, now: new Date() }))) {
         return res.status(200).json({ ok: true, action: 'skipped', reason: 'already_claimed', window, date: clock.date });
       }
-      claim = { date: clock.date, trigger, prior, clock };
+      claim = { row: CLAIM_ROWS['4am'], window, date: clock.date, trigger, prior, clock };
     } catch (err) {
       console.error('[Notify] ❌ 4am claim error:', err.message);
       try {
         await writeCronHealth(getSupabase(), 'notify', 'failure', null, err.message.slice(0, 500), { keepResult: true });
       } catch { /* ignore — the 500 below is the signal */ }
+      return res.status(500).json({ error: err.message });
+    }
+  } else if (isTrigger) {
+    // The on-time 7am, 8:30am or Friday pm call: claim the window's day before any work (REQ-659).
+    const clock = pacificClock(new Date());
+    let supabase = null;
+    try {
+      supabase = getSupabase();
+      if (!(await claimDay(supabase, { row: CLAIM_ROWS[window], date: clock.date, trigger: 'vercel', now: new Date() }))) {
+        return res.status(200).json({ ok: true, action: 'skipped', reason: 'already_claimed', window, date: clock.date });
+      }
+      claim = { row: CLAIM_ROWS[window], window, date: clock.date, trigger: 'vercel', prior: null, clock };
+    } catch (err) {
+      console.error(`[Notify] ❌ ${window} claim error:`, err.message);
+      await alertWindowFailure(supabase, isTrigger, window, err.message.slice(0, 500));
       return res.status(500).json({ error: err.message });
     }
   }
@@ -342,6 +378,7 @@ export default async function handler(req, res) {
       }
       // Stryker disable next-line ConditionalExpression: without a claim, claimEnd(null) throws into this catch, which ignores it
       if (claim) await finishClaim(supabase, { ...claimEnd(claim), status: 'failure', outcome: 'failed', error: channelError });
+      await alertWindowFailure(supabase, isTrigger, window, channelError);
     } catch { /* ignore — the 500 below is the signal */ }
     return res.status(500).json({ error: channelError });
   }
@@ -353,10 +390,10 @@ export default async function handler(req, res) {
   // --- friday-pm: distinct path — no hash gate, no getPictureOfDay ---
   if (window === 'friday-pm') {
     try {
-      const protocol = req.headers['x-forwarded-proto'] || 'https';
-      const host = req.headers['x-forwarded-host'] || req.headers.host;
-      const imageUrl = `${protocol}://${host}/api/roster-image?type=weekend&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}`;
-      console.log(`[Notify] friday-pm — image URL: ${protocol}://${host}/api/roster-image?type=weekend&token=***&ts=${encodeURIComponent(jobRunAt)}`);
+      // The trigger renders from the production domain, as the daily windows do (below).
+      const origin = isTrigger ? PROD_URL : `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers['x-forwarded-host'] || req.headers.host}`;
+      const imageUrl = `${origin}/api/roster-image?type=weekend&token=${expectedToken}&ts=${encodeURIComponent(jobRunAt)}`;
+      console.log(`[Notify] friday-pm — image URL: ${origin}/api/roster-image?type=weekend&token=***&ts=${encodeURIComponent(jobRunAt)}`);
 
       const supabase = getSupabase();
       const png = await fetchRosterPng(imageUrl);
@@ -373,6 +410,7 @@ export default async function handler(req, res) {
         recipients: sendResults.map(r => r.to),
         results: sendResults,
       }, null);
+      if (claim) await finishClaim(supabase, { ...claimEnd(claim), status: 'success', outcome: 'sent' });
 
       const sentCount = sendResults.filter(r => r.status === 'sent').length;
       const failedCount = sendResults.filter(r => r.status === 'failed').length;
@@ -383,6 +421,9 @@ export default async function handler(req, res) {
       try {
         const supabase = getSupabase();
         await writeCronHealth(supabase, 'notify-friday-pm', 'failure', null, err.message.slice(0, 500));
+        // Stryker disable next-line ConditionalExpression: without a claim, claimEnd(null) throws into this catch, which ignores it
+        if (claim) await finishClaim(supabase, { ...claimEnd(claim), status: 'failure', outcome: 'failed', error: err.message.slice(0, 500) });
+        await alertWindowFailure(supabase, isTrigger, window, err.message.slice(0, 500));
       } catch { /* ignore */ }
       return res.status(500).json({ error: err.message });
     }
@@ -449,12 +490,22 @@ export default async function handler(req, res) {
     // window (7am or 8:30am) retry after the cron has had time to complete.
     if (data.workers.length === 0) {
       console.warn(`[Notify] No worker data for today — skipping send (refreshed=${refresh.refreshed}, rowCount=${refresh.rowCount})`);
-      if (claim) {
+      if (claim?.window === '4am') {
         // A claimed 4am call that finds nothing to send is a failure Kate hears about (once a day),
         // and the day stays open for a later call.
         await finishClaim(supabase, { ...claimEnd(claim), status: 'failure', outcome: 'no_data', error: 'No roster data' });
         if (!noDataAlreadyReported(claim.prior, claim.date)) {
           await alertAndLog(supabase, ALERT_JOB, noDataAlert(claim.clock, claim.trigger));
+        }
+      } else if (claim) {
+        // 7am/8:30am: fine only when the 4am call found no data too (Kate has that alert already).
+        // Data that vanished after 4am is a fault (REQ-659).
+        const fourAm = await readClaim(supabase, CLAIM_ROWS['4am']);
+        if (noDataAlreadyReported(fourAm, claim.date)) {
+          await finishClaim(supabase, { ...claimEnd(claim), status: 'success', outcome: 'no_data' });
+        } else {
+          await finishClaim(supabase, { ...claimEnd(claim), status: 'failure', outcome: 'no_data', error: 'No roster data' });
+          await alertWindowFailure(supabase, isTrigger, window, 'no roster data (the 4am roster had some)');
         }
       }
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_data' });
@@ -486,6 +537,7 @@ export default async function handler(req, res) {
     console.log(`[Notify] shouldSend: ${shouldSend}, reason: ${reason}, hash: ${currentHash}`);
 
     if (!shouldSend) {
+      if (claim) await finishClaim(supabase, { ...claimEnd(claim), status: 'success', outcome: 'unchanged' });
       return res.status(200).json({
         ok: true,
         action: 'skipped',
@@ -557,6 +609,7 @@ export default async function handler(req, res) {
       await writeCronHealth(supabase, 'notify', 'failure', null, err.message.slice(0, 500), { keepResult: true });
       // Stryker disable next-line ConditionalExpression: without a claim, claimEnd(null) throws into this catch, which ignores it
       if (claim) await finishClaim(supabase, { ...claimEnd(claim), status: 'failure', outcome: 'failed', error: err.message.slice(0, 500) });
+      await alertWindowFailure(supabase, isTrigger, window, err.message.slice(0, 500));
     } catch { /* ignore — health write failure should not mask the original error */ }
     return res.status(500).json({ error: err.message });
   }

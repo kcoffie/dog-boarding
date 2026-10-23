@@ -276,6 +276,10 @@ describe('runOpsWatch', () => {
       loadScheduleHealth: async () => ({ last_ran_at: hoursAgo(16), status: 'success', result: { found: 227 }, error_msg: null }),
       loadSiteAccess: async () => ({ blocked_at: null, blocked_reason: null }),
       loadRosterRows: async () => ({ sent: [{ wamid: 'w1', sent_at: '2026-10-16T11:00:05Z' }], deliveredWamids: ['w1'] }),
+      loadWindowClaims: async () => ({
+        'notify-7am-claim': { status: 'success', result: { date: '2026-10-16' } },
+        'notify-830am-claim': { status: 'success', result: { date: '2026-10-16' } },
+      }),
       loadLastSuccess: async () => ({
         'gmail-monitor.yml': hoursAgo(1),
         'integration-check.yml': hoursAgo(9),
@@ -298,6 +302,14 @@ describe('runOpsWatch', () => {
       'Booking site blocked since 2026-10-16T07:05:00Z: it answered 429 (too many requests) on a schedule page. Nothing syncs until Clear in Settings',
     ]);
     expect(d.sent.alert).toHaveLength(1);
+  });
+
+  it('REQ-659: a 7am or 8:30am window that did not run today is a finding', async () => {
+    const r = await runOpsWatch(deps({ loadWindowClaims: async () => ({
+      'notify-7am-claim': { status: 'success', result: { date: '2026-10-16' } },
+      'notify-830am-claim': { status: 'failure', result: { date: '2026-10-16', error: 'db down' } },
+    }) }));
+    expect(r.findings).toEqual(['The 8:30am roster failed on 2026-10-16: db down']);
   });
 
   it('a healthy day sends nothing and is ok', async () => {
@@ -335,12 +347,13 @@ describe('runOpsWatch', () => {
 
   it("each check that can't run is named", async () => {
     const boom = async () => { throw new Error('x'); };
-    const r = await runOpsWatch(deps({ loadQueueStats: boom, loadScheduleHealth: boom, loadSiteAccess: boom, loadRosterRows: boom, loadLastSuccess: boom, fetchImage: boom, loadFailedAlerts: boom }));
+    const r = await runOpsWatch(deps({ loadQueueStats: boom, loadScheduleHealth: boom, loadSiteAccess: boom, loadRosterRows: boom, loadWindowClaims: boom, loadLastSuccess: boom, fetchImage: boom, loadFailedAlerts: boom }));
     expect(r.findings).toEqual([
       "Couldn't check the sync queue: x",
       "Couldn't check the schedule scan: x",
       "Couldn't check the booking-site breaker: x",
       "Couldn't check the morning roster: x",
+      "Couldn't check the roster windows: x",
       "Couldn't check the scheduled workflows: x",
       "Couldn't check the roster image: x",
       "Couldn't check the alert log: x",
@@ -416,8 +429,8 @@ describe('REQ-652: undelivered alerts', () => {
     expect(checkFailedAlerts(rows)).toEqual(['Alerts not delivered in the last 24h: 3 (gmail-monitor, send-question)']);
   });
 
-  it('the alert jobs watched are the seven that alert Kate (REQ-655 adds the refresh alert, REQ-657 the breaker, REQ-658 the 4am alert)', () => {
-    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert']);
+  it('the alert jobs watched are the eight that alert Kate (REQ-655 adds the refresh alert, REQ-657 the breaker, REQ-658 the 4am alert, REQ-659 the window alert)', () => {
+    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert']);
   });
 
   it("the 4am roster's own alerts can't count as the roster: notify-4am is not an alert job", () => {
@@ -432,6 +445,10 @@ describe('REQ-652: undelivered alerts', () => {
       loadScheduleHealth: async () => ({ last_ran_at: hoursAgo(16), status: 'success', result: { found: 227 }, error_msg: null }),
       loadSiteAccess: async () => ({ blocked_at: null, blocked_reason: null }),
       loadRosterRows: async () => ({ sent: [{ wamid: 'w1', sent_at: '2026-10-16T11:00:05Z' }], deliveredWamids: ['w1'] }),
+      loadWindowClaims: async () => ({
+        'notify-7am-claim': { status: 'success', result: { date: '2026-10-16' } },
+        'notify-830am-claim': { status: 'success', result: { date: '2026-10-16' } },
+      }),
       loadLastSuccess: async () => ({
         'gmail-monitor.yml': hoursAgo(1), 'integration-check.yml': hoursAgo(9), 'cron-health-check.yml': hoursAgo(17),
         'notify-4am.yml': hoursAgo(6), 'keepalive.yml': hoursAgo(24),

@@ -1,6 +1,6 @@
 /**
  * /api/notify handler: the weekday roster windows and the Friday weekend preview.
- * @requirements REQ-611, REQ-612, REQ-630, REQ-641, REQ-401, REQ-655, REQ-658
+ * @requirements REQ-611, REQ-612, REQ-630, REQ-641, REQ-401, REQ-655, REQ-658, REQ-659
  *
  * Expected values come from REQUIREMENTS, not from running the handler.
  * Boundaries faked: Supabase (cron_health via fakeCronHealth, which applies the PostgREST filters the
@@ -36,6 +36,8 @@ const { writeCronHealth } = await import('../../api/_cronHealth.js');
 const { default: handler } = await import('../../api/notify.js');
 const { fakeCronHealth } = await import('./fakeCronHealth.js');
 const { CLAIM_ROW, ALERT_JOB } = await import('../lib/rosterTrigger.js');
+const { PROD_URL } = await import('../lib/deployCheck.js');
+const { readRosterChannel } = await import('../lib/rosterChannel.js');
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -836,21 +838,17 @@ describe('REQ-658: who is the on-time trigger', () => {
   });
 
   it.each([
+    [{ window: '4am' }],
     [{ window: '7am' }],
     [{ window: 'friday-pm' }],
     [{ date: '2026-10-19' }],
     [{ force: '1' }],
-  ])('the trigger sends only today\'s 4am roster: %o is 400 and nothing is read or sent', async (query) => {
+  ])("the Pacific hour alone picks the trigger's window: %o is 400 and nothing is read or sent", async (query) => {
     const res = await onTime(query);
     expect(res.code).toBe(400);
-    expect(res.body).toStrictEqual({ error: 'The on-time trigger sends the 4am roster only, with no date or force' });
+    expect(res.body).toStrictEqual({ error: 'The on-time trigger takes no window, date or force: the Pacific hour picks the window' });
     expect(createClient).not.toHaveBeenCalled();
     expect(sendRoster).not.toHaveBeenCalled();
-  });
-
-  it('the trigger may name the 4am window explicitly', async () => {
-    const res = await onTime({ window: '4am' });
-    expect(res.body.action).toBe('sent');
   });
 });
 
@@ -858,7 +856,7 @@ describe('REQ-658: the Pacific hour', () => {
   it('at 6:00 PDT the trigger skips without touching the database', async () => {
     at('2026-10-19T13:00:00Z');
     const res = await onTime();
-    expect(res.body).toStrictEqual({ ok: true, action: 'skipped', reason: 'outside_window', window: '4am' });
+    expect(res.body).toStrictEqual({ ok: true, action: 'skipped', reason: 'outside_window' });
     expect(createClient).not.toHaveBeenCalled();
     expect(sendRoster).not.toHaveBeenCalled();
   });
@@ -1059,8 +1057,8 @@ describe('REQ-658: once per Pacific day', () => {
     cronFaults.update = { message: 'db timeout' };
     const res = await onTime();
     expect(res.code).toBe(500);
-    expect(res.body).toStrictEqual({ error: 'Could not claim the 4am send: db timeout' });
-    expect(healthWrites('notify')[0].slice(2)).toStrictEqual(['failure', null, 'Could not claim the 4am send: db timeout', { keepResult: true }]);
+    expect(res.body).toStrictEqual({ error: 'Could not claim notify-4am-claim: db timeout' });
+    expect(healthWrites('notify')[0].slice(2)).toStrictEqual(['failure', null, 'Could not claim notify-4am-claim: db timeout', { keepResult: true }]);
     expect(sendRoster).not.toHaveBeenCalled();
   });
 
@@ -1203,3 +1201,210 @@ describe('REQ-658: force=1', () => {
     expect(res.body.reason).toBe('before_fallback_hour');
   });
 });
+
+// ---------------------------------------------------------------------------
+// REQ-659: 7am, 8:30am and Friday pm on time
+// ---------------------------------------------------------------------------
+// Worked by hand: PDT = UTC-7 until Sun 2026-11-01, PST = UTC-8 after. Mon 10-19 and Mon 11-02 are
+// weekdays; Fri 10-23 and Fri 11-06 are Fridays.
+
+const windowRow = (row) => cronRows[row];
+const windowAlerts = () => alertAndLog.mock.calls.filter((c) => c[1] === 'notify-alert').map((c) => c[2]);
+
+describe('REQ-659: the Pacific hour picks the window', () => {
+  it.each([
+    ['2026-10-19T14:20:00Z', 'Roster 7am', 'notify-7am-claim', 'Mon 7:20 PDT (the 14:00 UTC cron)'],
+    ['2026-10-19T15:20:00Z', 'Roster 8:30am', 'notify-830am-claim', 'Mon 8:20 PDT (the 15:00 UTC cron)'],
+    ['2026-11-02T15:20:00Z', 'Roster 7am', 'notify-7am-claim', 'Mon 7:20 PST (the 15:00 UTC cron)'],
+    ['2026-11-02T16:20:00Z', 'Roster 8:30am', 'notify-830am-claim', 'Mon 8:20 PST (the 16:00 UTC cron)'],
+    ['2026-10-23T22:20:00Z', 'Weekend roster', 'notify-friday-pm-claim', 'Fri 3:20 PDT (the 22:00 UTC cron)'],
+    ['2026-11-07T00:20:00Z', 'Weekend roster', 'notify-friday-pm-claim', 'Fri 4:20 PST (the Sat 00:00 UTC retry)'],
+  ])('%s sends "%s" and closes %s (%s)', async (iso, caption, row) => {
+    at(iso);
+    const res = await onTime();
+    expect(res.body.action).toBe('sent');
+    expect(sendRoster.mock.calls[0][0].caption).toBe(caption);
+    expect(windowRow(row).status).toBe('success');
+    expect(windowRow(row).result).toStrictEqual({
+      date: pacificDay(iso), trigger: 'vercel', outcome: 'sent', at: new Date(iso).toISOString(),
+    });
+  });
+
+  it.each([
+    ['2026-10-19T16:20:00Z', 'Mon 9:20 PDT (the 16:00 UTC cron in daylight time)'],
+    ['2026-11-02T14:20:00Z', 'Mon 6:20 PST (the 14:00 UTC cron in standard time)'],
+    ['2026-10-22T22:20:00Z', 'Thu 3:20 PDT (the Friday cron hour on a Thursday)'],
+    ['2026-10-24T14:20:00Z', 'Sat 7:20 PDT'],
+    ['2026-10-24T00:20:00Z', 'Fri 5:20 PDT (the Sat 00:00 UTC cron in daylight time)'],
+  ])('%s is no window: skipped without touching the database (%s)', async (iso) => {
+    at(iso);
+    const res = await onTime();
+    expect(res.body).toStrictEqual({ ok: true, action: 'skipped', reason: 'outside_window' });
+    expect(createClient).not.toHaveBeenCalled();
+    expect(sendRoster).not.toHaveBeenCalled();
+  });
+
+  it('the on-time 8:30am call still stores the boarders baseline for the intraday job', async () => {
+    at('2026-10-19T15:20:00Z');
+    await onTime();
+    expect(healthWrites('boarders-snapshot')[0][3].snapshotDate).toBe(TODAY);
+  });
+
+  it('the on-time weekend roster is rendered on the production domain, not the cron\'s own host', async () => {
+    at('2026-10-23T22:20:00Z');
+    await onTime({}, { headers: { host: 'dog-boarding-abc123.vercel.app' } });
+    expect(new URL(sentImageUrl()).origin).toBe(PROD_URL);
+  });
+
+  it('a manual weekend roster (token path) still renders on its own host', async () => {
+    at('2026-10-23T22:20:00Z');
+    await call({ window: 'friday-pm' }, { headers: { host: 'qb.example.com' } });
+    expect(new URL(sentImageUrl()).origin).toBe('https://qb.example.com');
+  });
+});
+
+describe('REQ-659: once per window per day', () => {
+  it('a duplicate 7am delivery at the same moment sends once', async () => {
+    at('2026-10-19T14:20:00Z');
+    const [a, b] = await Promise.all([onTime(), onTime()]);
+    expect([a.body.action, b.body.action].sort()).toStrictEqual(['sent', 'skipped']);
+    expect(sendRoster).toHaveBeenCalledTimes(1);
+  });
+
+  it('a call that loses the claim makes no booking-site request and renders nothing', async () => {
+    at('2026-10-19T14:20:00Z');
+    cronRows['notify-7am-claim'] = { cron_name: 'notify-7am-claim', status: 'success', result: { date: TODAY }, updated_at: '2026-10-19T14:05:00Z' };
+    const res = await onTime();
+    expect(res.body).toStrictEqual({ ok: true, action: 'skipped', reason: 'already_claimed', window: '7am', date: TODAY });
+    expect(refreshDaytimeSchedule).not.toHaveBeenCalled();
+    expect(imageFetches()).toStrictEqual([]);
+  });
+
+  it('the Friday 4pm retry sends nothing after the 3pm send', async () => {
+    at('2026-10-23T22:20:00Z');
+    await onTime();
+    at('2026-10-23T23:20:00Z');
+    const res = await onTime();
+    expect(res.body.reason).toBe('already_claimed');
+    expect(sendRoster).toHaveBeenCalledTimes(1);
+  });
+
+  it('the windows claim separate rows: 7am does not block 8:30am', async () => {
+    at('2026-10-19T14:20:00Z');
+    await onTime();
+    getPictureOfDay.mockResolvedValue(picture({ dogs: ['S2'] }));
+    at('2026-10-19T15:20:00Z');
+    expect((await onTime()).body.action).toBe('sent');
+  });
+
+  it('an unchanged roster at 7am is a finished check: success, outcome unchanged, nothing sent', async () => {
+    at('2026-10-19T14:20:00Z');
+    sentEarlier(picture());
+    const res = await onTime();
+    expect(res.body.reason).toBe('no_change');
+    expect(sendRoster).not.toHaveBeenCalled();
+    expect(windowRow('notify-7am-claim').status).toBe('success');
+    expect(windowRow('notify-7am-claim').result.outcome).toBe('unchanged');
+  });
+
+  it('a manual 7am run (token path) claims nothing', async () => {
+    at('2026-10-19T14:20:00Z');
+    await call({ window: '7am' });
+    expect(windowRow('notify-7am-claim')).toBeUndefined();
+  });
+});
+
+describe('REQ-659: no roster data at 7am or 8:30am', () => {
+  it('is fine when the 4am call found no data too: success, outcome no_data, no second alert', async () => {
+    at('2026-10-19T14:20:00Z');
+    cronRows[CLAIM_ROW] = { cron_name: CLAIM_ROW, status: 'failure', result: { date: TODAY, outcome: 'no_data' } };
+    getPictureOfDay.mockResolvedValue(picture({ workers: 0 }));
+    const res = await onTime();
+    expect(res.body.reason).toBe('no_data');
+    expect(windowRow('notify-7am-claim').status).toBe('success');
+    expect(windowRow('notify-7am-claim').result.outcome).toBe('no_data');
+    expect(windowAlerts()).toStrictEqual([]);
+  });
+
+  it('is a failure Kate hears about when the 4am roster had data', async () => {
+    at('2026-10-19T15:20:00Z');
+    cronRows[CLAIM_ROW] = { cron_name: CLAIM_ROW, status: 'success', result: { date: TODAY, outcome: 'sent' } };
+    getPictureOfDay.mockResolvedValue(picture({ workers: 0 }));
+    await onTime();
+    expect(windowRow('notify-830am-claim').status).toBe('failure');
+    expect(windowAlerts()).toStrictEqual(['⚠️ The 8:30am roster failed at 8:20 AM on 2026-10-19: no roster data (the 4am roster had some)']);
+  });
+
+  it("yesterday's no-data 4am doesn't excuse today's", async () => {
+    at('2026-10-19T14:20:00Z');
+    cronRows[CLAIM_ROW] = { cron_name: CLAIM_ROW, status: 'failure', result: { date: '2026-10-16', outcome: 'no_data' } };
+    getPictureOfDay.mockResolvedValue(picture({ workers: 0 }));
+    await onTime();
+    expect(windowRow('notify-7am-claim').status).toBe('failure');
+    expect(windowAlerts()).toHaveLength(1);
+  });
+});
+
+describe('REQ-659: a failed on-time call alerts Kate', () => {
+  it('a failure in the send records failure on the claim and alerts, naming the window and the error', async () => {
+    at('2026-10-19T14:20:00Z');
+    getPictureOfDay.mockRejectedValue(new Error('roster query failed'));
+    const res = await onTime();
+    expect(res.code).toBe(500);
+    expect(windowRow('notify-7am-claim').status).toBe('failure');
+    expect(windowRow('notify-7am-claim').result.error).toBe('roster query failed');
+    expect(windowAlerts()).toStrictEqual(['⚠️ The 7am roster failed at 7:20 AM on 2026-10-19: roster query failed']);
+  });
+
+  it('a bad ROSTER_CHANNEL alerts too (the alert bot does not depend on it)', async () => {
+    at('2026-10-19T15:20:00Z');
+    delete process.env.ROSTER_CHANNEL;
+    const res = await onTime();
+    expect(res.code).toBe(500);
+    expect(windowAlerts()).toStrictEqual([`⚠️ The 8:30am roster failed at 8:20 AM on 2026-10-19: ${readRosterChannel(undefined).error}`]);
+    expect(windowRow('notify-830am-claim').status).toBe('failure');
+  });
+
+  it('a failed weekend roster alerts and records failure on its claim', async () => {
+    at('2026-10-23T22:20:00Z');
+    sendRoster.mockResolvedValue([{ to: 'telegram', status: 'failed', error: 'bot blocked' }]);
+    const res = await onTime();
+    expect(res.code).toBe(500);
+    expect(windowRow('notify-friday-pm-claim').status).toBe('failure');
+    expect(windowAlerts()).toStrictEqual(['⚠️ The Friday pm roster failed at 3:20 PM on 2026-10-23: No recipient received the roster (1 of 1 sends failed): bot blocked']);
+  });
+
+  it('a claim that cannot be made is a 500 and alerts', async () => {
+    at('2026-10-19T14:20:00Z');
+    cronFaults.update = { message: 'db timeout' };
+    const res = await onTime();
+    expect(res.code).toBe(500);
+    expect(res.body).toStrictEqual({ error: 'Could not claim notify-7am-claim: db timeout' });
+    expect(windowAlerts()).toStrictEqual(['⚠️ The 7am roster failed at 7:20 AM on 2026-10-19: Could not claim notify-7am-claim: db timeout']);
+    expect(sendRoster).not.toHaveBeenCalled();
+  });
+
+  it('an alert that throws does not change the 500', async () => {
+    at('2026-10-19T14:20:00Z');
+    getPictureOfDay.mockRejectedValue(new Error('roster query failed'));
+    alertAndLog.mockRejectedValue(new Error('telegram down'));
+    expect((await onTime()).code).toBe(500);
+  });
+
+  it('a failed 4am trigger call does not use this alert (its fallback sends and alerts)', async () => {
+    getPictureOfDay.mockRejectedValue(new Error('roster query failed'));
+    await onTime();
+    expect(windowAlerts()).toStrictEqual([]);
+  });
+
+  it('a failed manual 7am run does not alert (its red GitHub run is the signal)', async () => {
+    at('2026-10-19T14:20:00Z');
+    getPictureOfDay.mockRejectedValue(new Error('roster query failed'));
+    expect((await call({ window: '7am' })).code).toBe(500);
+    expect(windowAlerts()).toStrictEqual([]);
+  });
+});
+
+function pacificDay(iso) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date(iso));
+}

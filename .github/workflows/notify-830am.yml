@@ -1,11 +1,9 @@
-# Re-checks at 8:30am PST and sends only if the roster changed since last send.
-# DST: 8:30am PST = 16:30 UTC (standard) / 8:30am PDT = 15:30 UTC (daylight).
-name: Notify 8:30am PST
+# Manual 8:30am re-check: sends only if the roster changed since the last send.
+# The on-time 8:30am check is a Vercel cron (REQ-659; it lands 8:00–8:59 Pacific). This workflow
+# has no schedule; run it by hand to re-check.
+name: Notify 8:30am (manual)
 
 on:
-  schedule:
-    # 15:30 UTC = 8:30am PDT (daylight time, Mar–Nov) — weekdays only
-    - cron: '30 15 * * 1-5'
   workflow_dispatch:
 
 jobs:

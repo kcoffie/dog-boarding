@@ -1,6 +1,6 @@
 /**
  * /api/ops-watch handler: auth, dry run, cron_health, and the data it hands to the rules (REQ-651).
- * @requirements REQ-651, REQ-652, REQ-657, REQ-658
+ * @requirements REQ-651, REQ-652, REQ-657, REQ-658, REQ-659
  *
  * Boundaries faked: Supabase (a chainable fake returning queued results per table), fetch
  * (GitHub + the roster image), Kate's alert channel (alertAndLog), and the cron_health writer.
@@ -41,7 +41,13 @@ function healthy() {
   const now = Date.now();
   const ago = (h) => new Date(now - h * 3600e3).toISOString();
   results.sync_queue = [{ count: 0, error: null }, { data: [], error: null }, { data: [{ processed_at: ago(5) }], error: null }];
-  results.cron_health = [{ data: [{ last_ran_at: ago(16), status: 'success', result: { found: 227 }, error_msg: null }], error: null }];
+  results.cron_health = [
+    { data: [{ last_ran_at: ago(16), status: 'success', result: { found: 227 }, error_msg: null }], error: null },
+    { data: [
+      { cron_name: 'notify-7am-claim', status: 'success', result: { date: '2026-10-16' } },
+      { cron_name: 'notify-830am-claim', status: 'success', result: { date: '2026-10-16' } },
+    ], error: null },
+  ];
   results.message_log = [{ data: [{ wamid: 'w1', sent_at: ago(0.1) }], error: null }];
   results.message_delivery_status = [{ data: [{ wamid: 'w1' }], error: null }];
   results.site_access = [{ data: [{ blocked_at: null, blocked_reason: null }], error: null }];
@@ -125,6 +131,14 @@ describe('cron_health', () => {
 });
 
 describe('what the rules are given', () => {
+  it('REQ-659: the window rule reads the 7am, 8:30am and Friday pm claim rows, keyed by name', async () => {
+    results.cron_health[1] = { data: [{ cron_name: 'notify-7am-claim', status: 'success', result: { date: '2026-10-16' } }], error: null };
+    const res = await call(AUTH, { dryRun: '1' });
+    const ins = calls.filter(([t, m]) => t === 'cron_health' && m === 'in').map(([, , ...a]) => a);
+    expect(ins).toEqual([['cron_name', ['notify-7am-claim', 'notify-830am-claim', 'notify-friday-pm-claim']]]);
+    expect(res.body.findings).toEqual(["The 8:30am roster didn't run on 2026-10-16"]);
+  });
+
   it('the schedule-scan rule reads the schedule row of cron_health, with status, result and error (#275)', async () => {
     await call(AUTH, { dryRun: '1' });
     const eqs = calls.filter(([t, m]) => t === 'cron_health' && m === 'eq').map(([, , ...a]) => a);
@@ -133,12 +147,14 @@ describe('what the rules are given', () => {
     expect(cols.split(',').map((c) => c.trim())).toEqual(expect.arrayContaining(['last_ran_at', 'status', 'result', 'error_msg']));
   });
 
-  it('the roster query asks only for sent notify-4am rows, and null wamids are dropped', async () => {
+  it('the roster query asks only for sent morning roster rows (4am, 7am, 8:30am), and null wamids are dropped', async () => {
     results.message_log = [{ data: [{ wamid: null, sent_at: new Date().toISOString() }], error: null }];
     const res = await call(AUTH, { dryRun: '1' });
     // The first message_log query is the roster's (the alert-log query runs after it).
+    const logIns = calls.filter(([t, m]) => t === 'message_log' && m === 'in').map(([, , ...a]) => a);
+    expect(logIns[0]).toEqual(['job_name', ['notify-4am', 'notify-7am', 'notify-8:30am']]);
     const logFilters = calls.filter(([t, m]) => t === 'message_log' && m === 'eq').map(([, , ...a]) => a);
-    expect(logFilters.slice(0, 2)).toEqual([['job_name', 'notify-4am'], ['status', 'sent']]);
+    expect(logFilters[0]).toEqual(['status', 'sent']);
     expect(res.body.findings).toEqual(['Morning roster sent but not delivered to anyone (1 sends, no delivery receipt)']);
   });
 
@@ -246,12 +262,12 @@ describe("REQ-652: Kate's alert channel", () => {
     ]);
   });
 
-  it('failed alerts are read from message_log: status failed, the seven alert jobs, the last 24 hours', async () => {
+  it('failed alerts are read from message_log: status failed, the eight alert jobs, the last 24 hours', async () => {
     await call(AUTH, { dryRun: '1' });
     const q = calls.filter(([t]) => t === 'message_log').map(([, m, ...a]) => [m, ...a]);
     expect(q.slice(-4)).toEqual([
       ['select', 'job_name'], ['eq', 'status', 'failed'],
-      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert']],
+      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert']],
       ['gte', 'sent_at', '2026-10-15T17:00:00.000Z'],
     ]);
   });

@@ -1,6 +1,11 @@
 /**
- * The 4am roster on time (#321, REQ-658): the Pacific-hour gates, the once-a-day claim, and the
- * alert text for a late or missing send.
+ * The rosters on time (#321, REQ-658, REQ-659): the Pacific-hour gates, the once-a-day claims, the
+ * alert text for a late, missing or failed send, and the check that each window ran.
+ *
+ * Vercel crons call /api/notify with no query string, and the Pacific hour picks the window
+ * (triggerWindow): 4am, 7am, 8:30am, or Friday pm. Each window claims its own cron_health row first,
+ * so a duplicate cron delivery sends nothing. Watchers: ops-watch the same morning, cron-health-check
+ * (GitHub) that evening.
  *
  * Two callers send the 4am roster automatically:
  *   - 'vercel': the on-time trigger (Vercel crons at 11:00 and 12:00 UTC), allowed 04:00–05:59 Pacific, Mon–Fri
@@ -13,6 +18,15 @@
 
 export const CLAIM_ROW = 'notify-4am-claim';
 export const ALERT_JOB = 'notify-4am-alert';
+/** The claim row of each window the on-time trigger sends. */
+export const CLAIM_ROWS = {
+  '4am': CLAIM_ROW,
+  '7am': 'notify-7am-claim',
+  '8:30am': 'notify-830am-claim',
+  'friday-pm': 'notify-friday-pm-claim',
+};
+/** Alerts for a failed on-time 7am, 8:30am or Friday pm call (the 4am window has its fallback). */
+export const WINDOW_ALERT_JOB = 'notify-alert';
 /** A claim still 'started' after this long is a crashed run; another call may take it over. */
 export const STALE_CLAIM_MS = 10 * 60 * 1000;
 /** The seeded row's date: never today, so the first claim always matches. */
@@ -23,6 +37,8 @@ const UNREADABLE = { unreadable: true };
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const ON_TIME_HOURS = [4, 5];
 const FALLBACK_FROM_HOUR = 6;
+const HOUR_MS = 3600e3;
+const WINDOW_LABELS = { '7am': '7am', '8:30am': '8:30am', 'friday-pm': 'Friday pm' };
 
 /**
  * The Pacific wall clock at `now`.
@@ -51,6 +67,20 @@ export function onTimeWindowOpen(clock) {
   return WEEKDAYS.includes(clock.weekday) && ON_TIME_HOURS.includes(clock.hour);
 }
 
+/**
+ * The window an on-time trigger call sends, from the Pacific clock alone; null outside every window.
+ * 15:00 UTC is 8:30am in daylight time and 7am in standard time; Friday's 16:00 hour is a retry.
+ * @returns {'4am'|'7am'|'8:30am'|'friday-pm'|null}
+ */
+export function triggerWindow(clock) {
+  if (onTimeWindowOpen(clock)) return '4am';
+  if (!WEEKDAYS.includes(clock.weekday)) return null;
+  if (clock.hour === 7) return '7am';
+  if (clock.hour === 8) return '8:30am';
+  if (clock.weekday === 'Fri' && (clock.hour === 15 || clock.hour === 16)) return 'friday-pm';
+  return null;
+}
+
 /** The GitHub fallback may send: 06:00 Pacific or later, after both on-time calls had their chance. */
 export function fallbackHourReached(clock) {
   return clock.hour >= FALLBACK_FROM_HOUR;
@@ -77,12 +107,12 @@ export function rosterSentToday(lastState, clock) {
  * The claim row as it is now: null when there is none, { unreadable: true } when it can't be read.
  * Used only to word an alert; the claim itself (claimDay) is what decides who sends.
  */
-export async function readClaim(supabase) {
+export async function readClaim(supabase, row = CLAIM_ROW) {
   try {
     const { data, error } = await supabase
       .from('cron_health')
       .select('status, result, updated_at')
-      .eq('cron_name', CLAIM_ROW)
+      .eq('cron_name', row)
       .maybeSingle();
     if (error) {
       console.warn(`[RosterTrigger] Could not read the claim: ${error.message}`);
@@ -102,28 +132,29 @@ export async function readClaim(supabase) {
  * moment can't both win. Throws when the database can't be asked (the roster can't be built then
  * either).
  *
+ * @param {{ row?: string, date: string, trigger: string, now: Date }} c  row: the window's claim row (default 4am's)
  * @returns {Promise<boolean>}  true when this call owns today's send
  */
-export async function claimDay(supabase, { date, trigger, now }) {
+export async function claimDay(supabase, { row = CLAIM_ROW, date, trigger, now }) {
   const at = now.toISOString();
   const { error: seedError } = await supabase
     .from('cron_health')
     .upsert(
-      { cron_name: CLAIM_ROW, status: 'success', result: { date: NEVER }, last_ran_at: at, updated_at: at },
+      { cron_name: row, status: 'success', result: { date: NEVER }, last_ran_at: at, updated_at: at },
       { onConflict: 'cron_name', ignoreDuplicates: true },
     );
-  if (seedError) throw new Error(`Could not create the 4am claim row: ${seedError.message}`);
+  if (seedError) throw new Error(`Could not create the claim row ${row}: ${seedError.message}`);
 
   const staleBefore = new Date(now.getTime() - STALE_CLAIM_MS).toISOString();
   const { data, error } = await supabase
     .from('cron_health')
     .update({ status: 'started', result: { date, trigger, claimedAt: at }, error_msg: null, last_ran_at: at, updated_at: at })
-    .eq('cron_name', CLAIM_ROW)
+    .eq('cron_name', row)
     .or(`result->>date.is.null,result->>date.neq.${date},status.eq.failure,and(status.eq.started,updated_at.lt."${staleBefore}")`)
     .select('cron_name');
-  if (error) throw new Error(`Could not claim the 4am send: ${error.message}`);
+  if (error) throw new Error(`Could not claim ${row}: ${error.message}`);
   const won = (data ?? []).length === 1;
-  console.log(`[RosterTrigger] Claim for ${date} by ${trigger}: ${won ? 'won' : 'lost (already claimed)'}`);
+  console.log(`[RosterTrigger] Claim ${row} for ${date} by ${trigger}: ${won ? 'won' : 'lost (already claimed)'}`);
   return won;
 }
 
@@ -132,10 +163,10 @@ export async function claimDay(supabase, { date, trigger, now }) {
  * call. Only today's claim is touched. Never throws: the send has already happened or failed, and a
  * claim left 'started' is taken over after STALE_CLAIM_MS.
  *
- * @param {{ date: string, trigger: string, status: 'success'|'failure', outcome: 'sent'|'no_data'|'failed',
- *   error?: string, now: Date }} end
+ * @param {{ row?: string, date: string, trigger: string, status: 'success'|'failure',
+ *   outcome: 'sent'|'unchanged'|'no_data'|'failed', error?: string, now: Date }} end
  */
-export async function finishClaim(supabase, { date, trigger, status, outcome, error, now }) {
+export async function finishClaim(supabase, { row = CLAIM_ROW, date, trigger, status, outcome, error, now }) {
   const at = now.toISOString();
   const result = { date, trigger, outcome, at };
   if (error) result.error = error;
@@ -143,7 +174,7 @@ export async function finishClaim(supabase, { date, trigger, status, outcome, er
     const { error: writeError } = await supabase
       .from('cron_health')
       .update({ status, result, error_msg: error ?? null, last_ran_at: at, updated_at: at })
-      .eq('cron_name', CLAIM_ROW)
+      .eq('cron_name', row)
       .eq('result->>date', date);
     if (writeError) console.warn(`[RosterTrigger] Could not record the claim's end (${outcome}): ${writeError.message}`);
   } catch (err) {
@@ -187,4 +218,50 @@ export function noDataAlert(clock, trigger) {
     ? 'Later calls will try again, up to the GitHub fallback after 6am.'
     : 'The 7am and 8:30am windows send it once the data is there.';
   return `⚠️ No roster data for ${clock.date} at ${clock.time}, so the 4am roster wasn't sent. ${next}`;
+}
+
+/** A claimed on-time 7am, 8:30am or Friday pm call failed. */
+export function windowFailedAlert(window, clock, error) {
+  return `⚠️ The ${WINDOW_LABELS[window]} roster failed at ${clock.time} on ${clock.date}: ${error}`;
+}
+
+/**
+ * The windows to check and their day, for ops-watch (Vercel, 17:00 UTC, after the last 8:30am call
+ * in both seasons): today's 7am and 8:30am on a weekday, and on Saturday the Friday pm of the day before.
+ * @returns {{ date: string, windows: string[] }}
+ */
+export function morningWindowsDue(now) {
+  const today = pacificClock(now);
+  if (WEEKDAYS.includes(today.weekday)) return { date: today.date, windows: ['7am', '8:30am'] };
+  if (today.weekday === 'Sat') return { date: pacificClock(new Date(now.getTime() - 24 * HOUR_MS)).date, windows: ['friday-pm'] };
+  return { date: today.date, windows: [] };
+}
+
+/**
+ * The windows to check and their day, for cron-health-check (GitHub, 00:30 UTC, often hours late):
+ * the Pacific day of (now − 12 h), the same day for any run up to 11 h late. Its weekday windows,
+ * plus Friday pm on a Friday.
+ * @returns {{ date: string, windows: string[] }}
+ */
+export function eveningWindowsDue(now) {
+  const day = pacificClock(new Date(now.getTime() - 12 * HOUR_MS));
+  if (!WEEKDAYS.includes(day.weekday)) return { date: day.date, windows: [] };
+  return { date: day.date, windows: day.weekday === 'Fri' ? ['7am', '8:30am', 'friday-pm'] : ['7am', '8:30am'] };
+}
+
+/**
+ * One line per window whose claim row doesn't show a finished run on `date`.
+ * @param {Record<string, {status: string, result: object|null}>} rows  cron_health rows by cron_name
+ * @param {{ date: string, windows: string[] }} due
+ */
+export function checkWindowRuns(rows, { date, windows }) {
+  const issues = [];
+  for (const window of windows) {
+    const claim = rows[CLAIM_ROWS[window]];
+    const label = `The ${WINDOW_LABELS[window]} roster`;
+    if (claim?.result?.date !== date) issues.push(`${label} didn't run on ${date}`);
+    else if (claim.status === 'failure') issues.push(`${label} failed on ${date}: ${claim.result.error ?? 'no error recorded'}`);
+    else if (claim.status !== 'success') issues.push(`${label} started on ${date} but didn't finish`);
+  }
+  return issues;
 }

@@ -170,7 +170,7 @@ No new secret. `CRON_SECRET` can now also start the 7am, 8:30am and Friday pm se
 ## Tests (from this addendum, before code)
 The clock-to-window map at both DST instants and every hour edge (06:59/07:00/07:59/08:00/08:59/09:00 Pacific; Fri 14:59/15:00/15:59/16:00; Thu 15:00 is no window); the trigger with any `window`, `date` or `force` param is 400; each window claims its own row and a lost claim makes no booking-site request; two concurrent 7am claims send once; `unchanged` and `no_data` record `success`; a failed trigger call alerts `notify-alert` and records `failure`; a token-path 7am call doesn't claim; the watcher's day is (now − 12 h) Pacific, weekday windows only on weekdays, Friday's only on Fridays, and each miss reason has its own line.
 
-## Decisions for Kate
+## Decisions for Kate (all four approved as recommended, 2026-10-22)
 1. Turn the three GitHub schedules off (keep manual runs), rather than keep them as late fallbacks that would send 4–6 h late. **Recommended.**
 2. The 8:30am roster can arrive any time 8:00–8:59 (already accepted in the issue).
 3. Friday pm gets a 4pm retry (one more cron, 13 total). **Recommended:** otherwise one skipped Vercel run means no weekend roster unless Kate runs it by hand.
