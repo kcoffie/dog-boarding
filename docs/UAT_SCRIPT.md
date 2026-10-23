@@ -56,7 +56,7 @@ The app: **https://qboarding.vercel.app**. It works on a laptop and on a phone. 
 
 ### 2. Pick the week
 - **Do:** on the Dashboard, use the date bar: the arrows move back and forward, **Today** comes back to now, and the two dates set the range. Set it to the pay period Kate names.
-- **You should see:** the four cards at the top (**Dogs Tonight**, **Active Dogs**, **Nights Assigned**, **Period Revenue**) and the table below for those dates. The range is 14 days to start with; **Week** moves it a week at a time and keeps 14 days, so set the two dates by hand for a one-week period.
+- **You should see:** the four cards at the top (**Dogs Tonight**, **Active Dogs**, **Nights Assigned**, **Period Revenue**) and the table below for those dates. The range is 14 days on first use (after that, the range you last used on that browser); **Week** moves it a week at a time and keeps 14 days, so set the two dates by hand for a one-week period.
 - **Wait for it:** for a few seconds after opening, the page can say **No boardings in range** and **$0** while it loads. Give it 5 seconds before deciding something's missing.
 
 ### 3. Read the table (criterion 4)
@@ -82,7 +82,7 @@ The app: **https://qboarding.vercel.app**. It works on a laptop and on a phone. 
 - **If a rate is $0.00 or wrong:** fix it on the booking site, and send Kate a question so she can check the app picks it up. A difference between the app and the booking site is something to fix right away.
 
 ### 7. Pay someone and log it (criterion 3)
-- **Do:** open **Payroll**. It starts on the last 30 days; set the date range to the pay period. Under **Outstanding Payments**, find the person and check **Total owed** and **Dates**. Press **Mark as Paid**.
+- **Do:** open **Payroll**. It starts on the last 30 days on first use (after that, the range you last used on that browser); set the date range to the pay period. Under **Outstanding Payments**, find the person and check **Total owed** and **Dates**. Press **Mark as Paid**.
 - **You should see:** a box titled **Pay [name]**, with every night ticked. Untick any night you're not paying now. Check **Payment amount**, then press **Confirm Payment** once.
 - **Then:** the person leaves **Outstanding Payments** (or shows only the nights you left out), and the payment appears in **Payment History**.
 - **Note for Kate:** time it, from opening Payroll to the payment in the history. The criterion says under a minute.
@@ -93,14 +93,14 @@ The app: **https://qboarding.vercel.app**. It works on a laptop and on a phone. 
 - **You should see:** **Employee**, **Date Range**, **Nights**, **Amount** and **Paid On** for each payment.
 
 ### 9. When something looks wrong: Send a Question
-- **Do:** on a laptop, press your initial at the top right, then **Send a Question**. On a phone, press **☰**, then **Send a Question**. Type what's wrong (which dog, which night, what you expected) and press **Send**.
+- **Do:** on a laptop, press the round letter at the top right (the first letter of your email), then **Send a Question**. On a phone, press **☰**, then **Send a Question**. Type what's wrong (which dog, which night, what you expected) and press **Send**.
 - **You should see:** **Sent!**, and the box closes.
 - **If you see an error instead:** your question didn't go through. Text Kate.
 - **What happens next:** Kate gets it on her phone straight away, with your email. She replies **the same day, by text or email**, and if something needs fixing, she says what and when.
 
 ### 10. Leave these alone for now
 - **Settings**, except **Change Password**. **Invite Users** makes codes that nothing accepts (until it's removed in #307); Kate creates accounts. **Net Percentage** and **Employees** change everyone's pay. **Booking site access**, **Cron Health** and **External Sync** are Kate's.
-- **Editing or deleting a boarding** on the Dogs page: the next sync overwrites it. Use Send a Question instead.
+- **On the Dogs page:** **Add Dog**, **Import CSV**, **Add Boarding**, **Deactivate**, and **Edit** or **Delete** on a boarding. The booking site is the source of truth, and the next sync overwrites boarding edits. Use Send a Question instead.
 - **Sync** and **Sync Now:** the app syncs with the booking site on its own every night. If something's missing, send a question.
 
 ### 11. Feedback (15 minutes, after every pay period)
@@ -113,7 +113,7 @@ Kate asks, and writes down your words:
 
 Charlie will likely use her phone (check at watch-first), so run steps 1–9 again on it. The phone layout is different:
 - **Menu:** **☰** at the top right holds every page, plus **Send a Question** and **Sign out**.
-- **Dashboard:** a row of date cards (**Fri Oct 23**, "9 dogs"). Tap one to see that night: **Overnight**, **Gross** and **Net**, then the dogs under **OVERNIGHT (n)** and **DAY ONLY (n)** with each dog's night rate, then **Employee:** with one dropdown for that night. Swipe the date cards sideways for more days.
+- **Dashboard:** a row of date cards (**Fri Oct 23**, "9 dogs"). Tap one to see that night: **Overnight**, **Gross** and **Net**, then the dogs under **OVERNIGHT (n)** and **DAY ONLY (n)** with each dog's rate (night rate for overnight, day rate for day only), then **Employee:** with one dropdown for that night. Swipe the date cards sideways for more days.
 - **Check on the phone:** the count on the date card, the **Overnight:** number and the list length all agree (they don't today; see Part D). Payroll's cards and the **Pay [name]** box fit the screen and **Confirm Payment** is reachable without zooming. The Dogs table is readable or scrolls sideways.
 - **Note for Kate:** which steps were harder on the phone than on a laptop, in her words.
 
@@ -163,11 +163,11 @@ Anything that writes data needs Kate's OK first and is put back afterwards. Don'
 | 10 Settings | Script fixed | Settings also has Net Percentage, Employees, Booking site access, Cron Health, External Sync; step 10 now covers them |
 
 **Found after dry-run 1 (2026-10-23):**
-- **Blocker: the Dashboard's counts and money don't match Payroll.** The Dashboard table's **Gross**/**Net** row, the phone's date cards ("9 dogs"), **Overnight:** and **Gross:** come from their own copies of the sums in `src/components/BoardingMatrix.jsx` (`calculateDayGross`, `countOvernightDogs`). They count **cancelled** boardings and use the **dog's** rate. Payroll, Employee Totals and the summary cards use `src/utils/calculations.js`, which skips cancelled boardings (REQ-108, #322) and uses the **booking's** rate first. Real effect, nights from 10-19: one boarding the sync marked gone on 10-20 (C63QhHuu, $60) still counts, and on 10-21 to 10-24 one dog's $60 rate replaces its booking's $40. The Dashboard shows **Net $338 for 10-23; Payroll would pay $286**. Kate saw it on her phone: "9 dogs" and "Overnight: 9" above a list of 8. The list itself is right (it skips cancelled). Under the $0 tolerance, step 5 fails on the first night Charlie compares.
+- **Blocker: the Dashboard's counts and money don't match Payroll.** The Dashboard table's **Gross**/**Net** row, the phone's date cards ("9 dogs"), **Overnight:** and **Gross:** come from their own copies of the sums in `src/components/BoardingMatrix.jsx` (`calculateDayGross`, `countOvernightDogs`). They count **cancelled** boardings and use the **dog's** rate. Payroll and the summary cards use `src/utils/calculations.js` (`calculateGross`), which skips cancelled boardings (REQ-108, #322) and uses the **booking's** rate first. **Employee Totals** (`EmployeeTotals.jsx`, `calculateDayNet`) skips cancelled boardings but uses the **dog's** rate, so it can differ from both. Real effect, nights from 10-19: one boarding the sync marked gone on 10-20 (C63QhHuu, $60) still counts, and on 10-21 to 10-24 one dog's $60 rate replaces its booking's $40. The Dashboard shows **Net $338 for 10-23; Payroll would pay $286**. Kate saw it on her phone: "9 dogs" and "Overnight: 9" above a list of 8. The list itself is right (it skips cancelled). Under the $0 tolerance, step 5 fails on the first night Charlie compares.
 - **$0.00 night rates (19 dogs):** all came from the sync and none has a booking after June 2026, so **no current pay is affected**. 11 have no boardings at all, and the newest were made on 10-16 and 10-23, so something still creates them. Likely cause, not yet proven: `mapAndSaveAppointment` in `src/lib/scraper/mapping.js` saves the dog first and the boarding only when the dates are valid, so an appointment with no usable dates leaves a dog with no rate and no boarding. The other 8 have only old bookings (2025-08 to 2026-06) with no night price on them; two have a day rate, so they look like day-care clients. The sync never writes a $0 over a real rate (`upsertDog`, REQ-201).
 - **Duplicate names (5 pairs):** 3 pairs are **the same pet** (same booking-site pet ID) saved twice, with their boardings split between the two rows; 1 pair has no pet ID (two old one-off bookings); 1 pair is **two different dogs** with the same name (different pet IDs). The newest duplicate row was made on 2026-03-14, so it looks historical. **Merged 2026-10-23** (Kate ran the SQL): the 3 same-pet pairs are one row each (17 boardings and 34 sync records moved, 3 rows deleted, nothing orphaned; 108 dogs). Their stays overlapped on some March–July nights, so Payroll had counted that pet twice on those nights; one dog now counts once. **Not merged:** 3 more pet IDs are each on two dogs with **different names**, each the main dog of its own bookings. They look like different dogs (probably the same household) given one pet ID, so the pet ID can't yet be trusted to tell dogs apart.
 
-**Dry-run 2 (Kate, by hand, Claude checks the tables):** assign one person to Fri 10-16 and Sat 10-17 (Net $140 and $179) → step 5 → Mark as Paid with 10-17 unticked (right answer $139.75, as the Net row rounds $215 × 65% to $140; the average bug would give $159.25) → delete it → check the nights return → a double-click on Confirm Payment → delete → set both nights back to — → one Send a Question.
+**Dry-run 2 (Kate, by hand, Claude checks the tables):** assign one person to Fri 10-16 and Sat 10-17 (Net $140 and $179) → step 5 → before Mark as Paid, check Payroll's **Total owed** for the two nights matches the Dashboard Net ($140 + $179); if it doesn't, work the expected amounts out again from Payroll's per-booking rates → Mark as Paid with 10-17 unticked (right answer $139.75, as the Net row rounds $215 × 65% to $140; the average bug would give $159.25) → delete it → check the nights return → a double-click on Confirm Payment → delete → set both nights back to — → one Send a Question.
 
 **Edge cases to find in real data:**
 - [ ] A dog with a blank night rate
