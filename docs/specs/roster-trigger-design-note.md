@@ -79,3 +79,98 @@ Gate edges at both DST instants; the trigger comes from the credential (CRON_SEC
 
 ## Not in this change
 7am and 8:30am (later: one cron line each plus their Pacific hour), Friday pm, intraday (off while the roster goes to Telegram).
+
+---
+
+# Addendum (2026-10-22): 7am, 8:30am and Friday pm on time (#321, #257)
+
+## Problem
+The 7am, 8:30am and Friday 3pm rosters are still GitHub schedules. They start 4–6 h late, which makes the 7am and 8:30am change checks useless: a "the roster changed" send at noon is too late for staff. Their UTC crons are PDT-only, so **DST (Sun 11-01) moves them an hour early** unless someone edits them by hand (Kate: DST must need no edits). And a failed run is reported only by GitHub's failure email, from the same scheduler (#257, Ops rule 3).
+
+## Options
+1. **Hand-edit the three GitHub crons twice a year.** Zero code. Still 4–6 h late, and nothing outside GitHub sees a failure. It's the fallback if this misses Fri 10-30.
+2. **The REQ-658 pattern for every window: Vercel crons call `/api/notify`, and the code picks the window from the Pacific hour.** No new secret, no new table, one cron line per UTC hour used.
+3. **An outside scheduler or Vercel Pro** for minute precision. Costs money or adds a service; "anywhere in the hour" is good enough for these windows.
+
+**Choice: 2.**
+
+## Design
+### The trigger picks the window from the clock
+- A CRON_SECRET call sends **no query string** (as today). The code maps the Pacific hour to a window:
+
+  | Pacific | Window |
+  |---|---|
+  | 04:00–05:59 Mon–Fri | `4am` (unchanged) |
+  | 07:00–07:59 Mon–Fri | `7am` |
+  | 08:00–08:59 Mon–Fri | `8:30am` |
+  | 15:00–15:59 Fri | `friday-pm` |
+  | anything else | skipped, `outside_window`, writes nothing |
+- **The trigger rejects any `window`, `date` or `force` param** (400), as the 4am trigger rejects `date` and `force` today. Only the clock picks the window.
+- **The token path doesn't change.** GitHub and manual runs with `?window=…&token=…` behave as now, with no gate and no claim (except the 4am fallback, as REQ-658).
+
+### Vercel crons (DST without edits)
+Each UTC hour gets one cron line. Every line fires once a day, anywhere in its hour, and the code decides what it is:
+
+| Cron (UTC) | PDT (UTC-7) | PST (UTC-8) |
+|---|---|---|
+| `0 11 * * *` (existing) | 4am | 3am: skip |
+| `0 12 * * *` (existing) | 5am: 4am retry | 4am |
+| `0 14 * * *` **new** | 7am | 6am: skip |
+| `0 15 * * *` **new** | 8:30am (lands 8:00–8:59) | 7am |
+| `0 16 * * *` **new** | 9am: skip | 8:30am (lands 8:00–8:59) |
+| `0 22 * * 5` **new** | Fri 3pm | Fri 2pm: skip |
+| `0 23 * * 5` **new** | Fri 4pm: skip | Fri 3pm |
+
+The project goes from 7 crons to 12 (Hobby: once a day each; the count limit to be checked by the architect). `15:00 UTC` serves two windows, one per season. On a given day each window has exactly one call (the 4am window keeps its two, deduped by its claim). The 8:30am roster can land anywhere from 8:00 to 8:59, as the issue accepted.
+
+### One claim row per window
+- `claimDay` and `finishClaim` take the row name. New rows: **`notify-7am-claim`, `notify-830am-claim`, `notify-friday-pm-claim`**, same shape and rules as `notify-4am-claim` (seeded, one conditional update, a stale `started` claim taken over after 10 min). No migration.
+- **Why claim a window with one call:** Vercel may deliver a cron event more than once. The 7am and 8:30am hash gate would dedupe a duplicate that arrives later, but two at once could both send, and `friday-pm` has no hash gate at all. The claim row is also the record of the run that the watcher reads (below).
+- **Outcomes:** `sent`; `unchanged` (the hash gate skipped; `success`, since checking was the job); `no_data` at 7am/8:30am (`success`: the 4am no-data alert has already told Kate, and a second alert per window would be noise); `failed` (`failure`, with the error).
+- **The claim comes first, as in 4am:** a call that loses it does no refresh, no image and no booking-site request.
+
+### Failure is loud
+- **On a trigger call, any failure alerts Kate at once** (`alertAndLog`, new job **`notify-alert`**, added to ops-watch's `ALERT_JOBS`): "⚠️ The 7am roster check failed at 7:12 AM: <error>". On Vercel a 500 is silent, unlike a red GitHub run. The 4am window keeps its own path (the fallback sends and alerts).
+- Errors that reach the alert already carry no token (the image URL is never put into an error).
+
+### The watcher on the other scheduler
+- **`cron-health-check` (GitHub, 00:30 UTC) checks the window claim rows** for the Pacific day of (now − 12 h). That's the same Pacific day for any run up to 11 h late (00:30 UTC is 5:30pm PDT / 4:30pm PST).
+  - On a weekday: `notify-7am-claim` and `notify-830am-claim` have that date and `success`.
+  - On a Friday: `notify-friday-pm-claim` as well.
+  - Otherwise one issue line each: never ran, failed (quoting the error), or started but didn't finish.
+- The rule is a pure function in `src/lib/rosterTrigger.js` (mutation-tested); the script only wires it.
+- If all Vercel crons die, this catches the missed windows the same evening. The 4am fallback on GitHub catches the morning, and cron-health-check already watches ops-watch.
+
+### The GitHub workflows
+- **`notify-7am.yml`, `notify-830am.yml` and `notify-friday-pm.yml` lose their `schedule:`** and keep `workflow_dispatch` for manual sends (token path, as now). That ends the 7am/fallback double send at 14:00 UTC on GitHub's side. No file deletes are needed.
+- `notify-4am.yml` stays the 4am fallback at `0 14 * * 1-5`, unchanged.
+- **Intraday stays on GitHub with PDT hours.** It sends nothing while the channel is `telegram`. Its DST is noted in the job docs and goes with #260.
+
+## Booking-site load
+**No change: one schedule-page request per window run (`refreshDaytimeSchedule`), 3 a weekday as today**, plus one when the 12:00 UTC 4am retry runs after a failed 11:00 call. A call that loses its claim or lands outside a window makes none. A blocked site (`site_access`) skips the refresh and uses the DB, as today.
+
+## What breaks
+- **Vercel skips a window's cron:** no send for that window; cron-health-check reports it that evening. For 7am the 8:30am check still sends a change. A missed Friday pm is reported Friday evening; Kate can run `notify-friday-pm.yml` by hand.
+- **A window lands at the edge of its hour** (e.g. 15:59 UTC in PDT = 8:59): still inside the hour, so it sends. A call can't drift into the next hour's window, because each line fires within its own UTC hour.
+- **DST day itself:** Sun 11-01 has no weekday window; Fri 10-30 is PDT and Mon 11-02 PST. Tests pin both.
+- **Deploying in a window's hour:** a cron mid-deploy may hit either version. Merge outside 11:00–16:59 UTC on weekdays.
+- **Holidays:** as today (weekdays send).
+
+## Threat
+No new secret. `CRON_SECRET` can now also start the 7am, 8:30am and Friday pm sends, each once a day, only in its Pacific hour, only to the configured channel (Kate on Telegram today). It already runs the sync crons and the 4am send. Revisit with #260.
+
+## How we'll know it works
+- Each window's claim row shows `success`, `trigger: vercel`, with `at` inside its Pacific hour; `message_log` has `notify-7am`/`notify-8:30am` `sent` only on days the roster changed.
+- cron-health-check stays green; any `notify-alert` row is a failure to read.
+- First live runs: the first weekday after the merge (7am, 8:30am), the first Friday (3pm), and **Mon 11-02**, the first PST weekday (7am at 15:00 UTC, 8:30am at 16:00 UTC).
+
+## Tests (from this addendum, before code)
+The clock-to-window map at both DST instants and every hour edge (06:59/07:00/07:59/08:00/08:59/09:00 Pacific; Fri 14:59/15:00/15:59/16:00; Thu 15:00 is no window); the trigger with any `window`, `date` or `force` param is 400; each window claims its own row and a lost claim makes no booking-site request; two concurrent 7am claims send once; `unchanged` and `no_data` record `success`; a failed trigger call alerts `notify-alert` and records `failure`; a token-path 7am call doesn't claim; the watcher's day is (now − 12 h) Pacific, weekday windows only on weekdays, Friday's only on Fridays, and each miss reason has its own line.
+
+## Decisions for Kate
+1. Turn the three GitHub schedules off (keep manual runs), rather than keep them as late fallbacks that would send 4–6 h late. **Recommended.**
+2. The 8:30am roster can arrive any time 8:00–8:59 (already accepted in the issue).
+3. The watcher alerts the same evening, not the same morning (a same-morning check would need another scheduler).
+
+## ADR
+Ships with **ADR-004: rosters sent by Vercel crons on the Pacific hour, with claim rows** (the roster claim-row ADR planned for Sprint 3, done now because this extends it). The sync-redesign ADR moves to 005.
