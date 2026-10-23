@@ -27,6 +27,7 @@ export function classifyRedirect(response) {
   if (!(response.status >= 300 && response.status < 400)) return null;
   let target = null;
   try {
+    // Stryker disable next-line StringLiteral: any fallback resolves to a path that isn't /schedule or /login, so elsewhere either way
     target = new URL(response.headers.get('location') || '', SCRAPER_CONFIG.baseUrl);
   } catch {
     // unparseable Location: elsewhere

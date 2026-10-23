@@ -48,9 +48,9 @@ function makeDb({ boardings = [], syncRow = null, fail = null } = {}) {
     asked,
     from(table) {
       return {
-        select: () => ({
+        select: (cols) => ({
           eq: (col, val) => {
-            asked.push([table, col, val]);
+            asked.push([table, cols, col, val]);
             if (table === 'boardings') return { limit: () => Promise.resolve(fail === 'boardings' ? { data: null, error: { message: 'down' } } : { data: boardings, error: null }) };
             if (table === 'sync_appointments') return { maybeSingle: () => Promise.resolve(fail === 'sync_appointments' ? { data: null, error: { message: 'down' } } : { data: syncRow, error: null }) };
             throw new Error(`unexpected table ${table}`);
@@ -104,7 +104,7 @@ describe('REQ-660: a booking page that redirects to the schedule', () => {
     const db = makeDb({ syncRow: { check_in_datetime: null } });
     const result = await runDetailSync(db);
     expect(result.notice).toBe(null);
-    expect(db.asked).toStrictEqual([['boardings', 'external_id', 'C63QAAAA'], ['sync_appointments', 'external_id', 'C63QAAAA']]);
+    expect(db.asked).toStrictEqual([['boardings', 'id', 'external_id', 'C63QAAAA'], ['sync_appointments', 'check_in_datetime', 'external_id', 'C63QAAAA']]);
   });
 
   it('a booking with a boarding under its ID is a stay that can no longer be read: Kate is told', async () => {
@@ -143,6 +143,13 @@ describe('REQ-660: a booking page that redirects to the schedule', () => {
     dequeueOne.mockResolvedValue(item({ meta: { detail_redirect: { kind: 'schedule', url: 'https://agirlandyourdog.com/schedule/a/C63QAAAA/1792800000' } } }));
     const result = await runDetailSync(makeDb({ boardings: [{ id: 'b1' }] }));
     expect(result.notice).toMatch(/now redirects to the schedule/);
+  });
+
+  it('an item with no meta at all is handled the same way', async () => {
+    dequeueOne.mockResolvedValue(item({ meta: null }));
+    const result = await runDetailSync(makeDb({ boardings: [{ id: 'b1' }] }));
+    expect(result.notice).toMatch(/now redirects to the schedule/);
+    expect(metaWritten()).toStrictEqual({ detail_redirect: { kind: 'schedule', url: URL_A } });
   });
 
   it('returns the item and the queue depth', async () => {
@@ -190,6 +197,13 @@ describe('REQ-660: a booking page with no dates', () => {
     });
     expect(metaWritten()).toStrictEqual({ external_pet_id: '10001', detail_dateless: URL_A });
     expect(markDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('an item with no meta at all is handled the same way', async () => {
+    dequeueOne.mockResolvedValue(item({ meta: null }));
+    const result = await runDetailSync(makeDb());
+    expect(result.notice).toMatch(/had no check-in\/check-out dates/);
+    expect(metaWritten()).toStrictEqual({ detail_dateless: URL_A });
   });
 
   it('the same URL is not reported twice', async () => {

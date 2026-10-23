@@ -434,6 +434,7 @@ async function heldAStay(supabase, externalId) {
       supabase.from('boardings').select('id').eq('external_id', externalId).limit(1),
       supabase.from('sync_appointments').select('check_in_datetime').eq('external_id', externalId).maybeSingle(),
     ]);
+    // Stryker disable next-line ConditionalExpression: on an error Supabase's data is null, so .length throws into the same catch
     if (boardings.error) throw boardings.error;
     if (syncRow.error) throw syncRow.error;
     return boardings.data.length > 0 || Boolean(syncRow.data?.check_in_datetime);

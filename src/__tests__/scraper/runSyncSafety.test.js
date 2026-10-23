@@ -155,6 +155,14 @@ describe('REQ-660: Sync Now and pages that are not the booking', () => {
     expect(mapAndSaveAppointment).toHaveBeenCalledTimes(1);
   });
 
+  it('any other error on a booking is still a failure, not a skip', async () => {
+    fetchAllSchedulePages.mockResolvedValue([appt('A')]);
+    fetchAppointmentDetails.mockRejectedValue(new Error('Failed to fetch appointment A: 500'));
+    const result = await runSync({ supabase: makeDb() });
+    expect(result.appointmentsFailed).toBe(1);
+    expect(result.appointmentsSkipped).toBe(0);
+  });
+
   it('a page the mapper skipped for having no dates counts as skipped, not created', async () => {
     fetchAllSchedulePages.mockResolvedValue([appt('A')]);
     fetchAppointmentDetails.mockResolvedValue({ pet_name: 'Dog A', check_in_datetime: null });

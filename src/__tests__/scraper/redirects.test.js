@@ -48,6 +48,9 @@ const ROUTES = {
   '/schedule': [200, { 'content-type': 'text/html' }, WEEK_PAGE],
   '/pets/10001/forms': [302, { location: '/schedule' }, ''],
   '/pets/10002/forms': [302, { location: '/login' }, ''],
+  // A forms list with one submission in the week before arrival, whose page redirects
+  '/pets/10004/forms': [200, { 'content-type': 'text/html' }, '<table><tr><td>10/20/2026</td><td><a href="/pets/10004/forms/7913/view/555">View</a></td></tr></table>'],
+  '/pets/10004/forms/7913/view/555': [302, { location: '/schedule' }, ''],
 };
 
 let server;
@@ -117,6 +120,10 @@ describe('REQ-660: classifyRedirect', () => {
     expect(classifyRedirect(res(302, '/login/'))).toBe('login');
   });
 
+  it('a 302 to a path that only ends in /login is elsewhere', () => {
+    expect(classifyRedirect(res(302, '/clients/login'))).toBe('elsewhere');
+  });
+
   it('a 302 to /login-help is elsewhere', () => {
     expect(classifyRedirect(res(302, '/login-help'))).toBe('elsewhere');
   });
@@ -161,7 +168,17 @@ describe('REQ-660: fetchAppointmentDetails', () => {
     expect(err).toBeInstanceOf(DetailRedirected);
     expect(err.kind).toBe('schedule');
     expect(err.location).toBe('/schedule');
+    expect(err.name).toBe('DetailRedirected');
+    expect(err.message).toBe('Booking page redirected to /schedule');
     expect(requested).toEqual(['/schedule/a/C63QGONE/1792836000']);
+  });
+
+  it('a redirect with no Location is named as going nowhere', () => {
+    expect(new DetailRedirected('elsewhere', null).message).toBe('Booking page redirected to nowhere');
+  });
+
+  it('the session-expired message is the one runDetailSync matches to clear the session', () => {
+    expect(SESSION_EXPIRED_MESSAGE).toBe('Session expired. Re-authentication required.');
   });
 
   it('a booking URL that redirects to /login throws the session-expired message', async () => {
@@ -193,6 +210,18 @@ describe('REQ-660: boarding form pages', () => {
     const err = await fetchAndStoreBoardingForm(noDb, 'b1', '10001', 'Dog A').catch((e) => e);
     expect(err.message).toBe('Booking site redirected the forms list for pet 10001 (302) to /schedule');
     expect(requested).toEqual(['/pets/10001/forms']);
+  });
+
+  it('a form page that redirects fails the form job after the list was read, and stores nothing', async () => {
+    const boardingOnly = {
+      from: (table) => {
+        if (table !== 'boardings') throw new Error('nothing may be written');
+        return { select: () => ({ eq: () => ({ single: async () => ({ data: { id: 'b4', arrival_datetime: '2026-10-24T10:00:00.000Z', departure_datetime: '2026-10-27T10:00:00.000Z' }, error: null }) }) }) };
+      },
+    };
+    const err = await fetchAndStoreBoardingForm(boardingOnly, 'b4', '10004', 'Dog D').catch((e) => e);
+    expect(err.message).toBe('Booking site redirected the form 555 (302) to /schedule');
+    expect(requested).toEqual(['/pets/10004/forms', '/pets/10004/forms/7913/view/555']);
   });
 
   it('a forms list that redirects to /login throws the session-expired message', async () => {
