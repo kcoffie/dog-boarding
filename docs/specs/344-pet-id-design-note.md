@@ -1,6 +1,6 @@
 # #344 design note: the sync writes wrong pet IDs and renames dogs
 
-**Status:** v2, 2026-10-23 (session 47). The architect reviewed v1 ("proceed with changes"), and every must-change is folded in below. Decision record: `docs/adr/008-dog-identity-is-the-pet-id.md`. No code until Kate approves this note and the ADR.
+**Status:** v2, **approved by Kate 2026-10-23** (session 47). The architect reviewed v1 ("proceed with changes"), and every must-change is folded in below. Decision record: `docs/adr/008-dog-identity-is-the-pet-id.md` (Accepted).
 **Rule for this work (Kate):** done correctly the first time, no guessing. Every claim below cites the code, a recorded page or a table count. What isn't proven is listed under "Open questions", not assumed.
 
 ## Problem
@@ -24,6 +24,7 @@ A dog row can end up with another pet's booking-site pet ID, or **another dog's 
   - **64** have playgroup-series titles ("PG FT", "P/G TWTH", "PG:T/W/TH"...); **10** look like real stays (e.g. "10/29pm-11/1", "3/17-19", "9/5-8 (...)").
   - So the redirect means "the site won't show this URL as an appointment". Why the site redirects a series that still exists isn't known (open question 6).
   - A stay's URL carries its start timestamp, so an edited stay gets a new URL and the old one may redirect too.
+- **Proven on 2026-10-23 (Kate checked the booking site):** `C63QhLBU`'s stay is valid at a **new URL** (timestamp `1793268000`; the stored one is `1793289600`, 6 h later). The start was edited, and the old URL redirects. So an edited stay does redirect, which is why must-change "`detail_redirect`, not `detail_skip`" matters.
 - `C63QhLBU` is one of the real stays. Its `previous_data` is a real boarding, "10/29pm-11/1", with the client's note. At 2026-10-23 12:59 UTC the same URL was saved as "Oct 18-24, 2026" with no dates.
 
 ### 2. What a week page does to the dogs (`mapping.js`, `mapAndSaveAppointment`)
@@ -118,7 +119,7 @@ Data repair items 1–2 below, and a re-check of the 57 stored pet IDs. The audi
 - Items that redirect are no longer retried as failures; they wait for a URL or title change on the next scan.
 - A redirected real stay's boarding is still not archived by the detail path; that stays with reconciliation (#316, #318 step 4). PR 1 makes it visible to Kate instead of silent.
 - Second pets get IDs, so their form jobs start: 2 form fetches per secondary pet on a current or upcoming multi-pet boarding.
-- A dog whose name changes on the booking site keeps its old name in the app until Kate acts on the alert (open question 4).
+- A dog whose name changes on the booking site keeps its old name in the app until Kate acts on the alert (Kate: alert only).
 
 ## Threat
 No new secret or endpoint. The risk this removes is showing one client's pet's form under another dog. The alert text goes to Kate on Telegram (client data in alerts is OK, Kate 2026-10-19). The repo stays free of names: tests use synthetic names and IDs.
@@ -158,16 +159,16 @@ No new secret or endpoint. The risk this removes is showing one client's pet's f
 **Mutation:** scoped Stryker on the changed lines (`extraction.js`, `mapping.js`, `syncRunner.js`, `forms.js`, the shared classifier), reported against the 80% new-code bar.
 
 ## Data repair (Kate decides; Kate runs any SQL)
-1. **`C63QhLBU`'s dog was renamed on 10-23.** Restore its name from its own bookings, after Kate checks pet 204168's page on the booking site.
-2. **`C63QhLBU`'s 10-29 → 11-01 boarding ($330, confirmed)** belongs to a URL that now redirects. Kate checks the stay on the booking site before 10-29: moved (new URL), or cancelled? It's on next week's roster and pay.
+1. **`C63QhLBU`'s dog was renamed on 10-23.** Kate checked pet 204168's page: it matches the name on the row's 3 older bookings. Guarded one-row SQL for Kate to run. A separate hand-entered row with a similar name and no pet ID may be the same dog: Kate decides.
+2. **`C63QhLBU`'s 10-29 → 11-01 boarding ($330, confirmed):** the stay is valid (Kate, 10-23); only its start time changed. The next scan should re-queue it on the new URL (the item has no `detail_skip`); check the boarding's times afterwards.
 3. **The other 9 week-page rows that look like real stays:** the same check, after PR 1 lists them.
 4. **The 74 week-page `sync_appointments` rows:** delete them, since each holds a whole week of names (Kate's SQL), or leave them for #318's clean-up.
 5. **Boarding-less $0 dogs:** 3 created since 10-16, likely by week pages. Review them together with the 19 $0-rate dogs from dry-run 1.
 
 ## Open questions (not assumed)
 1. **Is there always one `.event-clients-pets` block per appointment?** True on the recorded pages, but unproven for multi-client appointments. Not used as a guard; "no dates" is the guard.
-2. **Per-pet rates by position:** do the `.price.p-N` divs follow the pet-link order? Not provable from the recordings. Kate can confirm on one two-pet booking on the booking site (she looks; we make no requests).
+2. **Per-pet rates by position:** do the `.price.p-N` divs follow the pet-link order? Not provable from the recordings. Kate named two two-pet bookings to check (`C63QhFVc`, `C63QhB7h`).
 3. **The two-pet page's full structure** (the fixture looks hand-assembled): PR 2 logs, without names, the pet-element count and the nesting found on each real multi-pet page, so the first real one confirms it.
-4. **A pet renamed on the booking site (same ID):** PR 2 alerts and doesn't rename. Once the stored IDs are verified, should it rename automatically?
-5. **Alert volume:** one summary per run, deduplicated per booking (architect's recommendation). Kate to confirm.
+4. ~~A pet renamed on the booking site~~ **Decided (Kate, 10-23): alert only**, never rename automatically.
+5. ~~Alert volume~~ **Decided (Kate, 10-23): one summary per run**, deduplicated per booking.
 6. **Why does the site redirect a playgroup series that is still on the schedule?** Unknown. It doesn't change the fix (nothing is written either way), but the run counts will show how often it happens.

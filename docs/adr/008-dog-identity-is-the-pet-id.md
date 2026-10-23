@@ -1,6 +1,6 @@
 # ADR-008: A dog is its booking-site pet ID; booking pages are read without following redirects
 
-**Status:** Proposed (awaiting Kate's OK)
+**Status:** Accepted (Kate, 2026-10-23)
 **Date:** 2026-10-23 (#344)
 **Supersedes:** nothing. It narrows ADR-001's scraping strategy for detail and form pages.
 
@@ -42,7 +42,7 @@ Two-pet bookings never gave the second pet an ID. Boarding forms are fetched by 
 
 ## Consequences
 - **A real stay whose URL redirects** (moved or cancelled) is no longer silently rewritten. It's reported to Kate, and its boarding stays until reconciliation (#316, #318 step 4) handles it.
-- **A dog renamed on the booking site** keeps its old name in the app until Kate acts on the alert. That's deliberate until the stored IDs are verified.
+- **A dog renamed on the booking site** keeps its old name in the app until Kate acts on the alert. Kate chose alert-only, permanently: the sync never renames a dog.
 - **Second pets get IDs, so their forms are fetched:** 2 form requests per secondary pet on a current or upcoming multi-pet boarding. A redirected detail fetch costs 1 request instead of 2.
 - **The stored pet IDs must be checked before PR 2 merges.** Until then, a wrong stored ID would attach the right pet's bookings to the wrong dog, which is why name differences alert instead of renaming.
 - #318 step 3's engine inherits this, because the logic lives in `extraction.js` and `mapping.js`.
