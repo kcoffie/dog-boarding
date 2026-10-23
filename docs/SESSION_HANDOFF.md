@@ -34,7 +34,7 @@
    - The 10-23 overnight run was clean: `schedule` 00:15 and `detail` 00:50 succeeded, `auth` `refreshed` at 00:37 (session good until 10-24 06:37), and `site_access` isn't blocked.
    - **The queue keeps growing: 45 → 55 → 73 (10-23 00:15).** Kate said to leave its limit alone; just keep watching.
 2. **#321 rest shipped: PR #340 merged (`f195839`, 00:56 UTC 10-23), `check:deploy` OK.** Kate chose to merge before the first on-time 4am run, so 10-23 is the first live day for all of it. Design: the addendum in `docs/specs/roster-trigger-design-note.md`. The architect said "proceed with changes", and all were folded in.
-   - **The Pacific hour picks the window** (`triggerWindow` in `src/lib/rosterTrigger.js`): 4am 04:00–05:59, 7am 07:00–07:59, 8:30am 08:00–08:59 (Mon–Fri), Friday pm 15:00–16:59 (the 16:00 hour is a retry). A trigger call (Bearer `CRON_SECRET`) now rejects **any** `window`/`date`/`force` param with a 400.
+   - **The Pacific hour picks the window** (`triggerWindow` in `src/lib/rosterTrigger.js`), on weekdays only: 4am 04:00–05:59, 7am 07:00–07:59, 8:30am 08:00–08:59, Friday pm 15:00–16:59 (the 16:00 hour is a retry). A trigger call (Bearer `CRON_SECRET`) now rejects **any** `window`/`date`/`force` param with a 400.
    - **13 Vercel crons in all.** `/api/notify` runs at `0 11`, `0 12`, `0 14`, `0 15`, `0 16 * * *` and `0 22`, `0 23 * * 5`, `0 0 * * 6`.
    - **Claim rows** (`cron_health`): `notify-7am-claim`, `notify-830am-claim`, `notify-friday-pm-claim`, next to `notify-4am-claim`. Outcomes: `sent`, `unchanged`, `no_data`, `failed`.
    - **Alerts:** any failed on-time 7am, 8:30am or Friday pm call alerts Kate (job **`notify-alert`**, added to ops-watch `ALERT_JOBS`). No data at 7am/8:30am is OK only if 4am also found none or a 4am call is still running; otherwise it alerts.
@@ -130,7 +130,7 @@ Session 44 was planning only; no code changed.
 
 ### Mutation
 - **CI on main: 60.62%** (f195839, #340, incremental, 2026-10-23; check Monday's full run before raising the ratchet); last full run 50.64% (0239e22). **Ratchet 50** (#306). Score log: `docs/ENGINEERING_PROCESS.md`. Incremental cache now seeded; a `package-lock`/`stryker.config` change forces a full run (~55–60 min). Don't merge on top of a Mutation run whose score you need: the next push to main cancels it.
-- **Scoped, local, TZ=UTC:** `rosterChannel.js`, `opsWatch.js`, `syncSettingsRow.js`, `deployCheck.js` 100%; `cron-schedule.js` 98.7%; `verifyUser.js` 98.3%; `send-question` 87.8%; `syncRunner.js` 83.6%; `alertKate` 82%; `notify.js` 81.2%; `syncQueue.js` 69.3%; `notify-intraday.js` 66.9%.
+- **Scoped, local, TZ=UTC:** `rosterChannel.js`, `opsWatch.js`, `syncSettingsRow.js`, `deployCheck.js` 100%; `cron-schedule.js` 98.7%; `rosterTrigger.js` 95.85%; `verifyUser.js` 98.3%; `send-question` 87.8%; `syncRunner.js` 83.6%; `alertKate` 82%; `notify.js` 85.93%; `syncQueue.js` 69.3%; `notify-intraday.js` 66.9%.
 - **Never bump vitest to 5** until the Stryker runner ships #6214 (held in Dependabot's `ignore`). Check "tests per mutant" > 0 after any test-runner change.
 - **#239 `pictureOfDay.js`** (51.13% in CI): parked by Kate until UAT starts.
 
@@ -142,7 +142,7 @@ Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-inve
 2. **Check the first live day of the on-time rosters** (Fri 10-23 was the first; on later days use the latest weekday; the first PST day is Mon 11-02). Read real timestamps (`date -u`). Recipe: `supabase-local-queries` memory (CJS script in the scratchpad).
    - `SELECT cron_name, status, result, error_msg, updated_at FROM cron_health WHERE cron_name LIKE 'notify-%claim';`
      - **4am:** `success`, `trigger: vercel`, `at` in 11:00–12:59 UTC (PDT) / 12:00–13:59 (PST).
-     - **7am:** `success` (`sent` or `unchanged`), `at` in 14:xx UTC (PDT) / 15:xx (PST).
+     - **7am:** `success` (`sent`, `unchanged`, or `no_data` when 4am also found none), `at` in 14:xx UTC (PDT) / 15:xx (PST).
      - **8:30am:** at 15:xx UTC (PDT) / 16:xx (PST).
      - **Friday pm (Fridays):** at 22:xx or 23:xx UTC (PDT) / 23:xx or Sat 00:xx (PST).
    - `message_log`: `notify-4am` `sent` once in its window; `notify-7am` / `notify-8:30am` `sent` only if the roster changed; `notify-friday-pm` `sent` on Fridays; **no `notify-4am-alert` or `notify-alert` rows.**
