@@ -1,15 +1,10 @@
-# Sends the weekend boarding preview at 3pm PDT every Friday.
-# Shows arrivals + departures for Fri–Sun so Kate has a heads-up before the weekend.
-# DST note: Pacific Daylight Time = UTC-7 (3pm PDT = 22:00 UTC, Mar–Nov).
-#           Pacific Standard Time  = UTC-8 (3pm PST = 23:00 UTC, Nov–Mar).
-#           Update the cron below each March and November DST transition.
-name: Notify Friday PM (Weekend Boarding)
+# Manual weekend boarding preview (arrivals + departures for Fri–Sun).
+# The on-time Friday 3pm send is a Vercel cron (REQ-659), with a 4pm retry; /api/notify picks it
+# from the Pacific hour, so DST needs no edits. This workflow has no schedule; run it by hand to re-send.
+name: Notify Friday PM (manual)
 
 on:
-  schedule:
-    # 22:00 UTC = 3pm PDT (daylight time, Mar–Nov) — Fridays only
-    - cron: '0 22 * * 5'
-  workflow_dispatch:  # Allow manual trigger for testing
+  workflow_dispatch:
 
 jobs:
   notify:

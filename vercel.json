@@ -33,6 +33,30 @@
     {
       "path": "/api/notify",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/notify",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/notify",
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/notify",
+      "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/notify",
+      "schedule": "0 22 * * 5"
+    },
+    {
+      "path": "/api/notify",
+      "schedule": "0 23 * * 5"
+    },
+    {
+      "path": "/api/notify",
+      "schedule": "0 0 * * 6"
     }
   ],
   "functions": {

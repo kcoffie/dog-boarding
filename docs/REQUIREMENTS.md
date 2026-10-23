@@ -1207,13 +1207,12 @@ The `workers` table stores the known roster of workers with their external UIDs,
 ### REQ-611: Morning Notify Delivery Windows
 **Added:** v4.1 | **Status:** Complete
 
-GitHub Actions workflows call `/api/notify` at three windows each weekday morning.
+Vercel crons call `/api/notify` at three windows each weekday morning (REQ-658, REQ-659).
 
 **Acceptance Criteria:**
 - The 4am roster is sent on time by Vercel crons, with `notify-4am.yml` as the late fallback at 14:00 UTC (REQ-658)
-- `notify-7am.yml` fires at 14:00 UTC (7am PDT, Mon–Fri)
-- `notify-830am.yml` fires at 15:30 UTC (8:30am PDT, Mon–Fri)
-- Each calls `GET /api/notify?window=4am|7am|8:30am`
+- The 7am and 8:30am checks are sent on time by Vercel crons, in the 7am and 8am Pacific hours (REQ-659). `notify-7am.yml` and `notify-830am.yml` are manual runs only
+- A token call is `GET /api/notify?window=4am|7am|8:30am`
 - `notify.js` refreshes daytime schedule live before building image (not stale midnight data)
 - Sends to all numbers in `NOTIFY_RECIPIENTS` via the Meta WhatsApp Cloud API
 
@@ -1231,7 +1230,7 @@ GitHub Actions workflows call `/api/notify` at three windows each weekday mornin
 - On next window: if hash matches → skip send, log "no change"
 - 4am sends whatever the hash (first window of day), once per Pacific day for the automatic calls (REQ-658)
 - A send that reached **no** recipient (every result `failed`) does not count as sent (#255): the hash is not stored, `cron_health` `notify` records `failure` with `No recipient received the roster (N of N sends failed)`, and the endpoint returns 500 so the workflow run goes red. The next window has no baseline and sends again. A send that reached at least one recipient counts as sent.
-- `friday-pm` always sends (separate workflow, no hash gate)
+- `friday-pm` always sends (no hash gate)
 - `shouldSendNotification(window, lastHash, currentHash)` in `pictureOfDay.js`
 
 **Tests:** `src/__tests__/lib/pictureOfDay.test.js`, `src/__tests__/notifyHandler.test.js`
@@ -1269,7 +1268,7 @@ An independent GH Actions script verifies that the DB matches the live external 
 Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arrivals and departures Sat–Sun).
 
 **Acceptance Criteria:**
-- `notify-friday-pm.yml` fires at 22:00 UTC (3pm PDT, Fri only)
+- Vercel crons send it in the 3pm Pacific hour on Fridays, with the 4pm hour as a retry (REQ-659). `notify-friday-pm.yml` is a manual run only
 - `GET /api/notify?window=friday-pm` generates a weekend-themed image
 - Shows two sections: dogs arriving and dogs departing Fri–Sun with check-in/out times and night counts
 - Always sends regardless of hash (weekend preview is always useful)
@@ -1545,8 +1544,8 @@ GitHub starts scheduled runs hours late, so the 4am roster arrived at 8–10am. 
 **Acceptance Criteria:**
 - Two Vercel crons call `/api/notify` with no query string, at `0 11 * * *` and `0 12 * * *`. `api/notify.js` has `maxDuration` 60 (a send takes about 10 s). The trigger renders the roster image from the production domain (`https://qboarding.vercel.app`), not the request's host, which for a cron can be a protected deployment URL
 - **The on-time trigger is a request whose `Authorization` is exactly `Bearer <CRON_SECRET>`.** Nothing in the query makes a request the trigger, and a `trigger` param is ignored. With `CRON_SECRET` unset, no header is the trigger (fails closed), and the request needs the token as before
-- The trigger is for the 4am roster only: no `window` means `4am`. Another window, a `date` or a `force` param is 400, and nothing is read or sent
-- **The trigger sends only from 04:00 to 05:59 `America/Los_Angeles`, Monday to Friday.** Outside that, it returns 200 `skipped` / `outside_window` and reads and writes nothing. So in PDT the 11:00 UTC call sends and the 12:00 call is a retry. In PST the 11:00 call (3am) skips and the 12:00 call sends. Nobody edits a cron for daylight time
+- The trigger takes no query: the Pacific hour picks the window (REQ-659). A `window`, a `date` or a `force` param is 400, and nothing is read or sent
+- **The trigger sends the 4am roster only from 04:00 to 05:59 `America/Los_Angeles`, Monday to Friday.** Outside every window (REQ-659), it returns 200 `skipped` / `outside_window` and reads and writes nothing. So in PDT the 11:00 UTC call sends and the 12:00 call is a retry. In PST the 11:00 call (3am) skips and the 12:00 call sends. Nobody edits a cron for daylight time
 - **The GitHub fallback** (the token, `window=4am`, no `date`, no `force`) sends only Monday to Friday (else 200 `skipped` / `not_a_weekday`) and only at 06:00 Pacific or later (else 200 `skipped` / `before_fallback_hour`); neither skip touches the database. `notify-4am.yml` runs at `0 14 * * 1-5` (7am PDT / 6am PST)
 - **Once per Pacific day, for the trigger and the fallback:**
   - It's checked before the channel check, the daytime refresh and the roster build.
@@ -1558,9 +1557,28 @@ GitHub starts scheduled runs hours late, so the 4am roster arrived at 8–10am. 
 - **When the fallback had to send, it alerts Kate** (job `notify-4am-alert`), naming the send time (Pacific) and why the on-time trigger didn't send: it never ran today, it found no roster data, it failed (with the error), it started and didn't finish, or it couldn't be checked (the claim row couldn't be read). If a later window already sent today's roster and the on-time trigger never did, the fallback sends nothing and alerts the same way. An alert that isn't delivered doesn't fail the send
 - `force=1` with the token re-sends the 4am roster now, past the fallback hour, the already-sent check and the claim; it doesn't touch the claim or alert. `notify-4am.yml`'s manual run has a `force` checkbox that passes it. A `date` with the token works as before, with no claim and no fallback hour
 - **A `notify` failure keeps the stored `lastHash` / `lastDate`.** Before this, a failure wrote `result: null`, so the next 7am / 8:30am window had no baseline and re-sent an unchanged roster
-- `notify-4am-alert` is in ops-watch's `ALERT_JOBS`, so an undelivered alert is a finding. ops-watch's "No morning roster sent today" rule is unchanged (`message_log` `notify-4am` `sent`); the alerts are logged under their own job so they can't count as a roster
+- `notify-4am-alert` is in ops-watch's `ALERT_JOBS`, so an undelivered alert is a finding. ops-watch's "No morning roster sent today" rule reads `message_log` `notify-4am`, `notify-7am` and `notify-8:30am` `sent` rows (REQ-659); the alerts are logged under their own job so they can't count as a roster
 
 **Tests:** `src/__tests__/rosterTrigger.test.js`, `src/__tests__/notifyHandler.test.js`, `src/__tests__/scraper/cronHealth.test.js`, `src/__tests__/opsWatch.test.js`, `src/__tests__/rosterTriggerConfig.test.js`
+
+---
+
+### REQ-659: 7am, 8:30am and Friday pm on time
+**Added:** v6.8.0 | **Status:** Complete (#321, #257)
+
+The 7am, 8:30am and Friday 3pm rosters were GitHub schedules, 4–6 h late and PDT-only. They now come from Vercel crons on the REQ-658 pattern, so daylight time needs no edits, and each has a failure alert and a watcher. Design: the addendum in `docs/specs/roster-trigger-design-note.md` (architect-reviewed; Kate's decisions 2026-10-22). Decision record: `docs/adr/004-rosters-on-vercel-crons-with-claim-rows.md`.
+
+**Acceptance Criteria:**
+- **The Pacific hour picks the trigger's window:** 04:00–05:59 Mon–Fri `4am`; 07:00–07:59 Mon–Fri `7am`; 08:00–08:59 Mon–Fri `8:30am`; 15:00–16:59 Fri `friday-pm` (the 16:00 hour is a retry). Any other hour is 200 `skipped` / `outside_window` with nothing read or written
+- Vercel crons call `/api/notify` with no query at `0 11`, `0 12`, `0 14`, `0 15`, `0 16 * * *` and `0 22`, `0 23 * * 5` and `0 0 * * 6` (13 crons in the project). The 8:30am roster lands anywhere from 8:00 to 8:59
+- **Each window claims its own `cron_health` row before any work:** `notify-7am-claim`, `notify-830am-claim`, `notify-friday-pm-claim` (the same claim as REQ-658). A lost claim returns 200 `skipped` / `already_claimed` and makes no booking-site request. A duplicate delivery at the same moment sends once
+- The claim ends `success` with outcome `sent`, or `unchanged` (the hash gate skipped). No roster data at 7am/8:30am is `success` / `no_data` only when today's 4am claim also recorded `no_data` or is still `started` (a 4am call in progress reports its own); otherwise it is `failure` and alerts (`… roster failed at … : no roster data`)
+- **Every failed trigger call for these windows alerts Kate** (job `notify-alert`, in ops-watch's `ALERT_JOBS`): a claim that can't be made, a bad `ROSTER_CHANNEL`, a failed weekend send and a failed weekday send. Text: `⚠️ The <7am|8:30am|Friday pm> roster failed at <time> on <date>: <error>`. The claim records `failure` with the error. A failed 4am trigger call and a failed token call don't use this alert (the 4am fallback and the red GitHub run are their signals)
+- The trigger's weekend roster is rendered from the production domain, like the daily windows
+- **Watchers:** ops-watch (17:00 UTC) reports each of today's 7am and 8:30am windows that didn't finish (and on Saturday, Friday's Friday pm). cron-health-check (GitHub, 00:30 UTC) reports the same for the Pacific day of (now − 12 h), Friday pm included on Fridays. One line per window: didn't run, failed (with the error), or started but didn't finish
+- A token call (`?window=7am|8:30am|friday-pm&token=…`) works as before, with no gate and no claim. `notify-7am.yml`, `notify-830am.yml` and `notify-friday-pm.yml` have no schedule, only `workflow_dispatch`
+
+**Tests:** `src/__tests__/rosterTrigger.test.js`, `src/__tests__/notifyHandler.test.js`, `src/__tests__/opsWatch.test.js`, `src/__tests__/opsWatchHandler.test.js`, `src/__tests__/cronHealthCheckAlert.test.js`, `src/__tests__/rosterTriggerConfig.test.js`
 
 ---
 

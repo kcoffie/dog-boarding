@@ -1,7 +1,7 @@
 # Notify Jobs (Roster)
 
-**Status:** Live (weekdays + Friday PM + hourly intraday). The 4am roster needs no DST edits (REQ-658); the other GitHub windows still do
-**Last reviewed:** October 22, 2026 (on-time 4am roster, REQ-658)
+**Status:** Live (weekdays + Friday PM + hourly intraday). The 4am, 7am, 8:30am and Friday pm rosters need no DST edits (REQ-658, REQ-659); only intraday (off on Telegram) still does
+**Last reviewed:** October 22, 2026 (all rosters on time from Vercel, REQ-658, REQ-659)
 
 ---
 
@@ -18,18 +18,19 @@ Below, "WhatsApp" describes the pre-2026-10-17 behaviour; the windows, hashes an
 
 ## What They Do
 
-Five GitHub Actions workflows send WhatsApp notifications. Three fire on weekday mornings with the daily roster image; one fires Friday afternoon with a weekend boarding preview; one fires hourly throughout the day to catch intraday boarding changes.
+Vercel crons send the weekday rosters (4am, 7am, 8:30am) and the Friday weekend preview on time; `/api/notify` picks the window from the Pacific hour (REQ-658, REQ-659). GitHub keeps the 4am late fallback, manual runs for the other windows, and the hourly intraday check.
 
 | Workflow         | File                   | Time (PDT)     | UTC             | Days     | Behavior                                                    |
 | ---------------- | ---------------------- | -------------- | --------------- | -------- | ----------------------------------------------------------- |
 | Notify 4am (on time) | Vercel crons → `/api/notify` | 4:00–5:59 AM | 11:00 and 12:00 | Mon–Fri | The one in the 4am Pacific hour sends; once a day (REQ-658) |
 | Notify 4am (fallback) | `notify-4am.yml`     | 7:00 AM PDT / 6:00 AM PST | 14:00 | Mon–Fri  | Sends only if the on-time send didn't, and alerts Kate why    |
-| Notify 7am       | `notify-7am.yml`       | 7:00 AM        | 14:00           | Mon–Fri  | Sends only if roster changed                                |
-| Notify 8:30am    | `notify-830am.yml`     | 8:30 AM        | 15:30           | Mon–Fri  | Sends only if roster changed; also stores boarders snapshot |
-| Notify Friday PM | `notify-friday-pm.yml` | 3:00 PM        | 22:00           | Fri only | Always sends — weekend boarding preview image               |
+| Notify 7am       | Vercel crons → `/api/notify` | 7:00–7:59 AM | 14:00 (PDT) / 15:00 (PST) | Mon–Fri | Sends only if roster changed; claim `notify-7am-claim` (REQ-659) |
+| Notify 8:30am    | Vercel crons → `/api/notify` | 8:00–8:59 AM | 15:00 (PDT) / 16:00 (PST) | Mon–Fri | Sends only if roster changed; also stores boarders snapshot; claim `notify-830am-claim` |
+| Notify Friday PM | Vercel crons → `/api/notify` | 3:00–3:59 PM, 4pm retry | 22:00 + 23:00 (PDT) / 23:00 + 00:00 Sat (PST) | Fri only | Always sends — weekend boarding preview image; claim `notify-friday-pm-claim` |
+| Manual re-sends  | `notify-7am.yml`, `notify-830am.yml`, `notify-friday-pm.yml` | — | — | — | `workflow_dispatch` only (token path, no claim) |
 | Notify Intraday  | `notify-intraday.yml`  | 9am–8pm hourly | 16–23 + 0–3 UTC | Mon–Fri  | Sends delta image only when boarders changed since 8:30am   |
 
-All five support manual trigger (`workflow_dispatch`) for testing.
+Every GitHub workflow here supports a manual run (`workflow_dispatch`). A failed on-time 7am, 8:30am or Friday pm call alerts Kate at once (`notify-alert`); ops-watch (17:00 UTC) and cron-health-check (GitHub, 00:30 UTC) report a window that didn't run.
 
 ---
 
@@ -76,7 +77,7 @@ The endpoint orchestrates the full notify flow:
 
    **Why upload-first:** Meta silently drops template sends when it cannot fetch image URLs from Vercel endpoints — the API accepts the call and returns a wamid, but the message never reaches the phone. Uploading to Meta's CDN first (K-1b, April 2) eliminates this dependency entirely.
 
-7. **No recipient reached → failure (#255).** If every send came back `failed`, the endpoint records `cron_health` `notify` = `failure` (`No recipient received the roster (N of N sends failed)`), stores **no** hash and returns 500 (the workflow goes red). The failure row clears `lastHash`, so the next window sends again. friday-pm does the same with its `notify-friday-pm` row.
+7. **No recipient reached → failure (#255).** If every send came back `failed`, the endpoint records `cron_health` `notify` = `failure` (`No recipient received the roster (N of N sends failed)`), stores **no** hash and returns 500 (the workflow goes red). A failure row keeps the stored `lastHash` (REQ-658); the next window still sends, because no hash of the failed send was stored. friday-pm does the same with its `notify-friday-pm` row.
 8. **Store hash + snapshot** (at least one recipient reached) — writes to `cron_health` (`notify` row): the roster hash (for the no-change gate), plus `snapshot: workers` (the full workers array from `getPictureOfDay`). The next window reads `snapshot` to build the intra-day blue overlay.
 
 ---
@@ -131,16 +132,9 @@ SELECT result FROM cron_health WHERE cron_name = 'notify-intraday';
 
 ## DST Note
 
-**The 4am roster needs no edits (REQ-658).** Its two Vercel crons (11:00 and 12:00 UTC) cover both seasons, and `/api/notify` sends from the one in the 4am Pacific hour. **Never move `notify-4am.yml` off `0 14 * * 1-5`:** it's the fallback, and before 06:00 Pacific it skips (`before_fallback_hour`), so a 4am-PST cron would leave it skipping every day while staying green.
+**The 4am, 7am, 8:30am and Friday pm rosters need no edits (REQ-658, REQ-659).** Each window has a Vercel cron in both seasons' UTC hour, and `/api/notify` sends only from the one in the right Pacific hour. The 4am roster's two Vercel crons (11:00 and 12:00 UTC) cover both seasons, and `/api/notify` sends from the one in the 4am Pacific hour. **Never move `notify-4am.yml` off `0 14 * * 1-5`:** it's the fallback, and before 06:00 Pacific it skips (`before_fallback_hour`), so a 4am-PST cron would leave it skipping every day while staying green.
 
-The other GitHub windows still need their UTC times edited by hand twice a year:
-
-| Season | UTC offset | 7am | 8:30am | Fri 3pm |
-|---|---|---|---|---|
-| Standard (Nov–Mar) | UTC-8 | `0 15 * * 1-5` | `30 16 * * 1-5` | `0 23 * * 5` |
-| Daylight (Mar–Nov) | UTC-7 | `0 14 * * 1-5` | `30 15 * * 1-5` | `0 22 * * 5` |
-
-Currently set to **PDT** (daylight). Transition dates: second Sunday in March and first Sunday in November.
+**Only `notify-intraday.yml` still has PDT-only hours.** It sends nothing while `ROSTER_CHANNEL` is `telegram`; fix its hours with #260. Transition dates: second Sunday in March and first Sunday in November.
 
 ---
 
@@ -173,9 +167,10 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 | `vercel.json` (`crons`) | The on-time 4am trigger: `/api/notify` at 11:00 and 12:00 UTC (REQ-658) |
 | `.github/workflows/notify-4am.yml` | The 4am fallback at 14:00 UTC; manual run with a `force` checkbox |
 | `src/lib/rosterTrigger.js` | The 4am Pacific-hour gates, the once-a-day claim, and the late/missed/no-data alert text |
-| `.github/workflows/notify-7am.yml` | 7am weekday workflow — sends on change |
-| `.github/workflows/notify-830am.yml` | 8:30am weekday workflow — sends on change; triggers boarders snapshot |
-| `.github/workflows/notify-friday-pm.yml` | Friday 3pm workflow — always sends weekend boarding preview |
+| `.github/workflows/notify-7am.yml` | Manual 7am re-check (no schedule; Vercel sends it on time) |
+| `.github/workflows/notify-830am.yml` | Manual 8:30am re-check (no schedule); stores the boarders snapshot |
+| `.github/workflows/notify-friday-pm.yml` | Manual weekend preview re-send (no schedule) |
+| `src/lib/rosterTrigger.js` | The Pacific-hour window map, the claim rows, the alert text and the window watchers (REQ-658, REQ-659) |
 | `.github/workflows/notify-intraday.yml` | Hourly 9am–8pm PDT Mon–Fri — sends delta image when boarders changed since 8:30am |
 | `api/notify.js` | Notify orchestrator endpoint (handles all windows incl. friday-pm); stores boarders snapshot at 8:30am |
 | `api/notify-intraday.js` | Intraday delta handler — snapshot read, delta compute, hash gate, send |
@@ -190,5 +185,7 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 ## Known Issues / Backlog
 
 - **WhatsApp is locked (since 2026-10-17); the roster goes to Kate on Telegram (`ROSTER_CHANNEL`).** The WhatsApp delivery-receipt alert (G-1) was dropped in the 2026-10-22 triage; a real channel for Charlie and staff is #260. Until then Kate forwards the roster image by hand.
-- **DST manual update:** each March and November, the UTC times in the 7am, 8:30am, Friday and intraday `.yml` files need to be updated by hand. The 4am roster no longer does (REQ-658).
-- **7am and the 4am fallback share 14:00 UTC.** On a day the on-time send failed, GitHub can start both together; neither has recorded a send yet, so both may send (two rosters plus the late alert). A duplicate on a failure day is the accepted direction.
+- **DST manual update:** only the intraday `.yml` (off on Telegram). The rosters need none (REQ-658, REQ-659).
+- **The Vercel 7am call and the 4am fallback can land together at 14:00 UTC (PDT).** On a day the on-time 4am send failed, both may send (two rosters plus the late alert). A duplicate on a failure day is the accepted direction.
+- **A watcher can race a retry call:** cron-health-check at 00:30 UTC can report a Friday pm (PST) that the 00:xx retry fixes minutes later, and ops-watch at 17:00 can race an 8:30am PST call at 16:59. Rare; read the claim row before acting.
+- **7am and 8:30am can land seconds apart in PDT** (14:59 and 15:00 UTC). Both read the baseline before either writes it, so a changed roster could go out twice. Accepted.

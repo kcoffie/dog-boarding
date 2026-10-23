@@ -26,6 +26,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { alertAndLog } from '../src/lib/alertKate.js';
+import { CLAIM_ROWS, checkWindowRuns, eveningWindowsDue } from '../src/lib/rosterTrigger.js';
 
 // The three midnight Vercel crons we monitor.
 const MONITORED_CRONS = ['auth', 'schedule', 'detail'];
@@ -34,6 +35,10 @@ const MONITORED_CRONS = ['auth', 'schedule', 'detail'];
 // It runs at a different hour, so "ran since midnight UTC" doesn't fit: it gets its own 26h rule (REQ-651).
 const OPS_WATCH = 'ops-watch';
 const OPS_WATCH_MAX_AGE_H = 26;
+
+// The on-time 7am, 8:30am and Friday pm rosters run on Vercel; this is their check on the other
+// scheduler (REQ-659). ops-watch checks them the same morning.
+const WINDOW_CLAIMS = [CLAIM_ROWS['7am'], CLAIM_ROWS['8:30am'], CLAIM_ROWS['friday-pm']];
 
 // A cron stuck in 'started' beyond this threshold is considered hung.
 const HUNG_THRESHOLD_MIN = 20;
@@ -62,14 +67,14 @@ async function loadCronHealth(supabase) {
 
   const { data, error } = await supabase
     .from('cron_health')
-    .select('cron_name, last_ran_at, status')
-    .in('cron_name', [...MONITORED_CRONS, OPS_WATCH]);
+    .select('cron_name, last_ran_at, status, result')
+    .in('cron_name', [...MONITORED_CRONS, OPS_WATCH, ...WINDOW_CLAIMS]);
 
   if (error) throw error;
 
   const map = new Map();
   for (const row of (data || [])) {
-    map.set(row.cron_name, { last_ran_at: row.last_ran_at, status: row.status });
+    map.set(row.cron_name, { last_ran_at: row.last_ran_at, status: row.status, result: row.result });
   }
 
   console.log('[CronHealthCheck] Loaded %d cron_health row(s)', map.size);
@@ -247,6 +252,8 @@ export async function main() {
 
   const opsWatchAlert = checkOpsWatchFresh(healthMap.get(OPS_WATCH), now.getTime());
   if (opsWatchAlert) issues.push(opsWatchAlert);
+
+  issues.push(...checkWindowRuns(Object.fromEntries(healthMap), eveningWindowsDue(now)));
 
   const passed = issues.length === 0;
   console.log('[CronHealthCheck] Result: %s (%d issue(s))', passed ? 'PASS ✅' : 'FAIL ⚠️', issues.length);

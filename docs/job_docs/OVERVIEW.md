@@ -18,9 +18,9 @@ All automated work in this system runs as either Vercel cron jobs (nightly, insi
 | `integration-check` | GH Actions | 1am, 9am, 5pm | Always | Kate only |
 | `gmail-monitor` | GH Actions | Hourly at :15 | When issues found | Kate only |
 | `notify-4am` | Vercel crons (11:00 + 12:00 UTC), GH Actions fallback (14:00 UTC) | 4:00–5:59 AM Mon–Fri | Once a day (REQ-658) | Full team |
-| `notify-7am` | GH Actions | 7:00 AM Mon–Fri | On change | Full team |
-| `notify-830am` | GH Actions | 8:30 AM Mon–Fri | On change | Full team |
-| `notify-friday-pm` | GH Actions | 3:00 PM Fri | Always | Full team |
+| `notify-7am` | Vercel crons (14:00 / 15:00 UTC); GH Actions manual only | 7:00–7:59 AM Mon–Fri | On change (REQ-659) | Full team |
+| `notify-830am` | Vercel crons (15:00 / 16:00 UTC); GH Actions manual only | 8:00–8:59 AM Mon–Fri | On change (REQ-659) | Full team |
+| `notify-friday-pm` | Vercel crons (22:00, 23:00, Sat 00:00 UTC); GH Actions manual only | 3:00 PM Fri, 4pm retry | Always (REQ-659) | Full team |
 | `notify-intraday` | GH Actions | 9am–8pm hourly Mon–Fri | On boarding delta | Full team |
 
 ---
@@ -150,7 +150,7 @@ Three jobs that run independently of the sync pipeline to catch failures the pip
 
 ## The Notify Cluster (Mon–Fri, 4am–8pm PDT)
 
-Five workflows send WhatsApp notifications to the full team. Together they answer three different questions:
+Five jobs send the roster (to Kate on Telegram today; the full team once #260 lands). Vercel crons send 4am, 7am, 8:30am and Friday pm on time, with the Pacific hour picking the window (REQ-658, REQ-659); intraday is a GitHub workflow. Together they answer three different questions:
 - "Who's boarding tonight?" (4am/7am/8:30am roster image)
 - "Who's boarding this weekend?" (Friday PM preview)
 - "Did anything change since this morning?" (intraday delta)
@@ -169,7 +169,7 @@ Five workflows send WhatsApp notifications to the full team. Together they answe
 
 **Key behavior:** Shows UPDATED! badge if the roster changed vs. yesterday. Shows blue overlay for any dog whose status changed since the 4am send ("what's new since the image you received 3 hours ago").
 
-**File:** `api/notify.js` (`window=7am`) | **Workflow:** `.github/workflows/notify-7am.yml`
+**File:** `api/notify.js` (`window=7am`) | **Schedule:** `vercel.json` crons (claim `notify-7am-claim`) | **Manual run:** `.github/workflows/notify-7am.yml`
 
 ---
 
@@ -178,7 +178,7 @@ Five workflows send WhatsApp notifications to the full team. Together they answe
 
 **Why 8:30am is the snapshot point:** It's the last morning send. By 8:30am the roster has had time to settle. Any boarder additions or cancellations after this point are what the intraday job detects.
 
-**File:** `api/notify.js` (`window=8:30am`) | **Workflow:** `.github/workflows/notify-830am.yml`
+**File:** `api/notify.js` (`window=8:30am`) | **Schedule:** `vercel.json` crons, lands 8:00–8:59 (claim `notify-830am-claim`) | **Manual run:** `.github/workflows/notify-830am.yml`
 
 ---
 
@@ -187,7 +187,7 @@ Five workflows send WhatsApp notifications to the full team. Together they answe
 
 **Why always send:** The weekend roster is inherently time-sensitive. Unlike the morning dedup logic (skip if nothing changed), a missed weekend preview has no recovery — the team needs it before they leave for the day.
 
-**File:** `api/notify.js` (`window=friday-pm`) | **Workflow:** `.github/workflows/notify-friday-pm.yml`
+**File:** `api/notify.js` (`window=friday-pm`) | **Schedule:** `vercel.json` crons, 3pm with a 4pm retry (claim `notify-friday-pm-claim`) | **Manual run:** `.github/workflows/notify-friday-pm.yml`
 
 ---
 

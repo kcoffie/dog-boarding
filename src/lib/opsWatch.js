@@ -5,8 +5,9 @@
  * finding too: silence is never success. The I/O (Supabase, GitHub, the image endpoint, Kate's alert channel,
  * the email dispatch) is passed in, so the rules can be tested without it. Wiring: api/ops-watch.js.
  * Design: docs/specs/ops-watch-design-note.md.
- * @requirements REQ-651, REQ-652, REQ-657
+ * @requirements REQ-651, REQ-652, REQ-657, REQ-659
  */
+import { checkWindowRuns, morningWindowsDue } from './rosterTrigger.js';
 
 const HOUR_MS = 3600e3;
 const COULDNT = "Couldn't check";
@@ -57,7 +58,8 @@ export function checkQueue(q, now) {
 
 /**
  * @param {{ sent: Array<{wamid:string, sent_at:string, recipient:string}>, deliveredWamids: string[] }} r
- *   notify-4am rows with status 'sent' (any recent ones), and wamids with a delivered/read webhook row.
+ *   notify-4am, notify-7am and notify-8:30am rows with status 'sent' (any recent ones; a day whose 4am
+ *   send failed but 7am sent still had a morning roster), and wamids with a delivered/read webhook row.
  *   A Telegram send (recipient 'telegram', REQ-655) has no webhook: the Bot API accepting it for
  *   Kate's chat is its delivery.
  */
@@ -130,7 +132,7 @@ export function checkSiteAccess(row) {
 }
 
 /** Jobs whose alerts go to Kate; a failed message_log row for any of them is a finding (REQ-652). */
-export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert'];
+export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert'];
 
 /**
  * @param {Array<{job_name: string}>} failedRows  message_log rows with status 'failed' for ALERT_JOBS
@@ -155,6 +157,8 @@ export async function runOpsWatch(d) {
     ['the schedule scan', async () => checkScheduleScan(await d.loadScheduleHealth(), now)],
     ['the booking-site breaker', async () => checkSiteAccess(await d.loadSiteAccess())],
     ['the morning roster', async () => checkRoster(await d.loadRosterRows(), now)],
+    // 17:00 UTC is after the last 8:30am call in both seasons (REQ-659).
+    ['the roster windows', async () => checkWindowRuns(await d.loadWindowClaims(), morningWindowsDue(now))],
     ['the scheduled workflows', async () => checkWorkflowRuns(await d.loadLastSuccess(), now)],
     ['the roster image', async () => checkImage(await d.fetchImage())],
     ['the alert log', async () => checkFailedAlerts(await d.loadFailedAlerts())],

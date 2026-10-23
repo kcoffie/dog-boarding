@@ -1,6 +1,7 @@
 /**
- * The 4am roster on time: Pacific-hour gates, the once-a-day claim, and the alert wording.
- * @requirements REQ-658
+ * The rosters on time: Pacific-hour gates, the once-a-day claims, the alert wording, and the
+ * check that each window ran.
+ * @requirements REQ-658, REQ-659
  *
  * Expected values come from REQ-658's criteria, worked out by hand: PDT is UTC-7 until
  * Sun 2026-11-01, PST is UTC-8 after. Boundary faked: Supabase (fakeCronHealth, which applies the
@@ -11,7 +12,8 @@ import { fakeCronHealth } from './fakeCronHealth.js';
 import {
   CLAIM_ROW, NEVER, pacificClock, onTimeWindowOpen, fallbackHourReached, readClaim, claimDay,
   finishClaim, missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert, isWeekday,
-  rosterSentToday,
+  rosterSentToday, CLAIM_ROWS, WINDOW_ALERT_JOB, triggerWindow, windowFailedAlert, morningWindowsDue,
+  eveningWindowsDue, checkWindowRuns, fourAmRunningToday,
 } from '../lib/rosterTrigger.js';
 
 const at = (iso) => pacificClock(new Date(iso));
@@ -174,12 +176,12 @@ describe('claimDay: once per Pacific day', () => {
 
   it('when the row cannot be created, the claim throws naming the reason', async () => {
     await expect(claim(db({}, { faults: { upsert: { message: 'db down' } } })))
-      .rejects.toThrow('Could not create the 4am claim row: db down');
+      .rejects.toThrow('Could not create the claim row notify-4am-claim: db down');
   });
 
   it('when the claim update fails, it throws naming the reason', async () => {
     await expect(claim(db({}, { faults: { update: { message: 'timeout' } } })))
-      .rejects.toThrow('Could not claim the 4am send: timeout');
+      .rejects.toThrow('Could not claim notify-4am-claim: timeout');
   });
 });
 
@@ -336,5 +338,157 @@ describe('rosterSentToday', () => {
 
   it('no stored send at all is not sent today', () => {
     expect(rosterSentToday(null, clock)).toBe(false);
+  });
+});
+
+describe('triggerWindow: the Pacific hour picks the window (REQ-659)', () => {
+  it.each([
+    ['2026-10-30T11:00:00Z', '4am', 'Fri 4:00 PDT'],
+    ['2026-10-30T12:59:00Z', '4am', 'Fri 5:59 PDT'],
+    ['2026-10-30T13:59:00Z', null, 'Fri 6:59 PDT'],
+    ['2026-10-30T14:00:00Z', '7am', 'Fri 7:00 PDT'],
+    ['2026-10-30T14:59:00Z', '7am', 'Fri 7:59 PDT'],
+    ['2026-10-30T15:00:00Z', '8:30am', 'Fri 8:00 PDT'],
+    ['2026-10-30T15:59:00Z', '8:30am', 'Fri 8:59 PDT'],
+    ['2026-10-30T16:00:00Z', null, 'Fri 9:00 PDT'],
+    ['2026-10-30T21:59:00Z', null, 'Fri 14:59 PDT'],
+    ['2026-10-30T22:00:00Z', 'friday-pm', 'Fri 15:00 PDT'],
+    ['2026-10-30T23:59:00Z', 'friday-pm', 'Fri 16:59 PDT (the retry hour)'],
+    ['2026-10-31T00:00:00Z', null, 'Fri 17:00 PDT'],
+    ['2026-11-02T14:59:00Z', null, 'Mon 6:59 PST'],
+    ['2026-11-02T15:00:00Z', '7am', 'Mon 7:00 PST'],
+    ['2026-11-02T16:00:00Z', '8:30am', 'Mon 8:00 PST'],
+    ['2026-11-02T17:00:00Z', null, 'Mon 9:00 PST'],
+    ['2026-11-06T23:00:00Z', 'friday-pm', 'Fri 15:00 PST'],
+    ['2026-11-07T00:59:00Z', 'friday-pm', 'Fri 16:59 PST'],
+    ['2026-10-29T22:30:00Z', null, 'Thu 15:30 PDT: Friday pm is Fridays only'],
+    ['2026-10-31T14:30:00Z', null, 'Sat 7:30 PDT'],
+    ['2026-11-01T16:30:00Z', null, 'Sun 8:30 PST (the day the clocks change)'],
+    ['2026-10-26T14:30:00Z', '7am', 'Mon 7:30 PDT'],
+  ])('%s is %s (%s)', (iso, window) => {
+    expect(triggerWindow(at(iso))).toBe(window);
+  });
+});
+
+describe('the window claim rows', () => {
+  it('each window has its own cron_health row, and 4am keeps its existing one', () => {
+    expect(CLAIM_ROWS).toStrictEqual({
+      '4am': 'notify-4am-claim', '7am': 'notify-7am-claim', '8:30am': 'notify-830am-claim', 'friday-pm': 'notify-friday-pm-claim',
+    });
+  });
+
+  it('a claim on one window row leaves the others alone', async () => {
+    const rows = {};
+    const supabase = db(rows);
+    const NOW = new Date('2026-10-19T14:20:00Z');
+    expect(await claimDay(supabase, { row: 'notify-7am-claim', date: '2026-10-19', trigger: 'vercel', now: NOW })).toBe(true);
+    expect(Object.keys(rows)).toStrictEqual(['notify-7am-claim']);
+    expect(await claimDay(supabase, { row: 'notify-830am-claim', date: '2026-10-19', trigger: 'vercel', now: NOW })).toBe(true);
+    expect(await claimDay(supabase, { row: 'notify-7am-claim', date: '2026-10-19', trigger: 'vercel', now: NOW })).toBe(false);
+  });
+
+  it('finishClaim writes the named row only', async () => {
+    const rows = {
+      'notify-7am-claim': { cron_name: 'notify-7am-claim', status: 'started', result: { date: '2026-10-19' } },
+      [CLAIM_ROW]: { cron_name: CLAIM_ROW, status: 'started', result: { date: '2026-10-19' } },
+    };
+    await finishClaim(db(rows), { row: 'notify-7am-claim', date: '2026-10-19', trigger: 'vercel', status: 'success', outcome: 'unchanged', now: new Date('2026-10-19T14:21:00Z') });
+    expect(rows['notify-7am-claim'].result.outcome).toBe('unchanged');
+    expect(rows[CLAIM_ROW].status).toBe('started');
+  });
+
+  it('readClaim reads the named row', async () => {
+    const rows = { 'notify-7am-claim': { cron_name: 'notify-7am-claim', status: 'success', result: { date: 'x' }, updated_at: 'u' } };
+    expect(await readClaim(db(rows), 'notify-7am-claim')).toStrictEqual({ status: 'success', result: { date: 'x' }, updated_at: 'u' });
+    expect(await readClaim(db(rows))).toBe(null);
+  });
+
+  it('failure alerts go out as job notify-alert', () => {
+    expect(WINDOW_ALERT_JOB).toBe('notify-alert');
+  });
+});
+
+describe('windowFailedAlert', () => {
+  it.each([
+    ['7am', '⚠️ The 7am roster failed at 7:20 AM on 2026-10-19: boom'],
+    ['8:30am', '⚠️ The 8:30am roster failed at 7:20 AM on 2026-10-19: boom'],
+    ['friday-pm', '⚠️ The Friday pm roster failed at 7:20 AM on 2026-10-19: boom'],
+  ])('%s names the window, the time, the day and the error', (window, text) => {
+    expect(windowFailedAlert(window, at('2026-10-19T14:20:00Z'), 'boom')).toBe(text);
+  });
+});
+
+describe('which windows the watchers check', () => {
+  it.each([
+    ['2026-10-19T17:30:00Z', { date: '2026-10-19', windows: ['7am', '8:30am'] }, 'ops-watch Mon 10:30 PDT: today\'s weekday windows'],
+    ['2026-10-23T17:30:00Z', { date: '2026-10-23', windows: ['7am', '8:30am'] }, 'Fri 10:30 PDT: Friday pm has not run yet'],
+    ['2026-10-24T17:30:00Z', { date: '2026-10-23', windows: ['friday-pm'] }, 'Sat 10:30 PDT: the day before\'s Friday pm'],
+    ['2026-11-07T17:30:00Z', { date: '2026-11-06', windows: ['friday-pm'] }, 'Sat 9:30 PST'],
+    ['2026-10-25T17:30:00Z', { date: '2026-10-25', windows: [] }, 'Sun: nothing'],
+  ])('morning, %s → %o (%s)', (iso, due) => {
+    expect(morningWindowsDue(new Date(iso))).toStrictEqual(due);
+  });
+
+  it.each([
+    ['2026-10-20T00:30:00Z', { date: '2026-10-19', windows: ['7am', '8:30am'] }, 'cron-health-check on time: Mon 17:30 PDT'],
+    ['2026-10-20T06:30:00Z', { date: '2026-10-19', windows: ['7am', '8:30am'] }, '6 h late: still Monday'],
+    ['2026-10-20T18:59:00Z', { date: '2026-10-19', windows: ['7am', '8:30am'] }, 'now − 12 h is Mon 23:59 PDT'],
+    ['2026-10-20T19:00:00Z', { date: '2026-10-20', windows: ['7am', '8:30am'] }, 'now − 12 h is Tue 0:00 PDT'],
+    ['2026-10-24T00:30:00Z', { date: '2026-10-23', windows: ['7am', '8:30am', 'friday-pm'] }, 'Friday evening adds Friday pm'],
+    ['2026-11-07T00:30:00Z', { date: '2026-11-06', windows: ['7am', '8:30am', 'friday-pm'] }, 'Friday evening, PST'],
+    ['2026-10-25T00:30:00Z', { date: '2026-10-24', windows: [] }, 'Saturday: nothing'],
+    ['2026-11-03T00:30:00Z', { date: '2026-11-02', windows: ['7am', '8:30am'] }, 'the first PST Monday'],
+  ])('evening, %s → %o (%s)', (iso, due) => {
+    expect(eveningWindowsDue(new Date(iso))).toStrictEqual(due);
+  });
+});
+
+describe('checkWindowRuns', () => {
+  const due = { date: '2026-10-23', windows: ['7am', '8:30am', 'friday-pm'] };
+  const ok = (row) => ({ [row]: { status: 'success', result: { date: '2026-10-23', outcome: 'sent' } } });
+
+  it('every window finished today: no issues', () => {
+    expect(checkWindowRuns({ ...ok('notify-7am-claim'), ...ok('notify-830am-claim'), ...ok('notify-friday-pm-claim') }, due)).toStrictEqual([]);
+  });
+
+  it('a missing row, a row for another day, a failure and an unfinished start each get their own line', () => {
+    const rows = {
+      'notify-7am-claim': { status: 'success', result: { date: '2026-10-22' } },
+      'notify-830am-claim': { status: 'failure', result: { date: '2026-10-23', error: 'db down' } },
+    };
+    expect(checkWindowRuns(rows, due)).toStrictEqual([
+      "The 7am roster didn't run on 2026-10-23",
+      'The 8:30am roster failed on 2026-10-23: db down',
+      "The Friday pm roster didn't run on 2026-10-23",
+    ]);
+  });
+
+  it('a claim left started is reported as unfinished', () => {
+    const rows = { 'notify-7am-claim': { status: 'started', result: { date: '2026-10-23' } } };
+    expect(checkWindowRuns(rows, { date: '2026-10-23', windows: ['7am'] })).toStrictEqual(["The 7am roster started on 2026-10-23 but didn't finish"]);
+  });
+
+  it('a failure with no error recorded says so', () => {
+    const rows = { 'notify-7am-claim': { status: 'failure', result: { date: '2026-10-23' } } };
+    expect(checkWindowRuns(rows, { date: '2026-10-23', windows: ['7am'] })).toStrictEqual(['The 7am roster failed on 2026-10-23: no error recorded']);
+  });
+
+  it('a row with no result is a run that never happened', () => {
+    expect(checkWindowRuns({ 'notify-7am-claim': { status: 'success', result: null } }, { date: '2026-10-23', windows: ['7am'] }))
+      .toStrictEqual(["The 7am roster didn't run on 2026-10-23"]);
+  });
+
+  it('no windows due: nothing to check', () => {
+    expect(checkWindowRuns({}, { date: '2026-10-24', windows: [] })).toStrictEqual([]);
+  });
+});
+
+describe('fourAmRunningToday', () => {
+  it("is true only for today's claim that is still started", () => {
+    expect(fourAmRunningToday({ status: 'started', result: { date: '2026-10-19' } }, '2026-10-19')).toBe(true);
+    expect(fourAmRunningToday({ status: 'started', result: { date: '2026-10-16' } }, '2026-10-19')).toBe(false);
+    expect(fourAmRunningToday({ status: 'success', result: { date: '2026-10-19' } }, '2026-10-19')).toBe(false);
+    expect(fourAmRunningToday(null, '2026-10-19')).toBe(false);
+    expect(fourAmRunningToday({ unreadable: true }, '2026-10-19')).toBe(false);
   });
 });

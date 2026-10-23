@@ -1,6 +1,6 @@
 # ADR-002: Job Scheduling Architecture
 
-**Status:** Accepted
+**Status:** Accepted; the notifications part is superseded by [ADR-004](004-rosters-on-vercel-crons-with-claim-rows.md) (2026-10-22)
 **Date:** 2024 (initial), revised March 2026
 
 ---

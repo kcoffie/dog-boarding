@@ -11,6 +11,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { runOpsWatch, WORKFLOW_MAX_AGE_HOURS, ALERT_JOBS } from '../src/lib/opsWatch.js';
+import { CLAIM_ROWS } from '../src/lib/rosterTrigger.js';
 import { alertAndLog } from '../src/lib/alertKate.js';
 import { writeCronHealth } from './_cronHealth.js';
 
@@ -65,12 +66,19 @@ function makeDeps(supabase) {
     async loadRosterRows() {
       const since = new Date(Date.now() - 48 * 3600e3).toISOString();
       const sent = await must(supabase.from('message_log').select('wamid, sent_at, recipient')
-        .eq('job_name', 'notify-4am').eq('status', 'sent').gte('sent_at', since));
+        .in('job_name', ['notify-4am', 'notify-7am', 'notify-8:30am']).eq('status', 'sent').gte('sent_at', since));
       const wamids = sent.map((m) => m.wamid).filter(Boolean);
       if (wamids.length === 0) return { sent, deliveredWamids: [] };
       const delivered = await must(supabase.from('message_delivery_status').select('wamid')
         .in('wamid', wamids).in('status', ['delivered', 'read']));
       return { sent, deliveredWamids: delivered.map((d) => d.wamid) };
+    },
+
+    /** The 7am, 8:30am and Friday pm claim rows, by cron_name (REQ-659). */
+    async loadWindowClaims() {
+      const rows = await must(supabase.from('cron_health').select('cron_name, status, result')
+        .in('cron_name', [CLAIM_ROWS['7am'], CLAIM_ROWS['8:30am'], CLAIM_ROWS['friday-pm']]));
+      return Object.fromEntries(rows.map((r) => [r.cron_name, r]));
     },
 
     async loadLastSuccess() {
