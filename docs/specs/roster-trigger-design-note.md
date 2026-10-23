@@ -103,7 +103,7 @@ The 7am, 8:30am and Friday 3pm rosters are still GitHub schedules. They start 4�
   | 04:00–05:59 Mon–Fri | `4am` (unchanged) |
   | 07:00–07:59 Mon–Fri | `7am` |
   | 08:00–08:59 Mon–Fri | `8:30am` |
-  | 15:00–15:59 Fri | `friday-pm` |
+  | 15:00–16:59 Fri | `friday-pm` (the 16:00 hour is a retry, deduped by the claim) |
   | anything else | skipped, `outside_window`, writes nothing |
 - **The trigger rejects any `window`, `date` or `force` param** (400), as the 4am trigger rejects `date` and `force` today. Only the clock picks the window.
 - **The token path doesn't change.** GitHub and manual runs with `?window=…&token=…` behave as now, with no gate and no claim (except the 4am fallback, as REQ-658).
@@ -119,27 +119,30 @@ Each UTC hour gets one cron line. Every line fires once a day, anywhere in its h
 | `0 15 * * *` **new** | 8:30am (lands 8:00–8:59) | 7am |
 | `0 16 * * *` **new** | 9am: skip | 8:30am (lands 8:00–8:59) |
 | `0 22 * * 5` **new** | Fri 3pm | Fri 2pm: skip |
-| `0 23 * * 5` **new** | Fri 4pm: skip | Fri 3pm |
+| `0 23 * * 5` **new** | Fri 4pm: Friday pm retry | Fri 3pm |
+| `0 0 * * 6` **new** | Fri 5pm: skip | Fri 4pm: Friday pm retry |
 
-The project goes from 7 crons to 12 (Hobby: once a day each; the count limit to be checked by the architect). `15:00 UTC` serves two windows, one per season. On a given day each window has exactly one call (the 4am window keeps its two, deduped by its claim). The 8:30am roster can land anywhere from 8:00 to 8:59, as the issue accepted.
+The project goes from 7 crons to 13. Hobby allows 100 per project, each at most once a day, firing anywhere in its hour, with no retry; Vercel documents both duplicate and missed deliveries (architect, from Vercel's docs updated 2026-07/08). `15:00 UTC` serves two windows, one per season. On a given day 7am and 8:30am get exactly one call each; 4am and Friday pm get two, deduped by their claims. The 8:30am roster can land anywhere from 8:00 to 8:59, as the issue accepted.
 
 ### One claim row per window
 - `claimDay` and `finishClaim` take the row name. New rows: **`notify-7am-claim`, `notify-830am-claim`, `notify-friday-pm-claim`**, same shape and rules as `notify-4am-claim` (seeded, one conditional update, a stale `started` claim taken over after 10 min). No migration.
 - **Why claim a window with one call:** Vercel may deliver a cron event more than once. The 7am and 8:30am hash gate would dedupe a duplicate that arrives later, but two at once could both send, and `friday-pm` has no hash gate at all. The claim row is also the record of the run that the watcher reads (below).
-- **Outcomes:** `sent`; `unchanged` (the hash gate skipped; `success`, since checking was the job); `no_data` at 7am/8:30am (`success`: the 4am no-data alert has already told Kate, and a second alert per window would be noise); `failed` (`failure`, with the error).
+- **Outcomes:** `sent`; `unchanged` (the hash gate skipped; `success`, since checking was the job); `no_data` at 7am/8:30am is `success` only when today's 4am claim also shows `no_data` (Kate already has that alert); otherwise it's `failure` and alerts (data that vanished after 4am is a fault); `failed` (`failure`, with the error).
 - **The claim comes first, as in 4am:** a call that loses it does no refresh, no image and no booking-site request.
 
 ### Failure is loud
-- **On a trigger call, any failure alerts Kate at once** (`alertAndLog`, new job **`notify-alert`**, added to ops-watch's `ALERT_JOBS`): "⚠️ The 7am roster check failed at 7:12 AM: <error>". On Vercel a 500 is silent, unlike a red GitHub run. The 4am window keeps its own path (the fallback sends and alerts).
+- **On a trigger call, any failure alerts Kate at once, on every path:** the claim/database catch, the `ROSTER_CHANNEL` error branch, the Friday pm catch and the main catch (one test each). The alert goes on Kate's alert bot, which doesn't depend on `ROSTER_CHANNEL`.
+- The alert itself (`alertAndLog`, new job **`notify-alert`**, added to ops-watch's `ALERT_JOBS`): "⚠️ The 7am roster check failed at 7:12 AM: <error>". On Vercel a 500 is silent, unlike a red GitHub run. The 4am window keeps its own path (the fallback sends and alerts).
 - Errors that reach the alert already carry no token (the image URL is never put into an error).
 
-### The watcher on the other scheduler
-- **`cron-health-check` (GitHub, 00:30 UTC) checks the window claim rows** for the Pacific day of (now − 12 h). That's the same Pacific day for any run up to 11 h late (00:30 UTC is 5:30pm PDT / 4:30pm PST).
+### The watchers
+- **ops-watch (Vercel, 17:00 UTC, its own cron line) checks today's 7am and 8:30am claim rows** (the last 8:30am call lands by 16:59 UTC in both seasons), and on Saturday Friday's Friday pm claim. It catches a single skipped line the same morning (~10am PDT / 9am PST).
+- **Backstop on the other scheduler:**- **`cron-health-check` (GitHub, 00:30 UTC) checks the window claim rows** for the Pacific day of (now − 12 h). That's the same Pacific day for any run up to 11 h late (00:30 UTC is 5:30pm PDT / 4:30pm PST).
   - On a weekday: `notify-7am-claim` and `notify-830am-claim` have that date and `success`.
   - On a Friday: `notify-friday-pm-claim` as well.
   - Otherwise one issue line each: never ran, failed (quoting the error), or started but didn't finish.
-- The rule is a pure function in `src/lib/rosterTrigger.js` (mutation-tested); the script only wires it.
-- If all Vercel crons die, this catches the missed windows the same evening. The 4am fallback on GitHub catches the morning, and cron-health-check already watches ops-watch.
+- Both use one pure function in `src/lib/rosterTrigger.js` (mutation-tested); the scripts only wire it.
+- If all Vercel crons die, ops-watch dies too; cron-health-check catches the missed windows that evening, and already flags ops-watch as stale. The 4am fallback on GitHub catches the morning, and cron-health-check already watches ops-watch.
 
 ### The GitHub workflows
 - **`notify-7am.yml`, `notify-830am.yml` and `notify-friday-pm.yml` lose their `schedule:`** and keep `workflow_dispatch` for manual sends (token path, as now). That ends the 7am/fallback double send at 14:00 UTC on GitHub's side. No file deletes are needed.
@@ -150,10 +153,10 @@ The project goes from 7 crons to 12 (Hobby: once a day each; the count limit to 
 **No change: one schedule-page request per window run (`refreshDaytimeSchedule`), 3 a weekday as today**, plus one when the 12:00 UTC 4am retry runs after a failed 11:00 call. A call that loses its claim or lands outside a window makes none. A blocked site (`site_access`) skips the refresh and uses the DB, as today.
 
 ## What breaks
-- **Vercel skips a window's cron:** no send for that window; cron-health-check reports it that evening. For 7am the 8:30am check still sends a change. A missed Friday pm is reported Friday evening; Kate can run `notify-friday-pm.yml` by hand.
+- **Vercel skips a window's cron:** for 7am the 8:30am check still sends a change; ops-watch reports the miss that morning. A skipped Friday pm call is retried an hour later; if both miss, cron-health-check reports it Friday evening and Kate can run `notify-friday-pm.yml` by hand.
 - **A window lands at the edge of its hour** (e.g. 15:59 UTC in PDT = 8:59): still inside the hour, so it sends. A call can't drift into the next hour's window, because each line fires within its own UTC hour.
 - **DST day itself:** Sun 11-01 has no weekday window; Fri 10-30 is PDT and Mon 11-02 PST. Tests pin both.
-- **Deploying in a window's hour:** a cron mid-deploy may hit either version. Merge outside 11:00–16:59 UTC on weekdays.
+- **Deploying in a window's hour:** a cron mid-deploy may hit either version. Merge outside 11:00–16:59 UTC on weekdays and 22:00–00:59 UTC on Fridays. After the merge, confirm Vercel's Cron Jobs page lists all 13 (crons come only from the production deployment, and the deploy quota has blocked prod before).
 - **Holidays:** as today (weekdays send).
 
 ## Threat
@@ -170,7 +173,18 @@ The clock-to-window map at both DST instants and every hour edge (06:59/07:00/07
 ## Decisions for Kate
 1. Turn the three GitHub schedules off (keep manual runs), rather than keep them as late fallbacks that would send 4–6 h late. **Recommended.**
 2. The 8:30am roster can arrive any time 8:00–8:59 (already accepted in the issue).
-3. The watcher alerts the same evening, not the same morning (a same-morning check would need another scheduler).
+3. Friday pm gets a 4pm retry (one more cron, 13 total). **Recommended:** otherwise one skipped Vercel run means no weekend roster unless Kate runs it by hand.
+4. A missed 7am/8:30am is reported the same morning by ops-watch, with cron-health-check that evening as the backstop. **Recommended.**
 
 ## ADR
 Ships with **ADR-004: rosters sent by Vercel crons on the Pacific hour, with claim rows** (the roster claim-row ADR planned for Sprint 3, done now because this extends it). The sync-redesign ADR moves to 005.
+
+## Changes after the architect review (2026-10-22, "proceed with changes")
+- **Friday pm on the trigger renders its image from `PROD_URL`**, like the daily path; from the request's host it could get a Deployment Protection 401 (test).
+- **Friday pm gets a retry hour** (15:00–16:59 Fri Pacific, `0 0 * * 6` added).
+- **ops-watch checks the window claims the same morning**; cron-health-check is the backstop.
+- **Every failure path on the trigger alerts** (four paths, a test each).
+- **`no_data` at 7am/8:30am is a failure** unless 4am found no data too.
+- **ops-watch's "No morning roster sent today"** also counts `notify-7am` and `notify-8:30am` sends, so a day where 4am failed but 7am sent isn't reported as "no roster".
+- **Known and accepted:** in PDT, 7am and 8:30am can land seconds apart (14:59, 15:00). Both read the baseline before either writes it, so a changed roster could go out twice.
+- **Same PR:** REQ-659 (the Ops range's last number) for these windows; REQ-611/612/630 and the job docs (table, DST note, the stale "a failure clears `lastHash`" line) updated; ADR-004; `docs/SPRINT_PLAN.md`'s ADR numbering updated.
