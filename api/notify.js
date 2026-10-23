@@ -39,7 +39,7 @@ import { refreshDaytimeSchedule } from '../src/lib/notifyHelpers.js';
 import {
   ALERT_JOB, WINDOW_ALERT_JOB, CLAIM_ROWS, pacificClock, triggerWindow, fallbackHourReached, readClaim,
   claimDay, finishClaim, missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert,
-  windowFailedAlert, isWeekday, rosterSentToday,
+  windowFailedAlert, isWeekday, rosterSentToday, fourAmRunningToday,
 } from '../src/lib/rosterTrigger.js';
 import { PROD_URL } from '../src/lib/deployCheck.js';
 
@@ -498,14 +498,14 @@ export default async function handler(req, res) {
           await alertAndLog(supabase, ALERT_JOB, noDataAlert(claim.clock, claim.trigger));
         }
       } else if (claim) {
-        // 7am/8:30am: fine only when the 4am call found no data too (Kate has that alert already).
-        // Data that vanished after 4am is a fault (REQ-659).
+        // 7am/8:30am: fine only when the 4am call found no data too (Kate has that alert already), or
+        // a 4am call is still running today (it reports its own no-data). Otherwise a fault (REQ-659).
         const fourAm = await readClaim(supabase, CLAIM_ROWS['4am']);
-        if (noDataAlreadyReported(fourAm, claim.date)) {
+        if (noDataAlreadyReported(fourAm, claim.date) || fourAmRunningToday(fourAm, claim.date)) {
           await finishClaim(supabase, { ...claimEnd(claim), status: 'success', outcome: 'no_data' });
         } else {
           await finishClaim(supabase, { ...claimEnd(claim), status: 'failure', outcome: 'no_data', error: 'No roster data' });
-          await alertWindowFailure(supabase, isTrigger, window, 'no roster data (the 4am roster had some)');
+          await alertWindowFailure(supabase, isTrigger, window, 'no roster data');
         }
       }
       return res.status(200).json({ ok: true, action: 'skipped', reason: 'no_data' });

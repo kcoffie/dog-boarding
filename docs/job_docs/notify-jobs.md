@@ -1,7 +1,7 @@
 # Notify Jobs (Roster)
 
 **Status:** Live (weekdays + Friday PM + hourly intraday). The 4am, 7am, 8:30am and Friday pm rosters need no DST edits (REQ-658, REQ-659); only intraday (off on Telegram) still does
-**Last reviewed:** October 22, 2026 (on-time 4am roster, REQ-658)
+**Last reviewed:** October 22, 2026 (all rosters on time from Vercel, REQ-658, REQ-659)
 
 ---
 
@@ -187,4 +187,5 @@ The notify endpoint itself (running in Vercel) also needs these env vars set in 
 - **WhatsApp is locked (since 2026-10-17); the roster goes to Kate on Telegram (`ROSTER_CHANNEL`).** The WhatsApp delivery-receipt alert (G-1) was dropped in the 2026-10-22 triage; a real channel for Charlie and staff is #260. Until then Kate forwards the roster image by hand.
 - **DST manual update:** only the intraday `.yml` (off on Telegram). The rosters need none (REQ-658, REQ-659).
 - **The Vercel 7am call and the 4am fallback can land together at 14:00 UTC (PDT).** On a day the on-time 4am send failed, both may send (two rosters plus the late alert). A duplicate on a failure day is the accepted direction.
+- **A watcher can race a retry call:** cron-health-check at 00:30 UTC can report a Friday pm (PST) that the 00:xx retry fixes minutes later, and ops-watch at 17:00 can race an 8:30am PST call at 16:59. Rare; read the claim row before acting.
 - **7am and 8:30am can land seconds apart in PDT** (14:59 and 15:00 UTC). Both read the baseline before either writes it, so a changed roster could go out twice. Accepted.

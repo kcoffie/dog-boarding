@@ -132,14 +132,14 @@ The overnight sync is split into four cron stages to work within Vercel Hobby pl
 
 **Multi-pet appointments:** when multiple dogs share one booking, `parseAppointmentPage` returns `all_pet_names[]` and `perPetRates[]`. The mapping layer creates a primary boarding (external ID = appointment ID) and secondary boardings (external ID = `{appt_id}_p{index}`), each with their own dog record, upserted independently.
 
-### Notify pipeline (GitHub Actions)
+### Notify pipeline (Vercel crons)
 
-Four workflows fire at 4am, 7am, 8:30am PDT (Mon–Fri) and Friday 3pm PDT:
+Vercel crons call `/api/notify` in the 4am, 7am and 8am Pacific hours (Mon–Fri) and Friday at 3pm; the Pacific hour picks the window, so daylight time needs no edits (REQ-658, REQ-659). GitHub keeps a late 4am fallback and manual re-sends.
 
-1. GitHub Actions calls `GET /api/notify?window=4am&token=SECRET`
+1. A Vercel cron calls `GET /api/notify` (authorized by `CRON_SECRET`); each window claims its day first, so it sends once
 2. `notify.js` refreshes the live daytime schedule from the external site
 3. Calls `/api/roster-image` — a serverless function that renders a branded PNG using `satori` (JSX → SVG) + `resvg` (SVG → PNG), showing each worker's dogs with a day-over-day diff
-4. Sends the image to all `NOTIFY_RECIPIENTS` via Meta Cloud API
+4. Sends the image on `ROSTER_CHANNEL` (Telegram to Kate today; a channel for the team is #260)
 5. Stores a hash of the roster data in `cron_health` — the 7am and 8:30am windows skip the send if nothing changed
 
 ### Monitoring (3 independent layers)
@@ -300,10 +300,10 @@ scripts/
 └── gmail-monitor.js         # Hourly Gmail infrastructure alert monitor
 
 .github/workflows/
-├── notify-4am.yml           # 4:00 AM PDT Mon–Fri
-├── notify-7am.yml           # 7:00 AM PDT Mon–Fri
-├── notify-830am.yml         # 8:30 AM PDT Mon–Fri
-├── notify-friday-pm.yml     # 3:00 PM PDT Fri (weekend boarding preview)
+├── notify-4am.yml           # 4am roster late fallback (14:00 UTC Mon–Fri); Vercel sends it on time
+├── notify-7am.yml           # Manual 7am re-check (Vercel sends it on time)
+├── notify-830am.yml         # Manual 8:30am re-check (Vercel sends it on time)
+├── notify-friday-pm.yml     # Manual weekend preview re-send (Vercel sends it on time)
 ├── integration-check.yml    # 1am/9am/5pm PDT + on-demand
 ├── cron-health-check.yml    # 00:30 UTC daily
 └── gmail-monitor.yml        # Hourly at :15

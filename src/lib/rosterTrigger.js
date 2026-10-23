@@ -197,6 +197,11 @@ export function missReason(prior, date) {
   return "started but didn't finish";
 }
 
+/** True when today's claim is a call still in progress (it will report its own outcome). */
+export function fourAmRunningToday(prior, date) {
+  return prior?.result?.date === date && prior.status === 'started';
+}
+
 /** True when the claim already recorded today's no-data outcome (its alert went out then). */
 export function noDataAlreadyReported(prior, date) {
   return prior?.result?.date === date && prior.result.outcome === 'no_data';

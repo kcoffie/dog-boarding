@@ -184,7 +184,7 @@ Ships with **ADR-004: rosters sent by Vercel crons on the Pacific hour, with cla
 - **Friday pm gets a retry hour** (15:00–16:59 Fri Pacific, `0 0 * * 6` added).
 - **ops-watch checks the window claims the same morning**; cron-health-check is the backstop.
 - **Every failure path on the trigger alerts** (four paths, a test each).
-- **`no_data` at 7am/8:30am is a failure** unless 4am found no data too.
+- **`no_data` at 7am/8:30am is a failure** unless 4am found no data too (or a 4am call is still running today, found in the code review).
 - **ops-watch's "No morning roster sent today"** also counts `notify-7am` and `notify-8:30am` sends, so a day where 4am failed but 7am sent isn't reported as "no roster".
 - **Known and accepted:** in PDT, 7am and 8:30am can land seconds apart (14:59, 15:00). Both read the baseline before either writes it, so a changed roster could go out twice.
 - **Same PR:** REQ-659 (the Ops range's last number) for these windows; REQ-611/612/630 and the job docs (table, DST note, the stale "a failure clears `lastHash`" line) updated; ADR-004; `docs/SPRINT_PLAN.md`'s ADR numbering updated.

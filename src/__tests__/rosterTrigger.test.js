@@ -13,7 +13,7 @@ import {
   CLAIM_ROW, NEVER, pacificClock, onTimeWindowOpen, fallbackHourReached, readClaim, claimDay,
   finishClaim, missReason, noDataAlreadyReported, lateSendAlert, missedAlert, noDataAlert, isWeekday,
   rosterSentToday, CLAIM_ROWS, WINDOW_ALERT_JOB, triggerWindow, windowFailedAlert, morningWindowsDue,
-  eveningWindowsDue, checkWindowRuns,
+  eveningWindowsDue, checkWindowRuns, fourAmRunningToday,
 } from '../lib/rosterTrigger.js';
 
 const at = (iso) => pacificClock(new Date(iso));
@@ -480,5 +480,15 @@ describe('checkWindowRuns', () => {
 
   it('no windows due: nothing to check', () => {
     expect(checkWindowRuns({}, { date: '2026-10-24', windows: [] })).toStrictEqual([]);
+  });
+});
+
+describe('fourAmRunningToday', () => {
+  it("is true only for today's claim that is still started", () => {
+    expect(fourAmRunningToday({ status: 'started', result: { date: '2026-10-19' } }, '2026-10-19')).toBe(true);
+    expect(fourAmRunningToday({ status: 'started', result: { date: '2026-10-16' } }, '2026-10-19')).toBe(false);
+    expect(fourAmRunningToday({ status: 'success', result: { date: '2026-10-19' } }, '2026-10-19')).toBe(false);
+    expect(fourAmRunningToday(null, '2026-10-19')).toBe(false);
+    expect(fourAmRunningToday({ unreadable: true }, '2026-10-19')).toBe(false);
   });
 });

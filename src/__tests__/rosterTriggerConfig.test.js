@@ -74,10 +74,10 @@ describe.skipIf(!existsSync(WORKFLOW))('notify-4am.yml: the late fallback', () =
   });
 });
 
-describe('the other roster workflows: manual runs only (REQ-659)', () => {
-  it.each(['notify-7am.yml', 'notify-830am.yml', 'notify-friday-pm.yml'])('%s has no schedule and keeps workflow_dispatch', (file) => {
-    const path = resolve(process.cwd(), '.github/workflows', file);
-    if (!existsSync(path)) return;
+const MANUAL = ['notify-7am.yml', 'notify-830am.yml', 'notify-friday-pm.yml'].map((f) => resolve(process.cwd(), '.github/workflows', f));
+
+describe.skipIf(!MANUAL.every(existsSync))('the other roster workflows: manual runs only (REQ-659)', () => {
+  it.each(MANUAL)('%s has no schedule and keeps workflow_dispatch', (path) => {
     const text = readFileSync(path, 'utf8');
     expect(text).not.toMatch(/^\s*schedule:/m);
     expect(text).not.toMatch(/- cron:/);

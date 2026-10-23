@@ -1230,7 +1230,7 @@ Vercel crons call `/api/notify` at three windows each weekday morning (REQ-658, 
 - On next window: if hash matches → skip send, log "no change"
 - 4am sends whatever the hash (first window of day), once per Pacific day for the automatic calls (REQ-658)
 - A send that reached **no** recipient (every result `failed`) does not count as sent (#255): the hash is not stored, `cron_health` `notify` records `failure` with `No recipient received the roster (N of N sends failed)`, and the endpoint returns 500 so the workflow run goes red. The next window has no baseline and sends again. A send that reached at least one recipient counts as sent.
-- `friday-pm` always sends (separate workflow, no hash gate)
+- `friday-pm` always sends (no hash gate)
 - `shouldSendNotification(window, lastHash, currentHash)` in `pictureOfDay.js`
 
 **Tests:** `src/__tests__/lib/pictureOfDay.test.js`, `src/__tests__/notifyHandler.test.js`
@@ -1572,7 +1572,7 @@ The 7am, 8:30am and Friday 3pm rosters were GitHub schedules, 4–6 h late and P
 - **The Pacific hour picks the trigger's window:** 04:00–05:59 Mon–Fri `4am`; 07:00–07:59 Mon–Fri `7am`; 08:00–08:59 Mon–Fri `8:30am`; 15:00–16:59 Fri `friday-pm` (the 16:00 hour is a retry). Any other hour is 200 `skipped` / `outside_window` with nothing read or written
 - Vercel crons call `/api/notify` with no query at `0 11`, `0 12`, `0 14`, `0 15`, `0 16 * * *` and `0 22`, `0 23 * * 5` and `0 0 * * 6` (13 crons in the project). The 8:30am roster lands anywhere from 8:00 to 8:59
 - **Each window claims its own `cron_health` row before any work:** `notify-7am-claim`, `notify-830am-claim`, `notify-friday-pm-claim` (the same claim as REQ-658). A lost claim returns 200 `skipped` / `already_claimed` and makes no booking-site request. A duplicate delivery at the same moment sends once
-- The claim ends `success` with outcome `sent`, or `unchanged` (the hash gate skipped). No roster data at 7am/8:30am is `success` / `no_data` only when today's 4am claim also recorded `no_data`; otherwise it is `failure` and alerts
+- The claim ends `success` with outcome `sent`, or `unchanged` (the hash gate skipped). No roster data at 7am/8:30am is `success` / `no_data` only when today's 4am claim also recorded `no_data` or is still `started` (a 4am call in progress reports its own); otherwise it is `failure` and alerts (`… roster failed at … : no roster data`)
 - **Every failed trigger call for these windows alerts Kate** (job `notify-alert`, in ops-watch's `ALERT_JOBS`): a claim that can't be made, a bad `ROSTER_CHANNEL`, a failed weekend send and a failed weekday send. Text: `⚠️ The <7am|8:30am|Friday pm> roster failed at <time> on <date>: <error>`. The claim records `failure` with the error. A failed 4am trigger call and a failed token call don't use this alert (the 4am fallback and the red GitHub run are their signals)
 - The trigger's weekend roster is rendered from the production domain, like the daily windows
 - **Watchers:** ops-watch (17:00 UTC) reports each of today's 7am and 8:30am windows that didn't finish (and on Saturday, Friday's Friday pm). cron-health-check (GitHub, 00:30 UTC) reports the same for the Pacific day of (now − 12 h), Friday pm included on Fridays. One line per window: didn't run, failed (with the error), or started but didn't finish
