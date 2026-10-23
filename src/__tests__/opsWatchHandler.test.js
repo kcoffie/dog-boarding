@@ -1,6 +1,6 @@
 /**
  * /api/ops-watch handler: auth, dry run, cron_health, and the data it hands to the rules (REQ-651).
- * @requirements REQ-651, REQ-652, REQ-657, REQ-658, REQ-659
+ * @requirements REQ-651, REQ-652, REQ-657, REQ-658, REQ-659, REQ-660
  *
  * Boundaries faked: Supabase (a chainable fake returning queued results per table), fetch
  * (GitHub + the roster image), Kate's alert channel (alertAndLog), and the cron_health writer.

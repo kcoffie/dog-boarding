@@ -17,7 +17,7 @@ import { SCRAPER_CONFIG } from '../../lib/scraper/config.js';
 import { classifyRedirect, DetailRedirected, SESSION_EXPIRED_MESSAGE } from '../../lib/scraper/redirects.js';
 import { classifyCandidateResponse } from '../../lib/scraper/reconcile.js';
 import { setSession, resetSiteStop } from '../../lib/scraper/auth.js';
-import { fetchAppointmentDetails } from '../../lib/scraper/extraction.js';
+import { fetchAppointmentDetails, parseAppointmentPage } from '../../lib/scraper/extraction.js';
 import { fetchAndStoreBoardingForm } from '../../lib/scraper/forms.js';
 import { mapAndSaveAppointment } from '../../lib/scraper/mapping.js';
 
@@ -76,7 +76,12 @@ beforeEach(() => {
   resetSiteStop();
   setSession('session=test');
   // Every booking-site URL goes to the local server; the options (redirect included) pass through untouched
-  vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => realFetch(String(url).replace(SITE, localBase), options));
+  // Anything not addressed to the booking site fails the test instead of reaching the network
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
+    const target = String(url);
+    if (!target.startsWith(SITE)) throw new Error(`unexpected host: ${target}`);
+    return realFetch(target.replace(SITE, localBase), options);
+  });
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -136,9 +141,12 @@ describe('REQ-660: classifyRedirect', () => {
     expect(classifyRedirect(res(302, 'http://[bad'))).toBe('elsewhere');
   });
 
-  it('a 399 is a redirect and a 300 is a redirect (the 3xx range)', () => {
-    expect(classifyRedirect(res(399, '/schedule'))).toBe('schedule');
+  it('a 300 is a redirect (the bottom of the 3xx range)', () => {
     expect(classifyRedirect(res(300, '/schedule'))).toBe('schedule');
+  });
+
+  it('a 399 is a redirect (the top of the 3xx range)', () => {
+    expect(classifyRedirect(res(399, '/schedule'))).toBe('schedule');
   });
 
   it('reconciliation still reads a 302 to /schedule as gone, and the login page as unexpected', () => {
@@ -243,6 +251,14 @@ describe('REQ-660: a page with no dates writes nothing', () => {
     expect(result.dog).toBe(null);
     expect(result.boarding).toBe(null);
     expect(result.syncAppointment).toBe(null);
+  });
+
+  it('the schedule\'s week page, parsed as a booking, has no dates, so nothing from it is written', async () => {
+    const parsed = parseAppointmentPage(WEEK_PAGE, `${SITE}/schedule`);
+    expect(parsed.check_in_datetime).toBe(null);
+    expect(parsed.check_out_datetime).toBe(null);
+    const result = await mapAndSaveAppointment({ ...parsed, external_id: 'C63QAAAA' }, { supabase: noDb, externalPetId: '10001' });
+    expect(result.skipped).toBe('dateless_page');
   });
 
   it('a check-in without a check-out is skipped too', async () => {

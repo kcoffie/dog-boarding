@@ -426,18 +426,49 @@ export async function alertDetailNotices(supabase, notices) {
     `⚠️ Q Boarding sync: ${lines.length} booking page(s) not read\n• ${lines.join('\n• ')}`);
 }
 
-// Whether this booking last held a real stay: a boarding under its ID, or dates on its sync row.
+/** Results that end a drain: nothing left, or no usable session. */
+export const DRAIN_STOP_ACTIONS = ['idle', 'session_cleared', 'session_failed', 'site_blocked'];
+
+/**
+ * Process queue items one at a time until a stop action or `maxItems`, then send the run's one alert
+ * for pages that couldn't be read. The alert goes out even when an item throws (a 429 stop, a database
+ * error): those items are already marked as reported, so a notice lost here would never come back (#344).
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ maxItems: number, pauseMs?: number, onItem?: (result: Object, index: number) => void }} options
+ * @returns {Promise<Object[]>} each item's runDetailSync result
+ */
+export async function drainDetailQueue(supabase, { maxItems, pauseMs = 0, onItem = () => {} }) {
+  const results = [];
+  try {
+    for (let i = 0; i < maxItems; i++) {
+      const result = await runDetailSync(supabase, { runResetStuck: false });
+      results.push(result);
+      onItem(result, i);
+      if (DRAIN_STOP_ACTIONS.includes(result.action)) break;
+      if (pauseMs > 0) await new Promise((resolve) => setTimeout(resolve, pauseMs));
+    }
+  } finally {
+    await alertDetailNotices(supabase, results.map((r) => r.notice));
+  }
+  return results;
+}
+
+// Whether this booking last held a real stay: a boarding under its ID, or dates on its sync row or
+// in that row's previous version (a week page overwrote some rows' dates before #344).
 // When that can't be read, assume it did, so Kate hears about it rather than nothing.
 async function heldAStay(supabase, externalId) {
   try {
     const [boardings, syncRow] = await Promise.all([
       supabase.from('boardings').select('id').eq('external_id', externalId).limit(1),
-      supabase.from('sync_appointments').select('check_in_datetime').eq('external_id', externalId).maybeSingle(),
+      supabase.from('sync_appointments').select('check_in_datetime, previous_data').eq('external_id', externalId).maybeSingle(),
     ]);
     // Stryker disable next-line ConditionalExpression: on an error Supabase's data is null, so .length throws into the same catch
     if (boardings.error) throw boardings.error;
     if (syncRow.error) throw syncRow.error;
-    return boardings.data.length > 0 || Boolean(syncRow.data?.check_in_datetime);
+    return boardings.data.length > 0
+      || Boolean(syncRow.data?.check_in_datetime)
+      || Boolean(syncRow.data?.previous_data?.check_in_datetime);
   } catch (err) {
     console.error(`[SyncRunner:Detail] ⚠️ Couldn't check whether ${externalId} held a stay: ${errorText(err)}`);
     return true;
@@ -464,6 +495,16 @@ async function finishRedirected(supabase, item, err) {
   await markDone(supabase, item.id, { meta });
   const queueDepth = await getQueueDepth(supabase);
   return { action, externalId: item.external_id, queueDepth, notice };
+}
+
+// A page that was read: drop any earlier redirect or dateless mark, so the same URL failing again later
+// is reported again (#344). Undefined (meta untouched) when there's nothing to drop.
+function readAgainMeta(item) {
+  if (!item.meta || !('detail_redirect' in item.meta || 'detail_dateless' in item.meta)) return undefined;
+  const meta = { ...item.meta };
+  delete meta.detail_redirect;
+  delete meta.detail_dateless;
+  return { meta };
 }
 
 // A page without check-in/check-out isn't a booking page; the site's layout may have changed. Nothing
@@ -494,7 +535,8 @@ async function finishDateless(supabase, item) {
  *   before dequeuing. Pass false when looping to avoid redundant DB queries
  *   on every iteration — the caller should call resetStuck once before the loop.
  * @returns {Promise<{
- *   action: 'idle'|'created'|'updated'|'unchanged'|'form_stored'|'skipped'|'failed'|'form_failed'|'save_failed'|'session_failed'|'session_cleared'|'site_blocked',
+ *   action: 'idle'|'created'|'updated'|'unchanged'|'form_stored'|'skipped'|'failed'|'form_failed'|'save_failed'|'session_failed'|'session_cleared'|'site_blocked'|'redirected_to_schedule'|'redirected_elsewhere'|'dateless_page',
+ *   notice?: string|null,  // a page that couldn't be read, for the caller's one alert per run (#344)
  *   externalId?: string,
  *   queueDepth?: number,
  *   error?: string,
@@ -617,7 +659,9 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   try {
     const saveResult = await mapAndSaveAppointment(details, { supabase, externalPetId });
     if (saveResult.skipped === 'dateless_page') return finishDateless(supabase, item);
-    await markDone(supabase, item.id);
+    const readAgain = readAgainMeta(item);
+    if (readAgain) await markDone(supabase, item.id, readAgain);
+    else await markDone(supabase, item.id);
 
     const { stats } = saveResult;
     const action = stats.syncCreated ? 'created'

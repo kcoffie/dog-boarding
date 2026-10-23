@@ -127,7 +127,8 @@ The detail step opened a booking and the booking site didn't show it (#344, REQ-
   - **Cancelled or gone:** its boarding is still in the app until reconciliation catches it (#316). Mark it archived (below) if it affects tonight's roster or pay.
 - **"redirected to …" anywhere else:** the site sent the page somewhere unexpected. Check the booking on the site; if it keeps happening across bookings, the site changed and the sync needs a look.
 - **"had no check-in/check-out dates":** a booking page came back without its dates, so the site's page layout may have changed. If several arrive, stop and check the HTML before trusting new syncs.
-- Playgroup series that redirect but never held a stay are counted (`redirected_to_schedule` in the detail result) but not alerted.
+- Playgroup series that redirect but never held a stay are counted (`redirected_to_schedule` in the detail result) but not alerted. "Held a stay" means a boarding under the booking's ID, or dates on its sync row or that row's previous version.
+- **Known gap (accepted):** each item is marked as reported before the alert is sent. If a run is killed in the seconds between (a Vercel timeout), that one alert is lost; the item's `meta.detail_redirect` in `sync_queue` still records it.
 
 ### "Ops watch sent an alert" (WhatsApp "Q Boarding ops watch", or a GitHub email from "Ops alert")
 
