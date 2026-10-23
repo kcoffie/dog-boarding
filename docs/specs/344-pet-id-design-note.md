@@ -43,9 +43,15 @@ After that, the secondary-pet loop runs once for each of the other ~200+ names: 
 - **The two-pet fixture (commit `afbf883`, 2026-02-25) is weaker evidence.**
   - What it shows: two bare `<a class="event-pet pet-N" data-pet="N">` elements. Before the #264 scrub they carried the real IDs 90053 and 201014, the household Kate checked on 10-23.
   - What it lacks: the nesting. It looks hand-assembled, so it proves the per-pet element exists on a two-pet page, not the full structure (open question 3).
+- **Confirmed on two real two-pet bookings (2026-10-23, Kate's Chrome, read-only, with her OK; `C63QhFVc` and `C63QhB7h`):**
+  - Both have the full nesting: `.event-clients-pets[data-uid]` → `.event-pets.pets-count-2[data-pets]` → `.event-pet-wrapper[data-pet]` → `a.event-pet[data-pet][href="/pets/N"]`. Each page has one `.event-clients-pets`.
+  - **Every price div carries `data-pet` and `data-client`.** Each rate belongs to a pet by ID, not by position. The recorded fixture had lost these attributes.
+  - The `p-N` class is not a pet index: both pets' night prices are `p-7`.
+  - **The order differs inside one page.** On `C63QhB7h` the container says `data-pets="201014,90053"`, but the pet links come 90053 first, then 201014. Pairing by position can take the wrong ID on an ordinary two-pet booking; pairing by ID can't.
+  - Caveat: these were read from Chrome's rendered page, not the raw HTML the sync downloads. PR 2's tests use these shapes, and PR 2 logs (without names) what the first real raw page holds before relying on it.
 - Today the sync ignores the per-pet ID and takes the schedule's first `data-pet`. Second pets never get an ID (`mapping.js` 2c), so their forms are never fetched.
 - `extractAllPetNames`' regex `event-pet[^"]*` also matches `event-pets` and `event-pet-wrapper`. They're dropped only because their text is whitespace.
-- The recorded price divs (`.price.p-N`) carry **no** `data-pet`; per-pet rates are paired by position (open question 2).
+- The recorded price divs carry no `data-pet`, but the real ones do (above). Per-pet rates are paired by position today; PR 2 pairs them by `data-pet`.
 
 ### 4. Today's data (2026-10-23 ~21:00 UTC)
 - Dogs:
@@ -167,8 +173,8 @@ No new secret or endpoint. The risk this removes is showing one client's pet's f
 
 ## Open questions (not assumed)
 1. **Is there always one `.event-clients-pets` block per appointment?** True on the recorded pages, but unproven for multi-client appointments. Not used as a guard; "no dates" is the guard.
-2. **Per-pet rates by position:** do the `.price.p-N` divs follow the pet-link order? Not provable from the recordings. Kate named two two-pet bookings to check (`C63QhFVc`, `C63QhB7h`).
-3. **The two-pet page's full structure** (the fixture looks hand-assembled): PR 2 logs, without names, the pet-element count and the nesting found on each real multi-pet page, so the first real one confirms it.
+2. ~~Per-pet rates by position~~ **Answered (10-23):** real price divs carry `data-pet`. PR 2 reads each pet's rate by ID; a price div without `data-pet` gives no rate for that pet (logged).
+3. ~~The two-pet page's full structure~~ **Answered (10-23)** from two real bookings, as rendered by Chrome. PR 2 still logs the raw page's shape the first time it reads one.
 4. ~~A pet renamed on the booking site~~ **Decided (Kate, 10-23): alert only**, never rename automatically.
 5. ~~Alert volume~~ **Decided (Kate, 10-23): one summary per run**, deduplicated per booking.
 6. **Why does the site redirect a playgroup series that is still on the schedule?** Unknown. It doesn't change the fix (nothing is written either way), but the run counts will show how often it happens.
