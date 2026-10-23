@@ -9,6 +9,7 @@ import { applyDetailFilters } from './appointmentFilter.js';
 import { resetSiteStop, SiteThrottled } from './auth.js';
 import { fetchAllSchedulePages } from './schedule.js';
 import { fetchAppointmentDetails } from './extraction.js';
+import { DetailRedirected } from './redirects.js';
 import { mapAndSaveAppointment } from './mapping.js';
 import { reconcileArchivedAppointments } from './reconcile.js';
 import { fetchAndStoreBoardingForm } from './forms.js';
@@ -387,6 +388,11 @@ export async function runSync(options = {}) {
         const saveStart = Date.now();
         const saveResult = await mapAndSaveAppointment(details, { supabase, externalPetId: appt.petIds?.[0] || null });
         const saveDuration = Date.now() - saveStart;
+        if (saveResult.skipped) {
+          syncWarn(`[Sync] ⏭️ Skipping ${appt.id}: ${saveResult.skipped}, nothing written`);
+          result.appointmentsSkipped++;
+          continue;
+        }
 
         const totalDuration = Date.now() - apptStart;
         appointmentTimings.push({ id: appt.id, fetch: fetchDuration, save: saveDuration, total: totalDuration });
@@ -408,6 +414,12 @@ export async function runSync(options = {}) {
       } catch (error) {
         // A 429/403 ends the run: no more requests, no reconciliation (#324)
         if (error instanceof SiteThrottled) throw error;
+        // A page that redirected isn't this booking: nothing written, not a failure (#344)
+        if (error instanceof DetailRedirected) {
+          syncWarn(`[Sync] ⏭️ Skipping ${appt.id}: ${error.message}, nothing written`);
+          result.appointmentsSkipped++;
+          continue;
+        }
         result.appointmentsFailed++;
         const sanitizedMsg = sanitizeError(error.message);
         result.errors.push({

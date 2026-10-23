@@ -4,8 +4,8 @@
  * @requirements REQ-108
  */
 
-import { SCRAPER_CONFIG } from './config.js';
 import { authenticatedFetch, SiteThrottled } from './auth.js';
+import { classifyRedirect } from './redirects.js';
 import { syncLogger } from './logger.js';
 
 const syncLog = syncLogger.log;
@@ -33,16 +33,8 @@ export const MAX_ARCHIVES = 3;
  * @returns {'gone'|'present'|'unexpected'}
  */
 export function classifyCandidateResponse(response, html) {
-  if (response.status >= 300 && response.status < 400) {
-    let target = null;
-    try {
-      target = new URL(response.headers.get('location') || '', SCRAPER_CONFIG.baseUrl);
-    } catch {
-      // unparseable Location: unexpected
-    }
-    const site = new URL(SCRAPER_CONFIG.baseUrl).host;
-    return target?.host === site && target.pathname === '/schedule' ? 'gone' : 'unexpected';
-  }
+  const redirect = classifyRedirect(response);
+  if (redirect) return redirect === 'schedule' ? 'gone' : 'unexpected';
   if (response.status === 200 && html.includes('data-start_scheduled')) return 'present';
   return 'unexpected';
 }

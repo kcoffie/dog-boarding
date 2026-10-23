@@ -95,7 +95,7 @@ Current patterns:
 - **its title changed** (for example "10/18PM-23" → "10/18PM-24am", a moved checkout), or
 - **its URL timestamp changed and the detail step didn't skip it.** A stay's links all carry its start time, so a change means the start moved. A recurring daycare/PG series has one timestamp per visit, so its timestamp changes every few days without any edit. Those are the items the detail step skips (`meta.detail_skip`), so their URL changes are ignored.
 
-A re-queue stores the scan's URL and title, merges meta (keeping a stored `external_pet_id`), and clears `detail_skip`. The `schedule` `cron_health` row reports `requeuedEdited` and `urlChangesIgnored`: `requeuedEdited` should be near 0 on most days. Before #278, every scan re-queued about 30 PG series and the backlog grew without end.
+A re-queue stores the scan's URL and title, merges meta (keeping a stored `external_pet_id`), and clears `detail_skip`. An item whose page **redirected** (#344, REQ-660) is marked `detail_redirect`, not `detail_skip`, so a URL change does re-queue it: an edited stay's old URL redirects and its new one must be read. Measured 2026-10-23: of the 74 items that had redirected, 1 was re-queued since 10-20, so this costs about one request per URL change, half what following the redirect cost. The `schedule` `cron_health` row reports `requeuedEdited` and `urlChangesIgnored`: `requeuedEdited` should be near 0 on most days. Before #278, every scan re-queued about 30 PG series and the backlog grew without end.
 
 #### Daytime ingestion (bonus pass)
 On the same HTML already fetched, calls `parseDaytimeSchedulePage()` and `upsertDaytimeAppointments()` to keep `daytime_appointments` fresh. No extra HTTP requests.
@@ -115,6 +115,8 @@ If the schedule page HTML contains both `"login"` and `"password"`, the session 
 
 ### What it does
 Picks one item off the `sync_queue`, fetches its full detail page (or form page), and upserts the result into `boardings`, `dogs`, and related tables. Handles two item types: `appointment` and `form`.
+
+**Redirects (#344, REQ-660):** detail and form pages are fetched without following redirects. A booking page that redirects to `/schedule` writes nothing (`redirected_to_schedule`); `/login` is an expired session; anything else is `redirected_elsewhere`. A booking page with no dates writes nothing (`dateless_page`). Kate gets one `sync-detail` alert per run for a redirected booking that held a stay, any other redirect, or a dateless page (once per URL). Runbook: "Q Boarding sync: N booking page(s) not read".
 
 ### Why one item per run
 Vercel Hobby functions have a **10-second execution timeout**. A single detail page fetch + parse + DB write fits in ~2–4s. Processing multiple items would risk timeout on slow responses. For bulk catch-up, the UI "Sync Now" button calls this endpoint in a loop until the queue is empty.

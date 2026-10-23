@@ -39,7 +39,7 @@
 import { chromium } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
 import { alertAndLog, exitCodeAfterAlert } from '../src/lib/alertKate.js';
-import { runScheduleSync, runDetailSync } from '../src/lib/scraper/syncRunner.js';
+import { runScheduleSync, runDetailSync, alertDetailNotices } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 import { getSiteSession, tripBreaker, throttleReason } from '../src/lib/scraper/siteAccess.js';
 import { SCRAPER_CONFIG } from '../src/lib/scraper/config.js';
@@ -486,8 +486,10 @@ async function main() {
       const MAX_DETAIL_ITERATIONS = 20;
       await resetStuck(supabase);
       let drained = 0;
+      const detailNotices = [];
       for (let i = 0; i < MAX_DETAIL_ITERATIONS; i++) {
         const detailResult = await runDetailSync(supabase, { runResetStuck: false });
+        detailNotices.push(detailResult.notice);
         console.log(
           '[IntegCheck] Step 0 detail [%d/%d]: action=%s queueDepth=%d',
           i + 1,
@@ -504,6 +506,8 @@ async function main() {
         }
       }
       console.log('[IntegCheck] Step 0 done: %d detail iteration(s)', drained);
+      // Booking pages the drain couldn't read: one summary for the run (#344)
+      await alertDetailNotices(supabase, detailNotices);
     }
   } catch (step0Err) {
     // A 429/403 from the booking site tripped the breaker, which alerted Kate: no browser page load

@@ -623,7 +623,7 @@ export async function upsertSyncAppointment(supabase, syncData, options = {}) {
  * @param {boolean} [options.overwriteManual=false] - Whether to overwrite manual entries
  * @param {boolean} [options.forceUpdate=false] - Force update even if unchanged
  * @param {import('@supabase/supabase-js').SupabaseClient} [options.supabase] - Supabase client
- * @returns {Promise<{dog: Object, boarding: Object, syncAppointment: Object, stats: Object, changeDetails: Object|null}>}
+ * @returns {Promise<{dog: Object, boarding: Object, syncAppointment: Object, stats: Object, changeDetails: Object|null, skipped?: 'dateless_page'}>}
  */
 export async function mapAndSaveAppointment(externalData, options = {}) {
   const { overwriteManual = false, forceUpdate = false, supabase = getSupabaseClient(), externalPetId = null } = options;
@@ -638,6 +638,13 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
     syncUnchanged: false,
   };
 
+  // 0. A booking page always has its dates. One without them isn't a booking (the week schedule
+  // once came back here), so nothing from it is written: no dog, boarding or sync row (#344).
+  if (!externalData.check_in_datetime || !externalData.check_out_datetime) {
+    mappingLogger.warn(`[Mapping] ⛔ ${externalData.external_id}: no check-in/check-out on the page, nothing written`);
+    return { dog: null, boarding: null, syncAppointment: null, stats, changeDetails: null, skipped: 'dateless_page' };
+  }
+
   // 1. Upsert dog
   // Pass updateRates=true when pricing was extracted so existing dogs get
   // their rates refreshed from the external site (source of truth, REQ-201).
@@ -651,15 +658,12 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
   stats.dogCreated = dogCreated;
   stats.dogUpdated = dogUpdated;
 
-  // 2. Upsert boarding (only if we have valid dates)
-  let boarding = null;
-  if (externalData.check_in_datetime && externalData.check_out_datetime) {
-    const boardingData = mapToBoarding(externalData, dog.id);
-    const result = await upsertBoarding(supabase, boardingData);
-    boarding = result.boarding;
-    stats.boardingCreated = result.created;
-    stats.boardingUpdated = result.updated;
-  }
+  // 2. Upsert boarding (the dates were checked in step 0)
+  const boardingData = mapToBoarding(externalData, dog.id);
+  const boardingResult = await upsertBoarding(supabase, boardingData);
+  const boarding = boardingResult.boarding;
+  stats.boardingCreated = boardingResult.created;
+  stats.boardingUpdated = boardingResult.updated;
 
   // 2b. Enqueue form fetch job if boarding is current/upcoming and pet ID is known.
   // Form fetch jobs are processed by cron-detail (type='form').
@@ -725,18 +729,16 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
       secondaryDogData,
       { overwriteManual, updateRates: externalData.pricing != null }
     );
-    if (externalData.check_in_datetime && externalData.check_out_datetime) {
-      await upsertBoarding(supabase, {
-        dog_id: secondaryDog.id,
-        arrival_datetime: externalData.check_in_datetime,
-        departure_datetime: externalData.check_out_datetime,
-        source: 'external',
-        external_id: `${externalData.external_id}_p${p}`,
-        billed_amount: null,
-        night_rate: petRates.nightRate ?? null,
-        day_rate: petRates.dayRate ?? null,
-      });
-    }
+    await upsertBoarding(supabase, {
+      dog_id: secondaryDog.id,
+      arrival_datetime: externalData.check_in_datetime,
+      departure_datetime: externalData.check_out_datetime,
+      source: 'external',
+      external_id: `${externalData.external_id}_p${p}`,
+      billed_amount: null,
+      night_rate: petRates.nightRate ?? null,
+      day_rate: petRates.dayRate ?? null,
+    });
   }
 
   // 3. Upsert sync_appointment (raw data storage) with change detection

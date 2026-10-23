@@ -118,6 +118,17 @@ The breaker (#324, REQ-657) tripped: the booking site refused the app's login, o
 
 ---
 
+### "Q Boarding sync: N booking page(s) not read" (Telegram, job `sync-detail`)
+
+The detail step opened a booking and the booking site didn't show it (#344, REQ-660). Nothing was written for it: no dog, boarding or sync row changed. Each line names the booking ID and title, once per URL.
+
+- **"now redirects to the schedule (stay moved or cancelled?)":** the booking last held a stay. Open it on the booking site from the schedule (not the old link):
+  - **Moved** (new start time or dates): nothing to do. Its URL changed, so the next scan (4 a day) re-queues it and reads it.
+  - **Cancelled or gone:** its boarding is still in the app until reconciliation catches it (#316). Mark it archived (below) if it affects tonight's roster or pay.
+- **"redirected to …" anywhere else:** the site sent the page somewhere unexpected. Check the booking on the site; if it keeps happening across bookings, the site changed and the sync needs a look.
+- **"had no check-in/check-out dates":** a booking page came back without its dates, so the site's page layout may have changed. If several arrive, stop and check the HTML before trusting new syncs.
+- Playgroup series that redirect but never held a stay are counted (`redirected_to_schedule` in the detail result) but not alerted.
+
 ### "Ops watch sent an alert" (WhatsApp "Q Boarding ops watch", or a GitHub email from "Ops alert")
 
 `/api/ops-watch` runs on Vercel once a day, some time between 17:00 and 17:59 UTC (Hobby cron precision) and checks outcomes, not just whether jobs ran. Every line of the alert is one finding:

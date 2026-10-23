@@ -20,13 +20,13 @@ vi.mock('../lib/scraper/siteAccess.js', async (importOriginal) => ({
   storeSiteSession: vi.fn(),
   tripBreaker: vi.fn(async () => true),
 }));
-vi.mock('../lib/scraper/syncRunner.js', () => ({ runScheduleSync: vi.fn(), runDetailSync: vi.fn() }));
+vi.mock('../lib/scraper/syncRunner.js', () => ({ runScheduleSync: vi.fn(), runDetailSync: vi.fn(), alertDetailNotices: vi.fn(async () => null) }));
 vi.mock('../lib/scraper/syncQueue.js', () => ({ resetStuck: vi.fn(async () => 0) }));
 vi.mock('../../api/_cronHealth.js', () => ({ writeCronHealth: vi.fn(async () => {}) }));
 
 const { authenticate } = await import('../lib/scraper/auth.js');
 const { readSiteAccess, storeSiteSession, tripBreaker } = await import('../lib/scraper/siteAccess.js');
-const { runScheduleSync, runDetailSync } = await import('../lib/scraper/syncRunner.js');
+const { runScheduleSync, runDetailSync, alertDetailNotices } = await import('../lib/scraper/syncRunner.js');
 const { resetStuck } = await import('../lib/scraper/syncQueue.js');
 const { writeCronHealth } = await import('../../api/_cronHealth.js');
 const { default: cronAuth } = await import('../../api/cron-auth.js');
@@ -351,6 +351,15 @@ describe('REQ-109: cron-detail', () => {
     expect(res.code).toBe(200);
     expect(res.body).toStrictEqual({ ok: true, action: 'created', externalId: 'EXT1', queueDepth: 4 });
     expect(writes('detail').at(-1)).toStrictEqual(['success', { action: 'created', externalId: 'EXT1', queueDepth: 4 }, null]);
+  });
+
+  it('REQ-660: a booking page it could not read is alerted with that run\'s notice and recorded as a successful run', async () => {
+    runDetailSync.mockResolvedValue({ action: 'redirected_to_schedule', externalId: 'EXT1', queueDepth: 4, notice: 'EXT1 "Dog A 10/24-27": its page now redirects' });
+    const res = await call(cronDetail);
+    expect(res.code).toBe(200);
+    expect(alertDetailNotices).toHaveBeenCalledTimes(1);
+    expect(alertDetailNotices.mock.calls[0][1]).toStrictEqual(['EXT1 "Dog A 10/24-27": its page now redirects']);
+    expect(writes('detail').at(-1)).toStrictEqual(['success', { action: 'redirected_to_schedule', externalId: 'EXT1', queueDepth: 4 }, null]);
   });
 
   it('a failed session is recorded as a failure with its reason, without failing the HTTP call', async () => {

@@ -12,6 +12,7 @@
 
 import { createSyncLogger } from './logger.js';
 import { authenticatedFetch } from './auth.js';
+import { classifyRedirect, SESSION_EXPIRED_MESSAGE } from './redirects.js';
 import { SCRAPER_CONFIG } from './config.js';
 
 const formsLogger = createSyncLogger('Forms');
@@ -210,6 +211,16 @@ export function findFormForBoarding(submissions, boarding) {
 }
 
 /**
+ * A form page that redirects is never parsed: /schedule would read as "no forms" (#344).
+ * The login page means the session expired; any other redirect fails the form job.
+ */
+function throwIfRedirected(response, what) {
+  const redirect = classifyRedirect(response);
+  if (redirect === 'login') throw new Error(SESSION_EXPIRED_MESSAGE);
+  if (redirect) throw new Error(`Booking site redirected the ${what} (${response.status}) to ${response.headers.get('location') || 'nowhere'}`);
+}
+
+/**
  * Fetch, parse, and store the boarding information form for a given boarding.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
@@ -223,7 +234,8 @@ export async function fetchAndStoreBoardingForm(supabase, boardingId, externalPe
 
   // 1. Fetch the forms list page
   const listUrl = `${SCRAPER_CONFIG.baseUrl}/pets/${externalPetId}/forms`;
-  const listResponse = await authenticatedFetch(listUrl);
+  const listResponse = await authenticatedFetch(listUrl, { redirect: 'manual' });
+  throwIfRedirected(listResponse, `forms list for pet ${externalPetId}`);
   if (!listResponse.ok) {
     throw new Error(`Forms list fetch failed: ${listResponse.status} for pet ${externalPetId}`);
   }
@@ -288,7 +300,8 @@ export async function fetchAndStoreBoardingForm(supabase, boardingId, externalPe
     ? `${SCRAPER_CONFIG.baseUrl}${selectedSub.submissionUrl}`
     : `${SCRAPER_CONFIG.baseUrl}/pets/${externalPetId}/forms/7913/view/${submissionId}`;
 
-  const detailResponse = await authenticatedFetch(detailUrl);
+  const detailResponse = await authenticatedFetch(detailUrl, { redirect: 'manual' });
+  throwIfRedirected(detailResponse, `form ${submissionId}`);
   if (!detailResponse.ok) {
     throw new Error(`Form detail fetch failed: ${detailResponse.status} (sub ${submissionId})`);
   }

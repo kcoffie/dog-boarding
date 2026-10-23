@@ -16,7 +16,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { runDetailSync } from '../src/lib/scraper/syncRunner.js';
+import { runDetailSync, alertDetailNotices } from '../src/lib/scraper/syncRunner.js';
 import { resetStuck } from '../src/lib/scraper/syncQueue.js';
 import { writeCronHealth } from './_cronHealth.js';
 
@@ -70,6 +70,9 @@ export default async function handler(req, res) {
       await writeCronHealth(supabase, 'detail', 'success', { action: 'session_cleared' }, null);
       return res.status(200).json({ ok: true, ...result });
     }
+
+    // A booking page that couldn't be read (#344): one item per run, so at most one alert
+    await alertDetailNotices(supabase, [result.notice]);
 
     await writeCronHealth(supabase, 'detail', 'success', {
       action: result.action,
