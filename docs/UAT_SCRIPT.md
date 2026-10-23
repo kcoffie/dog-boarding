@@ -31,7 +31,8 @@
 - Think aloud: say what you're looking for and what you expect to happen.
 - Kate doesn't coach. She helps only after Charlie has been stuck for about 2 minutes, and writes that down as a finding.
 - The spreadsheet stays the way she pays until M2: 4 pay periods in a row paid from the app's numbers (`docs/SPRINT_PLAN.md`). If the app is down or Kate can't be reached, she uses the spreadsheet.
-- What isn't live yet: the staff roster by phone (#260), the pay breakdown picture (#314), and fixing a wrong boarding yourself (#313).
+- What isn't live yet: the staff roster by phone (#260) and the pay breakdown picture (#314).
+- The booking site is the source of truth for dogs, rates and boardings. The app never gets edited by hand: if it's wrong, Charlie tells Kate, and it's fixed on the booking site or in the sync.
 
 **Acceptance criteria covered** (`docs/UAT_PLAN.md`)
 | # | Criterion | Where |

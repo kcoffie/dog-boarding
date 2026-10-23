@@ -68,7 +68,8 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
    - **Merged 2026-10-23 00:56 UTC (PR #340, REQ-659, ADR-004).** First live day Fri 10-23; first PST day Mon 11-02. Tick M1's box once they're verified.
 2. **#13 UAT:** Kate books watch-first with Charlie (week of 11-09). Claude writes the UAT script for Charlie, including where "something looks wrong" goes (Send a Question) and what happens next, and dry-runs it on production.
    - **Script drafted 2026-10-23:** `docs/UAT_SCRIPT.md` (frozen expected answers, $0 tolerance, goal-only tasks, severity and go/no-go). Dry-run next.
-3. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
+3. **#342 (added 2026-10-23, before #323):** one shared calculation for nights and pay. The Dashboard and Payroll disagree today (10-23: Net $338 vs $286), which fails UAT step 5. Plus the merge of 3 duplicate dogs (SQL, Kate runs it).
+4. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
