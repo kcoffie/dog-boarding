@@ -1,6 +1,6 @@
 # UAT script: the first session with Charlie (draft, 2026-10-23)
 
-**Status:** draft for Kate (#13). Not yet dry-run on production; the dry-run log is in Part D.
+**Status:** draft for Kate (#13). Dry-run 1 (read-only) done 2026-10-23; dry-run 2 (the writes, by Kate) next. Results in Part D.
 **Goes with:** `docs/UAT_PLAN.md` (why, who, acceptance criteria). This file is the "what to press" part.
 **Who runs it:** Kate, sitting with Charlie (and later her admin). Charlie drives; Kate takes notes.
 
@@ -54,11 +54,12 @@ The app: **https://qboarding.vercel.app**. It works on a laptop and on a phone. 
 
 ### 2. Pick the week
 - **Do:** on the Dashboard, use the date bar: the arrows move back and forward, **Today** comes back to now, and the two dates set the range. Set it to the pay period Kate names.
-- **You should see:** the four cards at the top (**Dogs Tonight**, **Active Dogs**, **Nights Assigned**, **Period Revenue**) and the table below for those dates.
+- **You should see:** the four cards at the top (**Dogs Tonight**, **Active Dogs**, **Nights Assigned**, **Period Revenue**) and the table below for those dates. The range is 14 days to start with; **Week** moves it a week at a time and keeps 14 days, so set the two dates by hand for a one-week period.
+- **Wait for it:** for a few seconds after opening, the page can say **No boardings in range** and **$0** while it loads. Give it 5 seconds before deciding something's missing.
 
 ### 3. Read the table (criterion 4)
 - **Do:** look down the dog rows and across the nights.
-- **You should see:** one row per dog, and a mark on each night it stayed: overnight or **Day only**. Under the dogs, each night shows **Overnight**, **Gross**, **Net** and **Employee**. **A-Z** sorts dogs by name; clicking a date sorts by who's there that night.
+- **You should see:** one row per dog, with its **Day** and **Night** rate, and a square on each date it was there: blue for **Overnight**, orange for **Day only** (the key is under the table). A crossed-out name with ✕ marks is a cancelled boarding. Under the dogs, each night shows **Gross**, **Net (65%)** and **Employee**. Clicking a date sorts by who's there that night.
 - **Check:** compare two or three nights with Kate's frozen list. Same dogs, same nights?
 - **If not:** don't change it in the app (the next sync puts it back). Kate writes it down; in real use, send a question (step 9) with the dog and the night.
 
@@ -69,17 +70,17 @@ The app: **https://qboarding.vercel.app**. It works on a laptop and on a phone. 
 
 ### 5. Check what each person earned (criterion 1)
 - **Do:** scroll down to **Employee Totals**.
-- **You should see:** each person, their **Nights worked**, **Total earnings** and the dates.
+- **You should see:** each person, their **Nights worked**, **Total earnings** and the dates. The section only appears once at least one night in the range has someone assigned (step 4).
 - **Check:** does each total match Kate's frozen answers to the cent? Write down any difference. Kate finds the cause later; don't work it out now.
 - **Kate asks:** "Would you trust this total enough to pay someone?" Write down her answer word for word.
 
 ### 6. Check a dog's rate
-- **Do:** open **Dogs**, type a name in **Search dogs...**, and press **Edit** on that dog.
-- **You should see:** its **Night Rate** and **Day Rate**. Press **Cancel** without changing anything.
-- **If a rate is blank or wrong:** tell Kate. A blank rate counts as $0 toward that night's pay.
+- **Do:** open **Dogs** and type a name in **Search dogs...**.
+- **You should see:** the dog with its **Day Rate** and **Night Rate**. (There's no Edit button for a dog: rates can't be changed in the app today. See Part D.)
+- **If a rate is $0.00 or wrong:** tell Kate. A rate of $0.00 counts as $0 toward that night's pay when the booking itself has no rate.
 
 ### 7. Pay someone and log it (criterion 3)
-- **Do:** open **Payroll**. Set the date range to the pay period. Under **Outstanding Payments**, find the person and check **Total owed** and **Dates**. Press **Mark as Paid**.
+- **Do:** open **Payroll**. It starts on the last 30 days; set the date range to the pay period. Under **Outstanding Payments**, find the person and check **Total owed** and **Dates**. Press **Mark as Paid**.
 - **You should see:** a box titled **Pay [name]**, with every night ticked. Untick any night you're not paying now. Check **Payment amount**, then press **Confirm Payment** once.
 - **Then:** the person leaves **Outstanding Payments** (or shows only the nights you left out), and the payment appears in **Payment History**.
 - **Note for Kate:** time it, from opening Payroll to the payment in the history. The criterion says under a minute.
@@ -96,7 +97,7 @@ The app: **https://qboarding.vercel.app**. It works on a laptop and on a phone. 
 - **What happens next:** Kate gets it on her phone straight away, with your email. She replies **the same day, by text or email**, and if something needs fixing, she says what and when.
 
 ### 10. Leave these alone for now
-- **Settings → Invite Users** (until it's removed in #307): it makes codes that nothing accepts. Kate creates accounts.
+- **Settings**, except **Change Password**. **Invite Users** makes codes that nothing accepts (until it's removed in #307); Kate creates accounts. **Net Percentage** and **Employees** change everyone's pay. **Booking site access**, **Cron Health** and **External Sync** are Kate's.
 - **Editing or deleting a boarding** on the Dogs page: the next sync overwrites it. Use Send a Question instead.
 - **Sync** and **Sync Now:** the app syncs with the booking site on its own every night. If something's missing, send a question.
 
@@ -114,7 +115,7 @@ Kate reads each task out and says nothing else. No button names, no pointing. Wr
 
 1. "Pay [name] for last week."
 2. "Did we pay [name] for the [date]?"
-3. "A dog's night rate changed. Fix it."
+3. "A dog's night rate changed. Fix it." (Can't be done in the app today; see Part D. Run it only once dog editing is back, or skip it.)
 4. "[Name] says her pay looks short. Show her why." The breakdown (#314) isn't live yet. Today the answer is **Employee Totals** (nights and dates) plus the Dashboard's **Net** per night. Note how far that gets her: this is what #314 must fix.
 
 ---
@@ -136,9 +137,22 @@ Kate reads each task out and says nothing else. No button names, no pointing. Wr
 ### Dry-run (Kate's browser, on production, before Charlie sees it)
 Anything that writes data needs Kate's OK first and is put back afterwards. Don't plant fake data on production: look for each edge case below in a real period instead.
 
+**Dry-run 1: 2026-10-23, ~17:00–17:35 UTC, desktop Chrome, signed in as Kate. Read-only.** The writes (steps 4, 7, 9) were blocked by the browser automation's permission check, so Kate does those by hand (dry-run 2). Production unchanged afterwards: 0 night assignments since 09-01, 0 payments, no question sent.
+
 | Step / check | Result | Notes |
 |---|---|---|
-| (not run yet) | | |
+| 1 Sign in | Not run | Already signed in. Wrong password: to do |
+| 2 Pick the week | Pass, minor | For ~5 s on load the page shows **No boardings in range** and $0 with no loading sign. **Week** keeps a 14-day range |
+| 3 Read the table | Pass | Key (Overnight / Day only) present. The footer rows are **Gross**, **Net (65%)**, **Employee** (no "Overnight" row on desktop). Nets differ by night (e.g. $140 and $179), which the partial-payment check needs. The same dog name shows twice in the table |
+| 4 Assign nights | Blocked | Write; Kate does it in dry-run 2. Dropdown offers —, N/A and 6 employees |
+| 5 Employee Totals | Not shown | Hidden until a night is assigned (expected) |
+| 6 Dog rate | **Fail, blocker for task 3** | **No Edit button for a dog**: only Activate/Deactivate. Dog editing was removed in the 2026-02-27 "dogs UI cleanup". The UAT plan's workaround for a missing rate (set the dog's own night rate) can't be done. **19 of 111 dogs have a $0.00 night rate**; 5 dog names appear twice |
+| 7 Payroll | Pass, minor | Starts on the last 30 days. Says **All caught up!** while every night in the range is unassigned: nothing hints at missing assignments |
+| 8 Payment History | Pass | Empty: "No payment history yet." (0 payments ever) |
+| 9 Send a Question | Pass (opened, not sent) | Menu item and box match the script. Sending: Kate, dry-run 2 |
+| 10 Settings | Script fixed | Settings also has Net Percentage, Employees, Booking site access, Cron Health, External Sync; step 10 now covers them |
+
+**Dry-run 2 (Kate, by hand, Claude checks the tables):** assign one person to Fri 10-16 and Sat 10-17 (Net $140 and $179) → step 5 → Mark as Paid with 10-17 unticked (right answer $139.75, as the Net row rounds $215 × 65% to $140; the average bug would give $159.25) → delete it → check the nights return → a double-click on Confirm Payment → delete → set both nights back to — → one Send a Question.
 
 **Edge cases to find in real data:**
 - [ ] A dog with a blank night rate
