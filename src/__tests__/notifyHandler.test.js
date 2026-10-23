@@ -1332,6 +1332,8 @@ describe('REQ-659: no roster data at 7am or 8:30am', () => {
     getPictureOfDay.mockResolvedValue(picture({ workers: 0 }));
     await onTime();
     expect(windowRow('notify-830am-claim').status).toBe('failure');
+    expect(windowRow('notify-830am-claim').result.outcome).toBe('no_data');
+    expect(windowRow('notify-830am-claim').result.error).toBe('No roster data');
     expect(windowAlerts()).toStrictEqual(['⚠️ The 8:30am roster failed at 8:20 AM on 2026-10-19: no roster data (the 4am roster had some)']);
   });
 
@@ -1371,6 +1373,8 @@ describe('REQ-659: a failed on-time call alerts Kate', () => {
     const res = await onTime();
     expect(res.code).toBe(500);
     expect(windowRow('notify-friday-pm-claim').status).toBe('failure');
+    expect(windowRow('notify-friday-pm-claim').result.outcome).toBe('failed');
+    expect(windowRow('notify-friday-pm-claim').result.error).toBe('No recipient received the roster (1 of 1 sends failed): bot blocked');
     expect(windowAlerts()).toStrictEqual(['⚠️ The Friday pm roster failed at 3:20 PM on 2026-10-23: No recipient received the roster (1 of 1 sends failed): bot blocked']);
   });
 
