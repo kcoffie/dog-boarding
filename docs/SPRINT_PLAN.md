@@ -65,6 +65,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 ## Sprint 1: Thu 10-22 → Wed 11-04, "Mornings that run themselves"
 **Top 3:**
 1. **#321:** 7am, 8:30am and Friday pm move to the Vercel pattern used by the 4am roster (REQ-658), so DST needs no edits and each window has a failure alert (#257 folded in). Short addendum to the roster-trigger design note, then architect. **Merged by Fri 10-30, or the GitHub crons are hand-edited for PST.**
+   - **Merged 2026-10-23 00:56 UTC (PR #340, REQ-659, ADR-004).** First live day Fri 10-23; first PST day Mon 11-02. Tick M1's box once they're verified.
 2. **#13 UAT:** Kate books watch-first with Charlie (week of 11-09). Claude writes the UAT script for Charlie, including where "something looks wrong" goes (Send a Question) and what happens next, and dry-runs it on production.
 3. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
 
