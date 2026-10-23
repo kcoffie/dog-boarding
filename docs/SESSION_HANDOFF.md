@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 23, 2026, ~04:45 UTC (session 45, end). **Production = main (`f195839`, PR #340), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 45 shipped #321's rest: the 7am, 8:30am and Friday pm rosters now come from Vercel crons on the Pacific hour (REQ-659, ADR-004), a week before the 10-30 deadline. Nothing has run live on it yet. Next: verify Fri 10-23's first live day (4am, 7am, 8:30am, Friday pm), then Sprint 1's #13 (UAT script) and #323.**
+**Last updated:** October 23, 2026, ~20:00 UTC (session 46, end). **Production = main (`4e166ce`, PR #341, docs only; code unchanged since `f195839`), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 46: the first live day of the on-time rosters was clean; the UAT script for Charlie (#13) is drafted and dry-run 1 (read-only) is done; the dry-run found two high-priority bugs, #344 (wrong pet IDs) and #342 (Dashboard money differs from Payroll), plus #343 (Mark as Paid ideas, medium, later); Kate decided the booking site is the only source of truth for dogs, rates and boardings. Next: merge the session-46 docs PR, recheck the 3 fixed pet IDs, then the #344 design note.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -27,7 +27,24 @@
 
 ---
 
-## Current State (2026-10-23 ~04:45 UTC, end of session 45)
+## Current State (2026-10-23 ~20:00 UTC, end of session 46)
+
+### Session 46: what happened
+1. **PR #341 (session 45 handoff) merged** (`4e166ce`) after the reviewer (no must-fix; 4 small fixes applied). `check:deploy` OK.
+2. **First live day of the on-time rosters (Fri 10-23): clean.** Claim rows: 4am `sent`, `trigger: vercel`, 11:40 UTC (Kate's roster said "as of 4:40am"); 7am `unchanged` 14:20; 8:30am `unchanged` 15:29. No `notify-4am-alert` / `notify-alert` rows. Kate confirmed Vercel lists **13 cron jobs**. Not checked yet (ran after the checks): the 14:00 UTC GitHub `notify-4am` fallback (`already_sent`), ops-watch 10-23 (17:00), Friday pm (22:00/23:00), cron-health-check 10-24 00:30.
+   - Two alerts that weren't roster failures: **cron-health-check 05:10 UTC** said 7am/8:30am "didn't run on 2026-10-22" (one-off false alarm: claim rows only went live 10-23 00:56; the next run should be clean). **Integration Check 02:50 and 13:00**: "Missing from DB" C63QhL5g/C63QhLI1 = the known #315 false positive, now on every run.
+   - Overnight 10-23 fine: `auth` refreshed (good to 10-24 06:37), `schedule`/`detail` success, `site_access` not blocked. **Queue 32 pending** (was 73 at 00:15).
+3. **#13 UAT script: `docs/UAT_SCRIPT.md`** (branch `docs/13-uat-script`, PR below). Part A Kate's checklist (frozen expected answers from the spreadsheet, **$0 tolerance**, ground rules: her own device, think aloud, no coaching for ~2 min, spreadsheet stays until M2), criteria table; Part B 11 steps; **Part B2 phone pass**; Part C goal-only tasks; Part D severity (blocker = wrong money or lost data; go/no-go = Kate) and results tables. Reviewed by a browser Claude on Kate's request; its points were folded in. Step 9 reply promise: **same day, by text or email** (Kate).
+4. **Dry-run 1 (2026-10-23 ~17:00–17:35 UTC, read-only):** the permission classifier blocks Claude in Chrome from writing on production (a night assignment was refused as "Modify Shared Resources" even with Kate's OK), so Kate does the writes by hand (**dry-run 2**, steps in `docs/UAT_SCRIPT.md` Part D). Production unchanged afterwards (0 night assignments since 09-01, 0 payments ever). Findings and script fixes are in Part D.
+5. **Kate's decision (2026-10-23): the booking site is the only source of truth for dogs, rates and boardings.** The app is never edited by hand; a difference is a bug to fix at the source or in the sync. No Edit button for dogs is by design (REQ-011 note). UAT plan criterion 4 and its to-do updated; **#313 closed** as superseded. Removing Add/Edit/Delete boarding is part of #342. Adjusting what's actually paid (amount, note, breakdown) is **#343** (priority medium, later).
+6. **#342 (bug, high): the Dashboard's nights and money differ from Payroll.** Five copies of the nightly sum; `BoardingMatrix.jsx` counts cancelled boardings and uses the dog's rate, Payroll (`calculateGross`) skips cancelled and uses the booking's rate. 10-23: Dashboard **Net $338**, Payroll **$286**; Kate saw "9 dogs" over a list of 8 on her phone. 106 of 362 bookings are priced differently from their dog's current rate (multi-dog prices, rate changes). Fix: one shared function every view calls. Kate: "2 ways to see and calculate things is bad."
+7. **#344 (bug, high): the sync writes another dog's pet ID.** Cause traced (code, IC log run 39957294215, tables; no booking-site requests): the sync pairs `petIds[0]` from the schedule page with the **first pet name on the detail page**. **Group playgroup listings** ("PG FT", weekly, no dates: 74 of 481 synced appointments) and multi-pet bookings list several pets, so the wrong ID lands, and `upsertDog` overwrites `external_pet_id` every sync. Evidence: queue `C63QgznN` 2026-09-09 00:53:19, `C63QgxR1` 2026-07-02 17:55. Same root: listings run the secondary-pet loop (one listing touched ~50 dogs at 12:59 on 10-23) and create **$0 dogs with no boardings**; second pets never get a pet ID, so their forms are never fetched. `sync_queue.meta.external_pet_id` is the same buggy value, so it is **not** valid evidence; only the booking site's pet page is (Kate checked them).
+8. **Data fixes Kate ran (SQL, verified):**
+   - **Merged 3 same-pet duplicate dogs** (17 boardings and 34 `sync_appointments` moved, 3 rows deleted; 108 dogs, 368 boardings, nothing orphaned).
+   - **Corrected 3 wrong pet IDs** (rows keyed `C63QgcFx` → 90043, `C63QgxR1` → 129933, `C63QgznN` → 90048). **Until #344 ships, a group listing can rewrite them when it next syncs: recheck.**
+   - All 107 stored boarding forms used correct pet IDs (the wrong IDs were written later).
+9. **Other findings:** 19 dogs at $0.00 night rate, none with a booking after June (no current pay effect; 11 have no boardings, from #344's listings). Two different dogs share a name (the sync's name match is arbitrary: part of #344). Dashboard shows "No boardings in range" and $0 for ~5 s while loading; Payroll says "All caught up!" while nights are unassigned (minor, in Part D). Suspected payroll bugs for dry-run 2: partial payments use an average per night; a double-click on Confirm Payment may record two; a failed save is silent (listed in #343).
+10. **#307 (remove Invite Users) moved into Sprint 1** (Kate). Sprint 1 order is now #13 → #344 → #342 → #323 (`docs/SPRINT_PLAN.md`).
 
 ### Session 45: what happened
 1. **The 4am check had to wait.** The session ran 10-22 17:20 PDT (10-23 00:20 UTC), before the first on-time run (10-23 11:00 UTC). It's step 2 below.
@@ -138,24 +155,16 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs. If the session-45 docs PR (`docs/session-45-handoff`) is still open: check CI, merge it, sync main.
-2. **Check the first live day of the on-time rosters** (Fri 10-23 was the first; on later days use the latest weekday; the first PST day is Mon 11-02). Read real timestamps (`date -u`). Recipe: `supabase-local-queries` memory (CJS script in the scratchpad).
-   - `SELECT cron_name, status, result, error_msg, updated_at FROM cron_health WHERE cron_name LIKE 'notify-%claim';`
-     - **4am:** `success`, `trigger: vercel`, `at` in 11:00–12:59 UTC (PDT) / 12:00–13:59 (PST).
-     - **7am:** `success` (`sent`, `unchanged`, or `no_data` when 4am also found none), `at` in 14:xx UTC (PDT) / 15:xx (PST).
-     - **8:30am:** at 15:xx UTC (PDT) / 16:xx (PST).
-     - **Friday pm (Fridays):** at 22:xx or 23:xx UTC (PDT) / 23:xx or Sat 00:xx (PST).
-   - `message_log`: `notify-4am` `sent` once in its window; `notify-7am` / `notify-8:30am` `sent` only if the roster changed; `notify-friday-pm` `sent` on Fridays; **no `notify-4am-alert` or `notify-alert` rows.**
-   - The 14:00 UTC GitHub `notify-4am` run logs `already_sent` (`command gh run view <id> --log | grep -i skipped`).
-   - ops-watch's latest row: no "didn't run" findings. cron-health-check's evening run: green.
-   - Also: overnight crons (`auth` `refreshed`, `schedule`/`detail` success), `site_access.blocked_at` NULL, queue depth (73 on 10-23).
-   - **Ask Kate when each roster arrived, and whether Vercel → qboard → Settings → Cron Jobs lists 13.** If anything's off: `docs/RUNBOOK.md` "How the 4am roster is sent" (now covering the windows). Report in a few lines; fix nothing without asking. When all windows are on time with no help, tick the M1 #321 box in `docs/SPRINT_PLAN.md`. "5 weekday 4am rosters on time" needs 5 days.
-3. **Tell Kate the top 3** (the TechPM habit), then work them in this order:
-   1. **#13 UAT script:** Kate books watch-first (week of 11-09). Write a step-by-step script for Charlie (and her admin) from `docs/UAT_PLAN.md`, including Send a Question and what happens next; dry-run it on production (Kate's Chrome, with her OK).
-   2. **#323 private job logs** (#318 step 2): new table, so design note + architect gate + an ADR; Kate runs the migration. Must merge before #318 step 4.
-   3. **#324 leftover: Clear for Kate only** (a server-side check in `api/site-access.js`; today any signed-in user can press it). Or, since #321 landed early, start #318 step 3 with the parser parity test (the sprint plan's "if #321 lands early").
-   - Also in Sprint 1: the Sync Now 302 proof when it happens naturally; investigations batch A (`docs/SPRINT_PLAN.md`).
-4. **Kate's own Sprint 1 items:** #337 chores, #8 calendar, booking watch-first, forwarding the roster to Charlie.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs. **If the session-46 docs PR (`docs/13-uat-script`) is still open:** check CI, run the reviewer agent on it, fix anything, squash-merge, `check:deploy`, sync main.
+2. **Quick checks (read-only, report in a few lines, fix nothing without asking).** Recipe: `supabase-local-queries` memory.
+   - **The 3 corrected pet IDs:** `SELECT external_id, external_pet_id, updated_at FROM dogs WHERE external_id IN ('C63QgcFx','C63QgxR1','C63QgznN')`. Expect 90043, 129933, 90048. If any changed, the overnight sync rewrote it: that's #344 live, say which listing (sync_queue `processed_at` near the row's `updated_at`).
+   - **Rosters on the latest weekday:** the four `notify-*-claim` rows (`success`, `trigger: vercel`), `message_log` (no `notify-4am-alert` / `notify-alert`), the 14:00 UTC GitHub `notify-4am` run (`already_sent`), ops-watch's latest row, cron-health-check (the 10-23 false alarm shouldn't repeat), Friday pm 10-23 (22:xx UTC), overnight crons, `site_access`, queue depth. Count toward M1's "5 weekday 4am rosters on time" (10-23 = day 1).
+3. **Tell Kate the top 3** (TechPM habit), then work them:
+   1. **#344 (wrong pet IDs): design note first** (`docs/specs/`): what counts as a group listing and skipping it before any write; pairing each pet's name and ID from the same element (schedule `.event-pet-wrapper[data-pet]` holds `.event-pet`; detail price tags carry `data-pet`), including second pets; never silently change a stored pet ID (keep it, alert Kate); dog matching without the arbitrary name match. Architect agent, ADR (sprint rule), Kate's OK, then code with tests from recorded HTML shapes. No new booking-site requests.
+   2. **#13 dry-run 2 (Kate clicks, Claude checks the tables):** steps in `docs/UAT_SCRIPT.md` Part D. Expected partial payment **$139.75** (the average bug would give $159.25). Afterwards confirm 0 night assignments and 0 payments remain. File each confirmed payroll bug as its own issue. Also a read-only phone-width pass (Part B2).
+   3. **#342 (one shared calculation)** plus removing Add/Edit/Delete boarding (REQ-020–022 get the REQ-011-style note). Then #323.
+   - Also Sprint 1: #307 (remove Invite Users); #324 leftover Clear-for-Kate; first PST roster Mon 11-02; watch-first by ~11-13 (Kate books it).
+4. **Kate's own items:** dry-run 2 clicks; book watch-first with Charlie; #337 chores; #8 calendar; forwarding the roster.
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.
