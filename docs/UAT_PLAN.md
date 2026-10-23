@@ -22,7 +22,7 @@ The app is only worth building if Charlie uses it to run her week. UAT isn't "do
 |---|---|---|
 | 1. Who stayed which night | Matrix: an employee dropdown per night, "N/A" for nights she or the family stay (REQ-033) | Entered by hand. Is that more work than today? |
 | 2. Which dogs were there | Synced nightly from the booking site | A missed, odd or late booking means a wrong number. Boardings can be edited by hand (REQ-020 to REQ-022), **but the next sync silently overwrites the edit**, and a deleted synced boarding comes back |
-| 3. What to pay | Sum of each dog's night rate × net % (REQ-032, REQ-040, REQ-203) | A dog with no rate on the booking site counts as $0, silently. Workaround until fixed: set the dog's own night rate (REQ-011), which the formula falls back to |
+| 3. What to pay | Sum of each dog's night rate × net % (REQ-032, REQ-040, REQ-203) | A dog with no rate on the booking site counts as $0, silently (#312 step 1 alerts Kate). **No in-app fix, by design (Kate, 2026-10-23):** dogs and rates come only from the booking site, so the app never drifts from it. A wrong or missing rate is fixed on the booking site, and a difference is a sign of something to fix right away |
 | 4. Tell the employee, with the calculation | Nothing | No breakdown to share |
 | 5. Pay | Outside the app | None |
 | 6. Log it | Mark as paid, payment history (REQ-041 to REQ-044) | None known |
