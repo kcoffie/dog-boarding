@@ -55,6 +55,9 @@ SELECT status, error_msg, result FROM cron_health WHERE cron_name = 'notify';
 - **500 `ROSTER_CHANNEL is not set…` or `is "…"`:** set `ROSTER_CHANNEL` in Vercel (qboard → Production) to `telegram`, then redeploy (env changes apply only after a deploy).
 - **500 `Roster image fetch failed: HTTP …`:** the image endpoint is broken. Check `/api/roster-image?type=weekend&token=…` (see "Roster image broken").
 - **500 `No recipient received the roster (1 of 1 sends failed): Telegram sendPhoto …`:** Telegram refused it. `400 … chat not found` means `TELEGRAM_ALERT_CHAT_ID` is wrong; `401` means `TELEGRAM_BOT_TOKEN` is wrong. No hash was stored, so the next window sends again.
+- **"The 7am / 8:30am / Friday pm roster failed at … : <error>"** (job `notify-alert`, REQ-659): the on-time call for that window failed; the error is its 500 (the cases above apply). Re-send by hand: Actions → `notify-7am` / `notify-830am` / `notify-friday-pm` → Run workflow. For 7am, the 8:30am check sends any change anyway.
+- **"The 7am roster didn't run on <date>"** (ops-watch or cron-health-check): Vercel skipped that cron. Check Vercel → qboard → Settings → Cron Jobs lists **13** entries (8 for `/api/notify`), and the window's claim row: `SELECT status, result FROM cron_health WHERE cron_name IN ('notify-7am-claim','notify-830am-claim','notify-friday-pm-claim');`. One skip is a Vercel blip; two in a row, ask Claude to look.
+- **"… roster failed: no roster data (the 4am roster had some)":** the day's data vanished after 4am (a bad sync or refresh). Check the sync and the daytime refresh before the next window.
 - **Switching channels:** change `ROSTER_CHANNEL` in the evening and redeploy. The 7am/8:30am hash gate compares against what was already sent that day, so a mid-morning switch sends nothing new until the roster changes.
 
 **WhatsApp (before 2026-10-17, reference)**

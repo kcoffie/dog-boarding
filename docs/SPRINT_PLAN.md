@@ -51,7 +51,7 @@ Each stage feeds the next. Real use is the portfolio's strongest evidence, so po
 - [ ] Every failed run alerts with what happened and how to fix it; ops-watch reports a missed run
 - [ ] The Integration Check compares both ways, once a day, with no false alarms
 - [ ] The old paths are retired (`cron-schedule`, `cron-detail`, `cron-detail-2`, queue booking items, the Integration Check's own sync)
-- [ ] ADR supersedes ADR-002
+- [ ] ADR-005 supersedes the rest of ADR-002 (ADR-004 already replaced its notifications part)
 - [ ] Closed: #323, #316, #321, #294, #315, #22 (and #324, #295)
 
 Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate work after M3, ordered by UAT feedback.
@@ -91,7 +91,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 **Top 3:**
 1. Fixes from UAT period 1 (keep / fix / wish); ship at least one of Charlie's asks within a week
 2. **#318 steps 4–5:** full pass on GitHub started by Vercel (first run by hand with Kate watching; 3 good nights alongside the old paths; needs #323 merged first), then near-term runs on Vercel. Closes #316
-3. **ADRs 004–007** (decisions already made and shipped): sync redesign (supersedes 002), booking-site breaker and single login, roster claim row, alerts on Telegram
+3. **ADRs 005–007** (decisions already made and shipped): sync redesign (supersedes the rest of 002), booking-site breaker and single login, alerts on Telegram. ADR-004 (roster claim rows) shipped with #321
 
 **Also:** the rest of step 3 if it runs over; #319; #315 if the Integration Check still raises false alerts; #338 scope, and Kate starts the independent review (`/code-review ultra`)
 
