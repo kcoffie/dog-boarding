@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 22, 2026, ~22:10 UTC (session 44, end). **Production = main (`6ff56de`, #335), unchanged this session.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 44 was planning only: the full TBD triage is on GitHub (labels + comments) and the new `docs/SPRINT_PLAN.md` (v7, approved) is the plan. Next: check Fri 10-23's on-time 4am roster, then Sprint 1's top 3, starting with #321 (deadline 10-30).**
+**Last updated:** October 23, 2026, ~04:45 UTC (session 45, end). **Production = main (`f195839`, PR #340), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 45 shipped #321's rest: the 7am, 8:30am and Friday pm rosters now come from Vercel crons on the Pacific hour (REQ-659, ADR-004), a week before the 10-30 deadline. Nothing has run live on it yet. Next: verify Fri 10-23's first live day (4am, 7am, 8:30am, Friday pm), then Sprint 1's #13 (UAT script) and #323.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -27,9 +27,40 @@
 
 ---
 
-## Current State (2026-10-22 ~22:10 UTC, end of session 44)
+## Current State (2026-10-23 ~04:45 UTC, end of session 45)
 
-### Session 44: what happened (no code changed)
+### Session 45: what happened
+1. **The 4am check had to wait.** The session ran 10-22 17:20 PDT (10-23 00:20 UTC), before the first on-time run (10-23 11:00 UTC). It's step 2 below.
+   - The 10-23 overnight run was clean: `schedule` 00:15 and `detail` 00:50 succeeded, `auth` `refreshed` at 00:37 (session good until 10-24 06:37), and `site_access` isn't blocked.
+   - **The queue keeps growing: 45 → 55 → 73 (10-23 00:15).** Kate said to leave its limit alone; just keep watching.
+2. **#321 rest shipped: PR #340 merged (`f195839`, 00:56 UTC 10-23), `check:deploy` OK.** Kate chose to merge before the first on-time 4am run, so 10-23 is the first live day for all of it. Design: the addendum in `docs/specs/roster-trigger-design-note.md`. The architect said "proceed with changes", and all were folded in.
+   - **The Pacific hour picks the window** (`triggerWindow` in `src/lib/rosterTrigger.js`), on weekdays only: 4am 04:00–05:59, 7am 07:00–07:59, 8:30am 08:00–08:59, Friday pm 15:00–16:59 (the 16:00 hour is a retry). A trigger call (Bearer `CRON_SECRET`) now rejects **any** `window`/`date`/`force` param with a 400.
+   - **13 Vercel crons in all.** `/api/notify` runs at `0 11`, `0 12`, `0 14`, `0 15`, `0 16 * * *` and `0 22`, `0 23 * * 5`, `0 0 * * 6`.
+   - **Claim rows** (`cron_health`): `notify-7am-claim`, `notify-830am-claim`, `notify-friday-pm-claim`, next to `notify-4am-claim`. Outcomes: `sent`, `unchanged`, `no_data`, `failed`.
+   - **Alerts:** any failed on-time 7am, 8:30am or Friday pm call alerts Kate (job **`notify-alert`**, added to ops-watch `ALERT_JOBS`). No data at 7am/8:30am is OK only if 4am also found none or a 4am call is still running; otherwise it alerts.
+   - **Watchers:**
+     - ops-watch at 17:00 UTC checks today's 7am and 8:30am claims, and on Saturdays, Friday's Friday pm.
+     - cron-health-check (GitHub, 00:30 UTC) checks the claims for the Pacific day of (now − 12 h).
+     - ops-watch's "No morning roster" now counts `notify-7am` / `notify-8:30am` sends too.
+   - **GitHub:** `notify-7am.yml`, `notify-830am.yml` and `notify-friday-pm.yml` have **no schedule** now, only manual runs (token path, no claim). `notify-4am.yml` is unchanged (fallback at 14:00 UTC). Intraday stays PDT-only (it sends nothing on Telegram).
+   - **Kate's decisions (2026-10-22):** GitHub schedules off; Friday 4pm retry; same-morning watcher plus an evening backstop; ADR-004 written now.
+   - **Evidence:**
+     - Suite 2029 passed / 1 skipped (was 1935).
+     - Scoped Stryker (TZ=UTC): `rosterTrigger.js` 95.85%, `notify.js` 85.93%, `opsWatch.js` 100%; changed lines 92.3% before two more assertions were added.
+     - Reviewer: no must-fix; 3 should-fix items fixed (no-data rule and wording, a Friday retry-after-failure test, stale docs).
+     - **CI Mutation on main (incremental): 60.62%.** Trust Monday's full run.
+   - **Docs:** REQ-659 added; REQ-611, 612, 630 and 658 updated. **ADR-004** (`docs/adr/004-rosters-on-vercel-crons-with-claim-rows.md`) supersedes ADR-002's notifications part, and the sprint plan's ADRs are now **005–007**. Job docs (`notify-jobs.md`, `OVERVIEW.md`), the RUNBOOK and the README are updated.
+   - **Known and accepted:**
+     - On a day 4am failed, the Vercel 7am and the GitHub 4am fallback can both send at 14:00 UTC (PDT).
+     - 7am and 8:30am can land seconds apart in PDT and both send a change.
+     - A watcher can race a retry call (cron-health-check at 00:30 vs the PST Friday retry at 00:xx).
+3. **Not verified:**
+   - **Vercel's Cron Jobs page** should list 13 entries (8 for `/api/notify`). Claude can't read it; ask Kate.
+   - **The first live runs:** 10-23 (all windows), then Mon 11-02 (the first PST day).
+
+### Session 44 (reference)
+
+Session 44 was planning only; no code changed.
 1. **The 4am check was deferred:** the first on-time run is Fri 10-23, after this session. It's step 2 below.
 2. **One TBD list, from every source** (issues, PRs, this file, UAT plan, the May sprint plan, REQUIREMENTS, design notes, job docs, code TODOs, memory), triaged with Kate:
    - **Priorities are GitHub labels:** `priority: high`, `priority: medium`, `priority: low`, `to-investigate` (created this session). Every triaged issue has a **"Triage 2026-10-22"** comment with Kate's note and the answer to her question. Read those before re-deriving anything: `command gh issue list --label "priority: high"`.
@@ -44,7 +75,7 @@
    - **Telegram won't work for Charlie.** Kate forwards the roster image by hand until #260 finds a real channel.
    - **#8 (calendar look):** Kate does it herself with a browser agent.
    - **#13** now carries the UAT plan plus a step-by-step script for Charlie, which Claude dry-runs on production first.
-   - **ADRs:** Kate wants them. 004–007 are planned (sync redesign superseding 002, breaker + single login, roster claim row, Telegram alerts), and every architect-gated decision gets one from now on.
+   - **ADRs:** Kate wants them. 004 (roster claim rows) shipped in session 45; 005–007 are planned (sync redesign superseding the rest of 002, breaker + single login, Telegram alerts), and every architect-gated decision gets one from now on.
    - Commits and PRs still carry no AI attribution.
 5. **Found:** the 10-22 Integration Check alert "Missing from DB" for C63QhL5g and C63QhLI1 (title "10/19-22") was a false positive. Both are 6-hour day visits the sync correctly skipped (`sync_queue.meta.detail_skip = same_day`); the check reads only the title. That's #315 recurring, now high priority.
 6. **Docs fixed:** REQ-652 status → Complete; the job docs' G-1 WhatsApp delivery-alert backlog item and the already-done `window` rename removed.
@@ -98,8 +129,8 @@
 6. Vercel "Needs Attention" on `SUPABASE_SERVICE_ROLE_KEY`, `EXTERNAL_SITE_PASSWORD` and the three `META_*` variables: leave them (Kate, 2026-10-19). Delete the `META_*` ones together with the WhatsApp code in #260.
 
 ### Mutation
-- **CI on main: 52.06%** (e0fe16a, #310, incremental, 2026-10-20); last full run 50.64% (0239e22). **Ratchet 50** (#306). Score log: `docs/ENGINEERING_PROCESS.md`. Incremental cache now seeded; a `package-lock`/`stryker.config` change forces a full run (~55–60 min). Don't merge on top of a Mutation run whose score you need: the next push to main cancels it.
-- **Scoped, local, TZ=UTC:** `rosterChannel.js`, `opsWatch.js`, `syncSettingsRow.js`, `deployCheck.js` 100%; `cron-schedule.js` 98.7%; `verifyUser.js` 98.3%; `send-question` 87.8%; `syncRunner.js` 83.6%; `alertKate` 82%; `notify.js` 81.2%; `syncQueue.js` 69.3%; `notify-intraday.js` 66.9%.
+- **CI on main: 60.62%** (f195839, #340, incremental, 2026-10-23; check Monday's full run before raising the ratchet); last full run 50.64% (0239e22). **Ratchet 50** (#306). Score log: `docs/ENGINEERING_PROCESS.md`. Incremental cache now seeded; a `package-lock`/`stryker.config` change forces a full run (~55–60 min). Don't merge on top of a Mutation run whose score you need: the next push to main cancels it.
+- **Scoped, local, TZ=UTC:** `rosterChannel.js`, `opsWatch.js`, `syncSettingsRow.js`, `deployCheck.js` 100%; `cron-schedule.js` 98.7%; `rosterTrigger.js` 95.85%; `verifyUser.js` 98.3%; `send-question` 87.8%; `syncRunner.js` 83.6%; `alertKate` 82%; `notify.js` 85.93%; `syncQueue.js` 69.3%; `notify-intraday.js` 66.9%.
 - **Never bump vitest to 5** until the Stryker runner ships #6214 (held in Dependabot's `ignore`). Check "tests per mutant" > 0 after any test-runner change.
 - **#239 `pictureOfDay.js`** (51.13% in CI): parked by Kate until UAT starts.
 
@@ -107,18 +138,23 @@
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs.
-2. **Check the on-time 4am roster** (first run Fri 10-23; on later days the latest weekday; first PST run Mon 11-02, from the 12:00 UTC cron, so 12:00–12:59 UTC). Read real timestamps (`date -u`):
-   - `SELECT status, result, error_msg, updated_at FROM cron_health WHERE cron_name = 'notify-4am-claim';` → `success`, `result.trigger = 'vercel'`, `result.at` between 11:00 and 12:59 UTC (PDT).
-   - `message_log`: one `notify-4am` `sent` in that window, and no `notify-4am-alert` row.
-   - The 14:00 UTC `notify-4am` run (Actions) logs `already_sent` (`command gh run view <id> --log | grep -i skipped`).
-   - Also: overnight crons (`auth` `refreshed`, `schedule`/`detail` success), `site_access.blocked_at` NULL, ops-watch's latest row.
-   - Ask Kate when the roster arrived. If anything's off: `docs/RUNBOOK.md` "How the 4am roster is sent". Report in a few lines; fix nothing without asking.
-3. **Tell Kate the Sprint 1 top 3** (the TechPM habit), then work them in this order:
-   1. **#321 (deadline Fri 10-30):** 7am, 8:30am, Friday pm to the Vercel pattern (REQ-658: two crons for PDT/PST, the code sends only in the right Pacific hour, a claim row, a failure alert; #257 folded in). Write a short addendum to `docs/specs/roster-trigger-design-note.md`, run the architect, then build. Notes: Hobby fires anywhere in the hour (8:30 can land 8:00–8:59); intraday sends nothing while the channel is telegram (leave it, note its DST); count Vercel crons against Hobby's limit. **If it can't merge by 10-30, ask Kate, then hand-edit the GitHub crons for PST.**
-   2. **#13 UAT script:** Kate books watch-first (week of 11-09). Write a step-by-step script for Charlie (and her admin) from `docs/UAT_PLAN.md`, including Send a Question and what happens next; dry-run it on production (Kate's Chrome, with her OK).
-   3. **#323 private job logs** (#318 step 2): new table, so design note + architect gate; Kate runs the migration. Must merge before #318 step 4.
-   - Also in Sprint 1: #324 leftovers (Clear for Kate only; the Sync Now 302 proof when it happens); investigations batch A (`docs/SPRINT_PLAN.md`); if #321 lands early, start #318 step 3 with the parser parity test.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs. If the session-45 docs PR (`docs/session-45-handoff`) is still open: check CI, merge it, sync main.
+2. **Check the first live day of the on-time rosters** (Fri 10-23 was the first; on later days use the latest weekday; the first PST day is Mon 11-02). Read real timestamps (`date -u`). Recipe: `supabase-local-queries` memory (CJS script in the scratchpad).
+   - `SELECT cron_name, status, result, error_msg, updated_at FROM cron_health WHERE cron_name LIKE 'notify-%claim';`
+     - **4am:** `success`, `trigger: vercel`, `at` in 11:00–12:59 UTC (PDT) / 12:00–13:59 (PST).
+     - **7am:** `success` (`sent`, `unchanged`, or `no_data` when 4am also found none), `at` in 14:xx UTC (PDT) / 15:xx (PST).
+     - **8:30am:** at 15:xx UTC (PDT) / 16:xx (PST).
+     - **Friday pm (Fridays):** at 22:xx or 23:xx UTC (PDT) / 23:xx or Sat 00:xx (PST).
+   - `message_log`: `notify-4am` `sent` once in its window; `notify-7am` / `notify-8:30am` `sent` only if the roster changed; `notify-friday-pm` `sent` on Fridays; **no `notify-4am-alert` or `notify-alert` rows.**
+   - The 14:00 UTC GitHub `notify-4am` run logs `already_sent` (`command gh run view <id> --log | grep -i skipped`).
+   - ops-watch's latest row: no "didn't run" findings. cron-health-check's evening run: green.
+   - Also: overnight crons (`auth` `refreshed`, `schedule`/`detail` success), `site_access.blocked_at` NULL, queue depth (73 on 10-23).
+   - **Ask Kate when each roster arrived, and whether Vercel → qboard → Settings → Cron Jobs lists 13.** If anything's off: `docs/RUNBOOK.md` "How the 4am roster is sent" (now covering the windows). Report in a few lines; fix nothing without asking. When all windows are on time with no help, tick the M1 #321 box in `docs/SPRINT_PLAN.md`. "5 weekday 4am rosters on time" needs 5 days.
+3. **Tell Kate the top 3** (the TechPM habit), then work them in this order:
+   1. **#13 UAT script:** Kate books watch-first (week of 11-09). Write a step-by-step script for Charlie (and her admin) from `docs/UAT_PLAN.md`, including Send a Question and what happens next; dry-run it on production (Kate's Chrome, with her OK).
+   2. **#323 private job logs** (#318 step 2): new table, so design note + architect gate + an ADR; Kate runs the migration. Must merge before #318 step 4.
+   3. **#324 leftover: Clear for Kate only** (a server-side check in `api/site-access.js`; today any signed-in user can press it). Or, since #321 landed early, start #318 step 3 with the parser parity test (the sprint plan's "if #321 lands early").
+   - Also in Sprint 1: the Sync Now 302 proof when it happens naturally; investigations batch A (`docs/SPRINT_PLAN.md`).
 4. **Kate's own Sprint 1 items:** #337 chores, #8 calendar, booking watch-first, forwarding the roster to Charlie.
 
 ## Open TODOs
@@ -133,7 +169,7 @@ The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, in
 - **Alerts to Kate**: `sendAlert()` / `alertAndLog()` in `src/lib/alertKate.js` (Telegram, REQ-652). The team roster uses `NOTIFY_RECIPIENTS` (WhatsApp, moving to SMS in #260).
 - **nightAssignments** in DataContext: `[{ date: 'YYYY-MM-DD', employeeId, workedFollowingDay }]` — top-level in `useData()`
 - **employees** in DataContext: lives at `settings.employees`, NOT top-level
-- **Vercel cron times**: the sync crons run at 00:00–00:15 UTC (5:00–5:15 PM PDT); ops-watch runs at 17:00 UTC
+- **Vercel cron times**: the sync crons run at 00:00–00:15 UTC (5:00–5:15 PM PDT); ops-watch runs at 17:00 UTC; `/api/notify` at 11, 12, 14, 15, 16 UTC daily and Fri 22, 23, Sat 00 UTC (the Pacific hour picks the roster window, REQ-659)
 - **K-8 closed by events:** Meta disabled the test WhatsApp account on 2026-10-18. The roster moves to SMS (#260), and Kate's alerts are on Telegram (#265).
 
 ---
