@@ -156,6 +156,8 @@ Users can edit existing dogs.
 
 **Tests:** `src/components/DogForm.test.jsx`
 
+**Note (2026-10-23):** the Dogs page has had no Edit button since 2026-02-27, and that's by design (Kate): dogs and rates come only from the booking site, so the app can't drift from it. The form and its tests remain; it's used for Add Dog.
+
 ---
 
 ### REQ-012: Delete Dog

@@ -67,11 +67,15 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 1. **#321:** 7am, 8:30am and Friday pm move to the Vercel pattern used by the 4am roster (REQ-658), so DST needs no edits and each window has a failure alert (#257 folded in). Short addendum to the roster-trigger design note, then architect. **Merged by Fri 10-30, or the GitHub crons are hand-edited for PST.**
    - **Merged 2026-10-23 00:56 UTC (PR #340, REQ-659, ADR-004).** First live day Fri 10-23; first PST day Mon 11-02. Tick M1's box once they're verified.
 2. **#13 UAT:** Kate books watch-first with Charlie (week of 11-09). Claude writes the UAT script for Charlie, including where "something looks wrong" goes (Send a Question) and what happens next, and dry-runs it on production.
-3. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
+   - **Script drafted 2026-10-23:** `docs/UAT_SCRIPT.md` (frozen expected answers, $0 tolerance, goal-only tasks, severity and go/no-go). Dry-run 1 (read-only) done 2026-10-23; dry-run 2 (Kate's writes) next.
+3. **#344 (added 2026-10-23, first):** the sync writes another dog's pet ID (group playgroup listings and multi-pet bookings pair names and IDs by position), which can show another client's pet's boarding form, and creates $0 dogs. Design note first; no new booking-site requests.
+4. **#342 (added 2026-10-23, after #344):** one shared calculation for nights and pay. The Dashboard and Payroll disagree today (10-23: Net $338 vs $286), which fails UAT step 5. Includes removing Add/Edit/Delete boarding (source of truth). The duplicate-dog merge and the 3 pet-ID fixes were done by SQL on 2026-10-23.
+5. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
 - #324 leftovers: Clear for Kate only (server-side check); the Sync Now 302 proof when it next happens naturally
+- #307: remove invite-code management (moved up from Sprint 2, Kate 2026-10-23: a small removal, and Charlie would click it); Kate creates the admin's account after a dry-run invite
 - Docs PR: this plan, the archive of the May plan, the handoff, REQ-652 status, the G-1 WhatsApp delivery-alert item (K-8, M3-7, N-1 are history and stay where they are)
 - Investigations, batch A (below)
 - If #321 lands early: start #318 step 3 with the parser parity test
@@ -84,7 +88,6 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 3. **#318 step 3:** one Node-safe engine: the parser parity test, then the regex parser only, the skip store, `sync_logs` run kind and requests (migration, Kate runs it). The biggest step. It changes `sync.js`, which Sync Now uses; a Sync Now break during UAT is accepted (Kate, 2026-10-22). Any test run against the booking site needs Kate's OK. Target ~11-25.
 
 **Also:**
-- #307: remove invite-code management; Kate creates the admin's account after a dry-run invite
 - #9 sortable payment history
 - Kate: watch-first with Charlie and her admin; M1 go/no-go; the first side-by-side pay period starts
 

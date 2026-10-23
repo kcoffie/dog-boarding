@@ -21,8 +21,8 @@ The app is only worth building if Charlie uses it to run her week. UAT isn't "do
 | Her step | In the app today | Gap (see TODOs below) |
 |---|---|---|
 | 1. Who stayed which night | Matrix: an employee dropdown per night, "N/A" for nights she or the family stay (REQ-033) | Entered by hand. Is that more work than today? |
-| 2. Which dogs were there | Synced nightly from the booking site | A missed, odd or late booking means a wrong number. Boardings can be edited by hand (REQ-020 to REQ-022), **but the next sync silently overwrites the edit**, and a deleted synced boarding comes back |
-| 3. What to pay | Sum of each dog's night rate × net % (REQ-032, REQ-040, REQ-203) | A dog with no rate on the booking site counts as $0, silently. Workaround until fixed: set the dog's own night rate (REQ-011), which the formula falls back to |
+| 2. Which dogs were there | Synced nightly from the booking site | A missed, odd or late booking means a wrong number. Boardings can be edited by hand (REQ-020 to REQ-022), **but the next sync silently overwrites the edit**, and a deleted synced boarding comes back. These edits are being removed (#342): the booking site is the source of truth (Kate, 2026-10-23) |
+| 3. What to pay | Sum of each dog's night rate × net % (REQ-032, REQ-040, REQ-203) | A dog with no rate on the booking site counts as $0, silently (#312 step 1, Sprint 2, will alert Kate). **No in-app fix, by design (Kate, 2026-10-23):** dogs and rates come only from the booking site, so the app never drifts from it. A wrong or missing rate is fixed on the booking site, and a difference is a sign of something to fix right away |
 | 4. Tell the employee, with the calculation | Nothing | No breakdown to share |
 | 5. Pay | Outside the app | None |
 | 6. Log it | Mark as paid, payment history (REQ-041 to REQ-044) | None known |
@@ -69,7 +69,7 @@ Each one is checked on real use by Charlie or her admin, not by the tests. **Kat
 | 1 | "For a pay period, the app's amount for each person matches what I'd have worked out, or the difference is explained and fixed." | The side by side, for two periods in a row | After the $0-rate fix |
 | 2 | "I can print each person a page that shows what they're getting and how: which nights, which dogs, the rates and the percentage. I can also send the same picture to their phone. They understand it without me explaining." | Charlie prints one, sends one, and notes the employee's questions | After the breakdown |
 | 3 | "Recording a payment takes under a minute, and I can answer 'did I pay X for the week of Y?' from the app alone." | Charlie logs a real payment, then answers a past question from the payment history | Now |
-| 4 | "For any week I pick, the nights and dogs in the app match what actually happened. When they don't, I can fix it myself." | Charlie or her admin spot-checks a week against the booking site | Now to check; after the by-hand edit to fix |
+| 4 | "For any week I pick, the nights and dogs in the app match what actually happened. When they don't, I tell Kate and it's fixed at the source." | Charlie or her admin spot-checks a week against the booking site | Now. **The booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23):** a wrong boarding is fixed there (or the sync is fixed), never by hand in the app |
 | 5 | "The staff on shift get the morning roster on their phones by 7am, every weekday, without me doing anything." | Five weekdays in a row | After #260 |
 
 Support, outside the criteria: "When something looks wrong, I press Send a Question and Kate gets it." Show her this in the first session.
@@ -103,7 +103,7 @@ If adoption stalls, ask which step costs more than it's worth, and fix or drop t
 ## TODOs from this plan (Kate, 2026-10-20)
 
 - **Fix:** a dog with no rate fails silently (it counts as $0 toward the night's pay).
-- **Fix (was maybe):** a correction by hand (a missed, odd or late booking) must survive the next sync. Today the sync silently overwrites edits to synced boardings and re-creates deleted ones (`src/lib/scraper/mapping.js`).
+- ~~**Fix (was maybe):** a correction by hand must survive the next sync.~~ **Dropped (Kate, 2026-10-23):** the booking site is the source of truth for dogs, rates and boardings, so there are no hand corrections to keep. A difference between the app and the booking site is a bug to fix right away. Adjusting what's actually paid (a note, a changed amount) is #343, for later.
 - **Fix:** a pay breakdown for each employee: what they're being paid and how it was calculated. It's one image (the roster image is already rendered the same way) that prints cleanly and can be sent to a phone. **Charlie sends it from her own phone** (Kate, 2026-10-20). The app never sends it: that would be a message tied to Charlie's business. So the breakdown doesn't depend on #260.
 - **Maybe:** notify Charlie when her admin adds or changes boarding info.
 - **Maybe:** a clear answer to "something looks wrong at 9pm, what do I do?" (Send a Question exists; make it obvious, and say what happens next).
