@@ -1057,6 +1057,13 @@ describe('REQ-109 runDetailSync', () => {
     expect(markDone).toHaveBeenCalledWith(db, 'q1', { meta: { schedule_pet_ids: ['10001'], detail_notice: 'C63X "Dog A 10/24-27": first; second' } });
   });
 
+  it('a notice for an item with no title or meta still names the booking', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem({ title: null, meta: undefined }));
+    saved({}, ['first']);
+    const result = await runDetailSync(makeDb());
+    expect(result.notice).toBe('C63X "": first');
+  });
+
   it('the same notice on the next read of the booking is not repeated', async () => {
     dequeueOne.mockResolvedValue(appointmentItem({ meta: { detail_notice: 'C63X "Dog A 10/24-27": first' } }));
     saved({}, ['first']);

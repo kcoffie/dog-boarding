@@ -144,3 +144,45 @@ describe("REQ-661: a staff member's dog is named from the title (#49)", () => {
     expect(nameFromTitle(null)).toBeNull();
   });
 });
+
+describe('REQ-661: IDs are digits only, start to end', () => {
+  it('a data-pet with letters before its digits gives no ID, even when href agrees', () => {
+    expect(extractPets('<a href="/pets/x40001" class="event-pet" data-pet="x40001">Biscuit Sample</a>')[0].id).toBeNull();
+  });
+
+  it('a client ID with letters before or after its digits gives no client ID', () => {
+    expect(extractClient('<div class="event-clients-pets" data-uid="x30001"></div>').uid).toBeNull();
+    expect(extractClient('<div class="event-clients-pets" data-uid="30001x"></div>').uid).toBeNull();
+  });
+
+  it('a price div whose data-pet has letters before or after its digits gives no rate', () => {
+    const html = twoPetPage().replace(/data-pet="40002" data-client/g, 'data-pet="x40002" data-client');
+    expect(Object.keys(extractPricing(html).ratesByPet)).toEqual(['40001']);
+    const after = twoPetPage().replace(/data-pet="40002" data-client/g, 'data-pet="40002x" data-client');
+    expect(Object.keys(extractPricing(after).ratesByPet)).toEqual(['40001']);
+  });
+
+  it('a pet link with no name is not a pet', () => {
+    expect(extractPets('<a href="/pets/40001" class="event-pet" data-pet="40001"></a>')).toEqual([]);
+  });
+});
+
+describe('REQ-661: rates by pet, uneven pages', () => {
+  const pricing = (services) => `<fieldset id="confirm-price" class="no-legend">
+  <a class="btn toggle-field text quote">Total $100 <i class="fa fa-fw"></i></a>
+  <div class="pricing-appt-wrapper services-${services.length} pets-2">
+    ${services.map(([name, divs]) => `<div class="service-wrapper"><span class="service-name">${name}</span>
+      ${divs.map(([pet, rate]) => `<div class="price p-7" data-pet="${pet}" data-rate="${rate}" data-qty="100" data-amount="1.00"></div>`).join('')}</div>`).join('\n    ')}
+  </div>
+</fieldset>`;
+
+  it("a pet's night rate is its first night service's, not a later one's", () => {
+    const html = pricing([['Boarding (Nights)', [['40001', '5500'], ['40002', '4500']]], ['Holiday Boarding', [['40001', '9900'], ['40002', '8800']]]]);
+    expect(extractPricing(html).ratesByPet['40001'].nightRate).toBe(55);
+  });
+
+  it('a page with fewer price divs than services × pets still gives the rates it has', () => {
+    const html = pricing([['Boarding (Nights)', [['40001', '5500'], ['40002', '4500']]], ['Boarding (Days)', [['40001', '5000']]]]);
+    expect(extractPricing(html).ratesByPet).toEqual({ 40001: { nightRate: 55, dayRate: 50 }, 40002: { nightRate: 45, dayRate: null } });
+  });
+});

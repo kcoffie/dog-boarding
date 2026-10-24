@@ -7,6 +7,7 @@
  * Column lists in select() are ignored: every row comes back whole, which is a superset of any projection.
  * `_hooks.beforeUpdate(table, rows)` and `_hooks.beforeInsert(table, rows)` run just before the write is
  * applied, to play another runner writing in between a read and a write.
+ * `failOn(table, op, filters)` returning an error makes that query answer with it, as PostgREST does.
  */
 
 // SQL LIKE pattern → RegExp: % is any run, _ is one character, everything else is literal
@@ -31,7 +32,7 @@ function matches(row, [op, field, value]) {
   throw new Error(`fakeSupabase: no filter ${op}`);
 }
 
-export function createFakeSupabase({ uniquePetId = true } = {}) {
+export function createFakeSupabase({ uniquePetId = true, failOn = () => null } = {}) {
   const data = { dogs: [], boardings: [], sync_appointments: [], sync_queue: [], boarding_forms: [] };
   const hooks = { beforeUpdate: null, beforeInsert: null };
   let nextId = 0;
@@ -49,6 +50,8 @@ export function createFakeSupabase({ uniquePetId = true } = {}) {
     let returning = op === 'select';
 
     const run = (mode) => {
+      const failure = failOn(table, op, filters);
+      if (failure) return { data: null, error: failure };
       if (op === 'insert') {
         const rows = (Array.isArray(values) ? values : [values]).map((v) => ({ id: `${table}-${++nextId}`, ...v }));
         hooks.beforeInsert?.(table, rows);

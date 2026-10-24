@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mapAndSaveAppointment } from '../../lib/scraper/mapping.js';
+import { mapAndSaveAppointment, findDogsByName } from '../../lib/scraper/mapping.js';
 import { parseAppointmentPage } from '../../lib/scraper/extraction.js';
 import { createFakeSupabase } from './fakeSupabase.js';
 import { twoPetPage, onePetPage, noPetPage, BISCUIT, CLOVER } from './twoPetPages.js';
@@ -137,10 +137,21 @@ describe('REQ-661: a same-name dog with no pet ID is linked only with evidence (
     const db = createFakeSupabase();
     const clover = sameNameDog(db);
     db._addBoarding({ dog_id: clover.id, external_id: `${BOOKING}_p1`, arrival_datetime: '2026-11-03T16:00:00.000Z', departure_datetime: '2026-11-12T17:00:00.000Z' });
-    await save(db);
+    const result = await save(db);
     expect(clover.external_pet_id).toBe('40002');
     expect(boarding(db, `${BOOKING}_p1`).dog_id).toBe(clover.id);
     expect(db._mockData.dogs).toHaveLength(2);
+    expect(result.stats.dogUpdated).toBe(true);
+  });
+
+  it('a linked dog counts as updated, not created', async () => {
+    const db = createFakeSupabase();
+    const clover = sameNameDog(db);
+    db._addBoarding({ dog_id: clover.id, external_id: `${BOOKING}_p1` });
+    const biscuit = db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001' });
+    db._addBoarding({ dog_id: biscuit.id, external_id: BOOKING });
+    const result = await save(db);
+    expect([result.stats.dogCreated, result.stats.dogUpdated]).toEqual([false, true]);
   });
 
   it("its stored bookings carry this client's ID: it's linked", async () => {
@@ -235,8 +246,11 @@ describe('REQ-661: two sync runs at once', () => {
     db._hooks.beforeUpdate = (table, rows) => {
       if (table === 'dogs' && rows.some((r) => r.id === clover.id)) clover.external_pet_id = '48888';
     };
+    db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001' });
+    db._addBoarding({ dog_id: dogOf(db, '40001').id, external_id: BOOKING });
     const result = await save(db);
     expect(clover.external_pet_id).toBe('48888');
+    expect(result.stats.dogCreated).toBe(false);
     expect(result.notices).toEqual(['"Clover Sample" (pet 40002): another sync run gave the app\'s dog with that name a different pet ID first; nothing saved for this pet']);
   });
 
@@ -249,6 +263,20 @@ describe('REQ-661: two sync runs at once', () => {
     const result = await save(db);
     expect([clover.external_pet_id, result.notices]).toEqual(['40002', []]);
     expect(boarding(db, `${BOOKING}_p1`).dog_id).toBe(clover.id);
+  });
+
+  it('another run gave a different dog this pet ID while linking (a unique-index error): that dog is used', async () => {
+    const db = createFakeSupabase();
+    const clover = linkable(db);
+    db._hooks.beforeUpdate = (table, rows) => {
+      if (table === 'dogs' && rows.some((r) => r.id === clover.id) && !dogOf(db, '40002')) {
+        db._addDog({ id: 'dog-other-run', name: 'Clover Sample', external_pet_id: '40002' });
+      }
+    };
+    const result = await save(db);
+    expect(clover.external_pet_id).toBeNull();
+    expect(dogOf(db, '40002').id).toBe('dog-other-run');
+    expect(result.notices).toEqual([`boarding ${BOOKING}_p1 is on a dog that isn't on this booking's page now; left as it is`]);
   });
 
   it("another run created the pet's dog first (a unique-index error): that dog is used, no duplicate", async () => {
@@ -367,8 +395,9 @@ describe("REQ-661: a staff member's dog (no pet element; Kate, 2026-10-24)", () 
 
   it('no such dog: one is created, with no pet ID', async () => {
     const db = createFakeSupabase();
-    await mapAndSaveAppointment(staffPage(), { supabase: db });
+    const result = await mapAndSaveAppointment(staffPage(), { supabase: db });
     expect(db._mockData.dogs.map((d) => [d.name, d.external_pet_id])).toEqual([['Dog S', undefined]]);
+    expect(result.stats.dogCreated).toBe(true);
   });
 
   it('a same-name dog with a pet ID is not it', async () => {
@@ -386,6 +415,7 @@ describe("REQ-661: a staff member's dog (no pet element; Kate, 2026-10-24)", () 
     expect(result.notices).toEqual(['"Dog S" (no pet on the page): 2 dogs in the app have that name and no pet ID; nothing saved']);
     expect(db._mockData.boardings).toHaveLength(0);
     expect(db._mockData.sync_appointments[0].mapped_dog_id).toBeNull();
+    expect([result.stats.dogCreated, result.stats.dogUpdated]).toEqual([false, false]);
   });
 
   it('no name in the title either: nothing saved, Kate is told', async () => {
@@ -393,5 +423,247 @@ describe("REQ-661: a staff member's dog (no pet element; Kate, 2026-10-24)", () 
     const result = await mapAndSaveAppointment(staffPage(null), { supabase: db });
     expect(result.notices).toEqual(['no pet on the page and no name in its title; nothing saved']);
     expect(db._mockData.dogs).toHaveLength(0);
+    expect([result.stats.dogCreated, result.stats.dogUpdated]).toEqual([false, false]);
+  });
+});
+
+describe('REQ-661: what a save reports and returns', () => {
+  it('the first read of a booking creates its dogs and boardings', async () => {
+    const result = await save(createFakeSupabase());
+    expect(result.stats).toMatchObject({ dogCreated: true, dogUpdated: false, boardingCreated: true, boardingUpdated: false });
+  });
+
+  it('reading it again updates them and creates nothing', async () => {
+    const db = createFakeSupabase();
+    await save(db);
+    const result = await save(db);
+    expect(result.stats).toMatchObject({ dogCreated: false, dogUpdated: true, boardingCreated: false, boardingUpdated: true });
+  });
+
+  it('one known pet and one new pet: a dog is both updated and created', async () => {
+    const db = createFakeSupabase();
+    db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001' });
+    const result = await save(db);
+    expect([result.stats.dogCreated, result.stats.dogUpdated]).toEqual([true, true]);
+  });
+
+  it('a booking where no pet could be saved counts nothing as created or updated', async () => {
+    const db = createFakeSupabase();
+    const bad = { href: '/pets/49999', dataPet: '40001' };
+    const result = await save(db, twoPetPage({ linkOverrides: { 40001: bad, 40002: { href: '/pets/49999', dataPet: '40002' } } }));
+    expect(result.stats).toMatchObject({ dogCreated: false, dogUpdated: false, boardingCreated: false, boardingUpdated: false });
+    expect([result.dog, result.boarding]).toEqual([null, null]);
+  });
+
+  it("it returns the dog and boarding holding the booking's ID", async () => {
+    const db = createFakeSupabase();
+    const result = await save(db);
+    expect([result.dog.id, result.boarding.external_id]).toEqual([dogOf(db, '40001').id, BOOKING]);
+  });
+});
+
+describe('REQ-661: new and refreshed dogs', () => {
+  it('a new dog is active and from the booking site', async () => {
+    const db = createFakeSupabase();
+    await save(db);
+    expect([dogOf(db, '40001').active, dogOf(db, '40001').source]).toEqual([true, 'external']);
+  });
+
+  it('a dog the booking site still books is made active again', async () => {
+    const db = createFakeSupabase();
+    db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001', active: false });
+    await save(db);
+    expect(dogOf(db, '40001').active).toBe(true);
+  });
+
+  it('a linked dog is made active too', async () => {
+    const db = createFakeSupabase();
+    const clover = db._addDog({ name: 'Clover Sample', external_pet_id: null, active: false });
+    db._addBoarding({ dog_id: clover.id, external_id: `${BOOKING}_p1` });
+    await save(db);
+    expect(clover.active).toBe(true);
+  });
+
+  it('a page without pricing leaves the stored rates as they are', async () => {
+    const db = createFakeSupabase();
+    db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001', night_rate: 65, day_rate: 40 });
+    await mapAndSaveAppointment({ ...read(twoPetPage()), pricing: null }, { supabase: db });
+    expect([dogOf(db, '40001').night_rate, dogOf(db, '40001').day_rate]).toEqual([65, 40]);
+  });
+
+  it('a two-pet page without pricing saves both dogs at $0', async () => {
+    const db = createFakeSupabase();
+    await mapAndSaveAppointment({ ...read(twoPetPage()), pricing: null }, { supabase: db });
+    expect(db._mockData.dogs.map((d) => [d.night_rate, d.day_rate])).toEqual([[0, 0], [0, 0]]);
+  });
+
+  it('a $0 rate on the site never overwrites a stored rate', async () => {
+    const db = createFakeSupabase();
+    db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001', night_rate: 65, day_rate: 40 });
+    const page = read(twoPetPage());
+    page.pricing.ratesByPet['40001'] = { nightRate: 0, dayRate: 0 };
+    await mapAndSaveAppointment(page, { supabase: db });
+    expect([dogOf(db, '40001').night_rate, dogOf(db, '40001').day_rate]).toEqual([65, 40]);
+  });
+
+  it('before the unique index exists, a known pet ID still never gets a second dog', async () => {
+    const db = createFakeSupabase({ uniquePetId: false });
+    db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001' });
+    await save(db);
+    expect(db._mockData.dogs.filter((d) => d.external_pet_id === '40001')).toHaveLength(1);
+  });
+
+  it('a name with a LIKE wildcard in it matches only itself', async () => {
+    const db = createFakeSupabase();
+    db._addDog({ name: 'Max_1' });
+    db._addDog({ name: 'Max21' });
+    expect((await findDogsByName(db, 'Max_1')).map((d) => d.name)).toEqual(['Max_1']);
+  });
+});
+
+describe('REQ-661: evidence for a link, edge cases', () => {
+  const sameNameDog = (db) => db._addDog({ name: 'Clover Sample', external_pet_id: null });
+
+  it("a dog's second-pet boarding on another booking counts that booking's client", async () => {
+    const db = createFakeSupabase();
+    const clover = sameNameDog(db);
+    db._addBoarding({ dog_id: clover.id, external_id: 'OLD00001_p1' });
+    db._addSyncAppointment({ external_id: 'OLD00001', client_name: 'Sam Sample', raw_data: {} });
+    await save(db);
+    expect(clover.external_pet_id).toBe('40002');
+  });
+
+  it("this booking's boarding on a different dog is no evidence for this one", async () => {
+    const db = createFakeSupabase();
+    const clover = sameNameDog(db);
+    const other = db._addDog({ name: 'Other Dog', external_pet_id: '49999' });
+    db._addBoarding({ dog_id: other.id, external_id: BOOKING });
+    await save(db);
+    expect(clover.external_pet_id).toBeNull();
+  });
+
+  it("a stored booking with no client name and no raw data can't confirm or rule out", async () => {
+    const db = createFakeSupabase();
+    const clover = sameNameDog(db);
+    db._addSyncAppointment({ external_id: 'OLD00001', client_name: null, mapped_dog_id: clover.id, raw_data: null });
+    const result = await save(db);
+    expect(clover.external_pet_id).toBeNull();
+    expect(result.notices[0]).toContain("nothing shows it's this pet");
+  });
+
+  it("a page with no client name can't confirm a stored name", async () => {
+    const db = createFakeSupabase();
+    const clover = sameNameDog(db);
+    db._addSyncAppointment({ external_id: 'OLD00001', client_name: 'Sam Sample', mapped_dog_id: clover.id, raw_data: {} });
+    const result = await mapAndSaveAppointment({ ...read(twoPetPage()), client_name: null, client_uid: null }, { supabase: db });
+    expect(clover.external_pet_id).toBeNull();
+    expect(result.notices[0]).toContain("nothing shows it's this pet");
+  });
+});
+
+describe('REQ-661: database errors fail the save, so the item is retried', () => {
+  const failing = (match) => createFakeSupabase({ failOn: (table, op, filters) => (match(table, op, filters) ? { code: 'XX000', message: 'boom' } : null) });
+  const has = (filters, field) => filters.some(([, f]) => f === field);
+
+  it("reading the booking's boardings", async () => {
+    await expect(save(failing((t, op, f) => t === 'boardings' && op === 'select' && !has(f, 'dog_id')))).rejects.toMatchObject({ message: 'boom' });
+  });
+
+  it("reading a candidate dog's boardings for evidence", async () => {
+    const db = failing((t, op, f) => t === 'boardings' && op === 'select' && has(f, 'dog_id') && !has(f, 'lte'));
+    db._addDog({ name: 'Clover Sample', external_pet_id: null });
+    await expect(save(db)).rejects.toMatchObject({ message: 'boom' });
+  });
+
+  it("reading a candidate dog's stored bookings for evidence", async () => {
+    const db = failing((t, op, f) => t === 'sync_appointments' && op === 'select' && has(f, 'mapped_dog_id'));
+    db._addDog({ name: 'Clover Sample', external_pet_id: null });
+    await expect(save(db)).rejects.toMatchObject({ message: 'boom' });
+  });
+
+  it('refreshing a known dog', async () => {
+    const db = failing((t, op) => t === 'dogs' && op === 'update');
+    db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001' });
+    await expect(save(db)).rejects.toMatchObject({ message: 'boom' });
+  });
+
+  it('linking a dog (any error but a duplicate)', async () => {
+    const db = failing((t, op) => t === 'dogs' && op === 'update');
+    const clover = db._addDog({ name: 'Clover Sample', external_pet_id: null });
+    db._addBoarding({ dog_id: clover.id, external_id: `${BOOKING}_p1` });
+    await expect(save(db)).rejects.toMatchObject({ message: 'boom' });
+  });
+
+  it('creating a dog', async () => {
+    await expect(save(failing((t, op) => t === 'dogs' && op === 'insert'))).rejects.toMatchObject({ message: 'boom' });
+  });
+
+  it("refreshing a staff member's dog", async () => {
+    const db = failing((t, op) => t === 'dogs' && op === 'update');
+    db._addDog({ name: 'Dog S', external_pet_id: null });
+    await expect(mapAndSaveAppointment({ ...read(noPetPage()), pet_name: 'Dog S' }, { supabase: db })).rejects.toMatchObject({ message: 'boom' });
+  });
+
+  it("a failed form check doesn't fail the save: no form job, the booking is still saved", async () => {
+    const db = failing((t, op) => t === 'boarding_forms' && op === 'select');
+    await save(db);
+    expect([db._mockData.sync_queue.length, db._mockData.boardings.length]).toEqual([0, 2]);
+  });
+});
+
+describe('REQ-661: form jobs', () => {
+  it('a boarding whose form is already stored gets no new form job', async () => {
+    const db = createFakeSupabase();
+    await save(db);
+    db._mockData.sync_queue = [];
+    db._mockData.boarding_forms.push({ id: 'form-1', boarding_id: boarding(db, BOOKING).id });
+    await save(db);
+    expect(db._mockData.sync_queue.map((q) => q.source_url)).toEqual(['/pets/40002/forms']);
+  });
+
+  it('a form job is a form-type item that re-opens if it ran before without a form', async () => {
+    const db = createFakeSupabase();
+    db._addQueueItem({ external_id: 'placeholder' });
+    await save(db);
+    const job = db._mockData.sync_queue.find((q) => q.source_url === '/pets/40001/forms');
+    expect(job.type).toBe('form');
+    db._mockData.sync_queue.forEach((q) => { q.status = 'done'; });
+    await save(db);
+    expect(db._mockData.sync_queue.find((q) => q.source_url === '/pets/40001/forms').status).toBe('pending');
+  });
+
+  it('a boarding that ended before today gets no form job', async () => {
+    vi.setSystemTime(new Date('2026-11-20T12:00:00Z'));
+    const db = createFakeSupabase();
+    await save(db);
+    expect(db._mockData.sync_queue).toHaveLength(0);
+  });
+
+  it('a boarding that ends later today still gets its form job', async () => {
+    vi.setSystemTime(new Date('2026-11-12T23:30:00'));
+    const db = createFakeSupabase();
+    await mapAndSaveAppointment({ ...read(twoPetPage()), check_out_datetime: new Date('2026-11-12T00:30:00').toISOString() }, { supabase: db });
+    expect(db._mockData.sync_queue).toHaveLength(2);
+  });
+});
+
+describe("REQ-661: a staff member's dog, rates and notices", () => {
+  it("a staff member's dog gets the page's rates when created", async () => {
+    const db = createFakeSupabase();
+    await mapAndSaveAppointment({ ...read(noPetPage()), pet_name: 'Dog S', pricing: read(onePetPage()).pricing }, { supabase: db });
+    expect(db._mockData.dogs[0].night_rate).toBe(60);
+  });
+
+  it("a new staff member's dog with no pricing starts at $0, active, from the booking site", async () => {
+    const db = createFakeSupabase();
+    await mapAndSaveAppointment({ ...read(noPetPage()), pet_name: 'Dog S' }, { supabase: db });
+    expect(db._mockData.dogs.map((d) => [d.night_rate, d.day_rate, d.active, d.source])).toEqual([[0, 0, true, 'external']]);
+  });
+
+  it("an existing staff member's dog is refreshed and made active, with nothing to report", async () => {
+    const db = createFakeSupabase();
+    const staffDog = db._addDog({ name: 'Dog S', external_pet_id: null, active: false, night_rate: 30 });
+    const result = await mapAndSaveAppointment({ ...read(noPetPage()), pet_name: 'Dog S', pricing: read(onePetPage()).pricing }, { supabase: db });
+    expect([staffDog.active, staffDog.night_rate, result.notices, result.stats.dogUpdated, result.stats.dogCreated]).toEqual([true, 60, [], true, false]);
   });
 });
