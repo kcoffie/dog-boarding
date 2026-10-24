@@ -179,8 +179,8 @@ export async function findDogsByPetId(supabase, petId) {
 }
 
 /**
- * Dogs with exactly this name, ignoring case and outer spaces. `ilike` treats % and _ as wildcards,
- * so it can return more; the exact comparison drops those (#344).
+ * Dogs with exactly this name, ignoring case and outer spaces (#344). The LIKE pattern escapes its
+ * wildcards and allows spaces around the stored name; the exact comparison then drops anything else.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} name
  * @returns {Promise<Object[]>}
@@ -189,7 +189,7 @@ export async function findDogsByName(supabase, name) {
   const { data, error } = await supabase
     .from('dogs')
     .select('*')
-    .ilike('name', name.trim());
+    .ilike('name', `%${name.trim().replace(/[\\%_]/g, '\\$&')}%`);
 
   if (error) throw error;
 
@@ -261,6 +261,9 @@ export async function findSyncAppointmentByExternalId(supabase, externalId) {
 // never renames a dog and never changes a stored pet ID; what it can't decide becomes a notice for
 // Kate's one alert per run. `dogs.external_id` is no longer written.
 
+// A dog the booking site still books is active again, unless Kate entered it by hand (her choice stands)
+const activeField = (dog) => (dog.source === 'manual' ? {} : { active: true });
+
 // The rate fields to write: only when this sync read pricing, and never a 0 over a stored rate (REQ-201)
 function rateFields(rates, updateRates) {
   const fields = {};
@@ -276,7 +279,7 @@ async function takeDog(supabase, dog, pet, rates, updateRates) {
     : `pet ${pet.id} is "${pet.name}" on the booking site but "${dog.name}" in the app (not renamed)`;
   const { data, error } = await supabase
     .from('dogs')
-    .update({ active: true, ...rateFields(rates, updateRates) })
+    .update({ ...activeField(dog), ...rateFields(rates, updateRates) })
     .eq('id', dog.id)
     .select()
     .single();
@@ -331,18 +334,20 @@ async function linkEvidence(supabase, dog, page) {
   return verdicts.includes(true) ? 'same_client' : 'none';
 }
 
-// Write the pet ID onto a dog only while it has none, in the same query; another run may get there first
-async function linkPetId(supabase, dog, pet, rates, updateRates) {
+// Write the pet ID onto a dog only while it has none, in the same query; another run may get there first.
+// A link is reported too, with its evidence: Kate can see each one the sync made (#344).
+async function linkPetId(supabase, dog, pet, rates, updateRates, evidence) {
   const { data, error } = await supabase
     .from('dogs')
-    .update({ external_pet_id: pet.id, active: true, ...rateFields(rates, updateRates) })
+    .update({ external_pet_id: pet.id, ...activeField(dog), ...rateFields(rates, updateRates) })
     .eq('id', dog.id)
     .is('external_pet_id', null)
     .select();
   if (error && error.code !== '23505') throw error;
   if (!error && data.length === 1) {
-    mappingLogger.log(`[Mapping] 🔗 Linked pet ${pet.id} to dog ${dog.id} (same name, with evidence)`);
-    return { dog: data[0], created: false, updated: true, notice: null };
+    const why = evidence === 'this_booking' ? 'this booking already had a boarding on it' : 'its bookings name this client';
+    return { dog: data[0], created: false, updated: true,
+      notice: `linked pet ${pet.id} ("${pet.name}") to the app's dog of that name (${dog.id}): ${why}` };
   }
   // 23505: another dog got this pet ID; 0 rows: this dog got a pet ID. Either way, read who holds it now.
   const holders = await findDogsByPetId(supabase, pet.id);
@@ -395,7 +400,7 @@ export async function resolvePetDog(supabase, pet, { rates, updateRates, page })
     if (evidence === 'none') {
       return nothing(`"${pet.name}" (pet ${pet.id}): the app has a dog with that name, but nothing shows it's this pet; not linked, nothing saved for this pet`);
     }
-    return linkPetId(supabase, withoutId[0], pet, rates, updateRates);
+    return linkPetId(supabase, withoutId[0], pet, rates, updateRates, evidence);
   }
 
   return createDog(supabase, {
@@ -425,7 +430,7 @@ export async function resolveTitleDog(supabase, name, { rates, updateRates }) {
   if (withoutId.length === 1) {
     const { data, error } = await supabase
       .from('dogs')
-      .update({ active: true, ...rateFields(rates, updateRates) })
+      .update({ ...activeField(withoutId[0]), ...rateFields(rates, updateRates) })
       .eq('id', withoutId[0].id)
       .select()
       .single();
@@ -716,9 +721,7 @@ function ratesForPet(externalData, pet, petCount) {
   const pricing = externalData.pricing ?? null;
   if (!pricing) return null;
   if (petCount <= 1) return ratesFromPricing(pricing);
-  const rates = pet.id ? pricing.ratesByPet?.[pet.id] ?? null : null;
-  if (!rates) mappingLogger.warn(`[Mapping] ⚠️ ${externalData.external_id}: no price div carries pet ${pet.id ?? '(no ID)'}, so no rates for it`);
-  return rates;
+  return pet.id ? pricing.ratesByPet?.[pet.id] ?? null : null;
 }
 
 /**
@@ -771,7 +774,10 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
 
   // 1. Each pet's dog
   const resolved = [];
-  if (pets.length === 0) {
+  if (pets.length === 0 && externalData.has_client_block) {
+    // A client's booking whose pets can't be read: the page's layout may have changed (#344)
+    notices.push('the page has a client but no pet the sync could read (layout change?); nothing saved for it');
+  } else if (pets.length === 0) {
     const rates = ratesForPet(externalData, null, 0);
     const result = await resolveTitleDog(supabase, externalData.pet_name, { rates, updateRates });
     if (result.notice) notices.push(result.notice);
@@ -781,6 +787,10 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
   }
   for (const pet of pets) {
     const rates = ratesForPet(externalData, pet, pets.length);
+    // Rates by pet ID were confirmed on the rendered page only; until the raw page shows them, say so (#344)
+    if (pets.length > 1 && externalData.pricing && pet.id && !rates) {
+      notices.push(`pet ${pet.id} ("${pet.name}"): no price on the page carries its ID, so its rates weren't read (stored ones kept)`);
+    }
     const result = await resolvePetDog(supabase, pet, { rates, updateRates, page });
     if (result.notice) notices.push(result.notice);
     stats.dogCreated ||= result.created;
@@ -798,17 +808,27 @@ export async function mapAndSaveAppointment(externalData, options = {}) {
   const base = mapToBoarding(externalData, null);
   const saved = [];
   for (const { pet, dog, rates } of resolved) {
-    const own = bookingBoardings.find((b) => b.dog_id === dog.id);
+    // The dog's own boarding on this booking, the booking's own ID first. Two of them is old data to check.
+    const owned = bookingBoardings.filter((b) => b.dog_id === dog.id);
+    const own = owned.find((b) => b.external_id === bookingId) ?? owned[0];
+    if (owned.length > 1) {
+      notices.push(`one dog (${dog.id}) has ${owned.length} boardings on this booking (${owned.map((b) => b.external_id).join(', ')}); only ${own.external_id} was updated`);
+    }
     const externalId = own ? own.external_id : freeSlot(bookingId, taken);
     taken.add(externalId);
-    const { boarding, created, updated } = await upsertBoarding(supabase, {
-      ...base,
-      dog_id: dog.id,
-      external_id: externalId,
-      billed_amount: externalId === bookingId ? base.billed_amount : null,
-      night_rate: rates?.nightRate ?? null,
-      day_rate: rates?.dayRate ?? null,
-    });
+    const boardingData = { ...base, dog_id: dog.id, external_id: externalId, billed_amount: externalId === bookingId ? base.billed_amount : null };
+    if (rates) {
+      boardingData.night_rate = rates.nightRate;
+      boardingData.day_rate = rates.dayRate;
+    } else if (pets.length > 1 && externalData.pricing) {
+      // Rates not read for this pet: keep what the boarding has
+      delete boardingData.night_rate;
+      delete boardingData.day_rate;
+    } else {
+      boardingData.night_rate = null;
+      boardingData.day_rate = null;
+    }
+    const { boarding, created, updated } = await upsertBoarding(supabase, boardingData);
     stats.boardingCreated ||= created;
     stats.boardingUpdated ||= updated;
     saved.push({ pet, dog, boarding });

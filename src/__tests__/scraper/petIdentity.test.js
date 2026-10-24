@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mapAndSaveAppointment, findDogsByName } from '../../lib/scraper/mapping.js';
 import { parseAppointmentPage } from '../../lib/scraper/extraction.js';
 import { createFakeSupabase } from './fakeSupabase.js';
-import { twoPetPage, onePetPage, noPetPage, BISCUIT, CLOVER } from './twoPetPages.js';
+import { twoPetPage, onePetPage, noPetPage, BISCUIT, CLOVER, CHECK_IN, CHECK_OUT } from './twoPetPages.js';
 
 const BOOKING = 'BK000001';
 const read = (html) => ({ ...parseAppointmentPage(html, `/schedule/a/${BOOKING}/1793721600`), external_id: BOOKING });
@@ -361,10 +361,27 @@ describe("REQ-661: pets the page doesn't identify", () => {
     expect(result.notices).toEqual([`two pets on the page are the same dog in the app (${dogOf(db, '40001').id}); the second wasn't saved`]);
   });
 
-  it('a pet with no price div of its own gets no rates: a new dog at $0, a boarding with none', async () => {
+  it('a pet with no price div of its own gets no rates: a new dog at $0, a boarding with none, and Kate is told', async () => {
     const db = createFakeSupabase();
+    const result = await save(db, twoPetPage({ unpricedPet: CLOVER.id }));
+    expect([dogOf(db, '40002').night_rate, boarding(db, `${BOOKING}_p1`).night_rate ?? null]).toEqual([0, null]);
+    expect(result.notices).toEqual(['pet 40002 ("Clover Sample"): no price on the page carries its ID, so its rates weren\'t read (stored ones kept)']);
+  });
+
+  it("a known pet with no price div of its own keeps its dog's and its boarding's stored rates", async () => {
+    const db = createFakeSupabase();
+    const clover = db._addDog({ name: 'Clover Sample', external_pet_id: '40002', night_rate: 42, day_rate: 30 });
+    db._addBoarding({ dog_id: clover.id, external_id: `${BOOKING}_p1`, night_rate: 42, day_rate: 30 });
     await save(db, twoPetPage({ unpricedPet: CLOVER.id }));
-    expect([dogOf(db, '40002').night_rate, boarding(db, `${BOOKING}_p1`).night_rate]).toEqual([0, null]);
+    expect([clover.night_rate, clover.day_rate, boarding(db, `${BOOKING}_p1`).night_rate, boarding(db, `${BOOKING}_p1`).day_rate]).toEqual([42, 30, 42, 30]);
+  });
+
+  it('a one-pet page with no pricing clears the boarding\'s rates, as before', async () => {
+    const db = createFakeSupabase();
+    const biscuit = db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001' });
+    db._addBoarding({ dog_id: biscuit.id, external_id: BOOKING, night_rate: 42 });
+    await mapAndSaveAppointment({ ...read(onePetPage()), pricing: null }, { supabase: db });
+    expect(boarding(db, BOOKING).night_rate).toBeNull();
   });
 
   it("a pet ID the schedule lists but the page doesn't is logged", async () => {
@@ -665,5 +682,86 @@ describe("REQ-661: a staff member's dog, rates and notices", () => {
     const staffDog = db._addDog({ name: 'Dog S', external_pet_id: null, active: false, night_rate: 30 });
     const result = await mapAndSaveAppointment({ ...read(noPetPage()), pet_name: 'Dog S', pricing: read(onePetPage()).pricing }, { supabase: db });
     expect([staffDog.active, staffDog.night_rate, result.notices, result.stats.dogUpdated, result.stats.dogCreated]).toEqual([true, 60, [], true, false]);
+  });
+});
+
+describe('REQ-661: review findings (2026-10-24)', () => {
+  it("a dog linked by evidence gets its boarding's dates and its own rates, a form job by its own pet ID, and Kate is told why", async () => {
+    const db = createFakeSupabase();
+    const clover = db._addDog({ name: 'Clover Sample', external_pet_id: null });
+    db._addBoarding({ dog_id: clover.id, external_id: `${BOOKING}_p1`, arrival_datetime: '2026-11-01T00:00:00.000Z', departure_datetime: '2026-11-02T00:00:00.000Z', night_rate: 10 });
+    const result = await save(db);
+    expect(boarding(db, `${BOOKING}_p1`)).toMatchObject({ arrival_datetime: CHECK_IN, departure_datetime: CHECK_OUT, night_rate: 45, day_rate: 35 });
+    expect(db._mockData.sync_queue.find((q) => q.meta.boarding_id === boarding(db, `${BOOKING}_p1`).id).source_url).toBe('/pets/40002/forms');
+    expect(result.notices).toEqual([`linked pet 40002 ("Clover Sample") to the app's dog of that name (${clover.id}): this booking already had a boarding on it`]);
+  });
+
+  it("a link made on the client's evidence says so", async () => {
+    const db = createFakeSupabase();
+    const clover = db._addDog({ name: 'Clover Sample', external_pet_id: null });
+    db._addSyncAppointment({ external_id: 'OLD00001', client_name: 'Sam Sample', mapped_dog_id: clover.id, raw_data: {} });
+    const result = await save(db);
+    expect(result.notices).toEqual([`linked pet 40002 ("Clover Sample") to the app's dog of that name (${clover.id}): its bookings name this client`]);
+  });
+
+  it("a client's booking page with no pet the sync can read saves nothing and is reported, never named from the title", async () => {
+    const db = createFakeSupabase();
+    db._addDog({ name: 'Dog S', external_pet_id: null });
+    const page = { ...read(twoPetPage().replace(/class="event-pet pet-\d+"/g, 'class="event-pet-name"')), pet_name: 'Dog S' };
+    const result = await mapAndSaveAppointment(page, { supabase: db });
+    expect(result.notices).toEqual(['the page has a client but no pet the sync could read (layout change?); nothing saved for it']);
+    expect([db._mockData.boardings.length, db._mockData.dogs.length]).toEqual([0, 1]);
+  });
+
+  it("a dog holding two boardings of one booking keeps the booking's own ID, and Kate is told", async () => {
+    const db = createFakeSupabase();
+    const biscuit = db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001' });
+    db._addBoarding({ dog_id: biscuit.id, external_id: `${BOOKING}_p1`, billed_amount: null });
+    db._addBoarding({ dog_id: biscuit.id, external_id: BOOKING, billed_amount: 900 });
+    const result = await save(db);
+    expect(boarding(db, BOOKING)).toMatchObject({ dog_id: biscuit.id, billed_amount: 1170, night_rate: 55 });
+    expect(boarding(db, `${BOOKING}_p2`).dog_id).toBe(dogOf(db, '40002').id);
+    expect(result.notices).toEqual([`one dog (${biscuit.id}) has 2 boardings on this booking (${BOOKING}_p1, ${BOOKING}); only ${BOOKING} was updated`]);
+  });
+
+  it('a hand-entered dog Kate made inactive stays inactive when its pet is booked', async () => {
+    const db = createFakeSupabase();
+    db._addDog({ name: 'Biscuit Sample', external_pet_id: '40001', source: 'manual', active: false });
+    await save(db);
+    expect(dogOf(db, '40001').active).toBe(false);
+  });
+
+  it("a hand-entered staff member's dog Kate made inactive stays inactive", async () => {
+    const db = createFakeSupabase();
+    const staffDog = db._addDog({ name: 'Dog S', external_pet_id: null, source: 'manual', active: false });
+    await mapAndSaveAppointment({ ...read(noPetPage()), pet_name: 'Dog S' }, { supabase: db });
+    expect(staffDog.active).toBe(false);
+  });
+
+  it('a hand-entered dog linked by evidence stays inactive if Kate made it so', async () => {
+    const db = createFakeSupabase();
+    const clover = db._addDog({ name: 'Clover Sample', external_pet_id: null, source: 'manual', active: false });
+    db._addBoarding({ dog_id: clover.id, external_id: `${BOOKING}_p1` });
+    await save(db);
+    expect([clover.external_pet_id, clover.active]).toEqual(['40002', false]);
+  });
+
+  it('a stored name with spaces around it is still the same name', async () => {
+    const db = createFakeSupabase();
+    db._addDog({ name: ' Max_1 ' });
+    expect((await findDogsByName(db, 'Max_1')).map((d) => d.name)).toEqual([' Max_1 ']);
+  });
+
+  it('a name ending in a backslash is searched without a database error', async () => {
+    const db = createFakeSupabase();
+    db._addDog({ name: 'Odd\\' });
+    expect((await findDogsByName(db, 'Odd\\')).map((d) => d.name)).toEqual(['Odd\\']);
+  });
+
+  it('nothing is logged when the page has every pet ID the schedule lists', async () => {
+    const db = createFakeSupabase();
+    console.warn.mockClear();
+    await save(db, twoPetPage(), { schedulePetIds: ['40002', '40001'] });
+    expect(console.warn.mock.calls.some((c) => c.join(' ').includes('schedule lists pet ID'))).toBe(false);
   });
 });

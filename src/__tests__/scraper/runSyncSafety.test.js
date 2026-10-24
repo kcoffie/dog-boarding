@@ -21,7 +21,7 @@ vi.mock('../../lib/scraper/extraction.js', async (importOriginal) => ({
 vi.mock('../../lib/scraper/appointmentFilter.js', () => ({ applyDetailFilters: vi.fn(() => ({ skip: false })) }));
 vi.mock('../../lib/scraper/mapping.js', () => ({ mapAndSaveAppointment: vi.fn() }));
 vi.mock('../../lib/scraper/reconcile.js', () => ({ reconcileArchivedAppointments: vi.fn() }));
-vi.mock('../../lib/scraper/forms.js', () => ({ fetchAndStoreBoardingForm: vi.fn() }));
+vi.mock('../../lib/scraper/forms.js', () => ({ fetchAndStoreBoardingForm: vi.fn(), formJobPetMatches: vi.fn(async () => true) }));
 vi.mock('../../lib/scraper/syncQueue.js', () => ({ dequeueOne: vi.fn(), markDone: vi.fn(), markFailed: vi.fn() }));
 vi.mock('../../lib/scraper/syncSettingsRow.js', () => ({ readSettingsRow: vi.fn(async () => ({ id: 1 })) }));
 vi.mock('../../lib/scraper/logger.js', () => ({
@@ -38,8 +38,8 @@ import { fetchAllSchedulePages } from '../../lib/scraper/schedule.js';
 import { fetchAppointmentDetails } from '../../lib/scraper/extraction.js';
 import { mapAndSaveAppointment } from '../../lib/scraper/mapping.js';
 import { reconcileArchivedAppointments } from '../../lib/scraper/reconcile.js';
-import { dequeueOne, markFailed } from '../../lib/scraper/syncQueue.js';
-import { fetchAndStoreBoardingForm } from '../../lib/scraper/forms.js';
+import { dequeueOne, markDone, markFailed } from '../../lib/scraper/syncQueue.js';
+import { fetchAndStoreBoardingForm, formJobPetMatches } from '../../lib/scraper/forms.js';
 
 // Every query resolves to an empty list; inserts return a sync log row. Records each sync_logs update.
 function makeDb() {
@@ -104,6 +104,17 @@ describe('REQ-657: Sync Now stops safely', () => {
     reconcileArchivedAppointments.mockRejectedValue(new SiteThrottled(403));
     await expect(runSync({ supabase: makeDb() })).rejects.toThrow('Booking site answered 403: stopping this run');
     expect(dequeueOne).not.toHaveBeenCalled();
+  });
+
+  it("Sync Now's form drain skips a job for another pet than its boarding's dog, and fetches the next (#344)", async () => {
+    fetchAllSchedulePages.mockResolvedValue([appt('A')]);
+    const form = (id) => ({ id, external_id: id, meta: { boarding_id: `b-${id}`, external_pet_id: '10001' } });
+    dequeueOne.mockResolvedValueOnce(form('F1')).mockResolvedValueOnce(form('F2')).mockResolvedValueOnce(null);
+    formJobPetMatches.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const db = makeDb();
+    await runSync({ supabase: db });
+    expect(fetchAndStoreBoardingForm.mock.calls.map((c) => c[1])).toEqual(['b-F2']);
+    expect(markDone).toHaveBeenCalledWith(db, 'F1', { meta: { boarding_id: 'b-F1', external_pet_id: '10001', form_skip: 'pet_id_mismatch' } });
   });
 
   it('a 429 in the form drain fails the run: the next form is not fetched and the item is not marked failed', async () => {

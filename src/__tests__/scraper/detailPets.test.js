@@ -177,12 +177,40 @@ describe('REQ-661: rates by pet, uneven pages', () => {
 </fieldset>`;
 
   it("a pet's night rate is its first night service's, not a later one's", () => {
-    const html = pricing([['Boarding (Nights)', [['40001', '5500'], ['40002', '4500']]], ['Holiday Boarding', [['40001', '9900'], ['40002', '8800']]]]);
+    const html = pricing([['Boarding (Nights)', [['40001', '5500'], ['40002', '4500']]], ['Extended Stay Nights', [['40001', '9900'], ['40002', '8800']]]]);
     expect(extractPricing(html).ratesByPet['40001'].nightRate).toBe(55);
   });
 
   it('a page with fewer price divs than services × pets still gives the rates it has', () => {
     const html = pricing([['Boarding (Nights)', [['40001', '5500'], ['40002', '4500']]], ['Boarding (Days)', [['40001', '5000']]]]);
     expect(extractPricing(html).ratesByPet).toEqual({ 40001: { nightRate: 55, dayRate: 50 }, 40002: { nightRate: 45, dayRate: null } });
+  });
+});
+
+describe('REQ-661: review findings (2026-10-24)', () => {
+  const pricing = (services) => `<fieldset id="confirm-price" class="no-legend">
+  <a class="btn toggle-field text quote">Total $100 <i class="fa fa-fw"></i></a>
+  <div class="pricing-appt-wrapper services-${services.length} pets-2">
+    ${services.map(([name, divs]) => `<div class="service-wrapper"><span class="service-name">${name}</span>
+      ${divs.map(([pet, rate]) => `<div class="price p-7" data-pet="${pet}" data-rate="${rate}" data-qty="100" data-amount="1.00"></div>`).join('')}</div>`).join('\n    ')}
+  </div>
+</fieldset>`;
+
+  it("each price is classed by its own service, even when an earlier service has fewer price divs than pets", () => {
+    const html = pricing([['Boarding (Nights)', [['40002', '4500']]], ['Boarding (Days)', [['40001', '5000'], ['40002', '3500']]]]);
+    expect(extractPricing(html).ratesByPet).toEqual({ 40001: { nightRate: null, dayRate: 50 }, 40002: { nightRate: 45, dayRate: 35 } });
+  });
+
+  it('an apostrophe written as &#039; is read as an apostrophe', () => {
+    const html = '<a href="/pets/40001" class="event-pet" data-pet="40001">D&#039;Arcy Sample</a>';
+    expect(extractPets(html)[0].name).toBe("D'Arcy Sample");
+  });
+
+  it('a hex entity is decoded too', () => {
+    expect(extractPets('<a href="/pets/40001" class="event-pet" data-pet="40001">D&#x27;Arcy Sample</a>')[0].name).toBe("D'Arcy Sample");
+  });
+
+  it("a client's booking page says it has a client block; a staff member's page doesn't", () => {
+    expect([parseAppointmentPage(twoPetPage()).has_client_block, parseAppointmentPage(noPetPage()).has_client_block]).toEqual([true, false]);
   });
 });

@@ -49,7 +49,7 @@ vi.mock('../../lib/scraper/mapping.js', () => ({
 }));
 
 vi.mock('../../lib/scraper/forms.js', () => ({
-  fetchAndStoreBoardingForm: vi.fn(),
+  fetchAndStoreBoardingForm: vi.fn(), formJobPetMatches: vi.fn(async () => true),
 }));
 
 import { setSession, authenticatedFetch, SiteThrottled } from '../../lib/scraper/auth.js';
@@ -58,7 +58,7 @@ import { enqueue, dequeueOne, markDone, markFailed, resetStuck, getQueueDepth } 
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from '../../lib/scraper/daytimeSchedule.js';
 import { fetchAppointmentDetails } from '../../lib/scraper/extraction.js';
 import { mapAndSaveAppointment } from '../../lib/scraper/mapping.js';
-import { fetchAndStoreBoardingForm } from '../../lib/scraper/forms.js';
+import { fetchAndStoreBoardingForm, formJobPetMatches } from '../../lib/scraper/forms.js';
 
 // ─── Minimal supabase mock ─────────────────────────────────────────────────────
 
@@ -958,6 +958,28 @@ describe('REQ-109 runDetailSync', () => {
     expect(fetchAndStoreBoardingForm).toHaveBeenCalledWith(db, 'b1', '10001', 'Dog A');
     expect(markDone).toHaveBeenCalledWith(db, 'q1');
     expect(result).toEqual({ action: 'form_stored', externalId: 'form-b1', queueDepth: 4 });
+  });
+
+  it("a form item for another pet than its boarding's dog is not fetched: done, marked, and Kate is told (#344)", async () => {
+    dequeueOne.mockResolvedValue(formItem());
+    formJobPetMatches.mockResolvedValueOnce(false);
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(formJobPetMatches).toHaveBeenCalledWith(db, 'b1', '10001');
+    expect(fetchAndStoreBoardingForm).not.toHaveBeenCalled();
+    expect(markDone).toHaveBeenCalledWith(db, 'q1', { meta: { boarding_id: 'b1', external_pet_id: '10001', form_skip: 'pet_id_mismatch' } });
+    expect(result).toEqual({
+      action: 'skipped', reason: 'pet_id_mismatch', externalId: 'form-b1', queueDepth: 4,
+      notice: "form-b1: its form job is for pet 10001, not its boarding's dog's pet ID, so no form was fetched",
+    });
+  });
+
+  it('a database error during the pet check marks the form item failed, like a fetch error', async () => {
+    dequeueOne.mockResolvedValue(formItem());
+    formJobPetMatches.mockRejectedValueOnce(new Error('db down'));
+    const result = await runDetailSync(makeDb());
+    expect(result.action).toBe('form_failed');
+    expect(fetchAndStoreBoardingForm).not.toHaveBeenCalled();
   });
 
   it('an untitled form item is fetched with an empty title', async () => {

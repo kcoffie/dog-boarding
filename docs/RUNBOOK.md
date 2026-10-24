@@ -118,9 +118,11 @@ The breaker (#324, REQ-657) tripped: the booking site refused the app's login, o
 
 ---
 
-### "Q Boarding sync: N booking page(s) not read" (Telegram, job `sync-detail`)
+### "Q Boarding sync: N booking(s) to check" (Telegram, job `sync-detail`)
 
-The detail step opened a booking and the booking site didn't show it (#344, REQ-660). Nothing was written for it: no dog, boarding or sync row changed. Each line names the booking ID and title, once per URL.
+One message per run, one line per booking (its ID and title), each sent once until what it says changes. Two kinds of line (#344).
+
+**Pages that weren't read (REQ-660).** The booking site didn't show the booking, so nothing was written for it: no dog, boarding or sync row changed. Once per URL.
 
 - **"now redirects to the schedule (stay moved or cancelled?)":** the booking last held a stay. Open it on the booking site from the schedule (not the old link):
   - **Moved** (new start time or dates): nothing to do. Its URL changed, so the next scan (4 a day) re-queues it and reads it.
@@ -128,6 +130,30 @@ The detail step opened a booking and the booking site didn't show it (#344, REQ-
 - **"redirected to …" anywhere else:** the site sent the page somewhere unexpected. Check the booking on the site; if it keeps happening across bookings, the site changed and the sync needs a look.
 - **"had no check-in/check-out dates":** a booking page came back without its dates, so the site's page layout may have changed. If several arrive, stop and check the HTML before trusting new syncs.
 - Playgroup series that redirect but never held a stay are counted (`redirected_to_schedule` in the detail result) but not alerted. "Held a stay" means a boarding under the booking's ID, or dates on its sync row or that row's previous version.
+
+**Pets the sync wouldn't decide (REQ-661).** The page was read and everything else was saved; the line says what wasn't. The booking site is the source of truth: fix the data at the source or by SQL Kate runs, never by hand in the app.
+- **"pet N is "X" on the booking site but "Y" in the app (not renamed)":** the sync never renames a dog. Check pet N's page on the booking site. If the app's name is wrong, rename the row by SQL; if the app's dog is a different dog, its stored pet ID is wrong: stop and look before changing anything.
+- **"linked pet N ("X") to the app's dog of that name (…): …":** information. A dog that had no pet ID was given one, with the evidence named. If the evidence looks wrong (e.g. a dog entered by hand for another client), check pet N's page and clear the ID by SQL.
+- **"… the app has a dog with that name, but nothing shows it's this pet" / "… bookings from another client" / "N dogs in the app have that name and no pet ID":** nothing was saved for that pet; its boarding is missing from the app. Check pet N's page, then either set the right dog's `external_pet_id` to N by SQL (the next read links the boarding) or, if no app dog is that pet, leave it: the next read creates one only once no same-name dog without an ID is left, so merge or rename the duplicate first.
+- **"pet N (…) is on 2 dogs in the app":** migration 030 isn't in place, or it failed. Run its pre-check and fix the duplicate.
+- **"the page gave no usable pet ID" / "the page has a client but no pet the sync could read (layout change?)":** the booking site's page may have changed. If several arrive, stop and check the HTML before trusting new syncs.
+- **"pet N (…): no price on the page carries its ID":** rates weren't read for that pet (its stored rates are kept). If every two-pet booking says this, the raw page doesn't carry `data-pet` on its prices: the sync needs a change.
+- **"boarding … is on a dog that isn't on this booking's page now" / "one dog (…) has 2 boardings on this booking":** old data from before #344. Check the booking on the site and fix the boarding rows by SQL (archive or move); the sync never moves a boarding.
+- **"its form job is for pet N, not its boarding's dog's pet ID":** a form job queued before #344 PR 2 named the wrong pet. Nothing was fetched; the next read of the booking queues the right one.
+
+**After the #344 PR 2 deploy (once):**
+1. Before the deploy, Kate runs migration 030 (`supabase/migrations/030_unique_dog_pet_id.sql`): the pre-check in its header (expect 0 rows), then the two statements, outside 23:30–01:30 UTC.
+2. After the deploy, re-queue the current and upcoming bookings so PR 2 reads them (about 18 booking pages, once; second pets then get their IDs and form jobs):
+   ```sql
+   -- preview
+   SELECT q.external_id, s.check_out_datetime FROM sync_queue q JOIN sync_appointments s ON s.external_id = q.external_id
+   WHERE q.type = 'appointment' AND q.status = 'done' AND s.check_out_datetime >= now();
+   -- re-queue
+   UPDATE sync_queue q SET status = 'pending', retry_count = 0, last_error = NULL, next_retry_at = NULL, queued_at = now()
+   FROM sync_appointments s
+   WHERE s.external_id = q.external_id AND q.type = 'appointment' AND q.status = 'done' AND s.check_out_datetime >= now();
+   ```
+
 - **Known gap (accepted):** each item is marked as reported before the alert is sent. If a run is killed in the seconds between (a Vercel timeout), that one alert is lost; the item's `meta.detail_redirect` in `sync_queue` still records it.
 
 ### "Ops watch sent an alert" (WhatsApp "Q Boarding ops watch", or a GitHub email from "Ops alert")

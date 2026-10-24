@@ -134,6 +134,8 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     // Client info
     client_name: client.name,
     client_uid: client.uid,
+    // A client's booking always has this block; a page with it but no readable pet isn't a staff dog (#344)
+    has_client_block: elementsWithClass(html, 'event-clients-pets').length > 0,
     client_email_primary: extractEmailFromDataAttr(html),
     client_email_secondary: null,
     client_phone: extractPhoneFromMobileContact(html),
@@ -530,8 +532,10 @@ function cleanText(text) {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#x27;/gi, "'")
     .replace(/&apos;/g, "'")
+    // Numeric entities, as the site writes an apostrophe (&#039;) (#344)
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -689,13 +693,15 @@ export function extractPricing(html) {
 
   // The same rates keyed by the pet ID on each price div (#344). Real price divs carry `data-pet`, and
   // the order of a booking's pets differs between parts of its page, so on a multi-pet booking a rate
-  // belongs to a pet only through this ID. A price div without a digits-only `data-pet` is left out.
+  // belongs to a pet only through this ID. Each div is classed by the service wrapper it sits in, not by
+  // its position. A price div without a digits-only `data-pet` is left out.
   const ratesByPet = {};
-  for (let i = 0; i < serviceNames.length; i++) {
-    const isDayService = dayServicePatterns.some(dp => dp.test(serviceNames[i]));
-    for (let p = 0; p < numPets; p++) {
-      const tag = priceTags[i * numPets + p];
-      if (!tag) continue;
+  for (const wrapper of fieldset.split(/<div\b[^>]*\bclass="[^"]*\bservice-wrapper\b[^"]*"[^>]*>/i).slice(1)) {
+    const serviceName = wrapper.match(/class="service-name"[^>]*>([^<]+)</i)?.[1].trim();
+    if (!serviceName) continue;
+    const isDayService = dayServicePatterns.some(dp => dp.test(serviceName));
+    const wrapperTags = wrapper.match(/<div[^>]*class="[^"]*\bprice\b[^"]*"[^>]*>/gi) ?? [];
+    for (const tag of wrapperTags) {
       const petId = (readAttr(tag, 'data-pet') ?? '').trim();
       const rateMatch = tag.match(/data-rate="([^"]+)"/);
       if (!/^\d+$/.test(petId) || !rateMatch) continue;

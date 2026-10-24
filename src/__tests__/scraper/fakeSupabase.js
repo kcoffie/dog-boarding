@@ -10,13 +10,20 @@
  * `failOn(table, op, filters)` returning an error makes that query answer with it, as PostgREST does.
  */
 
-// SQL LIKE pattern → RegExp: % is any run, _ is one character, everything else is literal
+// SQL LIKE pattern → RegExp, as Postgres reads it: % is any run, _ is one character, a backslash makes
+// the next character literal (a trailing backslash is an error in Postgres), everything else is literal
 function likeToRegExp(pattern, flags) {
-  const source = [...pattern].map((ch) => {
-    if (ch === '%') return '.*';
-    if (ch === '_') return '.';
-    return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }).join('');
+  const literal = (ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let source = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === '\\') {
+      if (i === pattern.length - 1) throw new Error('LIKE pattern must not end with escape character');
+      source += literal(pattern[++i]);
+    } else if (ch === '%') source += '.*';
+    else if (ch === '_') source += '.';
+    else source += literal(ch);
+  }
   return new RegExp(`^${source}$`, flags);
 }
 

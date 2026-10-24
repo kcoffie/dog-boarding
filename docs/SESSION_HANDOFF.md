@@ -43,6 +43,15 @@
 4. **#344 PR 2 built (branch `fix/344-pr2-pet-identity`, REQ-661):** see REQ-661 for the rules. Code: `extraction.js` (`extractPets`, `extractClient`, `ratesByPet`, `nameFromTitle`), `mapping.js` (`resolvePetDog`, `resolveTitleDog`, per-pet boardings by dog; `upsertDog`, `findDogByName`, `findDogByExternalId`, `mapToDog` removed), `syncRunner.js` / `sync.js` (no `meta.external_pet_id` for appointments; `schedule_pet_ids` cross-check; notices in the one alert per run, deduplicated by `meta.detail_notice`). **Migration 030** (unique `dogs.external_pet_id`): Kate runs it before the deploy.
    - Tests: pages built on the two real two-pet bookings (`twoPetPages.js`), an in-memory Supabase (`fakeSupabase.js`: filters, row counts, 23505). 39 rule-breaks scripted: 37 turned their test red; 1 had no test (added, then seen red); 1 equivalent (the runner's title fallback: `pet_name` is always the first pet's). Suite 2143 passed / 1 skipped.
    - Behaviour change to know: a booking's status, AM/PM and dates now apply to every pet's boarding (a cancelled two-pet booking used to leave the second pet's boarding `confirmed`).
+   - **Reviewer:** 3 must-fix (rules with no failing test: a linked dog's result, the 23505 on the link update, a known pet without its own price div). All three now have tests, each seen failing with the reviewer's own mutation. Its should-fixes, all done:
+     - a client page with no readable pet is reported, never named from the title;
+     - the form job checks the pet ID belongs to its boarding's dog before any request (`formJobPetMatches`);
+     - a multi-pet page whose prices don't carry a pet's ID keeps stored rates and alerts;
+     - every name link is reported with its evidence; a dog with two boardings on one booking keeps `<id>` and alerts;
+     - each price is classed by its own service wrapper; `&#039;` and other numeric entities are decoded;
+     - hand-entered dogs are never reactivated; the alert header is now "N booking(s) to check"; RUNBOOK section and job docs updated;
+     - a deploy step re-queues the 18 current/upcoming bookings (already-read bookings are otherwise never re-read).
+   - **Final evidence:** suite 2209 passed / 1 skipped; 22 more scripted rule-breaks all red. **Scoped Stryker (TZ=UTC), changed lines 87.55% (647/739)**: `mapping.js` 90.0%, `syncRunner.js` 94.6%, `sync.js` 86.7%, `forms.js` 84.2%, `extraction.js` 79.6% (its survivors: the shape log line, regex variants equivalent on real IDs). 19.7 tests per mutant; the only timeout on changed lines is a genuine infinite loop (the `g` flag dropped from a regex used with `exec`).
 
 ### Session 47 (2026-10-23): what happened
 1. **#344 root cause: the server followed redirects.** A booking URL the site won't show answers 302 → `/schedule`; server `fetch` followed it, and the sync read the whole week's schedule as that booking (all 74 dateless `sync_appointments` rows: 64 playgroup series, 10 real stays). That gave dogs another pet's ID (the 3 Kate corrected), **renamed** `C63QhLBU`'s dog to the week's first pet, and created $0 dogs. A redirect means "edited or hidden", not removed: `C63QhLBU`'s stay is valid at a new URL timestamp.
@@ -179,7 +188,7 @@ Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-inve
 
 ## Immediate Next Steps
 1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs.
-2. **#344 PR 2 (if not merged yet):** reviewer done → Kate runs **migration 030** in the SQL editor, outside 23:30–01:30 UTC: the pre-check in the file's header (expect 0 rows), then the two statements. Verify the index exists (`dogs_external_pet_id_key`, unique) → green checks → squash-merge → `check:deploy`.
+2. **#344 PR 2 (if not merged yet):** Kate runs **migration 030** in the SQL editor, outside 23:30–01:30 UTC: the pre-check in the file's header (expect 0 rows), then the two statements. Verify the index exists (`dogs_external_pet_id_key`, unique) → green checks → squash-merge → `check:deploy` → **Kate runs the re-queue SQL** in RUNBOOK "Q Boarding sync: N booking(s) to check" → "After the #344 PR 2 deploy" (about 18 current/upcoming bookings, once; already-read bookings are otherwise never re-read until edited).
 3. **After PR 2's first night (read-only, report in a few lines):**
    - no dog renamed (dogs' `name` unchanged; compare with the 107 rows of 10-24), no new $0 dog without a boarding, the 4 checked rows keep their IDs;
    - `sync-detail` alerts: any pet notices, and what they said (each is a decision for Kate, not a bug to patch by hand);

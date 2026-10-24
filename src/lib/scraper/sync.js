@@ -12,7 +12,7 @@ import { fetchAppointmentDetails, nameFromTitle } from './extraction.js';
 import { DetailRedirected } from './redirects.js';
 import { mapAndSaveAppointment } from './mapping.js';
 import { reconcileArchivedAppointments } from './reconcile.js';
-import { fetchAndStoreBoardingForm } from './forms.js';
+import { fetchAndStoreBoardingForm, formJobPetMatches } from './forms.js';
 import { dequeueOne, markDone, markFailed } from './syncQueue.js';
 import { syncLogger, logSyncStart, logSyncEnd } from './logger.js';
 import { readSettingsRow } from './syncSettingsRow.js';
@@ -488,6 +488,12 @@ export async function runSync(options = {}) {
           continue;
         }
         try {
+          // A job for another pet than its boarding's dog stores nothing (#344)
+          if (!(await formJobPetMatches(supabase, boardingId, externalPetId))) {
+            syncWarn(`[Sync] ⏭️ Form job ${drainItem.external_id}: pet ${externalPetId} isn't its boarding's dog's pet ID, no form fetched`);
+            await markDone(supabase, drainItem.id, { meta: { ...drainItem.meta, form_skip: 'pet_id_mismatch' } });
+            continue;
+          }
           await fetchAndStoreBoardingForm(supabase, boardingId, externalPetId, drainItem.title || '');
           await markDone(supabase, drainItem.id);
           drainProcessed++;

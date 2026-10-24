@@ -53,7 +53,7 @@ import { enqueue, dequeueOne, markDone, markFailed, resetStuck as resetStuckItem
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from './daytimeSchedule.js';
 import { fetchAppointmentDetails, nameFromTitle } from './extraction.js';
 import { mapAndSaveAppointment } from './mapping.js';
-import { fetchAndStoreBoardingForm } from './forms.js';
+import { fetchAndStoreBoardingForm, formJobPetMatches } from './forms.js';
 import { DetailRedirected } from './redirects.js';
 import { alertAndLog } from '../alertKate.js';
 
@@ -424,7 +424,7 @@ export async function alertDetailNotices(supabase, notices) {
   const lines = notices.filter(Boolean);
   if (lines.length === 0) return null;
   return alertAndLog(supabase, DETAIL_ALERT_JOB,
-    `⚠️ Q Boarding sync: ${lines.length} booking page(s) not read\n• ${lines.join('\n• ')}`);
+    `⚠️ Q Boarding sync: ${lines.length} booking(s) to check\n• ${lines.join('\n• ')}`);
 }
 
 /** Results that end a drain: nothing left, or no usable session. */
@@ -596,6 +596,15 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
     console.log(`[SyncRunner:Detail] 📋 Form job: boarding_id=${boardingId}, pet_id=${externalPetId}`);
 
     try {
+      if (!(await formJobPetMatches(supabase, boardingId, externalPetId))) {
+        console.log(`[SyncRunner:Detail] ⏭️ SKIP form ${item.external_id}: pet ${externalPetId} isn't its boarding's dog's pet ID`);
+        await markDone(supabase, item.id, { meta: { ...item.meta, form_skip: 'pet_id_mismatch' } });
+        const remaining = await getQueueDepth(supabase);
+        return {
+          action: 'skipped', reason: 'pet_id_mismatch', externalId: item.external_id, queueDepth: remaining,
+          notice: `${item.external_id}: its form job is for pet ${externalPetId}, not its boarding's dog's pet ID, so no form was fetched`,
+        };
+      }
       await fetchAndStoreBoardingForm(supabase, boardingId, externalPetId, item.title || '');
       await markDone(supabase, item.id);
       const remaining = await getQueueDepth(supabase);
