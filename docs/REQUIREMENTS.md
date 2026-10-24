@@ -1601,6 +1601,27 @@ The server's fetch followed redirects. A booking URL the site won't show (an edi
 
 **Tests:** `src/__tests__/scraper/redirects.test.js` (real Node fetch against a local server), `src/__tests__/scraper/detailRedirect.test.js`, `src/__tests__/scraper/syncQueue.test.js`, `src/__tests__/scraper/runSyncSafety.test.js`, `src/__tests__/syncCronHandlers.test.js`, `src/__tests__/opsWatch.test.js`
 
+### REQ-661: A dog is its booking-site pet ID
+**Added:** v6.10.0 | **Status:** Complete (#344, PR 2)
+
+The sync paired the schedule's first `data-pet` with the detail page's first pet name, matched dogs by the last booking's ID and then by an arbitrary name match, and overwrote both name and pet ID on every sync. Two-pet bookings never gave the second pet an ID, so its form was never fetched. Design: `docs/specs/344-pet-id-design-note.md` (v3). Decision record: `docs/adr/008-dog-identity-is-the-pet-id.md`.
+
+**Acceptance Criteria:**
+- **Each pet's ID comes from its own element** on the booking's page: an element whose class list holds exactly `event-pet`, with a digits-only `data-pet` (trimmed) that equals the `href="/pets/N"`. A pet whose element fails that gets no ID and nothing is saved for it (reported). `event-pets` / `event-pet-wrapper` are never pets
+- **The client** is read from `.event-clients-pets[data-uid]` (ID, null unless exactly one block) and the `event-client` element (name; `event-clients-pets` no longer blanks it). The ID is kept in the stored booking (`raw_data.client_uid`)
+- **Rates belong to a pet by the `data-pet` on its price div** when the booking has two or more pets; a pet with no price div of its own gets no rates. With one pet, every price on the page is its own
+- **Finding the dog:** a dog holding the pet ID is the dog. The sync **never renames a dog** (a different name on the site is reported) and never writes `dogs.external_id`. A pet ID on two dogs writes nothing for that pet (reported)
+- **Linking a same-name dog with no pet ID** (exact name, ignoring case and outer spaces) needs evidence (Kate, 2026-10-24): this same booking already has a boarding on that dog, or the dog's stored bookings name the same client (by client ID where both have one, else by name). Any stored booking from another client rules it out. No evidence, another client, or two same-name dogs without an ID: nothing is saved for that pet (reported). Same name but a different pet ID is another dog: a new one is made
+- **A pet ID is written only where none is stored, in the same query** (`.is('external_pet_id', null)`); 0 rows changed or a unique violation (23505) re-reads who holds the ID. Migration 030 makes `dogs.external_pet_id` unique (NULLs allowed); the code works with or without it
+- **Boardings:** each dog keeps the boarding it already has on the booking (`<id>` or `<id>_pN`); a pet without one takes the first free of `<id>`, `<id>_p1`, `<id>_p2`… A change in pet order never moves a boarding. The `<id>` boarding carries the booking's total; the others carry none. Every pet's boarding gets the booking's dates, AM/PM and status. A boarding of the booking on a dog that isn't on the page is left alone (reported). The sync row is linked to the dog and boarding holding `<id>`
+- **Every pet with an ID gets its form job** (current or upcoming boardings, form not stored yet), by its own pet ID
+- **A page with no pet element** (a staff member's dog, #49) is named from the title before its first date (a title that starts with its dates names no dog). Exactly one same-name dog without a pet ID is it, none means a new one without a pet ID, more than one writes nothing (reported)
+- **The schedule's pet IDs are a cross-check only:** queued as `meta.schedule_pet_ids` (no longer `meta.external_pet_id`, which appointment items no longer read); one missing from the booking's page is logged
+- **Reported = Kate's one alert per run** (job `sync-detail`, REQ-660): the booking, its title and every notice, once per change of what it says (`meta.detail_notice`). Sync Now (the browser) logs them; the next nightly read of the booking reports them
+- Booking-site load: 2 form requests per second pet on a current or upcoming multi-pet boarding; nothing else new
+
+**Tests:** `src/__tests__/scraper/detailPets.test.js`, `src/__tests__/scraper/petIdentity.test.js` (pages built on two real two-pet bookings, in `twoPetPages.js`; database fake `fakeSupabase.js`), `src/__tests__/scraper/migration030.test.js`, `src/__tests__/scraper/syncRunner.test.js`, `src/__tests__/scraper/runSyncSafety.test.js`
+
 ---
 
 ## How to Add a New Requirement

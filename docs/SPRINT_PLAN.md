@@ -69,6 +69,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 2. **#13 UAT:** Kate books watch-first with Charlie (week of 11-09). Claude writes the UAT script for Charlie, including where "something looks wrong" goes (Send a Question) and what happens next, and dry-runs it on production.
    - **Script drafted 2026-10-23:** `docs/UAT_SCRIPT.md` (frozen expected answers, $0 tolerance, goal-only tasks, severity and go/no-go). Dry-run 1 (read-only) done 2026-10-23; dry-run 2 (Kate's writes) next.
 3. **#344 (added 2026-10-23, first):** the sync writes another dog's pet ID (group playgroup listings and multi-pet bookings pair names and IDs by position), which can show another client's pet's boarding form, and creates $0 dogs. Design note first; no new booking-site requests.
+   - **Design note v2 + ADR-008 approved 10-23. PR 1 merged 10-23 (PR #346, REQ-660): pages read without following redirects; first night clean. PR 2 (REQ-661): dog = pet ID, never rename, link only with evidence; migration 030 (unique pet ID) before its deploy.**
 4. **#342 (added 2026-10-23, after #344):** one shared calculation for nights and pay. The Dashboard and Payroll disagree today (10-23: Net $338 vs $286), which fails UAT step 5. Includes removing Add/Edit/Delete boarding (source of truth). The duplicate-dog merge and the 3 pet-ID fixes were done by SQL on 2026-10-23.
 5. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
 

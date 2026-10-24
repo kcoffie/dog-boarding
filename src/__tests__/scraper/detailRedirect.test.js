@@ -25,7 +25,10 @@ vi.mock('../../lib/scraper/siteAccess.js', async (importOriginal) => ({
 vi.mock('../../lib/scraper/syncQueue.js', () => ({
   enqueue: vi.fn(), dequeueOne: vi.fn(), markDone: vi.fn(), markFailed: vi.fn(), resetStuck: vi.fn(), getQueueDepth: vi.fn(),
 }));
-vi.mock('../../lib/scraper/extraction.js', () => ({ fetchAppointmentDetails: vi.fn() }));
+vi.mock('../../lib/scraper/extraction.js', async (importOriginal) => ({
+  fetchAppointmentDetails: vi.fn(),
+  nameFromTitle: (await importOriginal()).nameFromTitle,
+}));
 vi.mock('../../lib/scraper/mapping.js', () => ({ mapAndSaveAppointment: vi.fn() }));
 vi.mock('../../lib/scraper/forms.js', () => ({ fetchAndStoreBoardingForm: vi.fn() }));
 vi.mock('../../lib/alertKate.js', () => ({ alertAndLog: vi.fn(async () => true) }));
@@ -199,8 +202,8 @@ describe('REQ-660: a booking page that redirects anywhere else', () => {
 
 describe('REQ-660: a booking page with no dates', () => {
   beforeEach(() => {
-    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63QAAAA', pet_name: 'Dog A' });
-    mapAndSaveAppointment.mockResolvedValue({ skipped: 'dateless_page', stats: {} });
+    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63QAAAA', pet_name: 'Dog A', pets: [{ id: '10001', name: 'Dog A' }] });
+    mapAndSaveAppointment.mockResolvedValue({ skipped: 'dateless_page', stats: {}, notices: [] });
   });
 
   it('is counted as dateless_page, marked done for its URL without detail_skip, and Kate is told', async () => {
@@ -248,8 +251,8 @@ describe('REQ-660: one alert per run', () => {
 
 describe('REQ-660: a page read after an earlier redirect', () => {
   beforeEach(() => {
-    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63QAAAA', pet_name: 'Dog A', check_in_datetime: '2026-10-24T10:00:00.000Z' });
-    mapAndSaveAppointment.mockResolvedValue({ stats: { syncCreated: false, syncUpdated: true, dogUpdated: false, boardingUpdated: false } });
+    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63QAAAA', pet_name: 'Dog A', pets: [{ id: '10001', name: 'Dog A' }], check_in_datetime: '2026-10-24T10:00:00.000Z' });
+    mapAndSaveAppointment.mockResolvedValue({ stats: { syncCreated: false, syncUpdated: true, dogUpdated: false, boardingUpdated: false }, notices: [] });
   });
 
   it('drops the redirect and dateless marks, so the same URL failing later is reported again', async () => {

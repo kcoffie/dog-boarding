@@ -39,8 +39,9 @@ vi.mock('../../lib/scraper/daytimeSchedule.js', () => ({
   upsertDaytimeAppointments: vi.fn(() => ({ upserted: 0, errors: 0 })),
 }));
 
-vi.mock('../../lib/scraper/extraction.js', () => ({
+vi.mock('../../lib/scraper/extraction.js', async (importOriginal) => ({
   fetchAppointmentDetails: vi.fn(),
+  nameFromTitle: (await importOriginal()).nameFromTitle,
 }));
 
 vi.mock('../../lib/scraper/mapping.js', () => ({
@@ -401,9 +402,10 @@ describe('runDetailSync', () => {
     fetchAppointmentDetails.mockResolvedValue({
       external_id: 'C63QgY32',
       pet_name: 'Buddy',
+      pets: [{ id: '10008', name: 'Buddy' }],
       arrival_date: '2026-03-20',
     });
-    mapAndSaveAppointment.mockResolvedValue({ stats: { syncCreated: true, syncUpdated: false, dogUpdated: false, boardingUpdated: false } });
+    mapAndSaveAppointment.mockResolvedValue({ stats: { syncCreated: true, syncUpdated: false, dogUpdated: false, boardingUpdated: false }, notices: [] });
     markDone.mockResolvedValue(undefined);
     getQueueDepth.mockResolvedValue(0);
 
@@ -454,6 +456,7 @@ describe('runDetailSync', () => {
     fetchAppointmentDetails.mockResolvedValue({
       external_id: 'C63QgZoi',
       pet_name: 'Rover',
+      pets: [{ id: '10008', name: 'Rover' }],
       service_type: 'PG FT',
       booking_status: 'confirmed',
       pricing: null,
@@ -487,6 +490,7 @@ describe('runDetailSync', () => {
     fetchAppointmentDetails.mockResolvedValue({
       external_id: 'C63QgZoi',
       pet_name: 'Rover',
+      pets: [{ id: '10008', name: 'Rover' }],
       service_type: 'PG FT',
       booking_status: 'confirmed',
       pricing: null,
@@ -749,7 +753,7 @@ describe('REQ-109 runScheduleSync', () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
-  it('enqueues the ID, absolute URL, title and first pet ID', async () => {
+  it("enqueues the ID, absolute URL, title and the schedule's pet IDs (a cross-check only, #344)", async () => {
     servePages({ [`${SITE}/schedule/days-7/2026/10/19`]: link({ id: 'STAY', ts: '1792836000', title: '10/24-27', pet: 'Dog A', petId: '10001' }) });
     const db = makeDb({ cursor: '2026-10-19' });
     await runScheduleSync(db);
@@ -757,7 +761,7 @@ describe('REQ-109 runScheduleSync', () => {
       external_id: 'STAY',
       source_url: `${SITE}/schedule/a/STAY/1792836000`,
       title: '10/24-27',
-      meta: { external_pet_id: '10001' },
+      meta: { schedule_pet_ids: ['10001'] },
     });
   });
 
@@ -900,8 +904,9 @@ describe('REQ-109 runDetailSync', () => {
     id: 'q1', external_id: 'form-b1', type: 'form', title: 'Dog A', retry_count: 0,
     source_url: `${SITE}/pets/10001/forms`, meta: { boarding_id: 'b1', external_pet_id: '10001' }, ...over,
   });
-  const saved = (stats) => mapAndSaveAppointment.mockResolvedValue({
+  const saved = (stats, notices = []) => mapAndSaveAppointment.mockResolvedValue({
     stats: { syncCreated: false, syncUpdated: false, dogUpdated: false, boardingUpdated: false, ...stats },
+    notices,
   });
 
   beforeEach(() => {
@@ -911,7 +916,7 @@ describe('REQ-109 runDetailSync', () => {
     getSiteSession.mockResolvedValue('session=abc');
     resetStuck.mockResolvedValue(0);
     getQueueDepth.mockResolvedValue(4);
-    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63X', pet_name: 'Dog A' });
+    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63X', pet_name: 'Dog A', pets: [{ id: '10001', name: 'Dog A' }] });
     saved({});
   });
 
@@ -1015,31 +1020,71 @@ describe('REQ-109 runDetailSync', () => {
     expect(fetchAppointmentDetails).toHaveBeenCalledWith('C63X', '');
   });
 
-  it('a missing pet name falls back to the queued title', async () => {
+  it("a page with no pet element (a staff member's dog) is named from the title before its first date", async () => {
     dequeueOne.mockResolvedValue(appointmentItem());
-    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63X', pet_name: null });
+    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63X', pet_name: null, pets: [] });
     await runDetailSync(makeDb());
-    expect(mapAndSaveAppointment.mock.calls[0][0].pet_name).toBe('Dog A 10/24-27');
+    expect(mapAndSaveAppointment.mock.calls[0][0].pet_name).toBe('Dog A');
   });
 
-  it("is saved with the item's pet ID and marked done", async () => {
+  it("a page with pets keeps its own first pet's name, not the title", async () => {
     dequeueOne.mockResolvedValue(appointmentItem());
+    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63X', pet_name: 'Dog B', pets: [{ id: '10002', name: 'Dog B' }] });
+    await runDetailSync(makeDb());
+    expect(mapAndSaveAppointment.mock.calls[0][0].pet_name).toBe('Dog B');
+  });
+
+  it("is saved with only the schedule's pet IDs as a cross-check, never a stored external_pet_id (#344), and marked done", async () => {
+    dequeueOne.mockResolvedValue(appointmentItem({ meta: { external_pet_id: '99999', schedule_pet_ids: ['10001'] } }));
     const db = makeDb();
     await runDetailSync(db);
-    expect(mapAndSaveAppointment).toHaveBeenCalledWith({ external_id: 'C63X', pet_name: 'Dog A' }, { supabase: db, externalPetId: '10001' });
+    expect(mapAndSaveAppointment.mock.calls[0][1]).toEqual({ supabase: db, schedulePetIds: ['10001'] });
     expect(markDone).toHaveBeenCalledWith(db, 'q1');
   });
 
-  it('an item with no pet ID is saved with externalPetId null', async () => {
+  it('an item with no meta is saved with no schedule pet IDs', async () => {
     dequeueOne.mockResolvedValue(appointmentItem({ meta: undefined }));
     await runDetailSync(makeDb());
-    expect(mapAndSaveAppointment.mock.calls[0][1].externalPetId).toBeNull();
+    expect(mapAndSaveAppointment.mock.calls[0][1].schedulePetIds).toEqual([]);
+  });
+
+  it("what couldn't be saved is the run's notice, with the booking and its title, and is kept on the item (#344)", async () => {
+    dequeueOne.mockResolvedValue(appointmentItem({ meta: { schedule_pet_ids: ['10001'] } }));
+    saved({}, ['first', 'second']);
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(result.notice).toBe('C63X "Dog A 10/24-27": first; second');
+    expect(markDone).toHaveBeenCalledWith(db, 'q1', { meta: { schedule_pet_ids: ['10001'], detail_notice: 'C63X "Dog A 10/24-27": first; second' } });
+  });
+
+  it('the same notice on the next read of the booking is not repeated', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem({ meta: { detail_notice: 'C63X "Dog A 10/24-27": first' } }));
+    saved({}, ['first']);
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(result.notice).toBeNull();
+    expect(markDone).toHaveBeenCalledWith(db, 'q1');
+  });
+
+  it('a notice that changed is reported again', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem({ meta: { detail_notice: 'C63X "Dog A 10/24-27": first' } }));
+    saved({}, ['other']);
+    const result = await runDetailSync(makeDb());
+    expect(result.notice).toBe('C63X "Dog A 10/24-27": other');
+  });
+
+  it('a read with nothing to report drops the stored notice, so a later one is reported', async () => {
+    dequeueOne.mockResolvedValue(appointmentItem({ meta: { schedule_pet_ids: ['10001'], detail_notice: 'C63X "Dog A 10/24-27": first' } }));
+    const db = makeDb();
+    const result = await runDetailSync(db);
+    expect(result.notice).toBeNull();
+    expect(markDone).toHaveBeenCalledWith(db, 'q1', { meta: { schedule_pet_ids: ['10001'] } });
   });
 
   it('a new sync record is created', async () => {
     dequeueOne.mockResolvedValue(appointmentItem());
     saved({ syncCreated: true });
-    expect(await runDetailSync(makeDb())).toEqual({ action: 'created', externalId: 'C63X', queueDepth: 4 });
+    expect(await runDetailSync(makeDb())).toEqual({ action: 'created', externalId: 'C63X', queueDepth: 4, notice: null });
   });
 
   it.each(['syncUpdated', 'dogUpdated', 'boardingUpdated'])('a %s change is updated', async (flag) => {

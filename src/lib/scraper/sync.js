@@ -8,7 +8,7 @@ import { SCRAPER_CONFIG } from './config.js';
 import { applyDetailFilters } from './appointmentFilter.js';
 import { resetSiteStop, SiteThrottled } from './auth.js';
 import { fetchAllSchedulePages } from './schedule.js';
-import { fetchAppointmentDetails } from './extraction.js';
+import { fetchAppointmentDetails, nameFromTitle } from './extraction.js';
 import { DetailRedirected } from './redirects.js';
 import { mapAndSaveAppointment } from './mapping.js';
 import { reconcileArchivedAppointments } from './reconcile.js';
@@ -358,15 +358,9 @@ export async function runSync(options = {}) {
           continue;
         }
 
-        // Use schedule-page data as fallback for fields the detail-page selectors
-        // can't extract yet.  Without this, pet_name falls back to "Unknown" and
-        // all null-name dogs collapse into a single DB record.
-        // Last resort: derive pet name from schedule title (e.g. "Bandit 3/7-8(Sun)" → "Bandit").
-        // Staff boarding appointments have no .event-pet element, so petName is empty.
-        const nameFromTitle = appt.title
-          ? (appt.title.replace(/\s+\d+\/\d+[\s\S]*$/, '').trim() || null)
-          : null;
-        details.pet_name    = details.pet_name    || appt.petName    || nameFromTitle || null;
+        // Each pet's name and ID come from the booking's own page (#344). A page with no pet element is
+        // a staff member's dog, named only in the title ("Bandit 3/7-8(Sun)" → "Bandit", #49).
+        if (details.pets.length === 0) details.pet_name = nameFromTitle(appt.title);
         details.client_name = details.client_name || appt.clientName || null;
 
         // Parse degradation tracking (REQ-110).
@@ -386,13 +380,15 @@ export async function runSync(options = {}) {
 
         // Map and save
         const saveStart = Date.now();
-        const saveResult = await mapAndSaveAppointment(details, { supabase, externalPetId: appt.petIds?.[0] || null });
+        const saveResult = await mapAndSaveAppointment(details, { supabase, schedulePetIds: appt.petIds ?? [] });
         const saveDuration = Date.now() - saveStart;
         if (saveResult.skipped) {
           syncWarn(`[Sync] ⏭️ Skipping ${appt.id}: ${saveResult.skipped}, nothing written`);
           result.appointmentsSkipped++;
           continue;
         }
+        // The browser can't send Kate's alert; the nightly detail step reports these when it reads the booking
+        for (const notice of saveResult.notices) syncWarn(`[Sync] ⚠️ ${appt.id}: ${notice}`);
 
         const totalDuration = Date.now() - apptStart;
         appointmentTimings.push({ id: appt.id, fetch: fetchDuration, save: saveDuration, total: totalDuration });

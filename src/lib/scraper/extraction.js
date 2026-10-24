@@ -104,6 +104,16 @@ export function parseAppointmentPage(html, sourceUrl = '') {
   }
 
   const ampm = extractCheckInOutAmPm(html);
+  const pets = extractPets(html);
+  const client = extractClient(html);
+  const pricing = extractPricing(html);
+  if (pets.length > 1) {
+    // The two-pet shape was confirmed on Chrome's rendered pages; this records what the raw page holds (#344)
+    const container = elementsWithClass(html, 'event-pets')[0];
+    console.log(`[Extraction] 🐾 ${pets.length}-pet page: pet IDs ${pets.map((p) => p.id ?? 'none').join(',')};`,
+      `data-pets="${container ? readAttr(container.tag, 'data-pets') : 'none'}";`,
+      `priced pet IDs ${pricing?.ratesByPet ? Object.keys(pricing.ratesByPet).join(',') || 'none' : 'no pricing'}`);
+  }
 
   return {
     source_url: sourceUrl,
@@ -122,7 +132,8 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     assigned_staff: null, // not shown for overnight boardings
 
     // Client info
-    client_name: extractText(html, SCRAPER_CONFIG.selectors.clientName),
+    client_name: client.name,
+    client_uid: client.uid,
     client_email_primary: extractEmailFromDataAttr(html),
     client_email_secondary: null,
     client_phone: extractPhoneFromMobileContact(html),
@@ -134,8 +145,9 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     special_notes: extractAppointmentNotes(html),
 
     // Pet info
-    pet_name: extractText(html, SCRAPER_CONFIG.selectors.petName),
-    all_pet_names: extractAllPetNames(html),
+    pet_name: pets[0]?.name ?? null,
+    all_pet_names: pets.map((p) => p.name),
+    pets,
     pet_photo_url: null,
     pet_birthdate: parseBirthdate(extractByLabelContains(html, 'Birthdate')),
     pet_breed: extractByLabelContains(html, 'Breed(s)'),
@@ -148,7 +160,7 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     pet_bite_history: extractByLabelContains(html, 'Bite History'),
 
     // Pricing (REQ-200): null when #confirm-price is absent (not an error)
-    pricing: extractPricing(html),
+    pricing,
   };
 }
 
@@ -433,22 +445,76 @@ function parseBirthdate(dateStr) {
 }
 
 /**
- * Extract all pet names from the appointment page in DOM order.
- * Single-pet appointments return a one-element array.
- * Used to identify secondary pets in multi-pet bookings.
+ * The pet name in a booking title, for a page with no pet element (a staff member's dog, #49):
+ * everything before the first M/D ("Bandit 3/7-8(Sun)" → "Bandit"). Null when nothing is left, so a
+ * title that starts with its dates ("10/24-27") never names a dog (#344).
  *
- * @param {string} html
- * @returns {string[]}
+ * @param {string|null} title
+ * @returns {string|null}
  */
-function extractAllPetNames(html) {
-  const names = [];
-  const regex = /class="[^"]*event-pet[^"]*"[^>]*>([^<]+)/g;
+export function nameFromTitle(title) {
+  return title ? (title.replace(/(^|\s+)\d+\/\d+[\s\S]*$/, '').trim() || null) : null;
+}
+
+// One attribute's value from an opening tag, wherever it sits in the tag
+function readAttr(tag, name) {
+  const m = tag.match(new RegExp(`\\s${name}\\s*=\\s*"([^"]*)"`, 'i'));
+  return m ? m[1] : null;
+}
+
+// Whether the tag's class list holds exactly this class, so `event-pet` never matches
+// `event-pets` or `event-pet-wrapper`, and `event-client` never matches `event-clients-pets` (#344)
+function hasClass(tag, className) {
+  const classes = readAttr(tag, 'class');
+  return classes !== null && classes.split(/\s+/).includes(className);
+}
+
+// Each opening tag carrying the class, with the text right after it
+function elementsWithClass(html, className) {
+  const found = [];
+  const regex = new RegExp(`<[a-z][a-z0-9]*\\b[^>]*\\bclass="[^"]*\\b${className}\\b[^"]*"[^>]*>([^<]*)`, 'gi');
   let m;
   while ((m = regex.exec(html)) !== null) {
-    const name = cleanText(m[1]);
-    if (name) names.push(name);
+    const tag = m[0].slice(0, m[0].length - m[1].length);
+    if (hasClass(tag, className)) found.push({ tag, text: cleanText(m[1]) });
   }
-  return names;
+  return found;
+}
+
+/**
+ * The booking's pets, each with the ID on its own element (#344, ADR-008). A pet is an element whose
+ * class list holds `event-pet`; its ID is `data-pet`, digits only, and must agree with `href="/pets/N"`.
+ * A pet element whose ID fails that keeps its name with `id: null` (logged). Page order is kept.
+ *
+ * @param {string} html
+ * @returns {Array<{ id: string|null, name: string }>}
+ */
+export function extractPets(html) {
+  const pets = [];
+  for (const { tag, text } of elementsWithClass(html, 'event-pet')) {
+    if (!text) continue;
+    const dataPet = (readAttr(tag, 'data-pet') ?? '').trim();
+    const href = (readAttr(tag, 'href') ?? '').trim();
+    const valid = /^\d+$/.test(dataPet) && href === `/pets/${dataPet}`;
+    if (!valid) console.warn(`[Extraction] ⚠️ A pet element's ID didn't check out (data-pet="${dataPet}", href="${href}"): no ID for it`);
+    pets.push({ id: valid ? dataPet : null, name: text });
+  }
+  return pets;
+}
+
+/**
+ * The booking's client: the ID on `.event-clients-pets[data-uid]` and the name on the `event-client`
+ * element (#344). The ID is null unless exactly one client block carries a digits-only one.
+ *
+ * @param {string} html
+ * @returns {{ uid: string|null, name: string|null }}
+ */
+export function extractClient(html) {
+  const uids = elementsWithClass(html, 'event-clients-pets')
+    .map(({ tag }) => (readAttr(tag, 'data-uid') ?? '').trim());
+  const uid = uids.length === 1 && /^\d+$/.test(uids[0]) ? uids[0] : null;
+  const name = elementsWithClass(html, 'event-client').map(({ text }) => text).find(Boolean) ?? null;
+  return { uid, name };
 }
 
 /**
@@ -621,7 +687,25 @@ export function extractPricing(html) {
     perPetRates.push({ nightRate: petNightRate, dayRate: petDayRate });
   }
 
-  return { total, lineItems, perPetRates };
+  // The same rates keyed by the pet ID on each price div (#344). Real price divs carry `data-pet`, and
+  // the order of a booking's pets differs between parts of its page, so on a multi-pet booking a rate
+  // belongs to a pet only through this ID. A price div without a digits-only `data-pet` is left out.
+  const ratesByPet = {};
+  for (let i = 0; i < serviceNames.length; i++) {
+    const isDayService = dayServicePatterns.some(dp => dp.test(serviceNames[i]));
+    for (let p = 0; p < numPets; p++) {
+      const tag = priceTags[i * numPets + p];
+      if (!tag) continue;
+      const petId = (readAttr(tag, 'data-pet') ?? '').trim();
+      const rateMatch = tag.match(/data-rate="([^"]+)"/);
+      if (!/^\d+$/.test(petId) || !rateMatch) continue;
+      const rates = ratesByPet[petId] ??= { nightRate: null, dayRate: null };
+      const key = isDayService ? 'dayRate' : 'nightRate';
+      if (rates[key] === null) rates[key] = parseFloat(rateMatch[1]) / 100;
+    }
+  }
+
+  return { total, lineItems, perPetRates, ratesByPet };
 }
 
 export default {

@@ -1,6 +1,7 @@
 # #344 design note: the sync writes wrong pet IDs and renames dogs
 
 **Status:** v2, **approved by Kate 2026-10-23** (session 47). The architect reviewed v1 ("proceed with changes"), and every must-change is folded in below. Decision record: `docs/adr/008-dog-identity-is-the-pet-id.md` (Accepted).
+**v3 (2026-10-24, session 48):** what building PR 2 found, and Kate's three decisions on it: section "v3: found while building PR 2" below. PR 1 shipped 2026-10-23 (PR #346); PR 2 is REQ-661.
 **Rule for this work (Kate):** done correctly the first time, no guessing. Every claim below cites the code, a recorded page or a table count. What isn't proven is listed under "Open questions", not assumed.
 
 ## Problem
@@ -120,6 +121,18 @@ Data repair items 1–2 below, and a re-check of the 57 stored pet IDs. The audi
 6. **Stop writing `dogs.external_id`** (nothing else reads it). Stop reading `meta.external_pet_id` for appointment items (`requeueFields` merges meta, so stale IDs persist there). The schedule's `petIds` become a cross-check only: one missing from the detail page is logged.
 7. The logic lives in `mapping.js` / `extraction.js`, so #318 step 3's engine inherits it.
 8. After PR 2, flag any stored `boarding_forms.external_pet_id` that differs from its boarding's dog's pet ID.
+
+## v3: found while building PR 2 (2026-10-24, read-only)
+1. **The stored client is blank on most bookings.** The `.event-client` selector also matches `event-clients-pets` (the same substring bug as `event-pet`), so a cron-read booking stores an empty client: **218 of 407** dated `sync_appointments` rows. The client's ID (`data-uid`) was never stored. So the "same client" check in PR 2 step 2 has little to check: of the **50** dogs with no pet ID, **6** have bookings with a client name, **7** have bookings with no client stored, **37** have no bookings (30 hand-entered).
+   - **Kate (1a):** link a same-name dog without a pet ID only with evidence: this same booking already has a boarding on that dog, or the dog's stored bookings name the same client. Any booking from another client rules it out. Otherwise write nothing for that pet and alert. At the time: 4 current/upcoming boardings on 2 dogs without IDs, all second pets.
+   - PR 2 also fixes the client read (exact class token; `data-uid` kept in `raw_data.client_uid`), so new bookings carry the evidence.
+2. **Staff members' dogs have no pet element** (3 bookings since March, titles like "<name> 3/7-8(Sun)"). #49's title fallback is how they sync. Two same-name rows without IDs already exist.
+   - **Kate (2a):** keep the title name. Exactly one same-name dog without a pet ID is the dog, none means a new one, two or more writes nothing and alerts. A title that starts with its dates names no dog.
+3. **Whether single-pet price divs carry `data-pet` isn't recorded** (only the two-pet pages were inspected). So with one pet, every price on the page is its own; with two or more, a price counts for a pet only by its `data-pet`.
+4. **15 stored boarding forms belonged to another pet** (checked against the 57 pet IDs verified on 10-23; session 46's "all 107 correct" was checked against queue meta, the buggy value). 14 on the dog with pet 83736 held pet 168474's one submission; 1 (C63QhGXE) on pet 91317 held pet 90029's. All single-pet bookings; the app linked each one's submission URL. Cause not proven; PR 2 removes the only source of that ID (queue meta).
+   - **Kate (3a):** deleted them, 2026-10-24 ~00:25 UTC (verified: 92 forms, 0 whose pet ID differs from their dog's).
+5. **A booking's status now applies to every pet's boarding.** Second pets' boardings used to get no AM/PM and no status (always `confirmed`), so a cancelled two-pet booking left the second pet's boarding counted. Each pet's boarding is now built the same way.
+6. **The first night on PR 1 (2026-10-24) was clean:** no new booking without dates (still 74), no dog created or renamed, the 4 checked rows kept their IDs. One `sync-detail` alert: two playgroup series redirected to another booking's URL (`redirected_elsewhere`); both were re-queued on new URL timestamps the same day, as designed.
 
 ## What breaks / what changes
 - Items that redirect are no longer retried as failures; they wait for a URL or title change on the next scan.
