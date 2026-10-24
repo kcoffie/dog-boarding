@@ -51,9 +51,9 @@ import { applyDetailFilters } from './appointmentFilter.js';
 import { readSettingsRow } from './syncSettingsRow.js';
 import { enqueue, dequeueOne, markDone, markFailed, resetStuck as resetStuckItems, getQueueDepth } from './syncQueue.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from './daytimeSchedule.js';
-import { fetchAppointmentDetails } from './extraction.js';
+import { fetchAppointmentDetails, nameFromTitle } from './extraction.js';
 import { mapAndSaveAppointment } from './mapping.js';
-import { fetchAndStoreBoardingForm } from './forms.js';
+import { fetchAndStoreBoardingForm, formJobPetMatches } from './forms.js';
 import { DetailRedirected } from './redirects.js';
 import { alertAndLog } from '../alertKate.js';
 
@@ -348,7 +348,8 @@ export async function runScheduleSync(supabase) {
         external_id: appt.id,
         source_url: appt.url,
         title: appt.title || appt.petName || '',
-        meta: appt.petIds?.[0] ? { external_pet_id: appt.petIds[0] } : {},
+        // A cross-check only: the booking's own page gives each pet its ID (#344)
+        meta: appt.petIds?.length ? { schedule_pet_ids: appt.petIds } : {},
       });
       stats.queued++;
       if (outcome === 'requeued_edited') stats.requeuedEdited++;
@@ -423,7 +424,7 @@ export async function alertDetailNotices(supabase, notices) {
   const lines = notices.filter(Boolean);
   if (lines.length === 0) return null;
   return alertAndLog(supabase, DETAIL_ALERT_JOB,
-    `⚠️ Q Boarding sync: ${lines.length} booking page(s) not read\n• ${lines.join('\n• ')}`);
+    `⚠️ Q Boarding sync: ${lines.length} booking(s) to check\n• ${lines.join('\n• ')}`);
 }
 
 /** Results that end a drain: nothing left, or no usable session. */
@@ -498,12 +499,15 @@ async function finishRedirected(supabase, item, err) {
 }
 
 // A page that was read: drop any earlier redirect or dateless mark, so the same URL failing again later
-// is reported again (#344). Undefined (meta untouched) when there's nothing to drop.
-function readAgainMeta(item) {
-  if (!item.meta || !('detail_redirect' in item.meta || 'detail_dateless' in item.meta)) return undefined;
-  const meta = { ...item.meta };
+// is reported again, and keep this read's notice so the next read of the booking repeats it only if it
+// changed (#344). Undefined (meta untouched) when nothing changes.
+function readAgainMeta(item, noticeText = null) {
+  const meta = { ...(item.meta || {}) };
   delete meta.detail_redirect;
   delete meta.detail_dateless;
+  if (noticeText) meta.detail_notice = noticeText;
+  else delete meta.detail_notice;
+  if (JSON.stringify(meta) === JSON.stringify(item.meta || {})) return undefined;
   return { meta };
 }
 
@@ -592,6 +596,15 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
     console.log(`[SyncRunner:Detail] 📋 Form job: boarding_id=${boardingId}, pet_id=${externalPetId}`);
 
     try {
+      if (!(await formJobPetMatches(supabase, boardingId, externalPetId))) {
+        console.log(`[SyncRunner:Detail] ⏭️ SKIP form ${item.external_id}: pet ${externalPetId} isn't its boarding's dog's pet ID`);
+        await markDone(supabase, item.id, { meta: { ...item.meta, form_skip: 'pet_id_mismatch' } });
+        const remaining = await getQueueDepth(supabase);
+        return {
+          action: 'skipped', reason: 'pet_id_mismatch', externalId: item.external_id, queueDepth: remaining,
+          notice: `${item.external_id}: its form job is for pet ${externalPetId}, not its boarding's dog's pet ID, so no form was fetched`,
+        };
+      }
       await fetchAndStoreBoardingForm(supabase, boardingId, externalPetId, item.title || '');
       await markDone(supabase, item.id);
       const remaining = await getQueueDepth(supabase);
@@ -619,7 +632,6 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   // ── Appointment job (default) ─────────────────────────────────────────────
   const urlMatch = item.source_url.match(/\/schedule\/a\/([^/]+)\/(\d+)/);
   const [, appointmentId, timestamp] = urlMatch || [null, item.external_id, ''];
-  const externalPetId = item.meta?.external_pet_id || null;
 
   let details;
   try {
@@ -643,7 +655,8 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
     return { action: 'failed', error: msg, externalId: item.external_id, queueDepth: remaining };
   }
 
-  if (!details.pet_name && item.title) details.pet_name = item.title;
+  // A page with no pet element is a staff member's dog, named only in the title (#49, #344)
+  if (details.pets.length === 0) details.pet_name = nameFromTitle(item.title);
 
   // Post-detail filters — same logic as the browser sync path (sync.js).
   // Cron path is always boardingOnly; no date-range window (cursor handles scope).
@@ -657,9 +670,14 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   }
 
   try {
-    const saveResult = await mapAndSaveAppointment(details, { supabase, externalPetId });
+    const saveResult = await mapAndSaveAppointment(details, { supabase, schedulePetIds: item.meta?.schedule_pet_ids ?? [] });
     if (saveResult.skipped === 'dateless_page') return finishDateless(supabase, item);
-    const readAgain = readAgainMeta(item);
+    // What couldn't be saved goes in the run's one alert, once per change of what it says (#344)
+    const noticeText = saveResult.notices.length > 0
+      ? `${item.external_id} "${item.title || ''}": ${saveResult.notices.join('; ')}`
+      : null;
+    const notice = noticeText !== null && noticeText !== item.meta?.detail_notice ? noticeText : null;
+    const readAgain = readAgainMeta(item, noticeText);
     if (readAgain) await markDone(supabase, item.id, readAgain);
     else await markDone(supabase, item.id);
 
@@ -670,7 +688,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
 
     const remaining = await getQueueDepth(supabase);
     console.log(`[SyncRunner:Detail] ✅ ${details.pet_name || details.external_id} → ${action} — queue depth: ${remaining}`);
-    return { action, externalId: item.external_id, queueDepth: remaining };
+    return { action, externalId: item.external_id, queueDepth: remaining, notice };
   } catch (saveErr) {
     const msg = errorText(saveErr);
     console.error(`[SyncRunner:Detail] ❌ Save failed (retry ${(item.retry_count || 0) + 1}/3): ${msg}`);

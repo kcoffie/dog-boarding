@@ -5,12 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  mapToDog,
+  ratesFromPricing,
   mapToBoarding,
   mapToSyncAppointment,
-  findDogByExternalId,
-  findDogByName,
-  upsertDog,
   upsertBoarding,
   mapAndSaveAppointment,
 } from '../../lib/scraper/mapping.js';
@@ -20,198 +17,13 @@ import {
   mockExternalAppointmentNoPricing,
   mockExternalAppointmentSingleLinePricing,
   mockExternalAppointmentDcMidPhrase,
-  mockExternalAppointmentMultiPet,
 } from './fixtures.js';
+import { createFakeSupabase } from './fakeSupabase.js';
 
-// Mock Supabase client
-const createMockSupabase = () => {
-  const mockData = {
-    dogs: [],
-    boardings: [],
-    sync_appointments: [],
-  };
-
-  const createQueryBuilder = (table) => {
-    let filters = {};
-    let lteFilters = {};
-    let gteFilters = {};
-    let limitCount = null;
-    let isSingle = false;
-
-    const builder = {
-      select: () => {
-        return builder;
-      },
-      eq: (field, value) => {
-        filters[field] = value;
-        return builder;
-      },
-      ilike: (field, value) => {
-        filters[`${field}_ilike`] = value.toLowerCase();
-        return builder;
-      },
-      lte: (field, value) => {
-        lteFilters[field] = value;
-        return builder;
-      },
-      gte: (field, value) => {
-        gteFilters[field] = value;
-        return builder;
-      },
-      limit: (count) => {
-        limitCount = count;
-        return builder;
-      },
-      single: () => {
-        isSingle = true;
-        return builder.execute();
-      },
-      maybeSingle: () => {
-        isSingle = true;
-        const result = builder.execute();
-        isSingle = false;
-        // maybeSingle returns null data (no error) when no rows found
-        if (result.error && result.error.code === 'PGRST116') {
-          return { data: null, error: null };
-        }
-        return result;
-      },
-      execute: () => {
-        let results = [...mockData[table]];
-
-        // Apply eq / ilike filters
-        for (const [key, value] of Object.entries(filters)) {
-          if (key.endsWith('_ilike')) {
-            const field = key.replace('_ilike', '');
-            results = results.filter(r => r[field]?.toLowerCase() === value);
-          } else {
-            results = results.filter(r => r[key] === value);
-          }
-        }
-
-        // Apply range filters (used by findBoardingByDogAndDates)
-        for (const [k, v] of Object.entries(lteFilters)) {
-          results = results.filter(r => r[k] <= v);
-        }
-        for (const [k, v] of Object.entries(gteFilters)) {
-          results = results.filter(r => r[k] >= v);
-        }
-
-        if (limitCount) {
-          results = results.slice(0, limitCount);
-        }
-
-        if (isSingle) {
-          if (results.length === 0) {
-            return { data: null, error: { code: 'PGRST116' } };
-          }
-          return { data: results[0], error: null };
-        }
-
-        return { data: results, error: null };
-      },
-    };
-
-    // Make it thenable for await
-    builder.then = (resolve) => resolve(builder.execute());
-
-    return builder;
-  };
-
-  const createInsertBuilder = (table) => {
-    let insertData = null;
-
-    const builder = {
-      insert: (data) => {
-        insertData = Array.isArray(data) ? data[0] : data;
-        return builder;
-      },
-      select: () => builder,
-      single: () => {
-        const newRecord = {
-          id: `mock-${Date.now()}-${Math.random()}`,
-          ...insertData,
-          created_at: new Date().toISOString(),
-        };
-        mockData[table].push(newRecord);
-        return Promise.resolve({ data: newRecord, error: null });
-      },
-    };
-
-    return builder;
-  };
-
-  const createUpdateBuilder = (table) => {
-    let updateData = null;
-    let filters = {};
-
-    const builder = {
-      update: (data) => {
-        updateData = data;
-        return builder;
-      },
-      eq: (field, value) => {
-        filters[field] = value;
-        return builder;
-      },
-      select: () => builder,
-      single: () => {
-        const index = mockData[table].findIndex(r => {
-          return Object.entries(filters).every(([k, v]) => r[k] === v);
-        });
-
-        if (index === -1) {
-          return Promise.resolve({ data: null, error: { message: 'Not found' } });
-        }
-
-        mockData[table][index] = { ...mockData[table][index], ...updateData };
-        return Promise.resolve({ data: mockData[table][index], error: null });
-      },
-    };
-
-    return builder;
-  };
-
-  return {
-    from: (table) => ({
-      select: (fields) => createQueryBuilder(table).select(fields),
-      insert: (data) => createInsertBuilder(table).insert(data),
-      update: (data) => createUpdateBuilder(table).update(data),
-    }),
-    _mockData: mockData,
-    _addDog: (dog) => mockData.dogs.push({ id: `dog-${Date.now()}`, ...dog }),
-    _addBoarding: (boarding) => mockData.boardings.push({ id: `boarding-${Date.now()}`, ...boarding }),
-  };
-};
+// The database boundary: an in-memory Supabase (fakeSupabase.js)
+const createMockSupabase = () => createFakeSupabase();
 
 describe('REQ-103: Data Mapping to App Schema', () => {
-  describe('mapToDog()', () => {
-    it('maps external data to dog record', () => {
-      const external = mockExternalAppointments[0];
-      const dog = mapToDog(external);
-
-      expect(dog.name).toBe('Luna');
-      expect(dog.source).toBe('external');
-      expect(dog.external_id).toBe('ABC123');
-      expect(dog.active).toBe(true);
-    });
-
-    it('sets default rates to 0', () => {
-      const external = mockExternalAppointments[0];
-      const dog = mapToDog(external);
-
-      expect(dog.day_rate).toBe(0);
-      expect(dog.night_rate).toBe(0);
-    });
-
-    it('handles missing pet name', () => {
-      const external = { external_id: 'TEST123' };
-      const dog = mapToDog(external);
-
-      expect(dog.name).toBe('Unknown');
-    });
-  });
-
   describe('mapToBoarding()', () => {
     it('maps external data to boarding record', () => {
       const external = mockExternalAppointments[0];
@@ -252,100 +64,6 @@ describe('REQ-103: Data Mapping to App Schema', () => {
 
       expect(sync.last_synced_at).toBeDefined();
       expect(new Date(sync.last_synced_at)).toBeInstanceOf(Date);
-    });
-  });
-
-  describe('findDogByExternalId()', () => {
-    it('finds existing dog by external_id', async () => {
-      const supabase = createMockSupabase();
-      supabase._addDog({ external_id: 'ABC123', name: 'Luna', source: 'external' });
-
-      const dog = await findDogByExternalId(supabase, 'ABC123');
-
-      expect(dog).not.toBeNull();
-      expect(dog.name).toBe('Luna');
-    });
-
-    it('returns null if dog not found', async () => {
-      const supabase = createMockSupabase();
-
-      const dog = await findDogByExternalId(supabase, 'NONEXISTENT');
-
-      expect(dog).toBeNull();
-    });
-  });
-
-  describe('findDogByName()', () => {
-    it('finds dog by name (case insensitive)', async () => {
-      const supabase = createMockSupabase();
-      supabase._addDog({ name: 'Luna', source: 'manual' });
-
-      const dog = await findDogByName(supabase, 'luna');
-
-      expect(dog).not.toBeNull();
-      expect(dog.name).toBe('Luna');
-    });
-
-    it('returns null if no match', async () => {
-      const supabase = createMockSupabase();
-
-      const dog = await findDogByName(supabase, 'Unknown');
-
-      expect(dog).toBeNull();
-    });
-  });
-
-  describe('upsertDog()', () => {
-    it('creates new dog if not exists', async () => {
-      const supabase = createMockSupabase();
-      const dogData = mapToDog(mockExternalAppointments[0]);
-
-      const result = await upsertDog(supabase, dogData);
-
-      expect(result.created).toBe(true);
-      expect(result.updated).toBe(false);
-      expect(result.dog.name).toBe('Luna');
-      expect(result.dog.external_id).toBe('ABC123');
-    });
-
-    it('updates existing dog with same external_id', async () => {
-      const supabase = createMockSupabase();
-      supabase._addDog({ external_id: 'ABC123', name: 'Old Name', source: 'external' });
-      const dogData = mapToDog(mockExternalAppointments[0]);
-
-      const result = await upsertDog(supabase, dogData);
-
-      expect(result.created).toBe(false);
-      expect(result.updated).toBe(true);
-      expect(result.dog.name).toBe('Luna');
-    });
-
-    it('does not overwrite manual entries by default', async () => {
-      const supabase = createMockSupabase();
-      supabase._addDog({ name: 'Luna', source: 'manual', day_rate: 50 });
-      const dogData = mapToDog(mockExternalAppointments[0]);
-
-      const result = await upsertDog(supabase, dogData, { overwriteManual: false });
-
-      expect(result.created).toBe(false);
-      // When a manual dog has no external_id, upsertDog links the external_id to it
-      // (soft link — preserves source: 'manual' and all manual fields like day_rate).
-      // This counts as an update even though no manual data was overwritten.
-      expect(result.updated).toBe(true);
-      expect(result.dog.source).toBe('manual');
-      expect(result.dog.external_id).toBe('ABC123');
-    });
-
-    it('links manual entry when overwriteManual is true', async () => {
-      const supabase = createMockSupabase();
-      supabase._addDog({ name: 'Luna', source: 'manual' });
-      const dogData = mapToDog(mockExternalAppointments[0]);
-
-      const result = await upsertDog(supabase, dogData, { overwriteManual: true });
-
-      expect(result.updated).toBe(true);
-      expect(result.dog.external_id).toBe('ABC123');
-      expect(result.dog.source).toBe('external');
     });
   });
 
@@ -438,46 +156,6 @@ describe('REQ-103: Data Mapping to App Schema', () => {
     });
   });
 
-  describe('mapAndSaveAppointment()', () => {
-    it('creates dog, boarding, and sync_appointment', async () => {
-      const supabase = createMockSupabase();
-      const external = mockExternalAppointments[0];
-
-      const result = await mapAndSaveAppointment(external, { supabase });
-
-      expect(result.dog).toBeDefined();
-      expect(result.boarding).toBeDefined();
-      expect(result.syncAppointment).toBeDefined();
-      expect(result.stats.dogCreated).toBe(true);
-      expect(result.stats.boardingCreated).toBe(true);
-      expect(result.stats.syncCreated).toBe(true);
-    });
-
-    it('returns stats about what was created/updated', async () => {
-      const supabase = createMockSupabase();
-      supabase._addDog({ external_id: 'ABC123', name: 'Luna', source: 'external' });
-      const external = mockExternalAppointments[0];
-
-      const result = await mapAndSaveAppointment(external, { supabase });
-
-      expect(result.stats.dogCreated).toBe(false);
-      expect(result.stats.dogUpdated).toBe(true);
-    });
-
-    it('skips boarding if no valid dates', async () => {
-      const supabase = createMockSupabase();
-      const external = {
-        external_id: 'NODATES',
-        pet_name: 'NoDates Dog',
-      };
-
-      const result = await mapAndSaveAppointment(external, { supabase });
-
-      expect(result.dog).toBeDefined();
-      expect(result.boarding).toBeNull();
-    });
-  });
-
   describe('REQ-201: pricing fields', () => {
     describe('mapToBoarding() with pricing', () => {
       it('populates billed_amount from pricing.total', () => {
@@ -517,34 +195,21 @@ describe('REQ-103: Data Mapping to App Schema', () => {
       });
     });
 
-    describe('mapToDog() with pricing', () => {
-      it('sets night_rate from non-day line item when pricing available', () => {
-        const dog = mapToDog(mockExternalAppointmentWithPricing);
-        expect(dog.night_rate).toBe(55);
+    describe('ratesFromPricing() (one pet on the booking)', () => {
+      it('the night rate is the non-day line item\'s rate', () => {
+        expect(ratesFromPricing(mockExternalAppointmentWithPricing.pricing).nightRate).toBe(55);
       });
 
-      it('sets day_rate from day-matching line item when pricing available', () => {
-        const dog = mapToDog(mockExternalAppointmentWithPricing);
-        expect(dog.day_rate).toBe(50);
+      it('the day rate is the day-matching line item\'s rate', () => {
+        expect(ratesFromPricing(mockExternalAppointmentWithPricing.pricing).dayRate).toBe(50);
       });
 
-      it('defaults rates to 0 when pricing is null (existing behavior)', () => {
-        const dog = mapToDog(mockExternalAppointments[0]);
-        expect(dog.night_rate).toBe(0);
-        expect(dog.day_rate).toBe(0);
+      it('no pricing gives no rates', () => {
+        expect(ratesFromPricing(null)).toEqual({ nightRate: null, dayRate: null });
       });
 
-      it('defaults rates to 0 when pricing is null (explicit null)', () => {
-        const dog = mapToDog(mockExternalAppointmentNoPricing);
-        expect(dog.night_rate).toBe(0);
-        expect(dog.day_rate).toBe(0);
-      });
-
-      it('classifies single non-day line item as night_rate=55, day_rate=0', () => {
-        const dog = mapToDog(mockExternalAppointmentSingleLinePricing);
-        // Single "Boarding" line → nightItem classified → night_rate=55; no day item → 0
-        expect(dog.night_rate).toBe(55);
-        expect(dog.day_rate).toBe(0);
+      it('a single non-day line item is the night rate, with no day rate', () => {
+        expect(ratesFromPricing(mockExternalAppointmentSingleLinePricing.pricing)).toEqual({ nightRate: 55, dayRate: null });
       });
     });
 
@@ -604,185 +269,9 @@ describe('REQ-103: Data Mapping to App Schema', () => {
         expect(boarding.day_rate).toBe(50);
       });
 
-      it('sets dog night_rate from the non-day line even when service name contains "DC" mid-phrase', () => {
-        const dog = mapToDog(mockExternalAppointmentDcMidPhrase);
-        expect(dog.night_rate).toBe(55);
-        expect(dog.day_rate).toBe(50);
+      it('the rates read the non-day line as the night rate even when its name contains "DC" mid-phrase', () => {
+        expect(ratesFromPricing(mockExternalAppointmentDcMidPhrase.pricing)).toEqual({ nightRate: 55, dayRate: 50 });
       });
-    });
-
-    describe('upsertDog() rate update behavior', () => {
-      it('updates rates on existing external dog when updateRates is true', async () => {
-        const supabase = createMockSupabase();
-        supabase._addDog({ external_id: 'PRC123', name: 'Old', night_rate: 0, day_rate: 0, source: 'external' });
-        const dogData = mapToDog(mockExternalAppointmentWithPricing);
-
-        const result = await upsertDog(supabase, dogData, { updateRates: true });
-
-        expect(result.dog.night_rate).toBe(55);
-        expect(result.dog.day_rate).toBe(50);
-      });
-
-      it('preserves rates on existing external dog when updateRates is false', async () => {
-        const supabase = createMockSupabase();
-        // external_id must match mockExternalAppointmentNoPricing.external_id ('NOP123')
-        supabase._addDog({ external_id: 'NOP123', name: 'Luna', night_rate: 65, day_rate: 45, source: 'external' });
-        const dogData = mapToDog(mockExternalAppointmentNoPricing);
-
-        // No pricing → updateRates false → rates not touched
-        const result = await upsertDog(supabase, dogData, { updateRates: false });
-
-        expect(result.dog.night_rate).toBe(65);
-        expect(result.dog.day_rate).toBe(45);
-      });
-
-      it('updates rates on external dog found by name when updateRates is true', async () => {
-        const supabase = createMockSupabase();
-        // Dog exists with a different external_id but same name — simulates Nutmeg Sample scenario
-        supabase._addDog({ external_id: 'OTHER123', name: 'Rover', night_rate: 0, day_rate: 0, source: 'external' });
-        const dogData = mapToDog(mockExternalAppointmentWithPricing);
-        // dogData.external_id = 'PRC123' ≠ 'OTHER123' → findDogByExternalId returns null
-        // findDogByName finds 'Rover' → name-match path → rates should be written
-        const result = await upsertDog(supabase, dogData, { updateRates: true });
-
-        expect(result.dog.night_rate).toBe(55);
-        expect(result.dog.day_rate).toBe(50);
-      });
-
-      it('updates rates from single-line pricing when non-day service classified', async () => {
-        const supabase = createMockSupabase();
-        supabase._addDog({ external_id: 'SNG123', name: 'Cooper', night_rate: 65, day_rate: 0, source: 'external' });
-        const dogData = mapToDog(mockExternalAppointmentSingleLinePricing);
-        // Single "Boarding" → now classified as night → night_rate: 55
-        expect(dogData.night_rate).toBe(55);
-
-        // updateRates: true + rate > 0 → overwrites existing 65 with extracted 55
-        const result = await upsertDog(supabase, dogData, { updateRates: true });
-
-        expect(result.dog.night_rate).toBe(55);
-      });
-    });
-  });
-
-  describe('multi-pet appointments', () => {
-    it('creates a dog record for each pet', async () => {
-      const supabase = createMockSupabase();
-
-      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
-
-      const dogs = supabase._mockData.dogs;
-      expect(dogs.length).toBe(2);
-      const names = dogs.map(d => d.name);
-      expect(names).toContain('Nutmeg Sample');
-      expect(names).toContain('Pickle Sample');
-    });
-
-    it('creates a boarding for each pet with same dates', async () => {
-      const supabase = createMockSupabase();
-
-      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
-
-      const boardings = supabase._mockData.boardings;
-      expect(boardings.length).toBe(2);
-      boardings.forEach(b => {
-        expect(b.arrival_datetime).toBe('2026-03-06T00:00:00.000Z');
-        expect(b.departure_datetime).toBe('2026-03-14T00:00:00.000Z');
-      });
-    });
-
-    it('stores per-pet night rates on each dog', async () => {
-      const supabase = createMockSupabase();
-
-      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
-
-      const nutmeg = supabase._mockData.dogs.find(d => d.name === 'Nutmeg Sample');
-      const pickle = supabase._mockData.dogs.find(d => d.name === 'Pickle Sample');
-      expect(nutmeg.night_rate).toBe(55);
-      expect(pickle.night_rate).toBe(45);
-    });
-
-    it('stores per-pet day rates on each dog', async () => {
-      const supabase = createMockSupabase();
-
-      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
-
-      const nutmeg = supabase._mockData.dogs.find(d => d.name === 'Nutmeg Sample');
-      const pickle = supabase._mockData.dogs.find(d => d.name === 'Pickle Sample');
-      expect(nutmeg.day_rate).toBe(50);
-      expect(pickle.day_rate).toBe(35);
-    });
-
-    it('stores per-pet night rates on each boarding', async () => {
-      const supabase = createMockSupabase();
-
-      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
-
-      const dogs = supabase._mockData.dogs;
-      const nutmegDog = dogs.find(d => d.name === 'Nutmeg Sample');
-      const pickleDog = dogs.find(d => d.name === 'Pickle Sample');
-      const boardings = supabase._mockData.boardings;
-      const nutmegBoarding = boardings.find(b => b.dog_id === nutmegDog.id);
-      const pickleBoarding = boardings.find(b => b.dog_id === pickleDog.id);
-      expect(nutmegBoarding.night_rate).toBe(55);
-      expect(pickleBoarding.night_rate).toBe(45);
-    });
-
-    it('gives secondary boarding a unique external_id suffix', async () => {
-      const supabase = createMockSupabase();
-
-      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
-
-      const boardings = supabase._mockData.boardings;
-      const ids = boardings.map(b => b.external_id);
-      expect(ids).toContain('MPT123');
-      expect(ids).toContain('MPT123_p1');
-    });
-
-    it('does not create duplicates on re-sync', async () => {
-      const supabase = createMockSupabase();
-
-      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
-      await mapAndSaveAppointment(mockExternalAppointmentMultiPet, { supabase });
-
-      expect(supabase._mockData.dogs.length).toBe(2);
-      expect(supabase._mockData.boardings.length).toBe(2);
-    });
-  });
-
-  describe('duplicate detection', () => {
-    it('detects duplicate by external_id', async () => {
-      const supabase = createMockSupabase();
-
-      // First save
-      await mapAndSaveAppointment(mockExternalAppointments[0], { supabase });
-
-      // Second save with same external_id
-      const result = await mapAndSaveAppointment(mockExternalAppointments[0], { supabase });
-
-      expect(result.stats.dogCreated).toBe(false);
-      expect(result.stats.dogUpdated).toBe(true);
-
-      // Should only have one dog
-      expect(supabase._mockData.dogs.length).toBe(1);
-    });
-
-    it('detects duplicate by pet name for manual entries', async () => {
-      const supabase = createMockSupabase();
-      supabase._addDog({ name: 'Luna', source: 'manual', day_rate: 50 });
-
-      const result = await mapAndSaveAppointment(mockExternalAppointments[0], {
-        supabase,
-        overwriteManual: false,
-      });
-
-      // Should not create new dog
-      expect(result.stats.dogCreated).toBe(false);
-      // upsertDog links external_id to the manual dog (soft link, source stays 'manual')
-      // so dogUpdated is true even though no manual data was overwritten
-      expect(result.stats.dogUpdated).toBe(true);
-
-      // Original manual dog source preserved
-      expect(result.dog.source).toBe('manual');
     });
   });
 });

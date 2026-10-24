@@ -25,9 +25,12 @@ vi.mock('../../lib/scraper/siteAccess.js', async (importOriginal) => ({
 vi.mock('../../lib/scraper/syncQueue.js', () => ({
   enqueue: vi.fn(), dequeueOne: vi.fn(), markDone: vi.fn(), markFailed: vi.fn(), resetStuck: vi.fn(), getQueueDepth: vi.fn(),
 }));
-vi.mock('../../lib/scraper/extraction.js', () => ({ fetchAppointmentDetails: vi.fn() }));
+vi.mock('../../lib/scraper/extraction.js', async (importOriginal) => ({
+  fetchAppointmentDetails: vi.fn(),
+  nameFromTitle: (await importOriginal()).nameFromTitle,
+}));
 vi.mock('../../lib/scraper/mapping.js', () => ({ mapAndSaveAppointment: vi.fn() }));
-vi.mock('../../lib/scraper/forms.js', () => ({ fetchAndStoreBoardingForm: vi.fn() }));
+vi.mock('../../lib/scraper/forms.js', () => ({ fetchAndStoreBoardingForm: vi.fn(), formJobPetMatches: vi.fn(async () => true) }));
 vi.mock('../../lib/alertKate.js', () => ({ alertAndLog: vi.fn(async () => true) }));
 
 import { getSiteSession } from '../../lib/scraper/siteAccess.js';
@@ -199,8 +202,8 @@ describe('REQ-660: a booking page that redirects anywhere else', () => {
 
 describe('REQ-660: a booking page with no dates', () => {
   beforeEach(() => {
-    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63QAAAA', pet_name: 'Dog A' });
-    mapAndSaveAppointment.mockResolvedValue({ skipped: 'dateless_page', stats: {} });
+    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63QAAAA', pet_name: 'Dog A', pets: [{ id: '10001', name: 'Dog A' }] });
+    mapAndSaveAppointment.mockResolvedValue({ skipped: 'dateless_page', stats: {}, notices: [] });
   });
 
   it('is counted as dateless_page, marked done for its URL without detail_skip, and Kate is told', async () => {
@@ -238,7 +241,7 @@ describe('REQ-660: one alert per run', () => {
     const db = makeDb();
     expect(await alertDetailNotices(db, ['first one', null, 'second one'])).toBe(true);
     expect(alertAndLog).toHaveBeenCalledTimes(1);
-    expect(alertAndLog).toHaveBeenCalledWith(db, 'sync-detail', '⚠️ Q Boarding sync: 2 booking page(s) not read\n• first one\n• second one');
+    expect(alertAndLog).toHaveBeenCalledWith(db, 'sync-detail', '⚠️ Q Boarding sync: 2 booking(s) to check\n• first one\n• second one');
   });
 
   it('the job name is the one ops-watch reports failed alerts for', () => {
@@ -248,8 +251,8 @@ describe('REQ-660: one alert per run', () => {
 
 describe('REQ-660: a page read after an earlier redirect', () => {
   beforeEach(() => {
-    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63QAAAA', pet_name: 'Dog A', check_in_datetime: '2026-10-24T10:00:00.000Z' });
-    mapAndSaveAppointment.mockResolvedValue({ stats: { syncCreated: false, syncUpdated: true, dogUpdated: false, boardingUpdated: false } });
+    fetchAppointmentDetails.mockResolvedValue({ external_id: 'C63QAAAA', pet_name: 'Dog A', pets: [{ id: '10001', name: 'Dog A' }], check_in_datetime: '2026-10-24T10:00:00.000Z' });
+    mapAndSaveAppointment.mockResolvedValue({ stats: { syncCreated: false, syncUpdated: true, dogUpdated: false, boardingUpdated: false }, notices: [] });
   });
 
   it('drops the redirect and dateless marks, so the same URL failing later is reported again', async () => {
@@ -279,7 +282,7 @@ describe('REQ-660: draining the queue sends the run\'s one alert', () => {
     const results = await drainDetailQueue(db, { maxItems: 20 });
     expect(results.map((r) => r.action)).toStrictEqual(['redirected_elsewhere', 'redirected_elsewhere', 'idle']);
     expect(alertAndLog).toHaveBeenCalledTimes(1);
-    expect(alertAndLog.mock.calls[0][2]).toBe('⚠️ Q Boarding sync: 2 booking page(s) not read\n• C63QAAAA "10/24-27": its page redirected to /clients/10003, so it wasn\'t read.\n• C63QAAAB "10/25-26": its page redirected to /clients/10003, so it wasn\'t read.');
+    expect(alertAndLog.mock.calls[0][2]).toBe('⚠️ Q Boarding sync: 2 booking(s) to check\n• C63QAAAA "10/24-27": its page redirected to /clients/10003, so it wasn\'t read.\n• C63QAAAB "10/25-26": its page redirected to /clients/10003, so it wasn\'t read.');
   });
 
   it('still sends the alert when a later item throws, then rethrows', async () => {
@@ -288,7 +291,7 @@ describe('REQ-660: draining the queue sends the run\'s one alert', () => {
     fetchAppointmentDetails.mockRejectedValueOnce(new SiteThrottled(429));
     await expect(drainDetailQueue(makeDb(), { maxItems: 20 })).rejects.toBeInstanceOf(SiteThrottled);
     expect(alertAndLog).toHaveBeenCalledTimes(1);
-    expect(alertAndLog.mock.calls[0][2]).toBe('⚠️ Q Boarding sync: 1 booking page(s) not read\n• C63QAAAA "10/24-27": its page redirected to /clients/10003, so it wasn\'t read.');
+    expect(alertAndLog.mock.calls[0][2]).toBe('⚠️ Q Boarding sync: 1 booking(s) to check\n• C63QAAAA "10/24-27": its page redirected to /clients/10003, so it wasn\'t read.');
   });
 
   it('stops after maxItems', async () => {

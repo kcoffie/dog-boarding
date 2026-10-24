@@ -48,3 +48,8 @@ Two-pet bookings never gave the second pet an ID. Boarding forms are fetched by 
 - #318 step 3's engine inherits this, because the logic lives in `extraction.js` and `mapping.js`.
 
 Design note: `docs/specs/344-pet-id-design-note.md` (v2, after the architect's review).
+
+## Amendment (Kate, 2026-10-24, while building PR 2)
+- **Evidence for a name link.** Most stored bookings have no client recorded (a selector bug, fixed in PR 2), so "a same-name dog from the same client" can rarely be checked. A same-name dog with no pet ID is linked when this same booking already has a boarding on it, or its stored bookings name the same client; any booking from another client rules it out. Otherwise nothing is saved for that pet and Kate is told.
+- **Staff members' dogs** (a booking page with no pet element) keep #49's name from the title. They never have a pet ID: exactly one same-name dog without one is the dog; two or more writes nothing and Kate is told.
+- Details: the design note's "v3" section.

@@ -229,6 +229,32 @@ function throwIfRedirected(response, what) {
  * @param {string} dogName - Dog name for logging
  * @returns {Promise<void>}
  */
+/**
+ * Whether a form job's pet ID is its boarding's dog's (#344). Jobs queued before PR 2 took the schedule's
+ * first pet, which can be another pet; its form would be stored under this dog. Checked before any request.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} boardingId
+ * @param {string} externalPetId
+ * @returns {Promise<boolean>}
+ */
+export async function formJobPetMatches(supabase, boardingId, externalPetId) {
+  const { data: boarding, error } = await supabase
+    .from('boardings')
+    .select('dog_id')
+    .eq('id', boardingId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!boarding) return false;
+  const { data: dog, error: dogErr } = await supabase
+    .from('dogs')
+    .select('external_pet_id')
+    .eq('id', boarding.dog_id)
+    .maybeSingle();
+  if (dogErr) throw dogErr;
+  return dog?.external_pet_id === externalPetId;
+}
+
 export async function fetchAndStoreBoardingForm(supabase, boardingId, externalPetId, dogName) {
   log(`[Forms] 🔍 Fetching forms list for pet ${externalPetId} (${dogName})`);
 
