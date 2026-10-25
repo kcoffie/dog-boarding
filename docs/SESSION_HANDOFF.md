@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 23, 2026, ~20:00 UTC (session 46, end). **Production = main (`4e166ce`, PR #341, docs only; code unchanged since `f195839`), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 46: the first live day of the on-time rosters was clean; the UAT script for Charlie (#13) is drafted and dry-run 1 (read-only) is done; the dry-run found two high-priority bugs, #344 (wrong pet IDs) and #342 (Dashboard money differs from Payroll), plus #343 (Mark as Paid ideas, medium, later); Kate decided the booking site is the only source of truth for dogs, rates and boardings. Next: merge docs PR #345, recheck the 3 fixed pet IDs, then the #344 design note.**
+**Last updated:** October 24, 2026, ~17:00 UTC (session 48). **Production = main (`aaa5426`, PR #346, #344 PR 1), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Sessions 47–48: #344 (wrong pet IDs) found to be the server following a 302 to the week schedule; design note v2 + ADR-008 approved; PR 1 (no redirects, REQ-660) shipped 10-23 and its first night was clean; all 57 stored pet IDs verified; 15 wrong boarding forms deleted; PR 2 (dog = pet ID, REQ-661, migration 030) built and in review. Next: Kate runs migration 030, then PR 2 merges and deploys.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -27,9 +27,41 @@
 
 ---
 
-## Current State (2026-10-23 ~20:00 UTC, end of session 46)
+## Current State (2026-10-24 ~17:00 UTC, session 48)
 
-### Session 46: what happened
+### Session 48: what happened (2026-10-24)
+1. **Quick checks, PR 1's first night (10-24): clean.**
+   - No new `sync_appointments` row without dates (still 74). No dog created or renamed (107). The 4 corrected rows kept their IDs (`C63QgcFx` 90043, `C63QgxR1` 129933, `C63QgznN` 90048, `C63QhLBU` 204168).
+   - **One `sync-detail` alert (02:46 UTC):** two playgroup series ("PG:FT" `C63Qh4QH`, "P/G FT" `C63Qh4Qf`) redirected to another booking's URL (`redirected_elsewhere`); nothing written. Both were re-queued on new URL timestamps at 12:22, as designed (`detail_redirect`, not `detail_skip`). No `redirected_to_schedule` or `dateless_page` that night.
+   - `detail` 00:16 / 00:50 (one item each), Integration Check 02:45 and 12:22 drained the queue (43 → 3). IC alerts: only the known #315 "Missing from DB" pair (`C63QhL5g`, `C63QhLI1`).
+   - Friday pm 10-23 sent 22:39 UTC (`notify-friday-pm-claim` `sent`, `trigger: vercel`). cron-health-check ran 04:53 UTC (GitHub late), success, no alert: the 10-23 false alarm didn't repeat. `auth` refreshed 00:37 (good to 10-25 06:37); `site_access` not blocked.
+2. **Found (read-only): 15 boarding forms belonged to another pet.** Checked against the 57 verified IDs (session 46's "all 107 correct" had been checked against queue meta, the buggy value). 14 on the dog with pet 83736 held pet 168474's one submission; 1 (`C63QhGXE`) on pet 91317 held pet 90029's. **Kate deleted them** (~00:25 UTC; verified 92 forms, 0 mismatched). Cause not proven; PR 2 removes the only source of that ID.
+3. **Found while planning PR 2:** the stored client is blank on 218 of 407 dated bookings (the `.event-client` selector also matches `event-clients-pets`), so the design's "same client" check had little to check. Kate's decisions (2026-10-24), recorded in the design note v3 and an ADR-008 amendment:
+   - **1a:** link a same-name dog without a pet ID only with evidence (this booking already has a boarding on it, or its bookings name the same client; another client rules it out); otherwise nothing for that pet + alert.
+   - **2a:** a page with no pet element (a staff member's dog) keeps #49's title name; exactly one same-name dog without an ID is it; more than one alerts.
+   - **3a:** delete the 15 forms (done).
+4. **#344 PR 2 built (branch `fix/344-pr2-pet-identity`, REQ-661):** see REQ-661 for the rules. Code: `extraction.js` (`extractPets`, `extractClient`, `ratesByPet`, `nameFromTitle`), `mapping.js` (`resolvePetDog`, `resolveTitleDog`, per-pet boardings by dog; `upsertDog`, `findDogByName`, `findDogByExternalId`, `mapToDog` removed), `syncRunner.js` / `sync.js` (no `meta.external_pet_id` for appointments; `schedule_pet_ids` cross-check; notices in the one alert per run, deduplicated by `meta.detail_notice`). **Migration 030** (unique `dogs.external_pet_id`): Kate runs it before the deploy.
+   - Tests: pages built on the two real two-pet bookings (`twoPetPages.js`), an in-memory Supabase (`fakeSupabase.js`: filters, row counts, 23505). 39 rule-breaks scripted: 37 turned their test red; 1 had no test (added, then seen red); 1 equivalent (the runner's title fallback: `pet_name` is always the first pet's). Suite 2143 passed / 1 skipped.
+   - Behaviour change to know: a booking's status, AM/PM and dates now apply to every pet's boarding (a cancelled two-pet booking used to leave the second pet's boarding `confirmed`).
+   - **Reviewer:** 3 must-fix (rules with no failing test: a linked dog's result, the 23505 on the link update, a known pet without its own price div). All three now have tests, each seen failing with the reviewer's own mutation. Its should-fixes, all done:
+     - a client page with no readable pet is reported, never named from the title;
+     - the form job checks the pet ID belongs to its boarding's dog before any request (`formJobPetMatches`);
+     - a multi-pet page whose prices don't carry a pet's ID keeps stored rates and alerts;
+     - every name link is reported with its evidence; a dog with two boardings on one booking keeps `<id>` and alerts;
+     - each price is classed by its own service wrapper; `&#039;` and other numeric entities are decoded;
+     - hand-entered dogs are never reactivated; the alert header is now "N booking(s) to check"; RUNBOOK section and job docs updated;
+     - a deploy step re-queues the 18 current/upcoming bookings (already-read bookings are otherwise never re-read).
+   - **Final evidence:** suite 2209 passed / 1 skipped; 22 more scripted rule-breaks all red. **Scoped Stryker (TZ=UTC), changed lines 87.55% (647/739)**: `mapping.js` 90.0%, `syncRunner.js` 94.6%, `sync.js` 86.7%, `forms.js` 84.2%, `extraction.js` 79.6% (its survivors: the shape log line, regex variants equivalent on real IDs). 19.7 tests per mutant; the only timeout on changed lines is a genuine infinite loop (the `g` flag dropped from a regex used with `exec`).
+
+### Session 47 (2026-10-23): what happened
+1. **#344 root cause: the server followed redirects.** A booking URL the site won't show answers 302 → `/schedule`; server `fetch` followed it, and the sync read the whole week's schedule as that booking (all 74 dateless `sync_appointments` rows: 64 playgroup series, 10 real stays). That gave dogs another pet's ID (the 3 Kate corrected), **renamed** `C63QhLBU`'s dog to the week's first pet, and created $0 dogs. A redirect means "edited or hidden", not removed: `C63QhLBU`'s stay is valid at a new URL timestamp.
+2. **Design note v2** (`docs/specs/344-pet-id-design-note.md`, architect "proceed with changes", all folded in) and **ADR-008** (`docs/adr/008-dog-identity-is-the-pet-id.md`), both approved by Kate. Kate: alert only (never rename a dog); one alert summary per run.
+3. **Two real two-pet bookings read in Kate's Chrome (read-only, with her OK; `C63QhFVc`, `C63QhB7h`):** full nesting confirmed; every price div carries `data-pet` and `data-client`; on one, `data-pets` lists the pets in the opposite order to the links.
+4. **PR 1 merged ~21:55 UTC (PR #346, `aaa5426`, REQ-660), `check:deploy` OK:** booking and form pages fetched with `redirect: 'manual'` (shared classifier `src/lib/scraper/redirects.js`); a redirected or dateless page writes nothing (`meta.detail_redirect` / `detail_dateless`, never `detail_skip`); one `sync-detail` alert per run. Scoped Stryker 95.31%.
+5. **All 57 stored pet IDs verified:** 51 by single-dog bookings (dates + exactly one pet on the page, name matches; 0 conflicts), 4 by Kate on the site, 2 by Claude reading the pet pages in Kate's Chrome with her OK.
+6. **Data repaired (Kate ran the SQL, verified ~23:56 UTC):** row for `C63QhLBU` renamed back (pet 204168, 4 boardings); the hand-entered duplicate row deleted; 107 dogs.
+
+### Session 46 (reference, 2026-10-23): what happened
 1. **PR #341 (session 45 handoff) merged** (`4e166ce`) after the reviewer (no must-fix; 4 small fixes applied). `check:deploy` OK.
 2. **First live day of the on-time rosters (Fri 10-23): clean.** Claim rows: 4am `sent`, `trigger: vercel`, 11:40 UTC (Kate's roster said "as of 4:40am"); 7am `unchanged` 14:20; 8:30am `unchanged` 15:29. No `notify-4am-alert` / `notify-alert` rows. Kate confirmed Vercel lists **13 cron jobs**. Not checked yet (ran after the checks): the 14:00 UTC GitHub `notify-4am` fallback (`already_sent`), ops-watch 10-23 (17:00), Friday pm (22:00/23:00), cron-health-check 10-24 00:30.
    - Two alerts that weren't roster failures: **cron-health-check 05:10 UTC** said 7am/8:30am "didn't run on 2026-10-22" (one-off false alarm: claim rows only went live 10-23 00:56; the next run should be clean). **Integration Check 02:50 and 13:00**: "Missing from DB" C63QhL5g/C63QhLI1 = the known #315 false positive, now on every run.
@@ -155,16 +187,16 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs. **If the session-46 docs PR #345 (`docs/13-uat-script`) is still open:** check CI, run the reviewer agent on it, fix anything, squash-merge, `check:deploy`, sync main.
-2. **Quick checks (read-only, report in a few lines, fix nothing without asking).** Recipe: `supabase-local-queries` memory.
-   - **The 3 corrected pet IDs:** `SELECT external_id, external_pet_id, updated_at FROM dogs WHERE external_id IN ('C63QgcFx','C63QgxR1','C63QgznN')`. Expect 90043, 129933, 90048. If any changed, the overnight sync rewrote it: that's #344 live, say which listing (sync_queue `processed_at` near the row's `updated_at`).
-   - **Rosters on the latest weekday:** the four `notify-*-claim` rows (`success`, `trigger: vercel`), `message_log` (no `notify-4am-alert` / `notify-alert`), the 14:00 UTC GitHub `notify-4am` run (`already_sent`), ops-watch's latest row, cron-health-check (the 10-23 false alarm shouldn't repeat), Friday pm 10-23 (22:xx UTC), overnight crons, `site_access`, queue depth. Count toward M1's "5 weekday 4am rosters on time" (10-23 = day 1).
-3. **Tell Kate the top 3** (TechPM habit), then work them:
-   1. **#344 (wrong pet IDs): design note first** (`docs/specs/`): what counts as a group listing and skipping it before any write; pairing each pet's name and ID from the same element (schedule `.event-pet-wrapper[data-pet]` holds `.event-pet`; detail price tags carry `data-pet`), including second pets; never silently change a stored pet ID (keep it, alert Kate); dog matching without the arbitrary name match. Architect agent, ADR (sprint rule), Kate's OK, then code with tests from recorded HTML shapes. No new booking-site requests.
-   2. **#13 dry-run 2 (Kate clicks, Claude checks the tables):** steps in `docs/UAT_SCRIPT.md` Part D. Expected partial payment **$139.75** (the average bug would give $159.25). Afterwards confirm 0 night assignments and 0 payments remain. File each confirmed payroll bug as its own issue. Also a read-only phone-width pass (Part B2).
-   3. **#342 (one shared calculation)** plus removing Add/Edit/Delete boarding (REQ-020–022 get the REQ-011-style note). Then #323.
-   - Also Sprint 1: #307 (remove Invite Users); #324 leftover Clear-for-Kate; first PST roster Mon 11-02; watch-first by ~11-13 (Kate books it).
-4. **Kate's own items:** dry-run 2 clicks; book watch-first with Charlie; #337 chores; #8 calendar; forwarding the roster.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs.
+2. **#344 PR 2 (if not merged yet):** Kate runs **migration 030** in the SQL editor, outside 23:30–01:30 UTC: the pre-check in the file's header (expect 0 rows), then the two statements. Verify the index exists (`dogs_external_pet_id_key`, unique) → green checks → squash-merge → `check:deploy` → **Kate runs the re-queue SQL** in RUNBOOK "Q Boarding sync: N booking(s) to check" → "After the #344 PR 2 deploy" (about 18 current/upcoming bookings, once; already-read bookings are otherwise never re-read until edited).
+3. **After PR 2's first night (read-only, report in a few lines):**
+   - no dog renamed (dogs' `name` unchanged; compare with the 107 rows of 10-24), no new $0 dog without a boarding, the 4 checked rows keep their IDs;
+   - `sync-detail` alerts: any pet notices, and what they said (each is a decision for Kate, not a bug to patch by hand);
+   - new dogs have a pet ID (except a staff member's dog); second pets got IDs and form jobs (`sync_queue` `form_*` with their own `/pets/N/forms`);
+   - `boarding_forms` whose pet ID differs from their dog's: still 0;
+   - the first multi-pet page's log line `[Extraction] 🐾 2-pet page: …` (IC run log): the raw page's price divs carry `data-pet` (the shape was only confirmed on Chrome's rendered page).
+4. **Top 3 after #344:** #13 dry-run 2 (Kate clicks; expected partial payment **$139.75**), **#342** (one shared calculation + remove Add/Edit/Delete boarding), #323. Also Sprint 1: #307, #324 Clear-for-Kate, first PST roster Mon 11-02.
+5. **Kate's own items:** migration 030; dry-run 2 clicks; book watch-first with Charlie; #337 chores; #8 calendar; forwarding the roster. Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the 74 week-page rows, the boarding-less $0 dogs; and the two same-name rows of a staff member's dog (no pet IDs) to merge, or its next booking alerts.
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.

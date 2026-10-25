@@ -116,7 +116,9 @@ If the schedule page HTML contains both `"login"` and `"password"`, the session 
 ### What it does
 Picks one item off the `sync_queue`, fetches its full detail page (or form page), and upserts the result into `boardings`, `dogs`, and related tables. Handles two item types: `appointment` and `form`.
 
-**Redirects (#344, REQ-660):** detail and form pages are fetched without following redirects. A booking page that redirects to `/schedule` writes nothing (`redirected_to_schedule`); `/login` is an expired session; anything else is `redirected_elsewhere`. A booking page with no dates writes nothing (`dateless_page`). Kate gets one `sync-detail` alert per run for a redirected booking that held a stay, any other redirect, or a dateless page (once per URL). Runbook: "Q Boarding sync: N booking page(s) not read".
+**Redirects (#344, REQ-660):** detail and form pages are fetched without following redirects. A booking page that redirects to `/schedule` writes nothing (`redirected_to_schedule`); `/login` is an expired session; anything else is `redirected_elsewhere`. A booking page with no dates writes nothing (`dateless_page`). Kate gets one `sync-detail` alert per run for a redirected booking that held a stay, any other redirect, or a dateless page (once per URL). Runbook: "Q Boarding sync: N booking(s) to check".
+
+**Pet identity (#344, REQ-661):** a dog is its booking-site pet ID, read from each pet's own element on the booking page. The sync never renames a dog or changes a stored pet ID; a same-name dog without one is linked only with evidence. What it won't decide goes in the same alert, once per change. Form jobs are fetched only when the pet ID is the boarding's dog's.
 
 ### Why one item per run
 Vercel Hobby functions have a **10-second execution timeout**. A single detail page fetch + parse + DB write fits in ~2–4s. Processing multiple items would risk timeout on slow responses. For bulk catch-up, the UI "Sync Now" button calls this endpoint in a loop until the queue is empty.
