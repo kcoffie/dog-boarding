@@ -1,5 +1,7 @@
 # Dog Boarding Management App - Specification
 
+> **Historical (the original v1 spec).** The current rules are in `docs/REQUIREMENTS.md`. Adding, editing, deleting and CSV-importing boardings were removed in #342 (REQ-020 to REQ-023): the booking site is the source of truth.
+
 ## Project Overview
 
 Build a 3-page React web app for managing a dog boarding business. The app tracks dogs, their boarding stays, calculates revenue, and tracks employee earnings.

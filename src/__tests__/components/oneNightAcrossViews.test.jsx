@@ -157,6 +157,14 @@ describe('REQ-036: every view shows the same night (3 dogs, $140, $91)', () => {
     expect(dogwoodRow.lastElementChild.textContent).toBe('$0.00');
   });
 
+  it("Dashboard rate column ignores a cancelled boarding's price: $40, not $40–60", () => {
+    const cancelled = { id: 'b3', dogId: 'b', arrivalDateTime: '2026-10-22T16:00:00', departureDateTime: '2026-10-25T10:00:00', nightRate: 60, cancelledAt: '2026-10-20T12:00:00Z' };
+    useData.mockReturnValue(data({ boardings: [...boardings, cancelled] }));
+    render(<BrowserRouter><BoardingMatrix startDate={NIGHT} days={1} /></BrowserRouter>);
+    const birchRow = screen.getAllByRole('row').find(r => r.textContent.startsWith('BBirch'));
+    expect(birchRow.children[2].textContent).toBe('$40');
+  });
+
   it("Dashboard rate column ignores a day visit's price: $40, not $40–60", () => {
     const dayVisit = { id: 'b0', dogId: 'b', arrivalDateTime: '2026-10-23T08:00:00', departureDateTime: '2026-10-23T12:00:00', nightRate: null };
     useData.mockReturnValue(data({ boardings: [...boardings, dayVisit] }));
