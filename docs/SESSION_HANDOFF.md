@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 26, 2026, ~23:00 UTC (session 51). **Production = main (`a558dc6`, #355 handoff docs; code as `7b191bd`), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 51: #353 design note written, Kate chose option B (booking times stay as the site stores them, read through one `siteClock.js`), architect "proceed with changes" folded in. Two Friday-roster questions open. Next: Kate's 2 answers, then ADR-009 and PR 1 before the Fri 10-30 roster.**
+**Last updated:** October 26, 2026, ~23:00 UTC (session 51). **Production = main (`a558dc6`, #355 handoff docs; code as `7b191bd`), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 51: #353 design note written, Kate chose option B (booking times stay as the site stores them, read through one `siteClock.js`), architect "proceed with changes" folded in. Three small questions open (design note Q4–Q6: Monday pick-ups on the Friday roster, the 2 contradicting AM/PM labels, one 23:00Z title-only row). Next: Kate's answers, then ADR-009 and PR 1 before the Fri 10-30 roster.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -37,7 +37,7 @@
    - **Kate: option B.** Keep the stored values; one `src/utils/siteClock.js` (`siteDate`, `siteTime` + "PT", `siteNow`) reads them everywhere. No data repair, no migration, no booking-site requests. ADR-009 to write.
    - **Kate's answers:** day icon keeps "before 5pm" (a); leave Goose's two 5:15pm stays (a staff dog) alone; title-only rows show no time (a); "PT" on every booking time; Friday-afternoon bookings go on the Friday pm roster (today they're left off: 9 arrivals and 16 departures so far, next Mochi Fri 12-04 4pm).
    - **Architect: proceed with changes**, all folded into the note: test zones `Pacific/Kiritimati` and `Pacific/Pago_Pago` (UTC/Paris/Tokyo can't catch a wrong date), an `fs`-walking guard test, weekend window from `siteNow()` rounded to the hour, 5 more readers.
-   - **Open for Kate:** Monday-morning pick-ups on the Friday roster (keep + header "Fri – Mon", recommended, or end Sunday 11:59pm); the 2 rows whose AM/PM contradicts the time (date only, recommended).
+   - **Open for Kate (design note Q4–Q6):** Monday-morning pick-ups on the Friday roster (they're already listed today; keep + header "Fri – Mon", recommended, or end Sunday 11:59pm); the 2 rows whose AM/PM contradicts the time (date only, recommended); `C63QgTXx`'s 23:00Z title-only departure (date only, recommended).
 4. **`C63QhB7h`** (Mochi and Marlee, 11-03 → 11-12): Kate's Chrome got "You cannot view appointment" and Kate thinks the booking may be deleted on the site. The app still has both boardings. Check after tonight's sync (reconcile cancels only on a 302 to `/schedule`).
 5. Nothing else changed: no SQL by Claude, no messages sent, no code.
 
@@ -283,10 +283,13 @@ Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-inve
 1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2252 passed / 1 skipped**), open PRs (#291, #285, plus **#356** = this handoff + the #353 design note: run the reviewer on it, post its findings as a PR comment, then ask Kate to merge).
 2. **Read-only checks:** overnight 10-27 crons, `site_access`, queue; whether `C63QhB7h` was cancelled by the sync; ask Kate whether Dogs Tonight showed today after 5pm Pacific.
 3. **Top 3 (Sprint 1, ends 11-04):**
-   1. **#353:** get Kate's 2 open answers (design note "Kate's decisions"), write ADR-009, then **PR 1** (`siteClock.js`, Friday pm roster + weekend window, `queryBoarders`/forms with `Date.UTC`, form-job and reconcile "now", title fallback, the guard test). **Merge before the Fri 10-30 roster (22:00 UTC).** Reviewer first; scoped Stryker with host `TZ=Pacific/Kiritimati` and `TZ=Pacific/Pago_Pago`. Then **PR 2** (= #350 PR 2: Dogs, Calendar, Sync History, form view, day/night helpers, "PT").
+   1. **#353:** get Kate's answers to design note Q4–Q6, write ADR-009, then **PR 1** = the rows marked 1 in the note's "What changes" table (`siteClock.js`, Friday pm roster times/window/date ranges, `queryBoarders` and form matching with `Date.UTC`/`siteDate`, form-job and Sync Now "now", manual sync range, title fallback, `tsToDate` comment, seed script, the guard test with PR 2's files allowlisted). **Merge before the Fri 10-30 roster (22:00 UTC).** Reviewer first; scoped Stryker with host `TZ=Pacific/Kiritimati` and `TZ=Pacific/Pago_Pago`. Then **PR 2** (= #350 PR 2) = the rows marked 2 (Dogs page times and status, Calendar, day/night helpers, Sync History, form view, upcoming forms, "PT"; empties the guard allowlist).
    2. **#13 dry-run 2** (Kate clicks; re-check $139.75 first).
    3. **#323** private job logs (design note → architect → migration by Kate).
    Dates: DST ends Sun 11-01; first PST 4am roster Mon 11-02.
+4. **Kate's own items:**
+   - dry-run 2 clicks; book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forwarding the roster.
+   - Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the week-page rows (73 dateless rows), the boarding-less $0 dogs, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.
