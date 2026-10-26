@@ -172,7 +172,7 @@ export default async function handler(req, res) {
   const jobRunAt = new Date().toISOString();
 
   // Compute today's date in Pacific time — same pattern as notify.js.
-  const todayStr = new Intl.DateTimeFormat('en-CA', {
+  const todayStr = new Intl.DateTimeFormat('en-CA', { // real-moment: today's Pacific date from the real now
     timeZone: 'America/Los_Angeles',
   }).format(new Date());
 

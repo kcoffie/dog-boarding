@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { siteDate, siteTime, formatSiteDate, timeStatus, bookingTime, siteNow, siteMidnight } from '../utils/siteClock.js';
-import { getWeekendWindowISO, formatWeekendDatetime, formatWeekendHeaderDates, getWeekendBoardings, formatCompactDateRange } from '../../api/roster-image.js';
+import { getWeekendWindowISO, formatWeekendDatetime, formatWeekendHeaderDates, getWeekendBoardings, formatCompactDateRange, weekendRowTime } from '../../api/roster-image.js';
 import { formatReadableDateRange } from '../../api/intraday-image.js';
 import { queryBoarders } from '../lib/pictureOfDay.js';
 import { findFormForBoarding } from '../lib/scraper/forms.js';
@@ -140,6 +140,16 @@ describe("REQ-065: San Francisco's now, written as a site clock value", () => {
     expect(siteNow(new Date('2026-11-02T17:15:00Z'))).toBe('2026-11-02T09:15:00.000Z');
   });
 
+  it('when DST starts (3-08), 1:59:59am is followed by 3:00am', () => {
+    expect(siteNow(new Date('2026-03-08T09:59:59Z'))).toBe('2026-03-08T01:59:59.000Z');
+    expect(siteNow(new Date('2026-03-08T10:00:00Z'))).toBe('2026-03-08T03:00:00.000Z');
+  });
+
+  it('when DST ends (11-01), 1:30am happens twice: 08:30Z and 09:30Z', () => {
+    expect(siteNow(new Date('2026-11-01T08:30:00Z'))).toBe('2026-11-01T01:30:00.000Z');
+    expect(siteNow(new Date('2026-11-01T09:30:00Z'))).toBe('2026-11-01T01:30:00.000Z');
+  });
+
   it('just after midnight it is hour 00, not 24', () => {
     expect(siteNow(new Date('2026-10-27T07:30:45Z'))).toBe('2026-10-27T00:30:45.000Z');
   });
@@ -244,21 +254,78 @@ describe("REQ-065: the Friday pm roster's weekend window", () => {
     expect(formatWeekendHeaderDates(displayFri, displayMon)).toBe('Fri Oct 30 – Mon Nov 2');
   });
 
-  it('the 3pm run lists Friday-afternoon arrivals and departures and Monday-morning pick-ups, not earlier or later ones', async () => {
-    const rows = [
-      { external_id: 'EARLY', arrival_datetime: '2026-10-30T14:45:00Z', departure_datetime: '2026-11-05T10:00:00Z' },
-      { external_id: 'AT3PM', arrival_datetime: '2026-10-30T15:00:00Z', departure_datetime: '2026-11-05T10:00:00Z' },
-      { external_id: 'AT4PM', arrival_datetime: '2026-10-30T16:00:00Z', departure_datetime: '2026-11-05T10:00:00Z' },
-      { external_id: 'OUT415', arrival_datetime: '2026-10-25T10:00:00Z', departure_datetime: '2026-10-30T16:15:00Z' },
-      { external_id: 'MONAM', arrival_datetime: '2026-10-25T10:00:00Z', departure_datetime: '2026-11-02T10:15:00Z' },
-      { external_id: 'MONPM', arrival_datetime: '2026-10-25T10:00:00Z', departure_datetime: '2026-11-02T16:15:00Z' },
-    ].map((r) => ({ ...r, booking_status: 'confirmed', cancelled_at: null, dogs: { name: r.external_id } }));
-    const chain = { select: () => chain, or: () => chain, order: async () => ({ data: rows, error: null }) };
+  // Rows as Supabase returns them: timestamptz as "…+00:00", in no particular order
+  const weekendRows = (rows) => rows.map((r) => ({ booking_status: 'confirmed', cancelled_at: null, dogs: { name: r.external_id }, ...r }));
+  const listOn = async (rows, now) => {
+    const chain = { select: () => chain, or: () => chain, order: async () => ({ data: weekendRows(rows), error: null }) };
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    const { start, end } = getWeekendWindowISO(new Date('2026-10-30T22:00:05Z'));
+    const { start, end } = getWeekendWindowISO(new Date(now));
     const { arriving, departing } = await getWeekendBoardings({ from: () => chain }, start, end);
-    expect(arriving.map((b) => b.external_id)).toEqual(['AT3PM', 'AT4PM']);
-    expect(departing.map((b) => b.external_id)).toEqual(['OUT415', 'MONAM']);
+    return { arriving: arriving.map((b) => b.external_id), departing: departing.map((b) => b.external_id) };
+  };
+  const STAY_IN = '2026-10-25T10:00:00+00:00';
+  const STAY_OUT = '2026-11-05T10:00:00+00:00';
+
+  it('the 3pm run lists a 3:00pm arrival (exactly the start hour) and a 4pm one, not a 2:45pm one', async () => {
+    const { arriving } = await listOn([
+      { external_id: 'AT4PM', arrival_datetime: '2026-10-30T16:00:00+00:00', departure_datetime: STAY_OUT },
+      { external_id: 'AT3PM', arrival_datetime: '2026-10-30T15:00:00+00:00', departure_datetime: STAY_OUT },
+      { external_id: 'EARLY', arrival_datetime: '2026-10-30T14:45:00+00:00', departure_datetime: STAY_OUT },
+    ], '2026-10-30T22:00:05Z');
+    expect(arriving).toEqual(['AT3PM', 'AT4PM']);
+  });
+
+  it('the 4pm retry lists a 4:00pm arrival (exactly the start hour)', async () => {
+    const { arriving } = await listOn([
+      { external_id: 'AT4PM', arrival_datetime: '2026-10-30T16:00:00+00:00', departure_datetime: STAY_OUT },
+    ], '2026-10-30T23:00:07Z');
+    expect(arriving).toEqual(['AT4PM']);
+  });
+
+  it('departures from the start hour to Monday noon are listed, in time order; a 2:45pm Friday or a Monday 12:15pm one is not', async () => {
+    const { departing } = await listOn([
+      { external_id: 'MONNOON', arrival_datetime: STAY_IN, departure_datetime: '2026-11-02T12:00:00+00:00' },
+      { external_id: 'MONPM', arrival_datetime: STAY_IN, departure_datetime: '2026-11-02T12:15:00+00:00' },
+      { external_id: 'MONAM', arrival_datetime: STAY_IN, departure_datetime: '2026-11-02T10:15:00+00:00' },
+      { external_id: 'OUT415', arrival_datetime: STAY_IN, departure_datetime: '2026-10-30T16:15:00+00:00' },
+      { external_id: 'OUT3PM', arrival_datetime: STAY_IN, departure_datetime: '2026-10-30T15:00:00+00:00' },
+      { external_id: 'OUT245', arrival_datetime: STAY_IN, departure_datetime: '2026-10-30T14:45:00+00:00' },
+    ], '2026-10-30T22:00:05Z');
+    expect(departing).toEqual(['OUT3PM', 'OUT415', 'MONAM', 'MONNOON']);
+  });
+
+  it('arrivals are in time order; one at Monday noon is listed, one after it is not', async () => {
+    const { arriving } = await listOn([
+      { external_id: 'MONPM', arrival_datetime: '2026-11-02T12:15:00+00:00', departure_datetime: STAY_OUT },
+      { external_id: 'MONNOON', arrival_datetime: '2026-11-02T12:00:00+00:00', departure_datetime: STAY_OUT },
+      { external_id: 'SAT', arrival_datetime: '2026-10-31T10:00:00+00:00', departure_datetime: STAY_OUT },
+    ], '2026-10-30T22:00:05Z');
+    expect(arriving).toEqual(['SAT', 'MONNOON']);
+  });
+
+  it("a departing row shows the departure's own time and AM/PM label, an arriving row the arrival's", () => {
+    const b = { arrival_datetime: '2026-10-30T16:00:00+00:00', arrival_ampm: 'PM', departure_datetime: '2026-11-02T10:15:00+00:00', departure_ampm: 'AM' };
+    expect(weekendRowTime(b, 'departure_datetime')).toBe('Mon 10:15 AM PT');
+    expect(weekendRowTime(b, 'arrival_datetime')).toBe('Fri 4:00 PM PT');
+  });
+
+  it('an 8:00am time shows only with its own column\'s AM label (without it, 8:00 is a title-only date)', () => {
+    const b = { arrival_datetime: '2026-10-30T08:00:00+00:00', arrival_ampm: 'AM', departure_datetime: '2026-11-02T08:00:00+00:00', departure_ampm: 'AM' };
+    expect(weekendRowTime(b, 'arrival_datetime')).toBe('Fri 8:00 AM PT');
+    expect(weekendRowTime(b, 'departure_datetime')).toBe('Mon 8:00 AM PT');
+  });
+
+  it('the database query asks for bookings arriving or departing inside the window, earliest arrival first', async () => {
+    const calls = {};
+    const chain = {
+      select: () => chain,
+      or: (f) => { calls.or = f; return chain; },
+      order: async (col, opts) => { calls.order = [col, opts]; return { data: [], error: null }; },
+    };
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await getWeekendBoardings({ from: () => chain }, 'S', 'E');
+    expect(calls.or).toBe('and(arrival_datetime.gte.S,arrival_datetime.lte.E),and(departure_datetime.gte.S,departure_datetime.lte.E)');
+    expect(calls.order).toEqual(['arrival_datetime', { ascending: true }]);
   });
 
   it("the roster rows carry the site's AM/PM labels", async () => {

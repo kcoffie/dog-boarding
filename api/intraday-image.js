@@ -128,7 +128,7 @@ function formatAsOfTime(isoStr) {
   if (!isoStr) return null;
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString('en-US', {
+  return d.toLocaleTimeString('en-US', { // real-moment: the "as of" time is when the data was read, a real moment
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,

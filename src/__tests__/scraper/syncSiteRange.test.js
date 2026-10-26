@@ -107,8 +107,7 @@ describe('REQ-065: Sync Now compares its range with stored times as site clock v
   eachZone('the schedule pages are still fetched by the picked local days', async () => {
     const start = new Date(2026, 10, 3);
     await runSync({ supabase: makeDb(), startDate: start, endDate: new Date(2026, 10, 13) });
-    const { startDate } = fetchAllSchedulePages.mock.calls[0][0];
-    expect([startDate.getFullYear(), startDate.getMonth(), startDate.getDate()]).toEqual([2026, 10, 3]);
+    expect(fetchAllSchedulePages.mock.calls[0][0].startDate).toBe(start);
   });
 
   eachZone("a full sync at 9:15am Pacific reconciles from San Francisco's now, so a 4:15pm pick-up today is checked", async () => {

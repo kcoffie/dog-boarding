@@ -27,8 +27,10 @@ const NOT_YET = {
 };
 
 const BOOKING_FIELD = /\b(arrival_datetime|departure_datetime|arrivalDateTime|departureDateTime|check_in_datetime|check_out_datetime|check_in|check_out|start_ts|day_ts)\b/;
-const LOCAL_CALL = /\b(get|set)(Hours|Date|Day|Month|FullYear|Minutes|Seconds)\(|\bto(Time|Date)String\(|new Date\(\s*[^()\s,][^(),]*,/;
-const LOCALE_CALL = /\btoLocale(Date|Time)?String\(/;
+const LOCAL_CALL = /\b(get|set)(Hours|Date|Day|Month|FullYear|Minutes|Seconds)\(|\bto(Time|Date)String\(/;
+// Formatters that pick a zone: only an explicit UTC reads a site clock value right
+const FORMATTER_CALL = /\btoLocale(Date|Time)?String\(|\bIntl\.DateTimeFormat\(/g;
+const NEW_DATE = /\bnew Date\(/g;
 const MARKER = /\/\/ real-moment: \S/;
 const MARKER_LINE = /^\s*\/\/ real-moment: \S/;
 
@@ -42,6 +44,28 @@ function callText(text, from) {
   return text.slice(from);
 }
 
+// The top-level arguments of a call's text
+function args(call) {
+  const inner = call.slice(call.indexOf('(') + 1, -1);
+  const parts = [''];
+  let depth = 0;
+  for (const ch of inner) {
+    if ('([{'.includes(ch)) depth++;
+    if (')]}'.includes(ch)) depth--;
+    if (ch === ',' && depth === 0) parts.push('');
+    else parts[parts.length - 1] += ch;
+  }
+  return parts.map((a) => a.trim()).filter(Boolean);
+}
+
+// new Date(y, m, d) or new Date(...parts) builds a local time; new Date(Date.UTC(...)) doesn't
+const localDate = (call) => {
+  const a = args(call);
+  return (a.length > 1 || a[0]?.startsWith('...')) && !a[0].startsWith('Date.UTC');
+};
+// A formatter without timeZone: 'UTC' uses the host's zone, or another zone
+const notUtc = (call) => !/timeZone:\s*['"]UTC['"]/.test(call);
+
 // Line numbers of local-zone calls without a marker
 function unmarkedLocalCalls(source) {
   const lines = source.split('\n');
@@ -51,9 +75,8 @@ function unmarkedLocalCalls(source) {
   lines.forEach((line, i) => {
     if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
     if (MARKER.test(line) || MARKER_LINE.test(lines[i - 1] ?? '')) return;
-    const locale = line.match(LOCALE_CALL);
-    const bareLocale = locale && !/timeZone/.test(callText(source, offsets[i] + locale.index));
-    if (LOCAL_CALL.test(line) || bareLocale) found.push(i + 1);
+    const calls = (re) => [...line.matchAll(re)].map((m) => callText(source, offsets[i] + m.index));
+    if (LOCAL_CALL.test(line) || calls(FORMATTER_CALL).some(notUtc) || calls(NEW_DATE).some(localDate)) found.push(i + 1);
   });
   return found;
 }
@@ -95,7 +118,7 @@ describe('REQ-065: only siteClock.js reads booking times', () => {
     ].join('\n'))).toEqual([1, 2, 3, 4]);
   });
 
-  it('catches toLocaleTimeString without timeZone, even across lines, and not with one', () => {
+  it('catches toLocaleTimeString without timeZone, even across lines, and not with UTC', () => {
     expect(unmarkedLocalCalls([
       "d.toLocaleTimeString('en-US', {",
       "  hour: 'numeric',",
@@ -104,6 +127,23 @@ describe('REQ-065: only siteClock.js reads booking times', () => {
       "  timeZone: 'UTC',",
       '});',
     ].join('\n'))).toEqual([1]);
+  });
+
+  it('catches a Pacific or other non-UTC timeZone (the old roster bug) and an Intl formatter without UTC', () => {
+    expect(unmarkedLocalCalls([
+      "new Date(b.arrival_datetime).toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles' });",
+      "new Intl.DateTimeFormat('en-US', { hour: 'numeric' }).format(d);",
+      "d.toLocaleDateString('en-US', { timeZone: BUSINESS_TIME_ZONE });",
+      "new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' }).format(d);",
+    ].join('\n'))).toEqual([1, 2, 3]);
+  });
+
+  it('catches new Date with nested-call or spread arguments', () => {
+    expect(unmarkedLocalCalls([
+      'new Date(parseInt(y), m - 1, d);',
+      'new Date(...parts);',
+      'new Date(Date.parse(s));',
+    ].join('\n'))).toEqual([1, 2]);
   });
 
   it('lets UTC methods, Date.UTC, one-argument dates and marked lines through; a marked line covers only itself', () => {

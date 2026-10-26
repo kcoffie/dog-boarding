@@ -175,17 +175,17 @@ export function formatAsOf(isoStr) {
   if (!isoStr) return null;
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return null;
-  const time = d.toLocaleTimeString('en-US', {
+  const time = d.toLocaleTimeString('en-US', { // real-moment: the "as of" time is when the data was read, a real moment
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
     timeZone: 'America/Los_Angeles',
   });
-  const weekday = d.toLocaleDateString('en-US', {
+  const weekday = d.toLocaleDateString('en-US', { // real-moment: the "as of" time is when the data was read, a real moment
     weekday: 'short',
     timeZone: 'America/Los_Angeles',
   });
-  const monthDay = d.toLocaleDateString('en-US', {
+  const monthDay = d.toLocaleDateString('en-US', { // real-moment: the "as of" time is when the data was read, a real moment
     month: 'numeric',
     day: 'numeric',
     timeZone: 'America/Los_Angeles',
@@ -704,13 +704,15 @@ export async function getWeekendBoardings(supabase, start, end) {
     dog_name: b.dogs?.name ?? 'Unknown',
   }));
 
-  const arriving = rows
-    .filter(b => b.arrival_datetime >= start && b.arrival_datetime <= end)
-    .sort((a, b) => a.arrival_datetime.localeCompare(b.arrival_datetime));
+  // As numbers, never as text: Supabase returns "…T15:00:00+00:00" and start is "…T15:00:00.000Z",
+  // and '+' sorts before '.', so a booking exactly at the start hour would drop off (#353)
+  const from = Date.parse(start);
+  const to = Date.parse(end);
+  const inWindow = (iso) => { const t = Date.parse(iso); return t >= from && t <= to; };
+  const byTime = (field) => (a, b) => Date.parse(a[field]) - Date.parse(b[field]);
 
-  const departing = rows
-    .filter(b => b.departure_datetime >= start && b.departure_datetime <= end)
-    .sort((a, b) => a.departure_datetime.localeCompare(b.departure_datetime));
+  const arriving = rows.filter(b => inWindow(b.arrival_datetime)).sort(byTime('arrival_datetime'));
+  const departing = rows.filter(b => inWindow(b.departure_datetime)).sort(byTime('departure_datetime'));
 
   console.log(`[RosterImage/Weekend] ${arriving.length} arriving, ${departing.length} departing`);
   return { arriving, departing };
@@ -736,7 +738,7 @@ export function formatWeekendDatetime(isoStr, ampm = null) {
  */
 export function formatWeekendHeaderDates(displayFri, displayMon) {
   const fmt = (d) => d
-    .toLocaleDateString('en-US', {
+    .toLocaleDateString('en-US', { // real-moment: the header shows the real now and Monday, in Pacific
       timeZone: 'America/Los_Angeles',
       weekday: 'short', month: 'short', day: 'numeric',
     })
@@ -748,8 +750,16 @@ export function formatWeekendHeaderDates(displayFri, displayMon) {
  * Render one boarding row for the weekend image.
  * datetime is arrival_datetime (for arriving section) or departure_datetime (for departing).
  */
+/**
+ * The time a weekend row shows: its own column's time with its own AM/PM label.
+ * Exported for unit testing.
+ */
+export function weekendRowTime(boarding, datetimeField) {
+  const ampmField = datetimeField === 'arrival_datetime' ? 'arrival_ampm' : 'departure_ampm';
+  return formatWeekendDatetime(boarding[datetimeField], boarding[ampmField]);
+}
+
 function weekendBoardingRow(boarding, datetimeField) {
-  const isoStr = boarding[datetimeField];
   const nightCount = Math.round(
     Math.abs(new Date(boarding.departure_datetime) - new Date(boarding.arrival_datetime))
     / (1000 * 60 * 60 * 24)
@@ -790,7 +800,7 @@ function weekendBoardingRow(boarding, datetimeField) {
       width: 130,
       textAlign: 'right',
       flexShrink: 0,
-    }, formatWeekendDatetime(isoStr, boarding[datetimeField.replace('datetime', 'ampm')])),
+    }, weekendRowTime(boarding, datetimeField)),
     // Night count
     h('span', {
       fontFamily: 'Inter',
