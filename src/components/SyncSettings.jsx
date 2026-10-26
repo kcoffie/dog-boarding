@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { useSyncSettings } from '../hooks/useSyncSettings';
+import { businessTodayDate, toDateStr } from '../utils/dateUtils';
 
 export default function SyncSettings() {
   const {
@@ -21,16 +22,12 @@ export default function SyncSettings() {
   const [showHistory, setShowHistory] = useState(false);
 
   // Date range for manual sync (today → today+60 days by default).
-  // Use local-time constructor to avoid UTC midnight = wrong day in PST.
-  const [syncStartDate, setSyncStartDate] = useState(() => {
-    const t = new Date();
-    return new Date(t.getFullYear(), t.getMonth(), t.getDate())
-      .toISOString().slice(0, 10);
-  });
+  // Today is San Francisco's today, whatever the device's timezone (#350).
+  const [syncStartDate, setSyncStartDate] = useState(() => toDateStr(businessTodayDate()));
   const [syncEndDate, setSyncEndDate] = useState(() => {
-    const t = new Date();
-    return new Date(t.getFullYear(), t.getMonth(), t.getDate() + 60)
-      .toISOString().slice(0, 10);
+    const end = businessTodayDate();
+    end.setDate(end.getDate() + 60);
+    return toDateStr(end);
   });
 
 

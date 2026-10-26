@@ -219,14 +219,16 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       ).rejects.toThrow('Employee not found');
     });
 
-    it('sets paid_date to current date', async () => {
+    it("sets paid_date to San Francisco's date (9pm Pacific is still 10-26)", async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-27T04:00:00Z'));
       const { result } = renderHook(() => usePayments(mockEmployees));
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
       });
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = '2026-10-26';
 
       await act(async () => {
         await result.current.addPayment({
@@ -241,6 +243,7 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
 
       const insertedData = mockInsertData.capturedData[0];
       expect(insertedData.paid_date).toBe(today);
+      vi.useRealTimers();
     });
   });
 

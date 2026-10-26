@@ -1,12 +1,12 @@
 import { useData } from '../context/DataContext';
-import { getDateRange } from '../utils/dateUtils';
+import { getDateRange, businessToday } from '../utils/dateUtils';
 import { calculateGross, countOvernightDogs } from '../utils/calculations';
 
 export default function SummaryCards({ startDate, days }) {
   const { dogs, boardings, getNightAssignment } = useData();
 
   const dates = getDateRange(startDate, days);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = businessToday();
 
   // Dogs boarding today (overnight)
   const dogsToday = countOvernightDogs(dogs, boardings, todayStr);

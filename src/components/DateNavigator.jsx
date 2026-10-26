@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import { businessTodayDate, daysBetween } from '../utils/dateUtils';
 
 const MAX_DAYS = 122; // ~4 months max
 
@@ -13,7 +14,7 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
     setError('');
 
     // Keep current range length, but cap at MAX_DAYS
-    const currentRange = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
+    const currentRange = daysBetween(startDate, endDate);
     const rangeToUse = Math.min(currentRange, MAX_DAYS - 1);
 
     const newEnd = new Date(date);
@@ -26,7 +27,7 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
   const handleEndChange = (date) => {
     if (!date) return;
 
-    const daysDiff = Math.floor((date - startDate) / (1000 * 60 * 60 * 24)) + 1;
+    const daysDiff = daysBetween(startDate, date) + 1;
 
     if (date < startDate) {
       setError('End date must be after start date');
@@ -55,16 +56,15 @@ export default function DateNavigator({ startDate, endDate, onStartDateChange, o
   };
 
   const handleToday = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const currentRange = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24));
+    const today = businessTodayDate();
+    const currentRange = daysBetween(startDate, endDate);
     const newEnd = new Date(today);
     newEnd.setDate(newEnd.getDate() + currentRange);
     onStartDateChange(today);
     onEndDateChange(newEnd);
   };
 
-  const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+  const daysDiff = daysBetween(startDate, endDate) + 1;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-4">

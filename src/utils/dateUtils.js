@@ -1,3 +1,36 @@
+// The business runs on San Francisco time, whatever the device's timezone (#350)
+export const BUSINESS_TIME_ZONE = 'America/Los_Angeles';
+
+// Today's date in San Francisco as YYYY-MM-DD
+export function businessToday(now = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: BUSINESS_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(now).map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+// Today in San Francisco as a calendar date (local midnight), for the date pickers
+export function businessTodayDate(now = new Date()) {
+  const [y, m, d] = businessToday(now).split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// A calendar date (local midnight) as YYYY-MM-DD, from its own year, month and day.
+// Never via toISOString(): east of UTC, local midnight is still the day before in UTC.
+export function toDateStr(date) {
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${m}-${d}`;
+}
+
+// Whole calendar days from start to end. A DST change in between doesn't shift it.
+export function daysBetween(start, end) {
+  const utc = (date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  return (utc(end) - utc(start)) / (1000 * 60 * 60 * 24);
+}
+
 // Format name in title case (chester -> Chester)
 export function formatName(name) {
   if (!name) return '';
@@ -132,7 +165,7 @@ export function getDateRange(startDate, days) {
   for (let i = 0; i < days; i++) {
     const date = new Date(start);
     date.setDate(start.getDate() + i);
-    dates.push(date.toISOString().split('T')[0]);
+    dates.push(toDateStr(date));
   }
 
   return dates;

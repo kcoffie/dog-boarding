@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent, formatName } from '../utils/dateUtils';
+import { getDateRange, formatDateShort, getDayOfWeek, isOvernight, isDayPresent, formatName, businessToday } from '../utils/dateUtils';
 import { DEFAULT_MATRIX_DAYS } from '../utils/constants';
 import EmployeeDropdown from './EmployeeDropdown';
 import BoardingFormModal from './BoardingFormModal';
@@ -47,7 +47,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
   // Initialize mobile selected date to today or first date in range
   useEffect(() => {
     if (!mobileSelectedDate || !dates.includes(mobileSelectedDate)) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = businessToday();
       if (dates.includes(today)) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setMobileSelectedDate(today);
@@ -273,6 +273,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
   };
 
   const mobileDogsData = getDogsForMobileDate(mobileSelectedDate);
+  const todayStr = businessToday();
   const mobileGross = calculateDayGross(mobileSelectedDate || dates[0]);
   const mobileNet = calculateDayNet(mobileSelectedDate || dates[0]);
   const mobileOvernightCount = countOvernightDogs(mobileSelectedDate || dates[0]);
@@ -290,7 +291,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
         >
           {dates.map((dateStr) => {
             const isSelected = dateStr === mobileSelectedDate;
-            const isToday = dateStr === new Date().toISOString().split('T')[0];
+            const isToday = dateStr === todayStr;
             const overnightCount = countOvernightDogs(dateStr);
             const weekend = isWeekend(dateStr);
             const needsAttention = needsEmployeeAttention(dateStr);

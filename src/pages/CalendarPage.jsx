@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
-import { formatName } from '../utils/dateUtils';
+import { formatName, businessTodayDate, toDateStr, BUSINESS_TIME_ZONE } from '../utils/dateUtils';
 import { activeBoardings, calculateNet, nightStays } from '../utils/calculations';
 import { getEmployeeNameById } from '../utils/employeeHelpers';
 
@@ -112,11 +112,11 @@ function PrintView({ days, getBookingsForDayFn, getNightTotals }) {
 
   if (!days.length) return null;
 
+  // When it was printed, in San Francisco time (#350)
   const now = new Date();
-  const timeStr  = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
-  const weekday  = now.toLocaleDateString('en-US', { weekday: 'short' });
-  const monthStr = now.toLocaleDateString('en-US', { month: 'short' });
-  const printedAt = `Printed at ${timeStr} ${weekday} ${now.getDate()} ${monthStr} ${now.getFullYear()}`;
+  const part = (opts) => now.toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, ...opts });
+  const timeStr  = part({ hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+  const printedAt = `Printed at ${timeStr} ${part({ weekday: 'short' })} ${part({ day: 'numeric' })} ${part({ month: 'short' })} ${part({ year: 'numeric' })}`;
 
   return (
     <div id="calendar-print-view" style={{ fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
@@ -263,7 +263,7 @@ export default function CalendarPage() {
   // A cancelled boarding has no days or nights (REQ-108)
   const boardings = useMemo(() => activeBoardings(allBoardings), [allBoardings]);
   const [currentDate, setCurrentDate] = useState(() => {
-    const today = new Date();
+    const today = businessTodayDate();
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const [selectedDate, setSelectedDate] = useState(null);
@@ -396,16 +396,16 @@ export default function CalendarPage() {
   };
 
   // Default print range = today → today+7
-  const printToday    = new Date();
+  const printToday    = businessTodayDate();
   const printWeekOut  = new Date(printToday.getFullYear(), printToday.getMonth(), printToday.getDate() + 7);
-  const printDefaultFrom = `${printToday.getFullYear()}-${String(printToday.getMonth() + 1).padStart(2, '0')}-${String(printToday.getDate()).padStart(2, '0')}`;
-  const printDefaultTo   = `${printWeekOut.getFullYear()}-${String(printWeekOut.getMonth() + 1).padStart(2, '0')}-${String(printWeekOut.getDate()).padStart(2, '0')}`;
+  const printDefaultFrom = toDateStr(printToday);
+  const printDefaultTo   = toDateStr(printWeekOut);
 
   // Navigation
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
   const goToToday = () => {
-    const today = new Date();
+    const today = businessTodayDate();
     setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
   };
 
@@ -462,8 +462,8 @@ export default function CalendarPage() {
     ? getNightTotals(selectedDateStr)
     : { overnightCount: 0, grossTotal: 0, netPct: 65, netTotal: '0.00' };
 
-  // Check if a day is today
-  const today = new Date();
+  // Check if a day is today (in San Francisco)
+  const today = businessTodayDate();
   const isToday = (day) => {
     return day === today.getDate() &&
            month === today.getMonth() &&

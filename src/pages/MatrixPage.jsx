@@ -4,6 +4,7 @@ import DateNavigator from '../components/DateNavigator';
 import BoardingMatrix from '../components/BoardingMatrix';
 import EmployeeTotals from '../components/EmployeeTotals';
 import RevenueView from '../components/RevenueView';
+import { businessTodayDate, daysBetween, toDateStr } from '../utils/dateUtils';
 
 export default function MatrixPage() {
   const [startDate, setStartDate] = useState(() => {
@@ -12,9 +13,7 @@ export default function MatrixPage() {
       const date = new Date(saved + 'T00:00:00');
       if (!isNaN(date.getTime())) return date;
     }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today;
+    return businessTodayDate();
   });
 
   const [endDate, setEndDate] = useState(() => {
@@ -23,23 +22,22 @@ export default function MatrixPage() {
       const date = new Date(saved + 'T00:00:00');
       if (!isNaN(date.getTime())) return date;
     }
-    const end = new Date();
-    end.setHours(0, 0, 0, 0);
+    const end = businessTodayDate();
     end.setDate(end.getDate() + 13); // 14 days total
     return end;
   });
 
   // Persist dates to localStorage
   useEffect(() => {
-    localStorage.setItem('dashboard-start-date', startDate.toISOString().split('T')[0]);
+    localStorage.setItem('dashboard-start-date', toDateStr(startDate));
   }, [startDate]);
 
   useEffect(() => {
-    localStorage.setItem('dashboard-end-date', endDate.toISOString().split('T')[0]);
+    localStorage.setItem('dashboard-end-date', toDateStr(endDate));
   }, [endDate]);
 
   // Calculate days between dates (inclusive)
-  const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+  const daysDiff = daysBetween(startDate, endDate) + 1;
 
   return (
     <div className="space-y-6">
