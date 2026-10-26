@@ -8,7 +8,7 @@ import SummaryCards from '../../components/SummaryCards';
 import PayrollPage from '../../pages/PayrollPage';
 import CalendarPage from '../../pages/CalendarPage';
 import DogsPage from '../../pages/DogsPage';
-import { NIGHT, dogs, boardings } from './oneNightFixture';
+import { NIGHT, dogs, boardings } from '../fixtures/oneNight';
 
 vi.mock('../../context/DataContext', () => ({ useData: vi.fn() }));
 vi.mock('../../hooks/useBoardingForms', () => ({
@@ -18,7 +18,7 @@ vi.mock('../../hooks/useBoardingForms', () => ({
 vi.mock('../../components/EmployeeDropdown', () => ({ default: () => null }));
 vi.mock('../../components/BoardingFormModal', () => ({ default: () => null }));
 
-// The night's expected numbers are worked out by hand in oneNightFixture.js:
+// The night's expected numbers are worked out by hand in ../fixtures/oneNight.js:
 // 3 dogs, gross $140, net at 65% $91.00; daytime credit 65% of $85 = $55.25.
 
 const data = (overrides = {}) => ({
@@ -149,6 +149,31 @@ describe('REQ-036: every view shows the same night (3 dogs, $140, $91)', () => {
     render(<BrowserRouter><DogsPage /></BrowserRouter>);
     const birchRow = screen.getAllByRole('row').find(r => r.textContent.includes('Birch Test') && /Current|Upcoming/.test(r.textContent));
     expect(birchRow.lastElementChild.textContent).toBe('$40.00');
+  });
+
+  it('Dogs page shows a cancelled boarding as Cancelled at $0.00', () => {
+    render(<BrowserRouter><DogsPage /></BrowserRouter>);
+    const dogwoodRow = screen.getAllByRole('row').find(r => r.textContent.includes('Dogwood Test') && r.textContent.includes('Cancelled'));
+    expect(dogwoodRow.lastElementChild.textContent).toBe('$0.00');
+  });
+
+  it("Dashboard rate column ignores a day visit's price: $40, not $40–60", () => {
+    const dayVisit = { id: 'b0', dogId: 'b', arrivalDateTime: '2026-10-23T08:00:00', departureDateTime: '2026-10-23T12:00:00', nightRate: null };
+    useData.mockReturnValue(data({ boardings: [...boardings, dayVisit] }));
+    render(<BrowserRouter><BoardingMatrix startDate={NIGHT} days={1} /></BrowserRouter>);
+    const birchRow = screen.getAllByRole('row').find(r => r.textContent.startsWith('BBirch'));
+    expect(birchRow.children[2].textContent).toBe('$40');
+  });
+
+  it("Calendar leaves a cancelled boarding out of the day's Arriving, Staying and Departing lists", () => {
+    const cancelledArrival = { id: 'd2', dogId: 'd', arrivalDateTime: '2026-10-23T16:00:00', departureDateTime: '2026-10-25T10:00:00', nightRate: 60, cancelledAt: '2026-10-20T12:00:00Z' };
+    useData.mockReturnValue(data({ boardings: [...boardings, cancelledArrival] }));
+    render(<CalendarPage />);
+    fireEvent.click(dayCell('23'));
+    // Birch, Cedar and Elm's day visit arrive on the 23rd; the cancelled Dogwood doesn't
+    const arriving = screen.getAllByRole('heading', { level: 4 }).find(h => h.textContent.trim().startsWith('Arriving'));
+    expect(arriving.textContent.trim()).toBe('Arriving (3)');
+    expect(screen.queryByText('Dogwood Test')).not.toBeInTheDocument();
   });
 
   it('Dogs page has no Edit or Delete for a boarding (the booking site is the source of truth)', () => {

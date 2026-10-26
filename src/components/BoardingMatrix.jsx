@@ -189,7 +189,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
   // The night rate(s) this dog's stays in range count at: the booking's price first (#342)
   const nightRateLabel = (dog) => {
     const rates = [...new Set(boardings
-      .filter(b => !b.cancelledAt && b.dogId === dog.id && dates.some(d => isDayPresent(b, d) || isOvernight(b, d)))
+      .filter(b => !b.cancelledAt && b.dogId === dog.id && dates.some(d => isOvernight(b, d)))
       .map(b => nightRate(b, dog)))].sort((a, b) => a - b);
     if (rates.length === 0) return `$${dog.nightRate ?? 0}`;
     if (rates.length === 1) return `$${rates[0]}`;

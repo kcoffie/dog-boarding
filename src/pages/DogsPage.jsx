@@ -47,10 +47,15 @@ export default function DogsPage() {
     return formatName(dogs.find(d => d.id === dogId)?.name) || 'Unknown';
   };
 
-  // A stay's gross counts its nights at the booking's price, as on Payroll (#342)
+  // A stay's gross counts its nights at the booking's price, as on Payroll (#342).
+  // A cancelled boarding has no nights (REQ-108), so it's $0.
   const getBoardingGross = (boarding) =>
+    boarding.cancelledAt ? 0 :
     calculateNights(boarding.arrivalDateTime, boarding.departureDateTime) *
     nightRate(boarding, dogs.find(d => d.id === boarding.dogId));
+
+  // Past = departed; a cancelled boarding stays in whichever table its dates put it in
+  const isPastBoarding = (boarding) => new Date() > new Date(boarding.departureDateTime);
 
   const getInitials = (name) => {
     if (!name) return '?';
@@ -60,6 +65,7 @@ export default function DogsPage() {
   };
 
   const getBoardingStatus = (boarding) => {
+    if (boarding.cancelledAt) return 'cancelled';
     const now = new Date();
     const arrival = new Date(boarding.arrivalDateTime);
     const departure = new Date(boarding.departureDateTime);
@@ -73,6 +79,7 @@ export default function DogsPage() {
     current: { label: 'Current', bg: 'bg-emerald-100', text: 'text-emerald-700' },
     upcoming: { label: 'Upcoming', bg: 'bg-sky-100', text: 'text-sky-700' },
     past: { label: 'Past', bg: 'bg-slate-100', text: 'text-slate-500' },
+    cancelled: { label: 'Cancelled', bg: 'bg-slate-100', text: 'text-slate-400 line-through' },
   };
 
   const isFormOpen = showAddDogForm || showDogCsvImport;
@@ -147,7 +154,7 @@ export default function DogsPage() {
 
   // Filter out past boardings from main table - only show current and upcoming
   const sortedBoardings = [...boardings]
-    .filter(b => getBoardingStatus(b) !== 'past')
+    .filter(b => !isPastBoarding(b))
     .sort((a, b) => {
     let aVal, bVal;
 
@@ -158,7 +165,7 @@ export default function DogsPage() {
         break;
       case 'status': {
         // Sort order: current, upcoming, past
-        const statusOrder = { current: 0, upcoming: 1, past: 2 };
+        const statusOrder = { current: 0, upcoming: 1, past: 2, cancelled: 3 };
         aVal = statusOrder[getBoardingStatus(a)];
         bVal = statusOrder[getBoardingStatus(b)];
         break;
@@ -556,7 +563,7 @@ export default function DogsPage() {
       {/* Past Boardings Section */}
       {(() => {
         const pastBoardings = boardings
-          .filter(b => getBoardingStatus(b) === 'past')
+          .filter(b => isPastBoarding(b))
           .sort((a, b) => {
             let aVal, bVal;
 

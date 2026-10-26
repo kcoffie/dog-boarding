@@ -10,7 +10,7 @@ import {
   nightRate,
   nightStays,
 } from './calculations';
-import * as night from '../__tests__/components/oneNightFixture';
+import * as night from '../__tests__/fixtures/oneNight';
 
 const sampleDogs = [
   { id: '1', name: 'Luna', dayRate: 35, nightRate: 45 },
@@ -281,7 +281,7 @@ describe('REQ-036: one calculation for nights and pay', () => {
     expect(calculateGross([dog('x', 55)], [b('x1', 'x', '2026-10-22T16:00:00', '2026-10-24T10:00:00', 0)], '2026-10-23')).toBe(0);
   });
 
-  it("a boarding whose dog isn't loaded counts at its own price, else $0", () => {
+  it("nightRate(): with no dog loaded, a boarding counts at its own price, else $0 (Revenue view, Dogs page)", () => {
     expect(nightRate({ nightRate: 40 }, undefined)).toBe(40);
     expect(nightRate({ nightRate: null }, undefined)).toBe(0);
   });

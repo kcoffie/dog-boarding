@@ -380,9 +380,10 @@ Every view that counts a night's dogs or money gets them from one function (`nig
 - A dog counts once a night. If two of its boardings cover the night, the one that arrived first sets the rate (the lower boarding id on a tie), whatever order they load in (Kate, 2026-10-26)
 - Count = the number of dogs staying; Gross = the sum of their rates; Net = Gross × that night's percentage. A view's list of overnight dogs is the same list its count comes from
 - The daytime follow-on credit is paid from the day rates of the same dogs (once per dog)
-- The Dashboard's rate column shows the booking's price for the dog's stays in range, or a range ("$40–60") when they differ (Kate, 2026-10-26); the phone list shows each dog's rate for that night
-- A boarding's gross on the Dogs page is its nights × the same rate
-- The app can't add, edit or delete a boarding by hand (REQ-020 to REQ-023 removed)
+- The Dashboard's rate column shows the booking's price for the dog's stays with a night in range, or a range ("$40–60") when they differ (Kate, 2026-10-26); a day visit doesn't change it. The phone list shows each dog's rate for that night
+- A boarding's gross on the Dogs page is its nights × the same rate; a cancelled boarding shows as Cancelled at $0
+- The Calendar leaves cancelled boardings out entirely (day cells, Arriving/Staying/Departing, print view), not only out of its totals
+- The app can't add, edit or delete a boarding by hand (REQ-020 to REQ-023 removed). Deleting a dog, which also deletes its boardings, has no screen today and belongs with the dog-editing issue
 - Out of scope: the Revenue view (it shows the billed amount per booking, REQ-202) and the roster image (server side)
 
 **Tests:** `src/utils/calculations.test.js`, `src/__tests__/components/oneNightAcrossViews.test.jsx`, `src/__tests__/hooks/useBoardings.test.js`
