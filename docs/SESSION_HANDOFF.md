@@ -280,7 +280,7 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2252 passed / 1 skipped**), open PRs (#291, #285, plus this docs PR if not merged).
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2252 passed / 1 skipped**), open PRs (#291, #285, plus **#356** = this handoff + the #353 design note: run the reviewer on it, post its findings as a PR comment, then ask Kate to merge).
 2. **Read-only checks:** overnight 10-27 crons, `site_access`, queue; whether `C63QhB7h` was cancelled by the sync; ask Kate whether Dogs Tonight showed today after 5pm Pacific.
 3. **Top 3 (Sprint 1, ends 11-04):**
    1. **#353:** get Kate's 2 open answers (design note "Kate's decisions"), write ADR-009, then **PR 1** (`siteClock.js`, Friday pm roster + weekend window, `queryBoarders`/forms with `Date.UTC`, form-job and reconcile "now", title fallback, the guard test). **Merge before the Fri 10-30 roster (22:00 UTC).** Reviewer first; scoped Stryker with host `TZ=Pacific/Kiritimati` and `TZ=Pacific/Pago_Pago`. Then **PR 2** (= #350 PR 2: Dogs, Calendar, Sync History, form view, day/night helpers, "PT").
