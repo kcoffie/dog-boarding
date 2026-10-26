@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 26, 2026, ~18:15 UTC (session 49). **Production = main (`332d53a`, PR #349, #342), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 49: #344's first-night checks all passed and #344 is closed; #342 shipped (one shared calculation for nights and pay; boarding add/edit/delete removed), and on production 10-23 now reads 8 dogs, $440 gross, $286 net on every view (Payroll's figure). Filed #350 (UI uses UTC "today") and #351 (dogs still edited by hand). Next: Kate eyeballs the Dashboard, then #13 dry-run 2 and #323 (Immediate Next Steps).**
+**Last updated:** October 26, 2026, ~19:30 UTC (session 50). **Production = main (`7b191bd`, PR #354, #350 PR 1), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 50: #350 PR 1 shipped ("today" is San Francisco's date on every screen, any device; REQ-064). Found and filed #353 (high): the booking site's times are Pacific clock times stored as UTC, so the app and the Friday roster show them 7–8 hours early ("Sat 3:15 AM" for a 10:15am pick-up). The 74→73 dateless rows are explained. Next: #353 design note (Immediate Next Steps).**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -13,6 +13,7 @@
    - Use `type: description (#issue)` commits. Never add AI attribution: no Co-Authored-By, no Claude-Session, no session links, no "Generated with Claude Code" in PR bodies. A PreToolUse hook, the commit hook and CI reject them, and they overrule Claude Code's per-session reminder.
    - Tests must catch bugs, not just exist. Follow the good-tests rules and report the mutation score, not just "N tests pass".
    - Give options as one line each with real counts, then one recommendation.
+   - `TechPM.md` / `TechPM_1.md` are a persona for **planning sessions only**, when Kate asks for one (Kate, 2026-10-26). The process is `docs/ENGINEERING_PROCESS.md`; its TPM gate is this file plus the sprint plan.
    - Ask before sending any message to anyone (Telegram test alerts, SMS, WhatsApp), re-enabling workflows, adding secrets or changing repo settings.
    - Messages must never be tied to the client's (Charlie's) business. The app is Kate's alone, and Kate has no registered business.
 3. **After every merge:** `npm run check:deploy` (REQ-654). It reads main's head from GitHub, waits for qboard's Vercel status, then checks the home page and roster image. Only `main` (and `preview/**` branches) deploy on Vercel (#298).
@@ -27,7 +28,30 @@
 
 ---
 
-## Current State (2026-10-26 ~18:15 UTC, session 49)
+## Current State (2026-10-26 ~19:30 UTC, session 50)
+
+### Session 50: what happened (2026-10-26)
+1. **Process (Kate):** the standing prompt no longer says "as my TechPM". `ENGINEERING_PROCESS.md` is the process; `TechPM.md` is for planning sessions on request.
+2. **Kate's answers and decisions:**
+   - She ran no SQL on 10-24/25.
+   - **#350 = `priority: high`**, next in Sprint 1. **The business is in San Francisco: every date and time in the app is San Francisco time, whatever the device** (a payment made from Paris is logged in SF time). A "PT" label on times is fine.
+   - **#351 = `priority: medium`**, Sprint 1 or 2; **Deactivate is removed too** (it only greys a row and lowers the Dashboard's active count; the sync reactivates any dog the site still books, `activeField`, `src/lib/scraper/mapping.js:265`).
+   - Client and pet names in docs don't matter to Kate ("it's just dogs"); no scrub needed.
+3. **The 74→73 dateless `sync_appointments` rows: explained.** `C63QhLBU` (saved dateless from the week page on 10-23) gained its dates when the sync re-read it on its new URL. A later update (10-26 02:35 UTC) overwrote `previous_data`, which hid it from session 49's check. Its boarding is now 10-29 → 11-01 at **$380** (was $330 as "10/29pm-11/1"; the site now says "10/29am-11/1"). The other 73 have no boarding and haven't been re-read since 10-23.
+4. **#353 filed (`priority: high`): booking times are Pacific clock times stored as UTC.**
+   - **Proof:** Kate checked one booking on the site: 10:00am → 4:15pm; the app stores 10:00Z → 16:15Z (3:00am → 9:15am Pacific). The **10-23 Friday pm roster** shows departures at "Sat 3:15 AM" / "Sun 3:15 AM" and an arrival at "Sat 3:00 AM" (screenshot from Kate). Of 408 dated rows, check-ins cluster at 10:00/09:00/11:00 UTC.
+   - **Affects:** times shown in the app; the Friday roster (`formatWeekendDatetime`, `api/roster-image.js:724`); `isDayPresent`'s "arrived before 5pm" (a 4pm arrival reads as 9am); and, once times are read in Pacific, which day a pre-7am time lands on. Unknown: whether every timestamp is a clock time (the 08:00 UTC rows may be bookings with no time).
+   - **Next:** design note → architect; changes stored data, a pay rule and the roster. No guessing: check claims against the booking site.
+5. **#350 PR 1 shipped: PR #354, `7b191bd`, REQ-064, `check:deploy` OK.**
+   - `src/utils/dateUtils.js`: `businessToday()` (SF date via `Intl`), `businessTodayDate()` (local-midnight Date of it, for pickers), `toDateStr()` (YYYY-MM-DD from a date's own parts, never `toISOString()`), `daysBetween()` (DST-proof).
+   - Now SF's today: Dogs Tonight, the phone view's opening day and today mark, **payment `paid_date`** (0 payments exist, nothing to repair), Dashboard/Payroll defaults and saved ranges, Today buttons, Calendar month/today mark/Print range/"Printed at", Settings effective date, manual sync range.
+   - **Not yet (#350 PR 2, waits on #353):** stored moments (booking times, nights, day presence, labels, Calendar placement, Sync History times, `useBoardingForms`' today); the manual sync passes local Dates to `sync.js`.
+   - **Evidence:** `src/__tests__/businessToday.test.jsx`, 31 tests, clock at 9pm Pacific, device switched via `process.env.TZ` (UTC, Paris, Tokyo, Pacific; each switch asserted). 20 call sites reverted one at a time, each test went red. Suite **2252 passed / 1 skipped**. Fixed `usePayments.test.js`'s `paid_date` test (expected the UTC date; would have failed every evening). Reviewer run; all findings fixed.
+   - **Stryker, changed lines of `dateUtils.js`: 27/27 with host TZ=UTC and TZ=Europe/Paris**; 26/27 with host Pacific (the survivor drops the timezone option, indistinguishable there). **Tool note:** `process.env.TZ` switching only works in vitest's forks pool. Stryker forces threads, so the other-zone tests show as skipped there; run scoped Stryker once per host zone (`TZ=UTC` and `TZ=Europe/Paris`). A module-level `Intl` formatter was backed out because Stryker can't test module-level code.
+6. **#352 (session 49 handoff) merged as `d67dc8b`** after the reviewer: client names replaced by pet IDs, answered questions removed.
+7. Nothing else changed: no SQL by Claude, no booking-site requests, no messages sent. Kate has **not yet** eyeballed the Dashboard/Payroll for 10-23, and the read-only checks (Immediate Next Steps 2) weren't run this session.
+
+## Previous session (49)
 
 ### Session 49: what happened (2026-10-26)
 1. **#344 first-night checks (read-only): all passed. #344 closed** with a comment: PRs #346 and #347 plus the results.
@@ -241,29 +265,23 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run` (2221 passed / 1 skipped at `332d53a`), open PRs (expect #291 and #285 only).
-2. **#342 is live (`332d53a`):** ask Kate to look at the Dashboard and Payroll for 10-23, on desktop and phone.
-   - Expected: **8 dogs, $440 gross, $286 net** on the footer, the phone card and Payroll. The phone list should show 8 dogs, each at its booking's price.
-   - The Calendar's day panel for 10-23 should show the same.
-   - Cancelled boardings show as Cancelled, $0.00 on the Dogs page, and don't appear on the Calendar.
-   - If anything differs, it's a bug against REQ-036.
-3. **Quick read-only checks:**
-   - the 7 pending `form_*` jobs from 10-26 are `done`;
-   - no new `sync-detail` alert needs a decision (link notices are informational);
-   - overnight crons, `site_access` and queue depth.
-4. **Top 3 now (Sprint 1, ends Wed 11-04):**
-   1. **#13 dry-run 2:** Kate clicks, Claude verifies from the tables (`docs/UAT_SCRIPT.md` Part D). Expected partial payment **$139.75**. Re-check that figure first against the new shared calculation; it came from Payroll, which didn't change.
-   2. **#323:** private job logs. It needs a new table, so: design note → architect gate → Kate runs the migration.
-   3. **#350:** "today" in San Francisco time. Payments can get tomorrow's date. `priority: high`.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run` (**2252 passed / 1 skipped at `7b191bd`** or later), open PRs (expect #291 and #285, plus this handoff's docs PR if not merged).
+2. **Read-only checks (a few lines, fix nothing without asking):**
+   - the form jobs from 10-26 are `done`; any `sync-detail` alert and what it said; overnight crons, `site_access`, queue depth.
+   - Ask Kate whether, after 5pm Pacific, Dogs Tonight and the phone view showed **today** (#354).
+   - Ask Kate to eyeball the Dashboard, Payroll and Calendar for 10-23: **8 dogs, $440 gross, $286 net** (REQ-036). Anything else is a bug: options + recommendation.
+3. **Top 3 now (Sprint 1, ends Wed 11-04):**
+   1. **#353: booking times stored 7–8 hours early** (high; the Friday roster shows them to staff). Design note first (`docs/specs/`): problem → options (convert at the sync and repair stored rows, vs. read stored values as Pacific clock times everywhere) → what breaks (nights, `isDayPresent`, rosters, Integration Check, daytime schedule, forms' date checks) → how we'll know. Check each claim against the booking site (Kate looks, or Claude in her Chrome read-only with her OK); open question: are the 08:00 UTC rows bookings with no time? Then the architect, then Kate. Then **#350 PR 2** (stored moments shown and compared in SF time, with "PT" on times).
+   2. **#13 dry-run 2:** Kate clicks, Claude verifies from the tables (`docs/UAT_SCRIPT.md` Part D). Expected partial payment **$139.75**; re-check it against the shared calculation first.
+   3. **#323:** private job logs. New table: design note → architect → Kate runs the migration.
 
-   Also Sprint 1:
-   - #307 (remove invite codes)
-   - #324 Clear-for-Kate
-   - #351 (dogs edited by hand)
+   Also Sprint 1–2:
+   - **#351** (medium): remove Add Dog, Import CSV, delete dog **and Deactivate**, with their hook/context functions; REQ-010/012/013 and the CSV requirement → Removed.
+   - #307 (remove invite codes); #324 Clear-for-Kate.
    - DST ends **Sun 11-01**; check the first PST 4am roster **Mon 11-02**.
-5. **Kate's own items:**
+4. **Kate's own items:**
    - dry-run 2 clicks; book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forwarding the roster.
-   - Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the week-page rows, the boarding-less $0 dogs, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
+   - Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the week-page rows (73 dateless rows), the boarding-less $0 dogs, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.
