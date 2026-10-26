@@ -1,11 +1,10 @@
 import { useData } from '../context/DataContext';
-import { getDateRange, isOvernight } from '../utils/dateUtils';
+import { getDateRange } from '../utils/dateUtils';
 import { DEFAULT_MATRIX_DAYS } from '../utils/constants';
-import { activeBoardings } from '../utils/calculations';
+import { calculateDaytimeGross, calculateGross, calculateNet } from '../utils/calculations';
 
 export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }) {
-  const { dogs, boardings: allBoardings, settings, getNetPercentageForDate, getNightAssignment, getWorkedFollowingDay } = useData();
-  const boardings = activeBoardings(allBoardings);
+  const { dogs, boardings, settings, getNetPercentageForDate, getNightAssignment, getWorkedFollowingDay } = useData();
 
   // Helper to check if employee is active
   const isEmployeeActive = (name) => {
@@ -18,35 +17,13 @@ export default function EmployeeTotals({ startDate, days = DEFAULT_MATRIX_DAYS }
 
   const dates = getDateRange(startDate, days);
 
+  // Nights and money come from the shared calculation, as on Payroll (#342)
   const computeDaytimeNet = (dateStr) => {
     if (!getWorkedFollowingDay(dateStr)) return 0;
-    const percentage = getNetPercentageForDate(dateStr);
-    const seenIds = new Set();
-    let gross = 0;
-    for (const b of boardings) {
-      if (!isOvernight(b, dateStr)) continue;
-      if (seenIds.has(b.dogId)) continue;
-      seenIds.add(b.dogId);
-      const dog = dogs.find(d => d.id === b.dogId);
-      if (dog) gross += dog.dayRate ?? 0;
-    }
-    return gross * (percentage / 100);
+    return calculateNet(calculateDaytimeGross(dogs, boardings, dateStr), getNetPercentageForDate(dateStr));
   };
 
-  const calculateDayNet = (dateStr) => {
-    let gross = 0;
-    for (const dog of dogs) {
-      const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-      for (const boarding of dogBoardings) {
-        if (isOvernight(boarding, dateStr)) {
-          gross += dog.nightRate;
-          break;
-        }
-      }
-    }
-    const percentage = getNetPercentageForDate(dateStr);
-    return gross * (percentage / 100);
-  };
+  const calculateDayNet = (dateStr) => calculateNet(calculateGross(dogs, boardings, dateStr), getNetPercentageForDate(dateStr));
 
   // Format a single date for display
   const formatShortDate = (dateStr) => {

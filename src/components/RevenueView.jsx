@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { getDateRange, calculateNights } from '../utils/dateUtils';
-import { activeBoardings } from '../utils/calculations';
+import { activeBoardings, nightRate } from '../utils/calculations';
 
 export default function RevenueView({ startDate, days }) {
   const { dogs, boardings: allBoardings } = useData();
@@ -25,8 +25,7 @@ export default function RevenueView({ startDate, days }) {
     if (boarding.billedAmount != null) {
       return { amount: boarding.billedAmount, estimated: false };
     }
-    const dog = getDog(boarding.dogId);
-    const rate = boarding.nightRate ?? (dog?.nightRate ?? 0);
+    const rate = nightRate(boarding, getDog(boarding.dogId));
     const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
     return { amount: rate * nights, estimated: true };
   };

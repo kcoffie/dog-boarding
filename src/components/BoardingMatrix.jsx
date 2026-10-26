@@ -5,6 +5,7 @@ import { DEFAULT_MATRIX_DAYS } from '../utils/constants';
 import EmployeeDropdown from './EmployeeDropdown';
 import BoardingFormModal from './BoardingFormModal';
 import { useBoardingForms, isBoardingUpcoming } from '../hooks/useBoardingForms';
+import { calculateGross, calculateNet, countOvernightDogs as countStays, nightRate, nightStays } from '../utils/calculations';
 
 function getFormLinkColor(relevantBoarding, formData) {
   if (!relevantBoarding) return 'text-slate-900';
@@ -178,38 +179,21 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
     return <span className="text-slate-300">—</span>;
   };
 
-  const calculateDayGross = (dateStr) => {
-    let total = 0;
-    for (const dog of dogs) {
-      const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-      for (const boarding of dogBoardings) {
-        if (isOvernight(boarding, dateStr)) {
-          total += dog.nightRate;
-          break;
-        }
-      }
-    }
-    return total;
-  };
+  // Nights and money come from the shared calculation, as on Payroll (#342)
+  const calculateDayGross = (dateStr) => calculateGross(dogs, boardings, dateStr);
 
-  const calculateDayNet = (dateStr) => {
-    const gross = calculateDayGross(dateStr);
-    const percentage = getNetPercentageForDate(dateStr);
-    return gross * (percentage / 100);
-  };
+  const calculateDayNet = (dateStr) => calculateNet(calculateDayGross(dateStr), getNetPercentageForDate(dateStr));
 
-  const countOvernightDogs = (dateStr) => {
-    let count = 0;
-    for (const dog of dogs) {
-      const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-      for (const boarding of dogBoardings) {
-        if (isOvernight(boarding, dateStr)) {
-          count++;
-          break;
-        }
-      }
-    }
-    return count;
+  const countOvernightDogs = (dateStr) => countStays(dogs, boardings, dateStr);
+
+  // The night rate(s) this dog's stays in range count at: the booking's price first (#342)
+  const nightRateLabel = (dog) => {
+    const rates = [...new Set(boardings
+      .filter(b => !b.cancelledAt && b.dogId === dog.id && dates.some(d => isOvernight(b, d)))
+      .map(b => nightRate(b, dog)))].sort((a, b) => a - b);
+    if (rates.length === 0) return `$${dog.nightRate ?? 0}`;
+    if (rates.length === 1) return `$${rates[0]}`;
+    return `$${rates[0]}–${rates[rates.length - 1]}`;
   };
 
   const dogHasPresenceInRange = (dog) => {
@@ -278,26 +262,12 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
   // Get dogs present on a specific date for mobile view
   const getDogsForMobileDate = (dateStr) => {
     if (!dateStr) return { overnight: [], dayOnly: [] };
-    const overnight = [];
-    const dayOnly = [];
-
-    for (const dog of dogs) {
-      const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-      let isNight = false;
-      let isDay = false;
-
-      for (const boarding of dogBoardings) {
-        if (boarding.cancelledAt) continue;
-        if (isOvernight(boarding, dateStr)) isNight = true;
-        if (isDayPresent(boarding, dateStr)) isDay = true;
-      }
-
-      if (isNight) {
-        overnight.push(dog);
-      } else if (isDay) {
-        dayOnly.push(dog);
-      }
-    }
+    // The same list the count and the money come from, each with the rate its night counts at
+    const overnight = nightStays(dogs, boardings, dateStr);
+    const staying = new Set(overnight.map(s => s.dog.id));
+    const dayOnly = dogs.filter(dog => !staying.has(dog.id) && boardings.some(b =>
+      !b.cancelledAt && b.dogId === dog.id && isDayPresent(b, dateStr)
+    ));
 
     return { overnight, dayOnly };
   };
@@ -394,7 +364,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                     <div className="w-3 h-3 rounded bg-gradient-to-br from-indigo-500 to-indigo-600" />
                     Overnight ({mobileDogsData.overnight.length})
                   </div>
-                  {mobileDogsData.overnight.map((dog) => {
+                  {mobileDogsData.overnight.map(({ dog, rate }) => {
                     const rb = getRelevantBoarding(dog);
                     const fd = rb ? formsByBoardingId[rb.id] : null;
                     return (
@@ -413,7 +383,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                           {formatName(dog.name)}
                         </button>
                       </div>
-                      <span className="text-sm text-slate-600">${dog.nightRate}</span>
+                      <span className="text-sm text-slate-600">${rate}</span>
                     </div>
                     );
                   })}
@@ -556,7 +526,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
                   ${dog.dayRate}
                 </td>
                 <td className="px-3 py-4 text-sm text-slate-500 text-right tabular-nums">
-                  ${dog.nightRate}
+                  {nightRateLabel(dog)}
                 </td>
                 {dates.map((dateStr) => (
                   <td key={dateStr} className={`px-2 py-4 text-center ${getColumnBg(dateStr)}`}>

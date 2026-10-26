@@ -1,19 +1,15 @@
 import { useData } from '../context/DataContext';
-import { getDateRange, isOvernight } from '../utils/dateUtils';
-import { activeBoardings, calculateGross } from '../utils/calculations';
+import { getDateRange } from '../utils/dateUtils';
+import { calculateGross, countOvernightDogs } from '../utils/calculations';
 
 export default function SummaryCards({ startDate, days }) {
-  const { dogs, boardings: allBoardings, getNightAssignment } = useData();
-  const boardings = activeBoardings(allBoardings);
+  const { dogs, boardings, getNightAssignment } = useData();
 
   const dates = getDateRange(startDate, days);
   const todayStr = new Date().toISOString().split('T')[0];
 
   // Dogs boarding today (overnight)
-  const dogsToday = dogs.filter(dog => {
-    const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-    return dogBoardings.some(b => isOvernight(b, todayStr));
-  }).length;
+  const dogsToday = countOvernightDogs(dogs, boardings, todayStr);
 
   // Revenue this period (gross) — uses boarding.nightRate ?? dog.nightRate ?? 0 per night (REQ-203)
   const periodRevenue = dates.reduce((total, dateStr) => {
@@ -21,15 +17,7 @@ export default function SummaryCards({ startDate, days }) {
   }, 0);
 
   // Helper to check if date has any dogs boarding
-  const hasDogsBoarding = (dateStr) => {
-    for (const dog of dogs) {
-      const dogBoardings = boardings.filter(b => b.dogId === dog.id);
-      if (dogBoardings.some(b => isOvernight(b, dateStr))) {
-        return true;
-      }
-    }
-    return false;
-  };
+  const hasDogsBoarding = (dateStr) => countOvernightDogs(dogs, boardings, dateStr) > 0;
 
   // Nights assigned in range (only count nights with dogs that have employee assigned)
   const assignedNights = dates.filter(dateStr => {

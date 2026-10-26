@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { formatName } from '../utils/dateUtils';
+import { activeBoardings, calculateNet, nightStays } from '../utils/calculations';
 import { getEmployeeNameById } from '../utils/employeeHelpers';
 
 // Swipe gesture hook
@@ -104,7 +105,7 @@ const PRINT_CSS = `
  * Invisible-until-print view rendered into the DOM beside the app.
  * Each day section mirrors the CalendarPage detail panel layout.
  */
-function PrintView({ days, getBookingsForDayFn, getDogNightRate, getNetPercentage }) {
+function PrintView({ days, getBookingsForDayFn, getNightTotals }) {
   useEffect(() => {
     console.log(`[print] PrintView mounted — ${days.length} days in range`);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -145,14 +146,8 @@ function PrintView({ days, getBookingsForDayFn, getDogNightRate, getNetPercentag
         const departing = bookings.filter(b => isSameDay(new Date(b.departure_datetime), date));
         const staying   = bookings.filter(b => !isSameDay(new Date(b.arrival_datetime), date) && !isSameDay(new Date(b.departure_datetime), date));
 
-        const nextDay = new Date(date);
-        nextDay.setDate(nextDay.getDate() + 1);
-        const overnightBookings = bookings.filter(b => new Date(b.departure_datetime) >= nextDay);
-        const overnightCount = overnightBookings.length;
-        const grossTotal = overnightBookings.reduce((sum, b) => sum + getDogNightRate(b.dogId), 0);
         const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const netPct = getNetPercentage(dateStr);
-        const netTotal = (grossTotal * (netPct / 100)).toFixed(2);
+        const { overnightCount, grossTotal, netPct, netTotal } = getNightTotals(dateStr);
 
         return (
           <div key={dateStr} className="print-day" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '20px' }}>
@@ -264,7 +259,9 @@ function PrintModal({ defaultStart, defaultEnd, onClose, onPrint }) {
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
-  const { dogs, boardings, getNetPercentageForDate, nightAssignments, settings } = useData();
+  const { dogs, boardings: allBoardings, getNetPercentageForDate, nightAssignments, settings } = useData();
+  // A cancelled boarding has no days or nights (REQ-108)
+  const boardings = useMemo(() => activeBoardings(allBoardings), [allBoardings]);
   const [currentDate, setCurrentDate] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
@@ -282,7 +279,14 @@ export default function CalendarPage() {
   // Get dog info by ID
   const getDog = (dogId) => dogs.find(d => d.id === dogId);
   const getDogName = (dogId) => formatName(getDog(dogId)?.name) || 'Unknown';
-  const getDogNightRate = (dogId) => getDog(dogId)?.nightRate || 0;
+
+  // Tonight's dogs and money from the shared calculation, as on Payroll (#342)
+  const getNightTotals = (dateStr) => {
+    const stays = nightStays(dogs, boardings, dateStr);
+    const grossTotal = stays.reduce((sum, s) => sum + s.rate, 0);
+    const netPct = getNetPercentageForDate(dateStr);
+    return { overnightCount: stays.length, grossTotal, netPct, netTotal: calculateNet(grossTotal, netPct).toFixed(2) };
+  };
 
   // Transform boardings to calendar format
   const calendarBookings = useMemo(() => {
@@ -437,7 +441,9 @@ export default function CalendarPage() {
   // Selected day details
   const selectedDayBookings = selectedDate ? getBookingsForDay(selectedDate) : [];
   const selectedDateObj = selectedDate ? new Date(year, month, selectedDate) : null;
-  const selectedDateStr = selectedDateObj ? selectedDateObj.toISOString().split('T')[0] : null;
+  const selectedDateStr = selectedDateObj
+    ? `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`
+    : null;
 
   const getStatus = (booking) => {
     if (!selectedDateObj) return '';
@@ -452,20 +458,9 @@ export default function CalendarPage() {
   const staying = selectedDayBookings.filter(b => getStatus(b) === 'staying');
   const departing = selectedDayBookings.filter(b => getStatus(b) === 'departing');
 
-  // Check if a dog is staying overnight on selected date
-  const isOvernight = (booking) => {
-    if (!selectedDateObj) return false;
-    const departure = new Date(booking.departure_datetime);
-    const nextDay = new Date(selectedDateObj);
-    nextDay.setDate(nextDay.getDate() + 1);
-    return departure >= nextDay;
-  };
-
-  const overnightBookings = selectedDayBookings.filter(isOvernight);
-  const overnightCount = overnightBookings.length;
-  const grossTotal = overnightBookings.reduce((sum, b) => sum + getDogNightRate(b.dogId), 0);
-  const netPercentage = selectedDateStr ? getNetPercentageForDate(selectedDateStr) : 65;
-  const netTotal = (grossTotal * (netPercentage / 100)).toFixed(2);
+  const { overnightCount, grossTotal, netPct: netPercentage, netTotal } = selectedDateStr
+    ? getNightTotals(selectedDateStr)
+    : { overnightCount: 0, grossTotal: 0, netPct: 65, netTotal: '0.00' };
 
   // Check if a day is today
   const today = new Date();
@@ -841,8 +836,7 @@ export default function CalendarPage() {
         <PrintView
           days={eachDayInRange(printRange.startDate, printRange.endDate)}
           getBookingsForDayFn={getBookingsForAnyDay}
-          getDogNightRate={getDogNightRate}
-          getNetPercentage={getNetPercentageForDate}
+          getNightTotals={getNightTotals}
         />,
         document.body
       )}

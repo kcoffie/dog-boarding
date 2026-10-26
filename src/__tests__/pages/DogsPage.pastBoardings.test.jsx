@@ -72,9 +72,6 @@ vi.mock('../../context/DataContext', () => ({
     updateDog: vi.fn(),
     deleteDog: vi.fn(),
     toggleDogActive: vi.fn(),
-    addBoarding: vi.fn(),
-    updateBoarding: vi.fn(),
-    deleteBoarding: vi.fn(),
   }),
 }));
 
@@ -204,9 +201,6 @@ describe('Past Boardings - Empty State', () => {
         updateDog: vi.fn(),
         deleteDog: vi.fn(),
         toggleDogActive: vi.fn(),
-        addBoarding: vi.fn(),
-        updateBoarding: vi.fn(),
-        deleteBoarding: vi.fn(),
       }),
     }));
 
