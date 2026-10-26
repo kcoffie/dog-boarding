@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 26, 2026, ~19:30 UTC (session 50). **Production = main (`7b191bd`, PR #354, #350 PR 1), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 50: #350 PR 1 shipped ("today" is San Francisco's date on every screen, any device; REQ-064). Found and filed #353 (high): the booking site's times are Pacific clock times stored as UTC, so the app and the Friday roster show them 7–8 hours early ("Sat 3:15 AM" for a 10:15am pick-up). The 74→73 dateless rows are explained. Next: #353 design note (Immediate Next Steps).**
+**Last updated:** October 26, 2026, ~23:00 UTC (session 51). **Production = main (`a558dc6`, #355 handoff docs; code as `7b191bd`), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 51: #353 design note written, Kate chose option B (booking times stay as the site stores them, read through one `siteClock.js`), architect "proceed with changes" folded in. Two Friday-roster questions open. Next: Kate's 2 answers, then ADR-009 and PR 1 before the Fri 10-30 roster.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -28,7 +28,22 @@
 
 ---
 
-## Current State (2026-10-26 ~19:30 UTC, session 50)
+## Current State (2026-10-26 ~23:00 UTC, session 51)
+
+### Session 51: what happened (2026-10-26)
+1. **Baseline and checks (read-only):** main `7b191bd`, 2252 passed / 1 skipped. #355 (session 50 handoff) merged as `a558dc6` on Kate's word, `check:deploy` OK. Form jobs of 10-26 all `done` (14); the only `sync-detail` alerts were session 49's two links. Overnight 10-26: `schedule`, `auth`, `detail` success; `site_access` not blocked (session to 10-27 06:37); queue 1 pending. 4am roster `sent` by Vercel 11:40 UTC. ops-watch: "gmail-monitor last success 5h ago": GitHub ran it late; every run succeeded.
+2. **Kate:** 10-23 on Dashboard/Payroll/Calendar looks right (8 dogs, $440, $286). Dogs Tonight after 5pm not yet checked (ask next session). "Buddy boarding but not on the 4am roster": no bug; Buddy left 10-26 at 4:15pm, the roster's boarding box lists only dogs staying the night, and the Dashboard showed his departure-day icon (Kate had it on the wrong day).
+3. **#353 design note: `docs/specs/353-booking-times-design-note.md`** (this PR). Proven (read-only, plus 3 booking-site page loads in Kate's Chrome with her OK, and one page Kate pasted): the site's times are SF clock times written as UTC, year-round, no DST shift (AM/PM labels agree with the UTC hour on 387 of 389 times; 14,954 daytime rows' printed times match; `C63QhM5Q` across DST ends "PM", duration "4 days, 7 hours"). The 25 rows at 00:00/07:00/08:00/23:00Z are title-only dates.
+   - **Kate: option B.** Keep the stored values; one `src/utils/siteClock.js` (`siteDate`, `siteTime` + "PT", `siteNow`) reads them everywhere. No data repair, no migration, no booking-site requests. ADR-009 to write.
+   - **Kate's answers:** day icon keeps "before 5pm" (a); leave Goose's two 5:15pm stays (a staff dog) alone; title-only rows show no time (a); "PT" on every booking time; Friday-afternoon bookings go on the Friday pm roster (today they're left off: 9 arrivals and 16 departures so far, next Mochi Fri 12-04 4pm).
+   - **Architect: proceed with changes**, all folded into the note: test zones `Pacific/Kiritimati` and `Pacific/Pago_Pago` (UTC/Paris/Tokyo can't catch a wrong date), an `fs`-walking guard test, weekend window from `siteNow()` rounded to the hour, 5 more readers.
+   - **Open for Kate:** Monday-morning pick-ups on the Friday roster (keep + header "Fri – Mon", recommended, or end Sunday 11:59pm); the 2 rows whose AM/PM contradicts the time (date only, recommended).
+4. **`C63QhB7h`** (Mochi and Marlee, 11-03 → 11-12): Kate's Chrome got "You cannot view appointment" and Kate thinks the booking may be deleted on the site. The app still has both boardings. Check after tonight's sync (reconcile cancels only on a 302 to `/schedule`).
+5. Nothing else changed: no SQL by Claude, no messages sent, no code.
+
+## Previous session (50)
+
+### (was Current State, 2026-10-26 ~19:30 UTC)
 
 ### Session 50: what happened (2026-10-26)
 1. **Process (Kate):** the standing prompt no longer says "as my TechPM". `ENGINEERING_PROCESS.md` is the process; `TechPM.md` is for planning sessions on request.
@@ -51,7 +66,7 @@
 6. **#352 (session 49 handoff) merged as `d67dc8b`** after the reviewer: client names replaced by pet IDs, answered questions removed.
 7. Nothing else changed: no SQL by Claude, no booking-site requests, no messages sent. Kate has **not yet** eyeballed the Dashboard/Payroll for 10-23, and the read-only checks (Immediate Next Steps 2) weren't run this session.
 
-## Previous session (49)
+## Earlier session (49)
 
 ### Session 49: what happened (2026-10-26)
 1. **#344 first-night checks (read-only): all passed. #344 closed** with a comment: PRs #346 and #347 plus the results.
@@ -265,23 +280,13 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run` (**2252 passed / 1 skipped at `7b191bd`** or later), open PRs (expect #291 and #285, plus this handoff's docs PR if not merged).
-2. **Read-only checks (a few lines, fix nothing without asking):**
-   - the form jobs from 10-26 are `done`; any `sync-detail` alert and what it said; overnight crons, `site_access`, queue depth.
-   - Ask Kate whether, after 5pm Pacific, Dogs Tonight and the phone view showed **today** (#354).
-   - Ask Kate to eyeball the Dashboard, Payroll and Calendar for 10-23: **8 dogs, $440 gross, $286 net** (REQ-036). Anything else is a bug: options + recommendation.
-3. **Top 3 now (Sprint 1, ends Wed 11-04):**
-   1. **#353: booking times stored 7–8 hours early** (high; the Friday roster shows them to staff). Design note first (`docs/specs/`): problem → options (convert at the sync and repair stored rows, vs. read stored values as Pacific clock times everywhere) → what breaks (nights, `isDayPresent`, rosters, Integration Check, daytime schedule, forms' date checks) → how we'll know. Check each claim against the booking site (Kate looks, or Claude in her Chrome read-only with her OK); open question: are the 08:00 UTC rows bookings with no time? Then the architect, then Kate. Then **#350 PR 2** (stored moments shown and compared in SF time, with "PT" on times).
-   2. **#13 dry-run 2:** Kate clicks, Claude verifies from the tables (`docs/UAT_SCRIPT.md` Part D). Expected partial payment **$139.75**; re-check it against the shared calculation first.
-   3. **#323:** private job logs. New table: design note → architect → Kate runs the migration.
-
-   Also Sprint 1–2:
-   - **#351** (medium): remove Add Dog, Import CSV, delete dog **and Deactivate**, with their hook/context functions; REQ-010/012/013 and the CSV requirement → Removed.
-   - #307 (remove invite codes); #324 Clear-for-Kate.
-   - DST ends **Sun 11-01**; check the first PST 4am roster **Mon 11-02**.
-4. **Kate's own items:**
-   - dry-run 2 clicks; book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forwarding the roster.
-   - Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the week-page rows (73 dateless rows), the boarding-less $0 dogs, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2252 passed / 1 skipped**), open PRs (#291, #285, plus this docs PR if not merged).
+2. **Read-only checks:** overnight 10-27 crons, `site_access`, queue; whether `C63QhB7h` was cancelled by the sync; ask Kate whether Dogs Tonight showed today after 5pm Pacific.
+3. **Top 3 (Sprint 1, ends 11-04):**
+   1. **#353:** get Kate's 2 open answers (design note "Kate's decisions"), write ADR-009, then **PR 1** (`siteClock.js`, Friday pm roster + weekend window, `queryBoarders`/forms with `Date.UTC`, form-job and reconcile "now", title fallback, the guard test). **Merge before the Fri 10-30 roster (22:00 UTC).** Reviewer first; scoped Stryker with host `TZ=Pacific/Kiritimati` and `TZ=Pacific/Pago_Pago`. Then **PR 2** (= #350 PR 2: Dogs, Calendar, Sync History, form view, day/night helpers, "PT").
+   2. **#13 dry-run 2** (Kate clicks; re-check $139.75 first).
+   3. **#323** private job logs (design note → architect → migration by Kate).
+   Dates: DST ends Sun 11-01; first PST 4am roster Mon 11-02.
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.
