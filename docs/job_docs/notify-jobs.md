@@ -62,7 +62,7 @@ The endpoint orchestrates the full notify flow:
 4. **Window gate:**
    - `window=4am` → no hash gate. The automatic calls (the Vercel trigger and the GitHub fallback) first check the Pacific hour (trigger 04:00–05:59, fallback from 06:00, both Mon–Fri), skip if a roster already went out today, and claim the day on `cron_health` `notify-4am-claim` so it goes out once. `force=1` or `date=` (token) skip all that. See REQ-658 and `src/lib/rosterTrigger.js`
    - `window=7am` or `window=8:30am` → hashes the current roster; if hash matches stored hash in `cron_health`, skips sending
-   - `window=friday-pm` → always sends; generates a weekend-themed image (arrivals + departures Sat–Sun) instead of the daily roster. Writes health record to `cron_health WHERE cron_name = 'notify-friday-pm'`
+   - `window=friday-pm` → always sends; generates a weekend-themed image (arrivals + departures from the run's hour on Friday to Monday noon, times as the booking site shows them, REQ-065) instead of the daily roster. Writes health record to `cron_health WHERE cron_name = 'notify-friday-pm'`
 
 5. **Generate roster image** — constructs a URL to `/api/roster-image` (same Vercel deployment). Params:
    - `&ts=<jobRunAt ISO>` — job run time for the "as of [time], [day]" header line

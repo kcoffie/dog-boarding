@@ -41,7 +41,7 @@ export default function RevenueView({ startDate, days }) {
   const formatDateShort = (isoStr) => {
     const dateStr = isoStr.split('T')[0];
     const date = new Date(dateStr + 'T00:00:00');
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); // real-moment: dateStr is the booking's site date, taken from the ISO string
   };
 
   const rawRows = inRange.map(boarding => {

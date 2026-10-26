@@ -209,14 +209,15 @@ export async function seedDatabase() {
       const selectedDogs = [...dogList].sort(() => Math.random() - 0.5).slice(0, numDogs);
 
       for (const dog of selectedDogs) {
+        // Booking times are site clock values (ADR-009): 2pm San Francisco is stored as 14:00Z
         const arrival = new Date(today);
-        arrival.setDate(arrival.getDate() + dayOffset);
-        arrival.setHours(14, 0, 0, 0);
+        arrival.setUTCDate(arrival.getUTCDate() + dayOffset);
+        arrival.setUTCHours(14, 0, 0, 0);
 
         const stayLength = Math.floor(Math.random() * 5) + 1;
         const departure = new Date(arrival);
-        departure.setDate(departure.getDate() + stayLength);
-        departure.setHours(10, 0, 0, 0);
+        departure.setUTCDate(departure.getUTCDate() + stayLength);
+        departure.setUTCHours(10, 0, 0, 0);
 
         const { error } = await supabase.from('boardings').insert({
           dog_id: dog.id,
@@ -249,7 +250,7 @@ export async function seedDatabase() {
 
     for (let dayOffset = -7; dayOffset < 14; dayOffset++) {
       const date = new Date(today);
-      date.setDate(date.getDate() + dayOffset);
+      date.setDate(date.getDate() + dayOffset); // real-moment: a calendar date for night assignments
       const dateStr = date.toISOString().split('T')[0];
 
       const randomEmployee = activeEmployees[Math.floor(Math.random() * activeEmployees.length)];

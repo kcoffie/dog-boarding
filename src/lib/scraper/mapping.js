@@ -8,6 +8,7 @@ import { SCRAPER_CONFIG } from './config.js';
 import { detectChangesSync } from './changeDetection.js';
 import { mappingLogger } from './logger.js';
 import { enqueue } from './syncQueue.js';
+import { siteDate, siteNow } from '../../utils/siteClock.js';
 
 /**
  * Identify night and day line items from a pricing result.
@@ -679,10 +680,8 @@ function freeSlot(bookingId, taken) {
 
 // A form job for a current or upcoming boarding whose form isn't stored yet (REQ-501)
 async function enqueueFormJob(supabase, boarding, petId, petName) {
-  const departureDate = new Date(boarding.departure_datetime);
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
-  if (departureDate < todayMidnight) {
+  // Departed before San Francisco's today? Both sides as site clock dates (ADR-009, #353)
+  if (siteDate(boarding.departure_datetime) < siteDate(siteNow())) {
     mappingLogger.log(`[Mapping] ⏭️ Form fetch skipped for boarding ${boarding.id} — departure ${boarding.departure_datetime} is in the past`);
     return;
   }

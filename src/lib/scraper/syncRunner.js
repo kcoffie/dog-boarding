@@ -72,9 +72,9 @@ const CURSOR_WINDOW_WEEKS = 8;
  * @returns {string}
  */
 export function buildWeekUrl(date) {
-  const y = date.getFullYear();
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
+  const y = date.getFullYear(); // real-moment: the cursor is a local calendar date, not a booking time
+  const m = date.getMonth() + 1; // real-moment: the cursor is a local calendar date, not a booking time
+  const d = date.getDate(); // real-moment: the cursor is a local calendar date, not a booking time
   return `${BASE_URL}/schedule/days-7/${y}/${m}/${d}`;
 }
 
@@ -87,10 +87,10 @@ export function buildWeekUrl(date) {
  */
 export function advanceCursor(cursor) {
   const maxDate = new Date();
-  maxDate.setDate(maxDate.getDate() + CURSOR_WINDOW_WEEKS * 7);
+  maxDate.setDate(maxDate.getDate() + CURSOR_WINDOW_WEEKS * 7); // real-moment: the cursor is a local calendar date, not a booking time
 
   const next = new Date(cursor);
-  next.setDate(next.getDate() + 7);
+  next.setDate(next.getDate() + 7); // real-moment: the cursor is a local calendar date, not a booking time
 
   return next > maxDate ? new Date() : next;
 }
@@ -104,7 +104,7 @@ export function advanceCursor(cursor) {
  */
 async function fetchScheduleHtml(date) {
   const url = buildWeekUrl(date);
-  console.log(`[SyncRunner:Schedule] Fetching ${date.toDateString()} — url: ${url}`);
+  console.log(`[SyncRunner:Schedule] Fetching ${date.toDateString()} — url: ${url}`); // real-moment: the cursor is a local calendar date, not a booking time
   const response = await authenticatedFetch(url);
   if (!response.ok) throw new Error(`Schedule fetch failed: ${response.status}`);
   const html = await response.text();
@@ -184,7 +184,7 @@ async function getCursorDate(supabase) {
   const data = await readSettingsRow(supabase, 'schedule_cursor_date');
   if (data?.schedule_cursor_date) {
     const [y, mo, d] = data.schedule_cursor_date.split('-').map(Number);
-    return new Date(y, mo - 1, d);
+    return new Date(y, mo - 1, d); // real-moment: the cursor is a local calendar date, not a booking time
   }
   return new Date();
 }
@@ -196,9 +196,9 @@ async function getCursorDate(supabase) {
  * @returns {string}
  */
 function toLocalIsoDate(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
+  const y = date.getFullYear(); // real-moment: the cursor is a local calendar date, not a booking time
+  const m = String(date.getMonth() + 1).padStart(2, '0'); // real-moment: the cursor is a local calendar date, not a booking time
+  const d = String(date.getDate()).padStart(2, '0'); // real-moment: the cursor is a local calendar date, not a booking time
   return `${y}-${m}-${d}`;
 }
 
@@ -279,7 +279,7 @@ export async function runScheduleSync(supabase) {
 
   const cursorDate = await getCursorDate(supabase);
   const today = new Date();
-  console.log(`[SyncRunner:Schedule] 📅 Cursor: ${cursorDate.toDateString()}`);
+  console.log(`[SyncRunner:Schedule] 📅 Cursor: ${cursorDate.toDateString()}`); // real-moment: the cursor is a local calendar date, not a booking time
 
   const stats = { pagesScanned: 0, found: 0, skipped: 0, queued: 0, requeuedEdited: 0, urlChangesIgnored: 0, daytimeUpserted: 0, daytimeErrors: 0 };
   const failedEnqueueIds = [];
@@ -312,7 +312,7 @@ export async function runScheduleSync(supabase) {
 
     const parsed = parseScheduleHtml(html);
     stats.pagesScanned++;
-    console.log(`[SyncRunner:Schedule] 📋 ${parsed.length} appointments on ${date.toDateString()}`);
+    console.log(`[SyncRunner:Schedule] 📋 ${parsed.length} appointments on ${date.toDateString()}`); // real-moment: the cursor is a local calendar date, not a booking time
 
     for (const appt of parsed) {
       if (seenIds.has(appt.id)) continue;
@@ -321,7 +321,7 @@ export async function runScheduleSync(supabase) {
     }
 
     const daytimeAppts = parseDaytimeSchedulePage(html);
-    console.log(`[SyncRunner:Schedule] 🏃 ${daytimeAppts.length} daytime events on ${date.toDateString()}`);
+    console.log(`[SyncRunner:Schedule] 🏃 ${daytimeAppts.length} daytime events on ${date.toDateString()}`); // real-moment: the cursor is a local calendar date, not a booking time
     allDaytimeAppts.push(...daytimeAppts);
   }
 
@@ -372,7 +372,7 @@ export async function runScheduleSync(supabase) {
   const wrapped = nextCursor <= today;
   console.log(wrapped
     ? '[SyncRunner:Schedule] 🔄 Cursor wrapped back to today'
-    : `[SyncRunner:Schedule] ➡️ Cursor: ${cursorDate.toDateString()} → ${nextCursor.toDateString()}`
+    : `[SyncRunner:Schedule] ➡️ Cursor: ${cursorDate.toDateString()} → ${nextCursor.toDateString()}` // real-moment: the cursor is a local calendar date, not a booking time
   );
 
   const queueDepth = await getQueueDepth(supabase);

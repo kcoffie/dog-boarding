@@ -24,7 +24,7 @@ import { classifyRedirect, DetailRedirected, SESSION_EXPIRED_MESSAGE } from './r
  * @param {number} [year] - Calendar year (defaults to current year)
  * @returns {{ checkIn: Date, checkOut: Date } | null}
  */
-export function parseServiceTypeDates(serviceType, year = new Date().getFullYear()) {
+export function parseServiceTypeDates(serviceType, year = new Date().getFullYear()) { // real-moment: the current year
   if (!serviceType) return null;
 
   // Match M/D[am|pm]-D (same month) or M/D[am|pm]-M/D (cross-month)
@@ -51,9 +51,10 @@ export function parseServiceTypeDates(serviceType, year = new Date().getFullYear
     }
   }
 
+  // Site clock midnight (ADR-009): the same value whether a browser or Vercel ran the sync (#353)
   return {
-    checkIn:  new Date(year, startMonth, startDay),
-    checkOut: new Date(year, endMonth,   endDay),
+    checkIn:  new Date(Date.UTC(year, startMonth, startDay)),
+    checkOut: new Date(Date.UTC(year, endMonth,   endDay)),
   };
 }
 
@@ -86,7 +87,7 @@ export function parseAppointmentPage(html, sourceUrl = '') {
     // far-future/bogus timestamps (e.g. 9999999999).
     const tsDate = timestamps?.checkIn ? new Date(timestamps.checkIn) : null;
     const now = new Date();
-    const tsReasonable = tsDate && Math.abs(tsDate.getFullYear() - now.getFullYear()) <= 2;
+    const tsReasonable = tsDate && Math.abs(tsDate.getUTCFullYear() - now.getUTCFullYear()) <= 2;
     if (tsReasonable) {
       // System timestamps have actual time-of-day precision; parsed title dates are midnight-only.
       // Always prefer timestamps when available and reasonable — even when the title date
