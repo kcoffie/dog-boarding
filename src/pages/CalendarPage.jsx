@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
-import { formatName, businessTodayDate, toDateStr } from '../utils/dateUtils';
+import { formatName, businessTodayDate, toDateStr, BUSINESS_TIME_ZONE } from '../utils/dateUtils';
 import { activeBoardings, calculateNet, nightStays } from '../utils/calculations';
 import { getEmployeeNameById } from '../utils/employeeHelpers';
 
@@ -112,11 +112,11 @@ function PrintView({ days, getBookingsForDayFn, getNightTotals }) {
 
   if (!days.length) return null;
 
+  // When it was printed, in San Francisco time (#350)
   const now = new Date();
-  const timeStr  = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
-  const weekday  = now.toLocaleDateString('en-US', { weekday: 'short' });
-  const monthStr = now.toLocaleDateString('en-US', { month: 'short' });
-  const printedAt = `Printed at ${timeStr} ${weekday} ${now.getDate()} ${monthStr} ${now.getFullYear()}`;
+  const part = (opts) => now.toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, ...opts });
+  const timeStr  = part({ hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+  const printedAt = `Printed at ${timeStr} ${part({ weekday: 'short' })} ${part({ day: 'numeric' })} ${part({ month: 'short' })} ${part({ year: 'numeric' })}`;
 
   return (
     <div id="calendar-print-view" style={{ fontFamily: 'system-ui, sans-serif', padding: '20px' }}>

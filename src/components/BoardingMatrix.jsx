@@ -273,6 +273,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
   };
 
   const mobileDogsData = getDogsForMobileDate(mobileSelectedDate);
+  const todayStr = businessToday();
   const mobileGross = calculateDayGross(mobileSelectedDate || dates[0]);
   const mobileNet = calculateDayNet(mobileSelectedDate || dates[0]);
   const mobileOvernightCount = countOvernightDogs(mobileSelectedDate || dates[0]);
@@ -290,7 +291,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
         >
           {dates.map((dateStr) => {
             const isSelected = dateStr === mobileSelectedDate;
-            const isToday = dateStr === businessToday();
+            const isToday = dateStr === todayStr;
             const overnightCount = countOvernightDogs(dateStr);
             const weekend = isWeekend(dateStr);
             const needsAttention = needsEmployeeAttention(dateStr);

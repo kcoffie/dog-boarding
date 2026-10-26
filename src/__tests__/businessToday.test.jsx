@@ -58,8 +58,26 @@ import SettingsPage from '../pages/SettingsPage';
 import SyncSettings from '../components/SyncSettings';
 
 const originalTZ = process.env.TZ;
-// Node re-reads TZ on assignment, so this sets the "device" timezone for the next Date call
-const onDevice = (zone) => { process.env.TZ = zone; };
+// getTimezoneOffset() on 2026-01-15 in each zone, to prove the switch took effect
+const JANUARY_OFFSET = { UTC: 0, 'Europe/Paris': -60, 'Asia/Tokyo': -540, 'America/Los_Angeles': 480 };
+// Node re-reads TZ on assignment, but only on the main thread: in a worker thread
+// (vitest's threads pool, which Stryker uses) it does nothing, so fail loudly if so.
+const onDevice = (zone) => {
+  process.env.TZ = zone;
+  expect(new Date(2026, 0, 15).getTimezoneOffset(), `device timezone switch to ${zone}`).toBe(JANUARY_OFFSET[zone]);
+};
+const HOST_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const CAN_SWITCH = (() => {
+  const before = process.env.TZ;
+  process.env.TZ = 'Asia/Tokyo';
+  const switched = new Date(2026, 0, 15).getTimezoneOffset() === JANUARY_OFFSET['Asia/Tokyo'];
+  if (before === undefined) delete process.env.TZ;
+  else process.env.TZ = before;
+  return switched;
+})();
+// A test on a device in `zone`. Where the zone can't be switched (a worker thread, as under
+// Stryker), only the host's own zone runs; the others show as skipped, never as a silent pass.
+const deviceIt = (zone) => (CAN_SWITCH || zone === HOST_ZONE ? it : it.skip);
 // Fake only Date, so promises and waitFor still run
 const atClock = (instant) => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -75,29 +93,33 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
-  process.env.TZ = originalTZ;
+  // Assigning undefined would set the string "undefined" (UTC)
+  if (originalTZ === undefined) delete process.env.TZ;
+  else process.env.TZ = originalTZ;
 });
 
 /**
  * @requirements REQ-064
  */
 describe('REQ-064: businessToday is the date in San Francisco', () => {
-  it.each(DEVICE_ZONES)('at 9pm Pacific it is still Monday 10-26 (device in %s)', (zone) => {
-    onDevice(zone);
-    expect(businessToday(NINE_PM_PACIFIC)).toBe('2026-10-26');
-  });
+  for (const zone of DEVICE_ZONES) {
+    deviceIt(zone)(`at 9pm Pacific it is still Monday 10-26 (device in ${zone})`, () => {
+      onDevice(zone);
+      expect(businessToday(NINE_PM_PACIFIC)).toBe('2026-10-26');
+    });
+  }
 
-  it('at 12:30am Pacific (PDT) it is the new day', () => {
+  deviceIt('UTC')('at 12:30am Pacific (PDT) it is the new day', () => {
     onDevice('UTC');
     expect(businessToday(new Date('2026-10-27T07:30:00Z'))).toBe('2026-10-27');
   });
 
-  it('after DST ends, 11:30pm Pacific (PST) is still Sunday 11-01', () => {
+  deviceIt('Europe/Paris')('after DST ends, 11:30pm Pacific (PST) is still Sunday 11-01', () => {
     onDevice('Europe/Paris');
     expect(businessToday(new Date('2026-11-02T07:30:00Z'))).toBe('2026-11-01');
   });
 
-  it('defaults to the current clock', () => {
+  deviceIt('Asia/Tokyo')('defaults to the current clock', () => {
     onDevice('Asia/Tokyo');
     atClock(NINE_PM_PACIFIC);
     expect(businessToday()).toBe('2026-10-26');
@@ -108,38 +130,40 @@ describe('REQ-064: businessToday is the date in San Francisco', () => {
  * @requirements REQ-064
  */
 describe('REQ-064: calendar dates never go through UTC', () => {
-  it.each(DEVICE_ZONES)('businessTodayDate is local midnight of the San Francisco date (device in %s)', (zone) => {
-    onDevice(zone);
-    const d = businessTodayDate(NINE_PM_PACIFIC);
-    expect([d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes()]).toEqual([2026, 10, 26, 0, 0]);
-  });
+  for (const zone of DEVICE_ZONES) {
+    deviceIt(zone)(`businessTodayDate is local midnight of the San Francisco date (device in ${zone})`, () => {
+      onDevice(zone);
+      const d = businessTodayDate(NINE_PM_PACIFIC);
+      expect([d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes()]).toEqual([2026, 10, 26, 0, 0]);
+    });
+  }
 
-  it('toDateStr keeps the calendar day east of UTC (Paris midnight is still the day before in UTC)', () => {
+  deviceIt('Europe/Paris')('toDateStr keeps the calendar day east of UTC (Paris midnight is still the day before in UTC)', () => {
     onDevice('Europe/Paris');
     expect(toDateStr(new Date(2026, 9, 26))).toBe('2026-10-26');
   });
 
-  it('toDateStr pads month and day to two digits', () => {
+  deviceIt('UTC')('toDateStr pads month and day to two digits', () => {
     onDevice('UTC');
     expect(toDateStr(new Date(2027, 0, 5))).toBe('2027-01-05');
   });
 
-  it('getDateRange lists the calendar days from the start (device in Paris)', () => {
+  deviceIt('Europe/Paris')('getDateRange lists the calendar days from the start (device in Paris)', () => {
     onDevice('Europe/Paris');
     expect(getDateRange('2026-10-26', 3)).toEqual(['2026-10-26', '2026-10-27', '2026-10-28']);
   });
 
-  it('daysBetween counts calendar days across the spring DST change (a 23-hour day)', () => {
+  deviceIt('America/Los_Angeles')('daysBetween counts calendar days across the spring DST change (a 23-hour day)', () => {
     onDevice('America/Los_Angeles');
     expect(daysBetween(new Date(2027, 2, 13), new Date(2027, 2, 15))).toBe(2);
   });
 
-  it('daysBetween counts calendar days across the fall DST change (a 25-hour day)', () => {
+  deviceIt('America/Los_Angeles')('daysBetween counts calendar days across the fall DST change (a 25-hour day)', () => {
     onDevice('America/Los_Angeles');
     expect(daysBetween(new Date(2026, 9, 31), new Date(2026, 10, 2))).toBe(2);
   });
 
-  it('daysBetween is negative when the end is before the start', () => {
+  deviceIt('UTC')('daysBetween is negative when the end is before the start', () => {
     onDevice('UTC');
     expect(daysBetween(new Date(2026, 9, 26), new Date(2026, 9, 23))).toBe(-3);
   });
@@ -174,7 +198,7 @@ describe('REQ-064: screens use San Francisco today', () => {
     });
   });
 
-  it('Dogs Tonight at 9pm Pacific counts tonight (1 dog), not tomorrow (2), on a Paris device', () => {
+  deviceIt('Europe/Paris')('Dogs Tonight at 9pm Pacific counts tonight (1 dog), not tomorrow (2), on a Paris device', () => {
     onDevice('Europe/Paris');
     atClock(NINE_PM_PACIFIC);
     render(<SummaryCards startDate="2026-10-26" days={3} />);
@@ -184,7 +208,7 @@ describe('REQ-064: screens use San Francisco today', () => {
   // The phone view's date cards: the selected one is indigo
   const mobileCard = (label) => screen.getAllByText(label).map((el) => el.closest('button')).find(Boolean);
 
-  it('the phone view opens on today (Oct 26) at 9pm Pacific, on a UTC device', () => {
+  deviceIt('UTC')('the phone view opens on today (Oct 26) at 9pm Pacific, on a UTC device', () => {
     onDevice('UTC');
     atClock(NINE_PM_PACIFIC);
     render(<BrowserRouter><BoardingMatrix startDate="2026-10-25" days={4} /></BrowserRouter>);
@@ -192,7 +216,7 @@ describe('REQ-064: screens use San Francisco today', () => {
     expect(mobileCard('Oct 27').className).not.toContain('bg-indigo-600');
   });
 
-  it('the "today" highlight is on Oct 26 at 9pm Pacific, on a UTC device', () => {
+  deviceIt('UTC')('the "today" highlight is on Oct 26 at 9pm Pacific, on a UTC device', () => {
     onDevice('UTC');
     atClock(NINE_PM_PACIFIC);
     render(<BrowserRouter><BoardingMatrix startDate="2026-10-25" days={4} /></BrowserRouter>);
@@ -201,7 +225,7 @@ describe('REQ-064: screens use San Francisco today', () => {
     expect(mobileCard('Oct 27').querySelector('.text-indigo-600')).toBeNull();
   });
 
-  it('the Dashboard opens on 14 days from San Francisco today, on a Tokyo device', () => {
+  deviceIt('Asia/Tokyo')('the Dashboard opens on 14 days from San Francisco today, on a Tokyo device', () => {
     onDevice('Asia/Tokyo');
     atClock(NINE_PM_PACIFIC);
     render(<BrowserRouter><MatrixPage /></BrowserRouter>);
@@ -209,7 +233,7 @@ describe('REQ-064: screens use San Francisco today', () => {
     expect(saved('dashboard-end-date')).toBe('2026-11-08');
   });
 
-  it('Payroll opens on the last 30 days ending San Francisco today, on a Paris device', () => {
+  deviceIt('Europe/Paris')('Payroll opens on the last 30 days ending San Francisco today, on a Paris device', () => {
     onDevice('Europe/Paris');
     atClock(NINE_PM_PACIFIC);
     render(<BrowserRouter><PayrollPage /></BrowserRouter>);
@@ -217,7 +241,7 @@ describe('REQ-064: screens use San Francisco today', () => {
     expect(saved('payroll-end-date')).toBe('2026-10-26');
   });
 
-  it('the Today button moves the range to San Francisco today, keeping its length, on a Paris device', () => {
+  deviceIt('Europe/Paris')('the Today button moves the range to San Francisco today, keeping its length, on a Paris device', () => {
     onDevice('Europe/Paris');
     atClock(NINE_PM_PACIFIC);
     const onStartDateChange = vi.fn();
@@ -256,24 +280,25 @@ describe('REQ-064: Calendar and Settings use San Francisco today', () => {
   });
 
   const renderCalendar = () => render(<BrowserRouter><CalendarPage /></BrowserRouter>);
+  // The today mark: the desktop day cell, the phone day cell and the legend
+  const MARKED_31 = ['31', '31', '31'];
 
-  it('the Calendar opens on October at 9pm Pacific on 10-31, on a UTC device', () => {
+  deviceIt('UTC')('the Calendar opens on October at 9pm Pacific on 10-31, on a UTC device', () => {
     onDevice('UTC');
     atClock(NINE_PM_PACIFIC_OCT_31);
     renderCalendar();
     expect(screen.getByText('October 2026')).toBeInTheDocument();
   });
 
-  it('the Calendar marks the 31st as today at 9pm Pacific on 10-31, on a UTC device', () => {
+  deviceIt('UTC')('the Calendar marks the 31st as today at 9pm Pacific on 10-31, on a UTC device', () => {
     onDevice('UTC');
     atClock(NINE_PM_PACIFIC_OCT_31);
     const { container } = renderCalendar();
     const marked = [...container.querySelectorAll('span.rounded-full.bg-indigo-600')].map((el) => el.textContent);
-    expect(marked.length).toBeGreaterThan(0);
-    expect(marked.every((day) => day === '31')).toBe(true);
+    expect(marked).toEqual(MARKED_31);
   });
 
-  it("the Calendar's Today button returns to October at 9pm Pacific on 10-31, on a UTC device", () => {
+  deviceIt('UTC')("the Calendar's Today button returns to October at 9pm Pacific on 10-31, on a UTC device", () => {
     onDevice('UTC');
     atClock(NINE_PM_PACIFIC_OCT_31);
     renderCalendar();
@@ -281,7 +306,17 @@ describe('REQ-064: Calendar and Settings use San Francisco today', () => {
     expect(screen.getByText('October 2026')).toBeInTheDocument();
   });
 
-  it('Print defaults to San Francisco today through a week later, on a Tokyo device', () => {
+  deviceIt('Europe/Paris')('the printout says when it was printed in San Francisco time, on a Paris device', () => {
+    onDevice('Europe/Paris');
+    atClock(NINE_PM_PACIFIC);
+    window.print = vi.fn();
+    renderCalendar();
+    fireEvent.click(screen.getByText('Print'));
+    fireEvent.click(screen.getByText('Generate & Print'));
+    expect(screen.getByText(/^Printed at/).textContent).toBe('Printed at 9:00 pm Mon 26 Oct 2026');
+  });
+
+  deviceIt('Asia/Tokyo')('Print defaults to San Francisco today through a week later, on a Tokyo device', () => {
     onDevice('Asia/Tokyo');
     atClock(NINE_PM_PACIFIC);
     const { container } = renderCalendar();
@@ -290,7 +325,7 @@ describe('REQ-064: Calendar and Settings use San Francisco today', () => {
     expect([from, to]).toEqual(['2026-10-26', '2026-11-02']);
   });
 
-  it("the net percentage's effective date defaults to San Francisco today, on a Paris device", () => {
+  deviceIt('Europe/Paris')("the net percentage's effective date defaults to San Francisco today, on a Paris device", () => {
     onDevice('Europe/Paris');
     atClock(NINE_PM_PACIFIC);
     render(<BrowserRouter><SettingsPage /></BrowserRouter>);
@@ -298,7 +333,7 @@ describe('REQ-064: Calendar and Settings use San Francisco today', () => {
     expect(screen.getByText('Effective from:').nextElementSibling.value).toBe('2026-10-26');
   });
 
-  it('a manual sync defaults to San Francisco today through 60 days later, on a Paris device', () => {
+  deviceIt('Europe/Paris')('a manual sync defaults to San Francisco today through 60 days later, on a Paris device', () => {
     onDevice('Europe/Paris');
     atClock(NINE_PM_PACIFIC);
     const { container } = render(<SyncSettings />);
@@ -314,7 +349,7 @@ describe('REQ-064: a payment is dated in San Francisco', () => {
   // Stable across renders: a new array each render would refetch forever
   const employees = [{ id: 'emp-1', name: 'Sam', active: true }];
 
-  it('a payment recorded at 9pm Pacific from Paris is dated 10-26', async () => {
+  deviceIt('Europe/Paris')('a payment recorded at 9pm Pacific from Paris is dated 10-26', async () => {
     onDevice('Europe/Paris');
     atClock(NINE_PM_PACIFIC);
     const { result } = renderHook(() => usePayments(employees));
