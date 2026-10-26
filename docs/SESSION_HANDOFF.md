@@ -32,7 +32,7 @@
 ### Session 48, continued (2026-10-25): #344 PR 2 deployed
 1. **Kate ran migration 030** (~21:20 UTC): the pre-check returned 0 rows, then the two statements. She confirmed the index (`dogs_external_pet_id_key`, unique; the old `idx_dogs_external_pet_id` gone). Read-only: 57 dogs with a pet ID, 57 distinct.
 2. **PR #347 squash-merged as `8af23ed`** (all 6 checks green, reviewer done). `check:deploy` OK: deploy success, home page 200, roster image 200.
-3. **Kate ran the re-queue SQL** (RUNBOOK "After the #344 PR 2 deploy" step 2). It matched **15** bookings, not 18 (3 had checked out since 10-24); verified read-only: those 15 `sync_queue` appointment items went `done` → `pending`. The next detail run (Integration Check, ~02:45 UTC on 10-26) reads those 15 pages once, under PR 2's rules.
+3. **Kate ran the re-queue SQL** (RUNBOOK "After the #344 PR 2 deploy" step 2). It matched **15** bookings, not the 18 estimated on 10-24 (likely because some checked out since; not checked). Verified read-only: those 15 `sync_queue` appointment items went `done` → `pending`. Tonight's detail runs read those 15 pages once, under PR 2's rules: Vercel `cron-detail` / `cron-detail-2` (00:10 / 00:15 UTC, a few items each), then Integration Check (scheduled 00:00 UTC, seen ~02:45 on 10-24) drains the rest.
 4. **#344 is still open on GitHub** on purpose: close it after the first-night checks pass (with a short comment: what shipped, PR #346 + #347, and the check results; no AI mention).
 5. Nothing else changed: no SQL by Claude, no booking-site requests, no messages sent.
 
@@ -196,7 +196,7 @@ Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-inve
 
 ## Immediate Next Steps
 1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs.
-2. **#344 PR 2 is deployed** (`8af23ed`, migration 030 run, 15 bookings re-queued 10-25 ~21:30 UTC). **After its first night (from the ~02:45 UTC 10-26 Integration Check on; read-only, report in a few lines):**
+2. **#344 PR 2 is deployed** (`8af23ed`, migration 030 run, 15 bookings re-queued 10-25 ~21:30 UTC). **After its first night (once the 10-26 Integration Check has finished: scheduled 00:00 UTC, often ~02:45; read-only, report in a few lines):**
    - the 15 re-queued items are `done` again (or say why not: `last_error`, `meta.detail_notice`, `meta.detail_redirect`);
    - no dog renamed (dogs' `name` unchanged; compare with the 107 rows of 10-24), no new $0 dog without a boarding, the 4 checked rows keep their IDs;
    - `sync-detail` alerts: any pet notices, and what they said (each is a decision for Kate, not a bug to patch by hand);
