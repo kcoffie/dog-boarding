@@ -33,8 +33,11 @@ const onHost = (zone) => {
 const HOST_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const CAN_SWITCH = (() => {
   const before = process.env.TZ;
+  // Two different zones, so a host already in one of them can't pass the probe
   process.env.TZ = 'Pacific/Kiritimati';
-  const switched = new Date(2026, 0, 15).getTimezoneOffset() === JANUARY_OFFSET['Pacific/Kiritimati'];
+  const east = new Date(2026, 0, 15).getTimezoneOffset() === -840;
+  process.env.TZ = 'Pacific/Pago_Pago';
+  const switched = east && new Date(2026, 0, 15).getTimezoneOffset() === 660;
   if (before === undefined) delete process.env.TZ;
   else process.env.TZ = before;
   return switched;
