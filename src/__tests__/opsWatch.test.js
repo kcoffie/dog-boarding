@@ -429,8 +429,8 @@ describe('REQ-652: undelivered alerts', () => {
     expect(checkFailedAlerts(rows)).toEqual(['Alerts not delivered in the last 24h: 3 (gmail-monitor, send-question)']);
   });
 
-  it('the alert jobs watched are the nine that alert Kate (REQ-655 adds the refresh alert, REQ-657 the breaker, REQ-658 the 4am alert, REQ-659 the window alert, REQ-660 the unread booking page alert)', () => {
-    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert', 'sync-detail']);
+  it('the alert jobs watched are the ten that alert Kate (REQ-655 adds the refresh alert, REQ-657 the breaker, REQ-658 the 4am alert, REQ-659 the window alert, REQ-660 the unread booking page alert, REQ-108 the removed-bookings alert)', () => {
+    expect(ALERT_JOBS).toEqual(['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert', 'sync-detail', 'sync-reconcile']);
   });
 
   it("the 4am roster's own alerts can't count as the roster: notify-4am is not an alert job", () => {

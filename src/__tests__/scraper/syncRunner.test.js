@@ -617,6 +617,31 @@ describe('REQ-109 runScheduleSync', () => {
     expect(fetchedUrls()[2]).toBe(`${SITE}/schedule/days-7/2026/10/12`);
   });
 
+  /** @requirements REQ-108 */
+  it('with { reconcile: true } the scan checks the two weeks it read: check-out from Mon 10-19, check-in before Sun 11-01 (#316)', async () => {
+    const db = makeDb({ cursor: '2026-11-16' });
+    const base = db.from.bind(db);
+    const bounds = {};
+    db.from = (table) => {
+      if (table !== 'sync_appointments') return base(table);
+      const c = { select: () => c, eq: () => c, in: () => c,
+        gte: (f, v) => { bounds[f] = v; return c; }, lt: (f, v) => { bounds[f] = v; return c; },
+        then: (resolve) => resolve({ data: [], error: null }) };
+      return c;
+    };
+    const result = await runScheduleSync(db, { reconcile: true });
+    // Today is Mon 10-19 (week of Sun 10-18): the window is Sun 10-18 to Sun 11-01; a quiet night sends nothing
+    expect(bounds).toEqual({ check_out_datetime: '2026-10-19T00:00:00.000Z', check_in_datetime: '2026-11-01T00:00:00.000Z' });
+    expect([result.reconcile.mode, result.reconcile.candidates, result.reconcile.alertDelivered]).toEqual(['report_only', 0, null]);
+  });
+
+  /** @requirements REQ-108 */
+  it("without { reconcile: true } (the Integration Check's scans) nothing is reconciled: only the pages are fetched (#316)", async () => {
+    const result = await runScheduleSync(makeDb({ cursor: '2026-11-16' }));
+    expect(result.reconcile).toBeUndefined();
+    expect(fetchedUrls()).toHaveLength(3);
+  });
+
   it('with no session, returns session_failed and fetches nothing', async () => {
     getSiteSession.mockRejectedValue(new Error('no credentials'));
     const result = await runScheduleSync(makeDb());

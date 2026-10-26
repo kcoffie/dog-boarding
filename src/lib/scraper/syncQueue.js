@@ -106,6 +106,42 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
  * Meta is merged so a stored `external_pet_id` survives a scan copy without one, and `detail_skip`
  * is dropped so the next detail result decides again. A blank incoming title never replaces a stored one.
  */
+/**
+ * A cancelled booking that's on the schedule again: read its page once more (#316). The detail step
+ * un-cancels it only if the page is a booking and saves (`meta.restore`); a redirect leaves it cancelled.
+ * An item already being processed is left alone.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ external_id: string, source_url: string, title?: string }} item
+ * @returns {Promise<'queued'|'requeued'|'in_flight'>}
+ */
+export async function requeueForRestore(supabase, { external_id, source_url, title = '' }) {
+  const { data: existing, error: fetchError } = await supabase
+    .from('sync_queue')
+    .select('id, status, source_url, title, meta')
+    .eq('external_id', external_id)
+    .limit(1)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+
+  if (existing?.status === 'processing') return 'in_flight';
+  if (existing) {
+    const { error } = await supabase
+      .from('sync_queue')
+      .update(requeueFields(existing, { source_url, title, type: 'appointment', meta: { restore: true } }))
+      .eq('id', existing.id);
+    if (error) throw error;
+    log(`[SyncQueue] ♻️ Re-queued cancelled booking ${external_id} to check it's back`);
+    return 'requeued';
+  }
+  const { error } = await supabase
+    .from('sync_queue')
+    .insert({ external_id, source_url, title, status: 'pending', type: 'appointment', meta: { restore: true } });
+  if (error) throw error;
+  log(`[SyncQueue] ♻️ Queued cancelled booking ${external_id} to check it's back`);
+  return 'queued';
+}
+
 function requeueFields(existing, { source_url, title, type, meta }) {
   const merged = { ...(existing.meta || {}), ...meta };
   delete merged.detail_skip;

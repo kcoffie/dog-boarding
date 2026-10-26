@@ -22,7 +22,7 @@ vi.mock('../../lib/scraper/appointmentFilter.js', () => ({ applyDetailFilters: v
 vi.mock('../../lib/scraper/mapping.js', () => ({ mapAndSaveAppointment: vi.fn() }));
 vi.mock('../../lib/scraper/reconcile.js', () => ({ reconcileArchivedAppointments: vi.fn() }));
 vi.mock('../../lib/scraper/forms.js', () => ({ fetchAndStoreBoardingForm: vi.fn(), formJobPetMatches: vi.fn(async () => true) }));
-vi.mock('../../lib/scraper/syncQueue.js', () => ({ dequeueOne: vi.fn(), markDone: vi.fn(), markFailed: vi.fn() }));
+vi.mock('../../lib/scraper/syncQueue.js', () => ({ dequeueOne: vi.fn(), markDone: vi.fn(), markFailed: vi.fn(), requeueForRestore: vi.fn() }));
 vi.mock('../../lib/scraper/syncSettingsRow.js', () => ({ readSettingsRow: vi.fn(async () => ({ id: 1 })) }));
 vi.mock('../../lib/scraper/logger.js', () => ({
   syncLogger: { log: vi.fn(), error: vi.fn(), warn: vi.fn() },
@@ -38,7 +38,7 @@ import { fetchAllSchedulePages } from '../../lib/scraper/schedule.js';
 import { fetchAppointmentDetails } from '../../lib/scraper/extraction.js';
 import { mapAndSaveAppointment } from '../../lib/scraper/mapping.js';
 import { reconcileArchivedAppointments } from '../../lib/scraper/reconcile.js';
-import { dequeueOne, markDone, markFailed } from '../../lib/scraper/syncQueue.js';
+import { dequeueOne, markDone, markFailed, requeueForRestore } from '../../lib/scraper/syncQueue.js';
 import { fetchAndStoreBoardingForm, formJobPetMatches } from '../../lib/scraper/forms.js';
 
 // Every query resolves to an empty list; inserts return a sync log row. Records each sync_logs update.
@@ -71,6 +71,35 @@ describe('REQ-657: Sync Now stops safely', () => {
     mapAndSaveAppointment.mockResolvedValue({ stats: { syncCreated: true }, notices: [] });
     reconcileArchivedAppointments.mockResolvedValue({ archived: 0, warnings: 0, errors: 0, skipped: null });
     dequeueOne.mockResolvedValue(null);
+  });
+
+  /** @requirements REQ-108 */
+  it("a cancelled (archived) booking on the schedule again is queued to be checked, not read or re-created here (#316)", async () => {
+    fetchAllSchedulePages.mockResolvedValue([appt('A'), { ...appt('B'), title: 'back 11/3-12' }]);
+    const db = makeDb();
+    const base = db.from;
+    db.from = (table) => {
+      const c = base(table);
+      if (table !== 'sync_appointments') return c;
+      return { ...c, select: () => ({ eq: () => Promise.resolve({ data: [{ external_id: 'B' }], error: null }) }) };
+    };
+    const result = await runSync({ supabase: db });
+    expect(requeueForRestore).toHaveBeenCalledWith(db, { external_id: 'B', source_url: appt('B').url, title: 'back 11/3-12' });
+    expect(fetchAppointmentDetails.mock.calls.map((c) => c[0])).toEqual(['A']);
+    expect(result.appointmentsSkipped).toBe(1);
+  });
+
+  it("an archived booking whose queueing fails is still not read, and the run carries on", async () => {
+    fetchAllSchedulePages.mockResolvedValue([{ ...appt('B'), title: '' }]);
+    requeueForRestore.mockRejectedValueOnce(new Error('queue down'));
+    const db = makeDb();
+    const base = db.from;
+    db.from = (table) => (table === 'sync_appointments'
+      ? { ...base(table), select: () => ({ eq: () => Promise.resolve({ data: [{ external_id: 'B' }], error: null }) }) }
+      : base(table));
+    await runSync({ supabase: db });
+    expect(requeueForRestore.mock.calls[0][1].title).toBe('');
+    expect(fetchAppointmentDetails).not.toHaveBeenCalled();
   });
 
   it('starts a new run: an earlier run\'s 429/403 stop is reset', async () => {

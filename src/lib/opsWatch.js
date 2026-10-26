@@ -132,7 +132,7 @@ export function checkSiteAccess(row) {
 }
 
 /** Jobs whose alerts go to Kate; a failed message_log row for any of them is a finding (REQ-652). */
-export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert', 'sync-detail'];
+export const ALERT_JOBS = ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert', 'sync-detail', 'sync-reconcile'];
 
 /**
  * @param {Array<{job_name: string}>} failedRows  message_log rows with status 'failed' for ALERT_JOBS

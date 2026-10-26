@@ -13,7 +13,7 @@ import { DetailRedirected } from './redirects.js';
 import { mapAndSaveAppointment } from './mapping.js';
 import { reconcileArchivedAppointments } from './reconcile.js';
 import { fetchAndStoreBoardingForm, formJobPetMatches } from './forms.js';
-import { dequeueOne, markDone, markFailed } from './syncQueue.js';
+import { dequeueOne, markDone, markFailed, requeueForRestore } from './syncQueue.js';
 import { syncLogger, logSyncStart, logSyncEnd } from './logger.js';
 import { readSettingsRow } from './syncSettingsRow.js';
 import { siteMidnight, siteNow } from '../../utils/siteClock.js';
@@ -328,10 +328,16 @@ export async function runSync(options = {}) {
           }
         }
 
-        // Skip appointments explicitly archived in the DB — prevents re-creation
-        // of amended appointments that are still visible on the external site's schedule.
+        // A cancelled booking that's on the schedule again: not re-created here. The detail step reads
+        // it once more and un-cancels it only if its page is a booking and no other boarding of its
+        // dogs covers those dates (#316; this used to skip it forever).
         if (archivedExternalIds.has(appt.id)) {
-          syncLog(`[Sync] ⏭️ Skipping archived appointment ${appt.id}`);
+          syncLog(`[Sync] ♻️ Archived appointment ${appt.id} is on the schedule again: queued to check it's back`);
+          try {
+            await requeueForRestore(supabase, { external_id: appt.id, source_url: appt.url, title: appt.title || '' });
+          } catch (requeueErr) {
+            syncError(`[Sync] ⚠️ Couldn't queue ${appt.id} to check it's back: ${requeueErr.message}`);
+          }
           result.appointmentsSkipped++;
           continue;
         }

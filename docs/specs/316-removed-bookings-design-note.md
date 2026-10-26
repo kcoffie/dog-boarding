@@ -1,6 +1,6 @@
 # #316 design note: a booking removed on the booking site is cancelled in the app automatically
 
-**Status:** architect: proceed with changes (folded in below, session 52, 2026-10-26); Kate answered Q1–Q3; Q4–Q5 open. Builds on #353 PR 1 (`siteMidnight`, merged 10-26 as `f317878`). Issue #316 (`priority: high`, Kate 2026-10-26: "very soon"). Kate: the booking site is the source of truth (2026-10-23).
+**Status:** architect: proceed with changes (folded in below, session 52, 2026-10-26); Kate answered Q1–Q5; ADR-010; built (branch `docs/316-removed-bookings-design-note`). Builds on #353 PR 1 (`siteMidnight`, merged 10-26 as `f317878`). Issue #316 (`priority: high`, Kate 2026-10-26: "very soon"). Kate: the booking site is the source of truth (2026-10-23).
 
 ## Problem
 A booking deleted on the booking site stays in the app: on the rosters, in nights and in pay. Only the browser's Sync Now notices it: `reconcile.js` is called only from `sync.js` (`src/lib/scraper/sync.js:458`), which only `useSyncSettings.js` imports. The scheduled syncs read just the bookings they see on the week pages (`runScheduleSync`, `src/lib/scraper/syncRunner.js:261`), and a deleted booking simply isn't there, so nothing scheduled looks at it again.
@@ -59,8 +59,8 @@ A booking deleted on the booking site stays in the app: on the rosters, in night
 1. ~~Does a week page list a stay that began before its Sunday?~~ **Yes** (Kate, 2026-10-26, E4b). No exclusion needed.
 2. ~~Does `C63QhB7h` answer 302 → `/schedule`?~~ **Yes: 302 with Location `/schedule`** (Kate, browser Network tab, 2026-10-26). A second observation of E1; no 403/429.
 3. ~~Alert wording and channel~~ **One Telegram alert per run, listing each cancelled or restored booking: yes** (Kate, 2026-10-26).
-4. **A booking moved outside the next two weeks:** (a) accept it: cancelled until it reappears on a page, then restored, and both alerts name it (recommended: no extra requests); (b) before marking, also open the ID-only URL `/schedule/a/<id>` (`extraction.js:179`); unproven whether the site serves the current version there, so it needs a test page load.
-5. **First night report-only?** (a) The first night classifies and alerts "would cancel …" but marks nothing; live from the next night (recommended: `C63QhB7h` starts 11-03, so there's room); (b) live from the first night.
+4. **A booking moved outside the next two weeks: Kate (a).** (a) accept it: cancelled until it reappears on a page, then restored, and both alerts name it (recommended: no extra requests); (b) before marking, also open the ID-only URL `/schedule/a/<id>` (`extraction.js:179`); unproven whether the site serves the current version there, so it needs a test page load.
+5. **First night report-only? Kate (a).** (a) The first night classifies and alerts "would cancel …" but marks nothing; live from the next night (recommended: `C63QhB7h` starts 11-03, so there's room); (b) live from the first night.
 
 ## Threat
 No new secret, table or request type: the same signed-in page loads Sync Now makes, from the server. No client data in tests (synthetic names; recorded page shapes).
@@ -83,4 +83,12 @@ No new secret, table or request type: the same signed-in page loads Sync Now mak
 - **When it isn't:** a booking gone from the site but still in the app after a night is a bug; every stop is an alert, never silent.
 
 ## Order of work
-Architect (done) → Kate's answers (Q4, Q5) → build (one PR, ~1 day) → reviewer → merge → first night checked (report-only if Q5a) → live.
+Architect (done) → Kate's answers (done) → build (one PR, ~1 day) → reviewer → merge → first night checked (report-only if Q5a) → live.
+
+## As built (session 52)
+- `reconcileScheduleWindow` and `alertReconcile` in `src/lib/scraper/syncRunner.js`; `restoreArchivedBooking` and the all-dogs cancel in `reconcile.js`; `requeueForRestore` in `syncQueue.js`; Sync Now re-queues archived bookings (`sync.js`); `cron-schedule` records `reconcile` and goes red on an undelivered alert; `sync-reconcile` in ops-watch's `ALERT_JOBS`; `maxDuration` 300 s.
+- **Report-only first night:** `RECONCILE_LIVE_FROM` (San Francisco's date) in `syncRunner.js`; it's set at merge so the first cron run after the deploy is report-only (re-reads too).
+- **A restore is reported in the detail run's `sync-detail` alert**, not `sync-reconcile`, because it happens when the detail step reads the page (the next run after the scan).
+- **Not built (should-consider 6):** skipping an archived booking's own queue item in the detail step. In the rare case it's still queued, its redirect also raises a `sync-detail` notice: the same news twice, no harm.
+- The test fake now compares timestamps as moments (as Postgres does), and has `lt`.
+

@@ -285,11 +285,13 @@ The repo is public, so worker names are kept only in Supabase (#281).
 3. Add the UID to `WORKER_IDS` in `src/lib/workers.js`, in the roster column position you want, and update REQ-601 and `src/__tests__/workers.test.js`.
 4. To retire someone, set `active = false` on their row. Their column then shows "Worker <uid>" until the UID is removed from `WORKER_IDS`.
 
-### Mark a boarding as archived (don't sync it again)
-
-```sql
-UPDATE boardings SET sync_status = 'archived' WHERE external_id = '<id>';
-```
+### "Q Boarding sync, removed bookings" (Telegram, job `sync-reconcile`)
+The nightly `cron-schedule` (00:05 UTC) checks this week's and next week's bookings against the booking site (#316, REQ-108).
+- **"Cancelled <id> …: removed on the booking site, or moved outside the next two weeks":** its page answered a redirect to `/schedule` and it was on neither page. All its dogs' boardings are cancelled (off the rosters and pay). If it was really moved, it's restored when it next shows up on a schedule page (a `sync-detail` alert says so). Nothing to do unless the site still shows it on its old dates.
+- **"Would cancel …" (report only):** the first night after the deploy; nothing changed.
+- **"N booking(s) … their page still opens":** not on either week's page but still live. Not cancelled. If it keeps happening, the schedule reader may be missing bookings: look at the page.
+- **"Not checked: …" / "Reconciliation stopped: …" / "N error(s)":** nothing was cancelled that night. More than 10 missing or more than 3 gone means a page probably didn't load right; it tries again the next night. Read the `schedule` row's `cron_health.result.reconcile`.
+- Don't fix a booking by hand: the booking site is the source of truth.
 
 ---
 

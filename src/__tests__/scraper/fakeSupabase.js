@@ -1,6 +1,6 @@
 /**
  * In-memory Supabase for the mapping tests (#344). It fakes the database boundary only, so the sync's
- * own queries run as written: eq / is / in / ilike / like / lte / gte filters, limit, single and
+ * own queries run as written: eq / is / in / ilike / like / lte / gte / lt filters, limit, single and
  * maybeSingle, update and insert that return the rows they changed, and the unique index on
  * dogs.external_pet_id (migration 030), which answers a duplicate with Postgres's 23505.
  *
@@ -27,6 +27,10 @@ function likeToRegExp(pattern, flags) {
   return new RegExp(`^${source}$`, flags);
 }
 
+// Timestamps compare as moments, as in Postgres: "…+00:00" and "….000Z" don't sort as text
+const ISO_MOMENT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+const order = (a, b) => (ISO_MOMENT.test(a) && ISO_MOMENT.test(b) ? Date.parse(a) - Date.parse(b) : a < b ? -1 : a > b ? 1 : 0);
+
 function matches(row, [op, field, value]) {
   const actual = row[field] ?? null;
   if (op === 'eq') return actual === value;
@@ -34,8 +38,9 @@ function matches(row, [op, field, value]) {
   if (op === 'in') return value.includes(actual);
   if (op === 'ilike') return actual !== null && likeToRegExp(value, 'i').test(actual);
   if (op === 'like') return actual !== null && likeToRegExp(value, '').test(actual);
-  if (op === 'lte') return actual !== null && actual <= value;
-  if (op === 'gte') return actual !== null && actual >= value;
+  if (op === 'lte') return actual !== null && order(actual, value) <= 0;
+  if (op === 'gte') return actual !== null && order(actual, value) >= 0;
+  if (op === 'lt') return actual !== null && order(actual, value) < 0;
   throw new Error(`fakeSupabase: no filter ${op}`);
 }
 
@@ -98,6 +103,7 @@ export function createFakeSupabase({ uniquePetId = true, failOn = () => null } =
       like(f, v) { filters.push(['like', f, v]); return b; },
       lte(f, v) { filters.push(['lte', f, v]); return b; },
       gte(f, v) { filters.push(['gte', f, v]); return b; },
+      lt(f, v) { filters.push(['lt', f, v]); return b; },
       order() { return b; },
       limit(n) { limit = n; return b; },
       single: () => Promise.resolve(run('single')),

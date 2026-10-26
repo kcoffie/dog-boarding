@@ -49,13 +49,15 @@ import { getSiteSession, clearSiteSession } from './siteAccess.js';
 import { SCRAPER_CONFIG } from './config.js';
 import { applyDetailFilters } from './appointmentFilter.js';
 import { readSettingsRow } from './syncSettingsRow.js';
-import { enqueue, dequeueOne, markDone, markFailed, resetStuck as resetStuckItems, getQueueDepth } from './syncQueue.js';
+import { enqueue, requeueForRestore, dequeueOne, markDone, markFailed, resetStuck as resetStuckItems, getQueueDepth } from './syncQueue.js';
 import { parseDaytimeSchedulePage, upsertDaytimeAppointments } from './daytimeSchedule.js';
 import { fetchAppointmentDetails, nameFromTitle } from './extraction.js';
 import { mapAndSaveAppointment } from './mapping.js';
 import { fetchAndStoreBoardingForm, formJobPetMatches } from './forms.js';
 import { DetailRedirected } from './redirects.js';
 import { alertAndLog } from '../alertKate.js';
+import { reconcileArchivedAppointments, restoreArchivedBooking } from './reconcile.js';
+import { siteDate, siteNow, siteMidnight, formatSiteDate } from '../../utils/siteClock.js';
 
 const BASE_URL = process.env.VITE_EXTERNAL_SITE_URL || 'https://agirlandyourdog.com';
 const CURSOR_WINDOW_WEEKS = 8;
@@ -258,7 +260,7 @@ async function saveCursorDate(supabase, date) {
  *   error?: string,
  * }>}
  */
-export async function runScheduleSync(supabase) {
+export async function runScheduleSync(supabase, { reconcile = false } = {}) {
   console.log('[SyncRunner:Schedule] Starting schedule sync');
 
   let cookies;
@@ -296,6 +298,7 @@ export async function runScheduleSync(supabase) {
   const seenIds = new Set();
   const appointments = [];
   const allDaytimeAppts = [];
+  const pageCounts = [];
 
   for (const date of datesToFetch) {
     let html;
@@ -311,6 +314,7 @@ export async function runScheduleSync(supabase) {
     }
 
     const parsed = parseScheduleHtml(html);
+    pageCounts.push(parsed.length);
     stats.pagesScanned++;
     console.log(`[SyncRunner:Schedule] 📋 ${parsed.length} appointments on ${date.toDateString()}`); // real-moment: the cursor is a local calendar date, not a booking time
 
@@ -367,6 +371,13 @@ export async function runScheduleSync(supabase) {
   stats.daytimeErrors = daytimeResult.errors;
   console.log(`[SyncRunner:Schedule] 📊 Daytime upserted: ${daytimeResult.upserted}, errors: ${daytimeResult.errors}`);
 
+  // Only the nightly cron reconciles; the Integration Check's scans stay check-only (#316)
+  let reconcileResult;
+  if (reconcile) {
+    reconcileResult = await reconcileScheduleWindow(supabase, { seenIds, appointments, pageDates: [today, nextWeek], pageCounts });
+    reconcileResult.alertDelivered = await alertReconcile(supabase, reconcileResult);
+  }
+
   const nextCursor = advanceCursor(cursorDate);
   await saveCursorDate(supabase, nextCursor);
   const wrapped = nextCursor <= today;
@@ -396,7 +407,119 @@ export async function runScheduleSync(supabase) {
     daytimeErrors: stats.daytimeErrors,
     cursorAdvancedTo: toLocalIsoDate(nextCursor),
     queueDepth,
+    ...(reconcileResult ? { reconcile: reconcileResult } : {}),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Removed bookings (#316)
+// ---------------------------------------------------------------------------
+
+/** The job name on the nightly removed-bookings alert (ops-watch ALERT_JOBS). */
+export const RECONCILE_ALERT_JOB = 'sync-reconcile';
+
+/**
+ * San Francisco's date from which the nightly check cancels; before it, it only reports (Kate, Q5:
+ * the first night after the deploy is report-only).
+ */
+export const RECONCILE_LIVE_FROM = '2026-10-28';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// The Sunday of the week a page date falls in, as a site clock midnight (a week page is Sunday–Saturday)
+function sundayOf(date) {
+  const sunday = new Date(siteMidnight(date));
+  sunday.setUTCDate(sunday.getUTCDate() - sunday.getUTCDay());
+  return sunday;
+}
+
+/**
+ * After the nightly scan: cancel the bookings that are gone from the two weeks just read, and re-read
+ * the cancelled ones seen on the site again (#316). The window is exactly the two pages read (this
+ * week and next, Sunday to Saturday), as site clock values (ADR-009). A stay that ended on the window's
+ * Sunday isn't checked: its last day may not be listed. A booking seen on any page read tonight, the
+ * cursor week included, is never a candidate. Throws only SiteThrottled.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ seenIds: Set<string>, appointments: Array<{id: string, url: string, title?: string}>,
+ *   pageDates: Date[], pageCounts: number[], now?: Date }} scan
+ */
+export async function reconcileScheduleWindow(supabase, { seenIds, appointments, pageDates, pageCounts, now = new Date() }) {
+  const reportOnly = siteDate(siteNow(now)) < RECONCILE_LIVE_FROM;
+  const out = { mode: reportOnly ? 'report_only' : 'live', candidates: 0, present: [], gone: [], archived: 0, restores: [], skipped: null, errors: 0 };
+
+  try {
+    const { data, error } = await supabase
+      .from('sync_appointments')
+      .select('external_id')
+      .eq('sync_status', 'archived')
+      .in('external_id', [...seenIds]);
+    // Stryker disable next-line ConditionalExpression: on an error Supabase's data is null, so the loop throws into the same catch
+    if (error) throw error;
+    for (const { external_id: id } of data) {
+      const appt = appointments.find((a) => a.id === id);
+      if (!reportOnly) await requeueForRestore(supabase, { external_id: id, source_url: appt.url, title: appt.title || '' });
+      out.restores.push(id);
+    }
+  } catch (err) {
+    console.error(`[SyncRunner:Reconcile] ❌ Couldn't queue cancelled bookings seen again: ${errorText(err)}`);
+    out.errors++;
+  }
+
+  if (pageCounts[0] === 0 || pageCounts[1] === 0) {
+    out.skipped = "Not checked: this week's or next week's page showed no bookings";
+    return out;
+  }
+  const sunday = sundayOf(pageDates[0]);
+  if (sundayOf(pageDates[1]).getTime() - sunday.getTime() !== 7 * DAY_MS) {
+    out.skipped = "Not checked: this week's and next week's pages weren't consecutive weeks";
+    return out;
+  }
+  const checkOutFrom = new Date(sunday.getTime() + DAY_MS);
+  const checkInBefore = new Date(sunday.getTime() + 14 * DAY_MS);
+  console.log(`[SyncRunner:Reconcile] Window: check-out from ${checkOutFrom.toISOString()}, check-in before ${checkInBefore.toISOString()} (${out.mode})`);
+
+  const result = await reconcileArchivedAppointments(supabase, seenIds, checkOutFrom, checkInBefore, { reportOnly });
+  return {
+    ...out,
+    candidates: result.candidates,
+    present: result.present,
+    gone: result.gone,
+    archived: result.archived,
+    skipped: result.skipped,
+    errors: out.errors + result.errors,
+  };
+}
+
+const shortDate = (iso) => formatSiteDate(iso, { month: 'numeric', day: 'numeric' }) ?? '?';
+
+/**
+ * One alert per night with anything to say (Kate, 2026-10-26): each booking cancelled (or that would
+ * be, the first night), each cancelled booking being re-read, live pages missing from the schedule,
+ * and any stop or error. A quiet night sends nothing.
+ *
+ * @returns {Promise<boolean|null>} null when there was nothing to send; false when it wasn't delivered
+ */
+export async function alertReconcile(supabase, rec) {
+  const report = rec.mode === 'report_only';
+  const lines = rec.gone.map((g) => {
+    const dogs = report ? '' : `, ${g.dogs} dog(s)`;
+    const name = g.pet_name ? ` (${g.pet_name})` : '';
+    return `${report ? 'Would cancel' : 'Cancelled'} ${g.external_id} "${g.service_type || ''}"${name}, ${shortDate(g.check_in_datetime)} → ${shortDate(g.check_out_datetime)}${dogs}: removed on the booking site, or moved outside the next two weeks`;
+  });
+  if (rec.restores.length > 0) {
+    lines.push(`${report ? 'Would re-read' : 'Re-reading'} ${rec.restores.length} cancelled booking(s) seen on the site again, to restore them: ${rec.restores.join(', ')}`);
+  }
+  if (rec.present.length > 0) {
+    lines.push(`${rec.present.length} booking(s) missing from this week's and next week's pages, but their page still opens (not cancelled; the schedule reader may be missing bookings): ${rec.present.join(', ')}`);
+  }
+  if (rec.skipped) lines.push(rec.skipped);
+  if (rec.errors > 0) lines.push(`${rec.errors} error(s) while checking: see the schedule cron's log`);
+  if (lines.length === 0) return null;
+  const header = report
+    ? '🔎 Q Boarding sync, removed bookings (report only: nothing changed tonight)'
+    : '🗑️ Q Boarding sync, removed bookings';
+  return alertAndLog(supabase, RECONCILE_ALERT_JOB, `${header}\n• ${lines.join('\n• ')}`);
 }
 
 // A 429/403 isn't the item's fault: put it back without using a retry, then stop (#324)
@@ -676,8 +799,20 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
     const noticeText = saveResult.notices.length > 0
       ? `${item.external_id} "${item.title || ''}": ${saveResult.notices.join('; ')}`
       : null;
-    const notice = noticeText !== null && noticeText !== item.meta?.detail_notice ? noticeText : null;
-    const readAgain = readAgainMeta(item, noticeText);
+    // Stryker disable next-line ConditionalExpression: a null noticeText gives a null notice either way
+    let notice = noticeText !== null && noticeText !== item.meta?.detail_notice ? noticeText : null;
+    let readAgain = readAgainMeta(item, noticeText);
+    // A cancelled booking back on the site, read and saved: un-cancel it, and say so (#316)
+    if (item.meta?.restore) {
+      const restore = await restoreArchivedBooking(supabase, item.external_id);
+      const restoreNotice = restore.restored
+        ? `${item.external_id} "${item.title || ''}": back on the booking site, so its cancellation was cleared`
+        : `${item.external_id} "${item.title || ''}": back on the booking site, but its dog(s) already have ${restore.conflicts.join(', ')} on those dates, so it stays cancelled`;
+      notice = notice ? `${notice}; ${restoreNotice}` : restoreNotice;
+      const meta = { ...(readAgain?.meta ?? item.meta) };
+      delete meta.restore;
+      readAgain = { meta };
+    }
     if (readAgain) await markDone(supabase, item.id, readAgain);
     else await markDone(supabase, item.id);
 

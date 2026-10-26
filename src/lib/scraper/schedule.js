@@ -99,7 +99,8 @@ export function filterBoardingAppointments(appointments) {
  * The external site ignores ?start=&end= query params — it always returns the
  * full schedule view.  The actual paginated URL format it uses internally is:
  *   /schedule/days-7/YYYY/M/D
- * where YYYY/M/D is the START date of the 7-day window to display.
+ * which shows the Sunday–Saturday week containing YYYY/M/D (live pages, 2026-10-19;
+ * docs/specs/sync-queue-churn-design-note.md), not a window starting on it.
  *
  * When startDate is provided we jump directly to the right week instead of
  * starting from the beginning of the schedule.

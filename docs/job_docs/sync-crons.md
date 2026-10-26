@@ -74,6 +74,11 @@ Each run fetches **exactly three** schedule pages to balance freshness vs. cover
 
 This ensures bookings in the next 2 weeks are seen every night, and bookings 2–8 weeks out appear in the queue within 6 nights (one full cursor cycle). The cursor date is persisted in `sync_settings.schedule_cursor_date`.
 
+A page `/schedule/days-7/YYYY/M/D` shows the Sunday–Saturday week **containing** that date (live pages, 2026-10-19). On Vercel (UTC) at 00:05 that date is San Francisco's date + 1.
+
+#### Removed bookings (#316, REQ-108)
+After queueing, `runScheduleSync(supabase, { reconcile: true })` (only this cron passes it) reconciles the two weeks of the current and next pages: stored bookings in that window not seen on any page tonight are opened once each without following redirects (up to 10; usually none), and those answering 302 → `/schedule` have every dog's boarding cancelled. Cancelled bookings seen again are re-queued with `meta.restore` and restored by the detail step after a good read. One `sync-reconcile` alert per night with anything to say; counts in `cron_health.result.reconcile`; an undelivered alert makes the run a failure. Before `RECONCILE_LIVE_FROM` it only reports. `maxDuration` 300 s (`vercel.json`).
+
 #### Page parsing — regex only (no DOMParser)
 Unlike `schedule.js` (the browser scraper), this cron uses a regex-based `parseScheduleHtml()` because `DOMParser` is a browser API unavailable in Node.js. The regex matches `<a href="/schedule/a/{id}/{ts}">` blocks and extracts:
 - `id`, `url`, `timestamp`

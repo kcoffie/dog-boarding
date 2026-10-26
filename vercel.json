@@ -65,6 +65,9 @@
     },
     "api/notify.js": {
       "maxDuration": 60
+    },
+    "api/cron-schedule.js": {
+      "maxDuration": 300
     }
   },
   "git": {
