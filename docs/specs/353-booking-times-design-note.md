@@ -1,6 +1,6 @@
 # #353 design note: booking times are San Francisco clock times
 
-**Status:** Kate chose option B (2026-10-26, session 51); architect: proceed with changes (folded in below); reviewer findings fixed (session 52). Kate answered Q4–Q6 (session 52); ADR-009 written. One question for PR 2 (Q7). Issue #353 (`priority: high`). #350 PR 2 waits on it.
+**Status:** Kate chose option B (2026-10-26, session 51); architect: proceed with changes (folded in below); reviewer findings fixed (session 52). Kate answered Q4–Q6 (session 52); ADR-009 written. Q7 answered (leave it). Issue #353 (`priority: high`). #350 PR 2 waits on it.
 
 ## Problem
 The booking site stores each booking's times as **San Francisco clock times written as if they were UTC**. A 10:00am drop-off is stored as `10:00Z`. The app copies them as they are, then reads them as real moments: in Pacific time `10:00Z` is 3:00am (2:00am in winter). So:
@@ -79,7 +79,7 @@ Fine as they are: `api/roster-image.js:758` (night count). Out of scope: `script
 4. **Monday-morning pick-ups on the Friday pm roster. Kate: (a), keep them with the header "Fri – Mon".** Today the window already ends Monday 12:00Z, which as a site clock time is Monday noon SF, so Monday-morning pick-ups are already listed; only the header ends at "Sun" (`formatWeekendHeaderDates`, `roster-image.js:741`). (a) Keep them and make the header "Fri – Mon" (recommended: no change to which bookings are listed); (b) end the window at Sunday 11:59pm (Monday pick-ups leave the Friday roster; Monday's 4am roster has them).
 5. **The 2 rows whose AM/PM label contradicts the time. Kate: (a), date only, logged** (architect point 4): `C63Qgwjs` `10:00Z` "PM", `C63QgNHs` `07:00Z` "PM". (a) Show the date only and log it (recommended); (b) show the stored time.
 6. **`C63QgTXx`'s 23:00Z departure (no label; Goose's March stay). Kate: (a), date only.** Its title is "Goose 3/7-8(Sun)", so "Mar 8" is the right date. Kate said to leave its data alone; Q2's rule doesn't cover 23:00, so it would show "Mar 8, 11:00 PM PT". (a) Add 23:00 to Q2's rule, so it shows "Mar 8" with no time; (b) show 11:00 PM.
-7. **For PR 2: `C63QgNHs` ("3/4-19", title-only) has an arrival at `08:00Z` labelled AM.** The label agrees with the time, so Q2's rule doesn't hide it and the Dogs page would show "8:00 AM PT", a time the site never gave. It's the one labelled row of the 24 (E8). Open: (a) date only for any 00:00/07:00/08:00/23:00 time on a booking whose title has no am/pm (needs the title), or (b) leave it (March, a past stay, never on a roster).
+7. **For PR 2: `C63QgNHs` ("3/4-19", title-only) has an arrival at `08:00Z` labelled AM.** The label agrees with the time, so Q2's rule doesn't hide it and the Dogs page would show "8:00 AM PT", a time the site never gave. It's the one labelled row of the 24 (E8). Open: (a) date only for any 00:00/07:00/08:00/23:00 time on a booking whose title has no am/pm (needs the title), or (b) leave it (March, a past stay, never on a roster). **Kate: (b), leave it.**
 
 ## Architect review (2026-10-26): proceed with changes
 Folded in:
@@ -97,7 +97,7 @@ The readers the first draft missed (and those the session 52 review found) are r
 
 ## Kate's decisions on the architect's points (2026-10-26)
 - **Friday-afternoon bookings on the Friday pm roster: yes, list them** (9 Friday 4pm arrivals and 16 Friday 4:15–5pm departures so far were left off; next: a Fri 12-04 4pm arrival).
-- Q4, Q5 and Q6 answered (session 52); Q7 is for PR 2.
+- Q4, Q5, Q6 and Q7 answered (session 52).
 
 ## Threat
 No new secret, table, job or request. No client data in tests (synthetic names; the real page's shape only).

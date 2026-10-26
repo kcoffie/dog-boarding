@@ -262,9 +262,10 @@ describe('parseMMDDYYYYtoISO()', () => {
 // ---------------------------------------------------------------------------
 
 describe('findFormForBoarding()', () => {
+  // Noon San Francisco, a site clock value (#353): the same date in any host zone
   const makeBoarding = (arrivalDateStr) => ({
-    arrival_datetime: new Date(arrivalDateStr + 'T12:00:00').toISOString(),
-    departure_datetime: new Date(arrivalDateStr + 'T12:00:00').toISOString(),
+    arrival_datetime: `${arrivalDateStr}T12:00:00.000Z`,
+    departure_datetime: `${arrivalDateStr}T12:00:00.000Z`,
   });
 
   it('returns null for empty submissions array', () => {

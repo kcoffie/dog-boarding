@@ -657,9 +657,10 @@ describe('REQ-661: form jobs', () => {
   });
 
   it('a boarding that ends later today still gets its form job', async () => {
-    vi.setSystemTime(new Date('2026-11-12T23:30:00'));
+    // 9pm PST on 11-12 (05:00Z on 11-13); departure 11:30pm San Francisco, a site clock value (#353)
+    vi.setSystemTime(new Date('2026-11-13T05:00:00Z'));
     const db = createFakeSupabase();
-    await mapAndSaveAppointment({ ...read(twoPetPage()), check_out_datetime: new Date('2026-11-12T00:30:00').toISOString() }, { supabase: db });
+    await mapAndSaveAppointment({ ...read(twoPetPage()), check_out_datetime: '2026-11-12T23:30:00.000Z' }, { supabase: db });
     expect(db._mockData.sync_queue).toHaveLength(2);
   });
 });
