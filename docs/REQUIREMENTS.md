@@ -203,7 +203,7 @@ Users can add boarding reservations.
 - Departure must be after arrival
 - Boarding appears on calendar and matrix after save
 
-**Tests:** `src/components/BoardingForm.test.jsx`
+**Tests:** none (removed; the tests went with the code)
 
 **Removed (2026-10-26, #342):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, edits or deletes a boarding by hand; a difference is a bug to fix at the source or in the sync. The screens and the hook functions are gone (REQ-036).
 
@@ -219,7 +219,7 @@ Users can edit existing boardings.
 - Date validation still applies
 - Changes reflected in calendar and matrix
 
-**Tests:** `src/components/BoardingForm.test.jsx`
+**Tests:** none (removed; the tests went with the code)
 
 **Removed (2026-10-26, #342):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, edits or deletes a boarding by hand; a difference is a bug to fix at the source or in the sync. The screens and the hook functions are gone (REQ-036).
 
@@ -234,7 +234,7 @@ Users can delete boardings.
 - Confirmation required before delete
 - Boarding removed from calendar and matrix
 
-**Tests:** `src/pages/DogsPage.test.jsx`
+**Tests:** none (removed; the tests went with the code)
 
 **Removed (2026-10-26, #342):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, edits or deletes a boarding by hand; a difference is a bug to fix at the source or in the sync. The screens and the hook functions are gone (REQ-036).
 
@@ -252,7 +252,7 @@ Users can import boardings from CSV files.
 - Successful rows create boardings
 - Handles duplicate dog names gracefully
 
-**Tests:** `src/components/CsvImport.test.jsx`
+**Tests:** none (removed; the tests went with the code)
 
 **Removed (2026-10-26, #342):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, edits or deletes a boarding by hand; a difference is a bug to fix at the source or in the sync. The screens and the hook functions are gone (REQ-036).
 
