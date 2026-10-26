@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 25, 2026, ~21:45 UTC (session 48, continued). **Production = main (`8af23ed`, PR #347, #344 PR 2), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Sessions 47–48: #344 (wrong pet IDs) found to be the server following a 302 to the week schedule; design note v2 + ADR-008 approved; PR 1 (no redirects, REQ-660) shipped 10-23 and its first night was clean; all 57 stored pet IDs verified; 15 wrong boarding forms deleted; PR 2 (dog = pet ID, REQ-661) merged 10-25 after Kate ran migration 030; the 15 current/upcoming bookings re-queued. Next: the read-only checks after PR 2's first night (Immediate Next Steps 2), then #344 can close.**
+**Last updated:** October 26, 2026, ~18:15 UTC (session 49). **Production = main (`332d53a`, PR #349, #342), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 49: #344's first-night checks all passed and #344 is closed; #342 shipped (one shared calculation for nights and pay; boarding add/edit/delete removed), and on production 10-23 now reads 8 dogs, $440 gross, $286 net on every view (Payroll's figure). Filed #350 (UI uses UTC "today") and #351 (dogs still edited by hand). Next: Kate eyeballs the Dashboard, then #13 dry-run 2 and #323 (Immediate Next Steps).**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -27,7 +27,55 @@
 
 ---
 
-## Current State (2026-10-25 ~21:45 UTC, session 48 continued)
+## Current State (2026-10-26 ~18:15 UTC, session 49)
+
+### Session 49: what happened (2026-10-26)
+1. **#344 first-night checks (read-only): all passed. #344 closed** with a comment: PRs #346 and #347 plus the results.
+   - **The 15 re-queued bookings** were all read again with no errors. Vercel `detail` read 1 at 00:16 and 1 at 00:50; Integration Check run `40259684634` (02:33 UTC) read the rest.
+   - **Dogs:** none renamed or created (still 107). The 4 corrected rows kept their IDs. 59 dogs have a pet ID, all distinct.
+   - **Two links by evidence, each sent as a `sync-detail` alert.** Each dog already had a boarding on that booking (rule 1a):
+     - **Tracy** (160430, booking `C63QhFVc`): Annie's second pet on all 6 of Annie's two-pet bookings since February.
+     - **Marlee Hill** (201014, booking `C63QhB7h`): Mochi Hill's second pet on all 15 of their bookings.
+     - Neither needs a decision. Their form jobs were queued (7 done by 03:20 UTC, 7 pending).
+   - **Forms under another pet's ID:** still 0 (93 forms).
+   - **The IC log shows `[Extraction] 🐾 2-pet page: pet IDs 90053,201014; data-pets="201014,90053"; priced pet IDs 90053,201014`.** So the raw page's prices carry `data-pet`.
+   - **Overnight:** `auth` refreshed at 00:37 (good until 10-27 06:37), `site_access` not blocked, ops-watch 10-25 had no findings.
+   - **Unexplained, not a #344 problem:** `sync_appointments` without dates is **73**, not the 74 of 10-24.
+     - The total is still 481, no code deletes these rows, and no row gained dates since 10-24.
+     - The old list of IDs wasn't saved. I asked Kate whether she ran SQL on 10-24/25; no answer yet.
+2. **#342 shipped: PR #349 merged as `332d53a`, `check:deploy` OK.** REQ-036; REQ-020 to REQ-023 are now **Removed**.
+   - **`nightStays(dogs, boardings, date)`** in `src/utils/calculations.js` is now the only place that decides a night. The rules (Kate, 2026-10-26):
+     - a cancelled boarding has no night;
+     - the rate is the booking's price, else the dog's rate, else $0, and a $0 booking counts $0;
+     - a dog counts once a night; if two of its boardings cover the night, the first arrival sets the rate (lower id on a tie);
+     - the daytime credit uses the same dogs.
+   - **There were 8 copies, not 5:** the Calendar day panel and its **print view**, and the Dogs page's per-boarding Gross, also used the dog's rate.
+   - **Where it shows:**
+     - The Dashboard, phone view, Summary cards, Employee Totals, Payroll, the Calendar and the Dogs page all call it.
+     - The Dashboard rate column shows the booking's price, or "$40–60" when a dog has two prices in range. Day visits and cancelled boardings don't count toward it.
+     - The Dogs page shows a cancelled boarding as **Cancelled, $0.00**.
+     - **The Calendar hides cancelled boardings entirely** (Kate: "hide them").
+   - **Removed:**
+     - Edit and Delete boarding on the Dogs page.
+     - `add/addBoardings/update/deleteBoarding` in `useBoardings` and `DataContext`.
+     - The unused `BoardingForm`, `CsvImport` and `InlineDeleteButton` (Kate ran the `git rm`).
+     - `check:requirements` now exempts the status `Removed`.
+     - `deleteBoardingsForDog` remains behind dog delete, which has no screen; that belongs to #351.
+   - **Production check (read-only, the shipped function on production data, TZ Pacific):** 10-23 = **8 dogs, $440 gross, $286 net at 65%**, the same as Payroll. The old Dashboard rule reproduces the mismatch: 9 dogs, $520, $338.
+   - **Evidence:**
+     - Expected values are worked out by hand in `src/__tests__/fixtures/oneNight.js`: 3 dogs, $140, $91.00, plus a $55.25 daytime credit.
+     - `oneNightAcrossViews.test.jsx` has 18 view tests; 11 of the first 14 failed on main.
+     - 10 scripted rule-breaks in the shared function: each turns a test red.
+     - Scoped Stryker on `calculations.js` (TZ=UTC): **98.77%**, every changed-line mutant killed (the one survivor is in the unchanged `calculateEmployeeTotals`).
+     - Suite: 2221 passed, 1 skipped.
+     - Two reviewer passes (the second on the whole final diff: no must-fix), posted as a PR comment.
+   - **Tool note:** the classifier blocked `gh pr merge` as "Merge Without Review" until Kate said "do the merge" in chat. The reviewer's findings are now posted on the PR as well.
+3. **Filed:**
+   - **#350:** the UI takes "today" as the UTC date. After 5pm Pacific, "Dogs Tonight", the phone view's default day and the "today" highlight show tomorrow, and **a payment recorded in the evening gets tomorrow's `paid_date`**. Kate: "the UI should reflect the time in San Francisco." No priority label yet; Claude suggested high.
+   - **#351:** the Dogs page still edits dogs by hand (Add Dog, Import CSV, Deactivate, plus the delete-dog functions). Kate's Q3 = separate issue. Open question in it: keep Deactivate?
+4. Nothing else changed: no SQL by Claude, no booking-site requests, no messages sent.
+
+## Earlier sessions (reference)
 
 ### Session 48, continued (2026-10-25): #344 PR 2 deployed
 1. **Kate ran migration 030** (~21:20 UTC): the pre-check returned 0 rows, then the two statements. She confirmed the index (`dogs_external_pet_id_key`, unique; the old `idx_dogs_external_pet_id` gone). Read-only: 57 dogs with a pet ID, 57 distinct.
@@ -195,17 +243,33 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs.
-2. **#344 PR 2 is deployed** (`8af23ed`, migration 030 run, 15 bookings re-queued 10-25 ~21:30 UTC). **After its first night (once the 10-26 Integration Check has finished: scheduled 00:00 UTC, often ~02:45; read-only, report in a few lines):**
-   - the 15 re-queued items are `done` again (or say why not: `last_error`, `meta.detail_notice`, `meta.detail_redirect`);
-   - no dog renamed (dogs' `name` unchanged; compare with the 107 rows of 10-24), no new $0 dog without a boarding, the 4 checked rows keep their IDs;
-   - `sync-detail` alerts: any pet notices, and what they said (each is a decision for Kate, not a bug to patch by hand);
-   - new dogs have a pet ID (except a staff member's dog); second pets got IDs and form jobs (`sync_queue` `form_*` with their own `/pets/N/forms`);
-   - `boarding_forms` whose pet ID differs from their dog's: still 0;
-   - the first multi-pet page's log line `[Extraction] 🐾 2-pet page: …` (IC run log): the raw page's price divs carry `data-pet` (the shape was only confirmed on Chrome's rendered page).
-3. **If the checks pass:** close #344 with a short comment. If a notice asks for a decision, give Kate the options (one line each, real counts) and a recommendation; never fix data by hand in the app.
-4. **Top 3 after #344:** #13 dry-run 2 (Kate clicks; expected partial payment **$139.75**), **#342** (one shared calculation + remove Add/Edit/Delete boarding), #323. Also Sprint 1: #307, #324 Clear-for-Kate, first PST roster Mon 11-02.
-5. **Kate's own items:** dry-run 2 clicks; book watch-first with Charlie; #337 chores; #8 calendar; forwarding the roster. Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the 74 week-page rows, the boarding-less $0 dogs; and the two same-name rows of a staff member's dog (no pet IDs) to merge, or its next booking alerts.
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run` (2221 passed / 1 skipped at `332d53a`), open PRs (expect #291, #285 and this docs PR's successor, if any).
+2. **#342 is live (`332d53a`):** ask Kate to look at the Dashboard and Payroll for 10-23, on desktop and phone.
+   - Expected: **8 dogs, $440 gross, $286 net** on the footer, the phone card and Payroll. The phone list should show 8 dogs, each at its booking's price.
+   - The Calendar's day panel for 10-23 should show the same.
+   - Cancelled boardings show as Cancelled, $0.00 on the Dogs page, and don't appear on the Calendar.
+   - If anything differs, it's a bug against REQ-036.
+3. **Quick read-only checks:**
+   - the 7 pending `form_*` jobs from 10-26 are `done`;
+   - no new `sync-detail` alert needs a decision (link notices are informational);
+   - overnight crons, `site_access` and queue depth.
+4. **Top 3 now (Sprint 1, ends Wed 11-04):**
+   1. **#13 dry-run 2:** Kate clicks, Claude verifies from the tables (`docs/UAT_SCRIPT.md` Part D). Expected partial payment **$139.75**. Re-check that figure first against the new shared calculation; it came from Payroll, which didn't change.
+   2. **#323:** private job logs. It needs a new table, so: design note → architect gate → Kate runs the migration.
+   3. **#350:** "today" in San Francisco time. Payments can get tomorrow's date; the priority label is Kate's to set.
+
+   Also Sprint 1:
+   - #307 (remove invite codes)
+   - #324 Clear-for-Kate
+   - #351 (dogs edited by hand)
+   - DST ends **Sun 11-01**; check the first PST 4am roster **Mon 11-02**.
+5. **Open questions for Kate:**
+   - The 73 vs 74 dateless `sync_appointments` rows: did she run SQL on 10-24/25?
+   - #350's priority.
+   - #351: keep Deactivate?
+6. **Kate's own items:**
+   - dry-run 2 clicks; book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forwarding the roster.
+   - Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the week-page rows, the boarding-less $0 dogs, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.
