@@ -47,10 +47,6 @@ export function DataProvider({ children }) {
   const {
     boardings,
     loading: boardingsLoading,
-    addBoarding: addSupabaseBoarding,
-    addBoardings: addSupabaseBoardings,
-    updateBoarding: updateSupabaseBoarding,
-    deleteBoarding: deleteSupabaseBoarding,
     deleteBoardingsForDog: deleteSupabaseBoardingsForDog,
   } = useSupabaseBoardings();
 
@@ -135,53 +131,6 @@ export function DataProvider({ children }) {
       logger.dog('Imported', `${newDogs.length} dogs`);
     } catch (err) {
       console.error('Failed to import dogs:', err);
-      throw err;
-    }
-  };
-
-  // Boarding operations (using Supabase)
-  const addBoarding = async (boarding) => {
-    try {
-      const newBoarding = await addSupabaseBoarding(boarding);
-      const dog = dogs.find(d => d.id === boarding.dogId);
-      logger.boarding('Added', `${dog?.name || 'Unknown'}: ${boarding.arrivalDateTime.split('T')[0]} → ${boarding.departureDateTime.split('T')[0]}`);
-      return newBoarding;
-    } catch (err) {
-      console.error('Failed to add boarding:', err);
-      throw err;
-    }
-  };
-
-  const updateBoarding = async (id, updates) => {
-    const boarding = boardings.find(b => b.id === id);
-    const dog = dogs.find(d => d.id === boarding?.dogId);
-    try {
-      await updateSupabaseBoarding(id, updates);
-      logger.boarding('Updated', dog?.name || 'Unknown');
-    } catch (err) {
-      console.error('Failed to update boarding:', err);
-      throw err;
-    }
-  };
-
-  const deleteBoarding = async (id) => {
-    const boarding = boardings.find(b => b.id === id);
-    const dog = dogs.find(d => d.id === boarding?.dogId);
-    try {
-      await deleteSupabaseBoarding(id);
-      logger.boarding('Deleted', dog?.name || 'Unknown');
-    } catch (err) {
-      console.error('Failed to delete boarding:', err);
-      throw err;
-    }
-  };
-
-  const addBoardings = async (newBoardings) => {
-    try {
-      await addSupabaseBoardings(newBoardings);
-      logger.boarding('Imported', `${newBoardings.length} boardings`);
-    } catch (err) {
-      console.error('Failed to import boardings:', err);
       throw err;
     }
   };
@@ -342,11 +291,7 @@ export function DataProvider({ children }) {
     updateDog,
     deleteDog,
     toggleDogActive,
-    // Boarding operations
-    addBoarding,
-    updateBoarding,
-    deleteBoarding,
-    addBoardings,
+    // Boardings come only from the booking site's sync: no add, edit or delete here (#342)
     // Settings operations
     updateSettings,
     getNetPercentageForDate,

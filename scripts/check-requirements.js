@@ -166,8 +166,8 @@ function main() {
   console.log(`\n${colors.bold}${colors.cyan}📋 Requirements Coverage Report${colors.reset}\n`);
   console.log('='.repeat(60));
 
-  // Statuses that are not yet implemented — skip test enforcement
-  const EXEMPT_STATUSES = new Set(['Planned', 'Deferred']);
+  // Statuses that are not yet implemented, or were taken out of the app — skip test enforcement
+  const EXEMPT_STATUSES = new Set(['Planned', 'Deferred', 'Removed']);
 
   let covered = 0;
   let uncovered = 0;
@@ -203,7 +203,7 @@ function main() {
   console.log(`  Total Requirements: ${requirements.length}`);
   console.log(`  ${colors.green}Covered:${colors.reset} ${covered}`);
   console.log(`  ${colors.red}Missing:${colors.reset} ${uncovered}`);
-  console.log(`  ${colors.yellow}Exempt (Planned/Deferred):${colors.reset} ${exempt}`);
+  console.log(`  ${colors.yellow}Exempt (Planned/Deferred/Removed):${colors.reset} ${exempt}`);
   console.log(`  ${colors.bold}Coverage:${colors.reset} ${percentColor}${percentage}%${colors.reset} (of ${enforced} enforced)`);
 
   if (uncovered > 0) {

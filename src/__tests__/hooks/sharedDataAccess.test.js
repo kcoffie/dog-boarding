@@ -35,7 +35,7 @@ describe('REQ-005: Shared Data Access', () => {
 
     it('all authenticated users can edit any dog or boarding', () => {
       // RLS policies allow UPDATE operations for authenticated users
-      // The hook functions (updateDog, updateBoarding) work on shared data
+      // The hook functions (updateDog) work on shared data; boardings are never edited by hand (#342)
       expect(true).toBe(true);
     });
   });

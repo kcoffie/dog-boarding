@@ -41,9 +41,9 @@ vi.mock('../../lib/supabase', () => ({
 import { useBoardings } from '../../hooks/useBoardings';
 
 /**
- * @requirements REQ-022
+ * @requirements REQ-036
  */
-describe('REQ-022: useBoardings Hook - Delete Boarding', () => {
+describe('REQ-036: useBoardings Hook (boardings come only from the sync)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockData.boardings = [
@@ -69,34 +69,18 @@ describe('REQ-022: useBoardings Hook - Delete Boarding', () => {
     expect(result.current).toHaveProperty('boardings');
     expect(result.current).toHaveProperty('loading');
     expect(result.current).toHaveProperty('error');
-    expect(result.current).toHaveProperty('addBoarding');
-    expect(result.current).toHaveProperty('updateBoarding');
-    expect(result.current).toHaveProperty('deleteBoarding');
   });
 
-  it('provides deleteBoarding as a function', () => {
+  it("can't add, edit or delete a boarding by hand (the booking site is the source of truth)", () => {
     const { result } = renderHook(() => useBoardings());
-    expect(typeof result.current.deleteBoarding).toBe('function');
+    for (const write of ['addBoarding', 'addBoardings', 'updateBoarding', 'deleteBoarding']) {
+      expect(result.current).not.toHaveProperty(write);
+    }
   });
 
   it('provides deleteBoardingsForDog as a function', () => {
     const { result } = renderHook(() => useBoardings());
     expect(typeof result.current.deleteBoardingsForDog).toBe('function');
-  });
-
-  it('provides addBoarding as a function', () => {
-    const { result } = renderHook(() => useBoardings());
-    expect(typeof result.current.addBoarding).toBe('function');
-  });
-
-  it('provides addBoardings as a function for batch import', () => {
-    const { result } = renderHook(() => useBoardings());
-    expect(typeof result.current.addBoardings).toBe('function');
-  });
-
-  it('provides updateBoarding as a function', () => {
-    const { result } = renderHook(() => useBoardings());
-    expect(typeof result.current.updateBoarding).toBe('function');
   });
 
   it('provides refresh as a function', () => {

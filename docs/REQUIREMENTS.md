@@ -192,7 +192,7 @@ Users can mark dogs as active or inactive.
 ## Boardings
 
 ### REQ-020: Add Boarding
-**Added:** v1.0 | **Status:** Complete
+**Added:** v1.0 | **Changed:** v6.11.0 (#342) | **Status:** Removed
 
 Users can add boarding reservations.
 
@@ -205,10 +205,12 @@ Users can add boarding reservations.
 
 **Tests:** `src/components/BoardingForm.test.jsx`
 
+**Removed (2026-10-26, #342):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, edits or deletes a boarding by hand; a difference is a bug to fix at the source or in the sync. The screens and the hook functions are gone (REQ-036).
+
 ---
 
 ### REQ-021: Edit Boarding
-**Added:** v1.0 | **Status:** Complete
+**Added:** v1.0 | **Changed:** v6.11.0 (#342) | **Status:** Removed
 
 Users can edit existing boardings.
 
@@ -219,10 +221,12 @@ Users can edit existing boardings.
 
 **Tests:** `src/components/BoardingForm.test.jsx`
 
+**Removed (2026-10-26, #342):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, edits or deletes a boarding by hand; a difference is a bug to fix at the source or in the sync. The screens and the hook functions are gone (REQ-036).
+
 ---
 
 ### REQ-022: Delete Boarding
-**Added:** v1.0 | **Status:** Complete
+**Added:** v1.0 | **Changed:** v6.11.0 (#342) | **Status:** Removed
 
 Users can delete boardings.
 
@@ -232,10 +236,12 @@ Users can delete boardings.
 
 **Tests:** `src/pages/DogsPage.test.jsx`
 
+**Removed (2026-10-26, #342):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, edits or deletes a boarding by hand; a difference is a bug to fix at the source or in the sync. The screens and the hook functions are gone (REQ-036).
+
 ---
 
 ### REQ-023: CSV Import
-**Added:** v1.2 | **Status:** Complete
+**Added:** v1.2 | **Changed:** v6.11.0 (#342) | **Status:** Removed
 
 Users can import boardings from CSV files.
 
@@ -247,6 +253,8 @@ Users can import boardings from CSV files.
 - Handles duplicate dog names gracefully
 
 **Tests:** `src/components/CsvImport.test.jsx`
+
+**Removed (2026-10-26, #342):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, edits or deletes a boarding by hand; a difference is a bug to fix at the source or in the sync. The screens and the hook functions are gone (REQ-036).
 
 ---
 
@@ -311,6 +319,8 @@ Matrix calculates overnight revenue correctly.
 
 **Tests:** `src/utils/calculations.test.js`
 
+**Note (2026-10-26, #342):** who stays which night and at what rate is decided in one place for every view: REQ-036.
+
 ---
 
 ### REQ-033: Employee Night Assignment
@@ -356,6 +366,26 @@ Matrix displays summary statistics.
 - "Period Revenue" shows gross revenue for visible period
 
 **Tests:** `src/components/SummaryCards.test.jsx`, `src/__tests__/pages/RevenueView.test.jsx`
+
+---
+
+### REQ-036: One Calculation for Nights and Pay
+**Added:** v6.11.0 | **Status:** Complete (#342)
+
+Every view that counts a night's dogs or money gets them from one function (`nightStays` in `src/utils/calculations.js`), so the Dashboard, the phone view, Summary cards, Employee Totals, Payroll, the Calendar (and its print view) and the Dogs page can't disagree. Before this, six copies used different rules: 10-23 showed Net $338 on the Dashboard and $286 on Payroll.
+
+**Acceptance Criteria:**
+- A cancelled boarding (`cancelled_at` set, REQ-108) has no night in any view
+- A night counts at the booking's price (`boarding.night_rate`, what the booking site charged); with no price, the dog's rate; else $0. A booking priced $0 counts $0
+- A dog counts once a night. If two of its boardings cover the night, the one that arrived first sets the rate (the lower boarding id on a tie), whatever order they load in (Kate, 2026-10-26)
+- Count = the number of dogs staying; Gross = the sum of their rates; Net = Gross × that night's percentage. A view's list of overnight dogs is the same list its count comes from
+- The daytime follow-on credit is paid from the day rates of the same dogs (once per dog)
+- The Dashboard's rate column shows the booking's price for the dog's stays in range, or a range ("$40–60") when they differ (Kate, 2026-10-26); the phone list shows each dog's rate for that night
+- A boarding's gross on the Dogs page is its nights × the same rate
+- The app can't add, edit or delete a boarding by hand (REQ-020 to REQ-023 removed)
+- Out of scope: the Revenue view (it shows the billed amount per booking, REQ-202) and the roster image (server side)
+
+**Tests:** `src/utils/calculations.test.js`, `src/__tests__/components/oneNightAcrossViews.test.jsx`, `src/__tests__/hooks/useBoardings.test.js`
 
 ---
 

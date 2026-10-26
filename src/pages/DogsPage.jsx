@@ -2,20 +2,18 @@ import { useState, Fragment } from 'react';
 import { useData } from '../context/DataContext';
 import DogForm from '../components/DogForm';
 import DogCsvImport from '../components/DogCsvImport';
-import BoardingForm from '../components/BoardingForm';
-import InlineDeleteButton from '../components/InlineDeleteButton';
 import BoardingFormModal from '../components/BoardingFormModal';
 import { useBoardingForms } from '../hooks/useBoardingForms';
 import { formatDateTime, calculateNights, formatName } from '../utils/dateUtils';
+import { nightRate } from '../utils/calculations';
 
 export default function DogsPage() {
-  const { dogs, boardings, addDog, toggleDogActive, updateBoarding, deleteBoarding } = useData();
+  const { dogs, boardings, addDog, toggleDogActive } = useData();
   const { formsByBoardingId } = useBoardingForms();
 
   const [showAddDogForm, setShowAddDogForm] = useState(false);
   const [formModalState, setFormModalState] = useState({ isOpen: false, dogName: '', formData: null, boarding: null });
   const [showDogCsvImport, setShowDogCsvImport] = useState(false);
-  const [editingBoarding, setEditingBoarding] = useState(null);
   const [sortColumn, setSortColumn] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
   const [boardingSortColumn, setBoardingSortColumn] = useState('arrivalDateTime');
@@ -30,15 +28,6 @@ export default function DogsPage() {
       setShowAddDogForm(false);
     } catch (err) {
       console.error('Failed to add dog:', err);
-    }
-  };
-
-  const handleEditBoarding = async (boardingData) => {
-    try {
-      await updateBoarding(editingBoarding.id, boardingData);
-      setEditingBoarding(null);
-    } catch (err) {
-      console.error('Failed to update boarding:', err);
     }
   };
 
@@ -58,9 +47,10 @@ export default function DogsPage() {
     return formatName(dogs.find(d => d.id === dogId)?.name) || 'Unknown';
   };
 
-  const getDogNightRate = (dogId) => {
-    return dogs.find(d => d.id === dogId)?.nightRate || 0;
-  };
+  // A stay's gross counts its nights at the booking's price, as on Payroll (#342)
+  const getBoardingGross = (boarding) =>
+    calculateNights(boarding.arrivalDateTime, boarding.departureDateTime) *
+    nightRate(boarding, dogs.find(d => d.id === boarding.dogId));
 
   const getInitials = (name) => {
     if (!name) return '?';
@@ -85,7 +75,7 @@ export default function DogsPage() {
     past: { label: 'Past', bg: 'bg-slate-100', text: 'text-slate-500' },
   };
 
-  const isFormOpen = showAddDogForm || showDogCsvImport || editingBoarding;
+  const isFormOpen = showAddDogForm || showDogCsvImport;
 
   const handleSort = (column) => {
     if (sortColumn === column) {
@@ -183,8 +173,8 @@ export default function DogsPage() {
         bVal = calculateNights(b.arrivalDateTime, b.departureDateTime);
         break;
       case 'gross':
-        aVal = calculateNights(a.arrivalDateTime, a.departureDateTime) * getDogNightRate(a.dogId);
-        bVal = calculateNights(b.arrivalDateTime, b.departureDateTime) * getDogNightRate(b.dogId);
+        aVal = getBoardingGross(a);
+        bVal = getBoardingGross(b);
         break;
       default:
         return 0;
@@ -228,15 +218,13 @@ export default function DogsPage() {
             <div className="md:hidden divide-y divide-slate-100">
               {sortedBoardings.map((boarding) => {
                 const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
-                const nightRate = getDogNightRate(boarding.dogId);
-                const gross = nights * nightRate;
+                const gross = getBoardingGross(boarding);
                 const dogName = getDogName(boarding.dogId);
                 const status = getBoardingStatus(boarding);
                 const statusStyle = statusConfig[status];
-                const isEditing = editingBoarding?.id === boarding.id;
 
                 return (
-                  <div key={boarding.id} className={`p-4 ${isEditing ? 'bg-indigo-50/50' : ''}`}>
+                  <div key={boarding.id} className="p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
@@ -275,32 +263,6 @@ export default function DogsPage() {
                         <span>{formatDateWithAmPm(boarding.departureDateTime, boarding.departureAmPm)}</span>
                       </div>
                     </div>
-                    <div className="mt-3 flex gap-4">
-                      <button
-                        onClick={() => setEditingBoarding(isEditing ? null : boarding)}
-                        disabled={isFormOpen && !isEditing}
-                        className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 active:bg-indigo-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
-                      >
-                        {isEditing ? 'Cancel' : 'Edit'}
-                      </button>
-                      <InlineDeleteButton
-                        onDelete={() => deleteBoarding(boarding.id)}
-                        disabled={isFormOpen}
-                        className="flex-1"
-                      />
-                    </div>
-                    {isEditing && (
-                      <div className="mt-4 pt-4 border-t border-indigo-200">
-                        <h3 className="text-sm font-semibold text-slate-900 mb-4">
-                          Edit Boarding for {dogName}
-                        </h3>
-                        <BoardingForm
-                          boarding={editingBoarding}
-                          onSave={handleEditBoarding}
-                          onCancel={() => setEditingBoarding(null)}
-                        />
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -346,22 +308,18 @@ export default function DogsPage() {
                   >
                     Gross{renderBoardingSortIcon('gross')}
                   </th>
-                  <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {sortedBoardings.map((boarding) => {
                   const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
-                  const nightRate = getDogNightRate(boarding.dogId);
-                  const gross = nights * nightRate;
+                  const gross = getBoardingGross(boarding);
                   const dogName = getDogName(boarding.dogId);
                   const status = getBoardingStatus(boarding);
                   const statusStyle = statusConfig[status];
-                  const isEditing = editingBoarding?.id === boarding.id;
 
                   return (
-                    <Fragment key={boarding.id}>
-                      <tr className={`hover:bg-slate-50/50 transition-colors ${isEditing ? 'bg-indigo-50/50' : ''}`}>
+                      <tr key={boarding.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
@@ -390,38 +348,7 @@ export default function DogsPage() {
                         <td className="px-5 py-4 text-sm text-slate-600">{formatDateWithAmPm(boarding.departureDateTime, boarding.departureAmPm)}</td>
                         <td className="px-5 py-4 text-sm text-slate-600 text-right tabular-nums">{nights}</td>
                         <td className="px-5 py-4 text-sm font-medium text-slate-900 text-right tabular-nums">{formatCurrency(gross)}</td>
-                        <td className="px-5 py-4 text-right">
-                          <button
-                            onClick={() => setEditingBoarding(isEditing ? null : boarding)}
-                            disabled={isFormOpen && !isEditing}
-                            className="text-sm font-medium text-indigo-600 hover:text-indigo-800 mr-4 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                          >
-                            {isEditing ? 'Cancel' : 'Edit'}
-                          </button>
-                          <InlineDeleteButton
-                            onDelete={() => deleteBoarding(boarding.id)}
-                            disabled={isFormOpen}
-                            className="!min-h-0 !py-1 !px-2 text-xs"
-                          />
-                        </td>
                       </tr>
-                      {isEditing && (
-                        <tr>
-                          <td colSpan={7} className="px-5 py-5 bg-indigo-50/50 border-l-4 border-indigo-500">
-                            <div className="max-w-2xl">
-                              <h3 className="text-sm font-semibold text-slate-900 mb-4">
-                                Edit Boarding for {dogName}
-                              </h3>
-                              <BoardingForm
-                                boarding={editingBoarding}
-                                onSave={handleEditBoarding}
-                                onCancel={() => setEditingBoarding(null)}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
                   );
                 })}
               </tbody>
@@ -648,8 +575,8 @@ export default function DogsPage() {
                 bVal = calculateNights(b.arrivalDateTime, b.departureDateTime);
                 break;
               case 'gross':
-                aVal = calculateNights(a.arrivalDateTime, a.departureDateTime) * getDogNightRate(a.dogId);
-                bVal = calculateNights(b.arrivalDateTime, b.departureDateTime) * getDogNightRate(b.dogId);
+                aVal = getBoardingGross(a);
+                bVal = getBoardingGross(b);
                 break;
               default:
                 return 0;
@@ -680,8 +607,7 @@ export default function DogsPage() {
               <div className="md:hidden max-h-[600px] overflow-y-auto divide-y divide-slate-100">
                 {pastBoardings.map((boarding) => {
                   const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
-                  const nightRate = getDogNightRate(boarding.dogId);
-                  const gross = nights * nightRate;
+                  const gross = getBoardingGross(boarding);
                   const dogName = getDogName(boarding.dogId);
 
                   return (
@@ -758,8 +684,7 @@ export default function DogsPage() {
                   <tbody className="divide-y divide-slate-100">
                     {pastBoardings.map((boarding) => {
                       const nights = calculateNights(boarding.arrivalDateTime, boarding.departureDateTime);
-                      const nightRate = getDogNightRate(boarding.dogId);
-                      const gross = nights * nightRate;
+                      const gross = getBoardingGross(boarding);
                       const dogName = getDogName(boarding.dogId);
 
                       return (
