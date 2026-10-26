@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useInvites } from '../hooks/useInvites';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getEmployeeName, isEmployeeActive } from '../utils/employeeHelpers';
+import { businessToday } from '../utils/dateUtils';
 import SyncSettings from '../components/SyncSettings';
 import SiteAccessCard from '../components/SiteAccessCard';
 import { useCronHealth } from '../hooks/useCronHealth';
@@ -146,7 +147,7 @@ export default function SettingsPage() {
     }
   }, [settings.netPercentage, settingsLoading]);
   const [useEffectiveDate, setUseEffectiveDate] = useState(false);
-  const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [effectiveDate, setEffectiveDate] = useState(() => businessToday());
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [employeeError, setEmployeeError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, employeeName: '', hasAssignments: false });

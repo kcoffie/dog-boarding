@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { getEmployeeNameById, getEmployeeIdByName } from '../utils/employeeHelpers';
+import { businessToday } from '../utils/dateUtils';
 
 export function usePayments(employees = []) {
   const { user } = useAuth();
@@ -78,7 +79,7 @@ export function usePayments(employees = []) {
           amount: payment.amount,
           nights: payment.nights,
           dates: payment.dates,
-          paid_date: new Date().toISOString().split('T')[0],
+          paid_date: businessToday(),
           user_id: user.id,
         }])
         .select()

@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext';
 import DateNavigator from '../components/DateNavigator';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PaymentDialog from '../components/PaymentDialog';
-import { getDateRange } from '../utils/dateUtils';
+import { getDateRange, businessTodayDate, daysBetween, toDateStr } from '../utils/dateUtils';
 import { calculateDaytimeGross, calculateGross, calculateNet } from '../utils/calculations';
 
 export default function PayrollPage() {
@@ -26,8 +26,7 @@ export default function PayrollPage() {
       const date = new Date(saved + 'T00:00:00');
       if (!isNaN(date.getTime())) return date;
     }
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
+    const date = businessTodayDate();
     date.setDate(date.getDate() - 29);
     return date;
   });
@@ -38,24 +37,22 @@ export default function PayrollPage() {
       const date = new Date(saved + 'T00:00:00');
       if (!isNaN(date.getTime())) return date;
     }
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    return date;
+    return businessTodayDate();
   });
 
   // Persist dates to localStorage
   useEffect(() => {
-    localStorage.setItem('payroll-start-date', startDate.toISOString().split('T')[0]);
+    localStorage.setItem('payroll-start-date', toDateStr(startDate));
   }, [startDate]);
 
   useEffect(() => {
-    localStorage.setItem('payroll-end-date', endDate.toISOString().split('T')[0]);
+    localStorage.setItem('payroll-end-date', toDateStr(endDate));
   }, [endDate]);
 
   const [payConfirm, setPayConfirm] = useState({ isOpen: false, employee: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, payment: null });
 
-  const daysDiff = Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+  const daysDiff = daysBetween(startDate, endDate) + 1;
   const dates = getDateRange(startDate, daysDiff);
 
   // Daytime follow-on credit for a night date: sum day rates of the dogs boarded that night × net%

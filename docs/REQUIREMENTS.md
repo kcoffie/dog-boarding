@@ -562,6 +562,24 @@ System calculates revenue correctly.
 
 ---
 
+### REQ-064: Today is San Francisco's date
+**Added:** 2026-10-26 (#350) | **Status:** Complete
+
+The business runs on San Francisco time (`America/Los_Angeles`), whatever the device's timezone (Kate, 2026-10-26). "Today" in the app is San Francisco's date, and every calendar date the app builds keeps its own day, never shifted through UTC.
+
+**Acceptance Criteria:**
+- `businessToday()` is San Francisco's date: at 9pm Pacific it is still that day on a device in UTC, Paris or Tokyo, before and after a DST change
+- Dogs Tonight, the phone view's opening day and its "today" highlight use San Francisco's today
+- A payment is dated with San Francisco's today (`paid_date`), wherever it is recorded from
+- The Dashboard (14 days), Payroll (last 30 days), the Today buttons, the Calendar's month, its today mark and Print range (a week), the net percentage's effective date and the manual sync range (60 days) all start from San Francisco's today
+- Calendar dates become `YYYY-MM-DD` from their own year, month and day (`toDateStr`), never via `toISOString()`; day counts between dates (`daysBetween`) don't change across a DST change
+
+**Not yet (PR 2 of #350):** booking times and other stored moments are still shown and compared in the device's timezone; they wait on the booking times being read correctly from the booking site.
+
+**Tests:** `src/__tests__/businessToday.test.jsx`
+
+---
+
 ## v2.0: External Data Sync
 
 ### REQ-100: External Source Authentication
