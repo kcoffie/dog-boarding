@@ -117,6 +117,10 @@ describe('REQ-065: only a date is shown when the time is not known', () => {
     expect(timeStatus('2026-06-28T16:00:00Z', 'AM')).toBe('contradicts');
   });
 
+  it('a missing or broken time is neither title-only nor a contradiction, with or without a label', () => {
+    expect([timeStatus(null, 'PM'), timeStatus('bad', 'AM'), timeStatus(null, null)]).toEqual(['shown', 'shown', 'shown']);
+  });
+
   it('a label that agrees with the time shows it, whatever its case; noon is PM', () => {
     expect(timeStatus('2026-06-28T10:00:00Z', 'am')).toBe('shown');
     expect(timeStatus('2026-06-28T12:00:00Z', 'PM')).toBe('shown');

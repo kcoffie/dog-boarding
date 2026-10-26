@@ -37,9 +37,10 @@ const TITLE_ONLY_HOURS = [0, 7, 8, 23];
 // (the site's AM/PM label disagrees with the time; Kate: date only, Q5)
 export function timeStatus(iso, ampm) {
   const d = valid(iso);
-  const onTheHour = d && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0;
+  if (!d) return 'shown'; // no time to hide; the readers show nothing for it
+  const onTheHour = d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0;
   if (!ampm) return onTheHour && TITLE_ONLY_HOURS.includes(d.getUTCHours()) ? 'title-only' : 'shown';
-  const pm = d ? d.getUTCHours() >= 12 : false;
+  const pm = d.getUTCHours() >= 12;
   return pm === (ampm.toUpperCase() === 'PM') ? 'shown' : 'contradicts';
 }
 
