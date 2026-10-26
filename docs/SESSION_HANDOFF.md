@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 24, 2026, ~17:00 UTC (session 48). **Production = main (`aaa5426`, PR #346, #344 PR 1), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Sessions 47–48: #344 (wrong pet IDs) found to be the server following a 302 to the week schedule; design note v2 + ADR-008 approved; PR 1 (no redirects, REQ-660) shipped 10-23 and its first night was clean; all 57 stored pet IDs verified; 15 wrong boarding forms deleted; PR 2 (dog = pet ID, REQ-661, migration 030) built and in review. Next: Kate runs migration 030, then PR 2 merges and deploys.**
+**Last updated:** October 25, 2026, ~21:45 UTC (session 48, continued). **Production = main (`8af23ed`, PR #347, #344 PR 2), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Sessions 47–48: #344 (wrong pet IDs) found to be the server following a 302 to the week schedule; design note v2 + ADR-008 approved; PR 1 (no redirects, REQ-660) shipped 10-23 and its first night was clean; all 57 stored pet IDs verified; 15 wrong boarding forms deleted; PR 2 (dog = pet ID, REQ-661) merged 10-25 after Kate ran migration 030; the 15 current/upcoming bookings re-queued. Next: the read-only checks after PR 2's first night (Immediate Next Steps 2), then #344 can close.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -27,7 +27,15 @@
 
 ---
 
-## Current State (2026-10-24 ~17:00 UTC, session 48)
+## Current State (2026-10-25 ~21:45 UTC, session 48 continued)
+
+### Session 48, continued (2026-10-25): #344 PR 2 deployed
+1. **Kate ran migration 030** (~21:20 UTC): the pre-check returned 0 rows, then the two statements. She confirmed the index (`dogs_external_pet_id_key`, unique; the old `idx_dogs_external_pet_id` gone). Read-only: 57 dogs with a pet ID, 57 distinct.
+2. **PR #347 squash-merged as `8af23ed`** (all 6 checks green, reviewer done). `check:deploy` OK: deploy success, home page 200, roster image 200.
+3. **Kate ran the re-queue SQL** (RUNBOOK "After the #344 PR 2 deploy" step 2). It matched **15** bookings, not 18 (3 had checked out since 10-24); verified read-only: those 15 `sync_queue` appointment items went `done` → `pending`. The next detail run (Integration Check, ~02:45 UTC on 10-26) reads those 15 pages once, under PR 2's rules.
+4. **#344 is still open on GitHub** on purpose: close it after the first-night checks pass (with a short comment: what shipped, PR #346 + #347, and the check results; no AI mention).
+5. Nothing else changed: no SQL by Claude, no booking-site requests, no messages sent.
+
 
 ### Session 48: what happened (2026-10-24)
 1. **Quick checks, PR 1's first night (10-24): clean.**
@@ -188,15 +196,16 @@ Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-inve
 
 ## Immediate Next Steps
 1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run`, open PRs.
-2. **#344 PR 2 (if not merged yet):** Kate runs **migration 030** in the SQL editor, outside 23:30–01:30 UTC: the pre-check in the file's header (expect 0 rows), then the two statements. Verify the index exists (`dogs_external_pet_id_key`, unique) → green checks → squash-merge → `check:deploy` → **Kate runs the re-queue SQL** in RUNBOOK "Q Boarding sync: N booking(s) to check" → "After the #344 PR 2 deploy" (about 18 current/upcoming bookings, once; already-read bookings are otherwise never re-read until edited).
-3. **After PR 2's first night (read-only, report in a few lines):**
+2. **#344 PR 2 is deployed** (`8af23ed`, migration 030 run, 15 bookings re-queued 10-25 ~21:30 UTC). **After its first night (from the ~02:45 UTC 10-26 Integration Check on; read-only, report in a few lines):**
+   - the 15 re-queued items are `done` again (or say why not: `last_error`, `meta.detail_notice`, `meta.detail_redirect`);
    - no dog renamed (dogs' `name` unchanged; compare with the 107 rows of 10-24), no new $0 dog without a boarding, the 4 checked rows keep their IDs;
    - `sync-detail` alerts: any pet notices, and what they said (each is a decision for Kate, not a bug to patch by hand);
    - new dogs have a pet ID (except a staff member's dog); second pets got IDs and form jobs (`sync_queue` `form_*` with their own `/pets/N/forms`);
    - `boarding_forms` whose pet ID differs from their dog's: still 0;
    - the first multi-pet page's log line `[Extraction] 🐾 2-pet page: …` (IC run log): the raw page's price divs carry `data-pet` (the shape was only confirmed on Chrome's rendered page).
+3. **If the checks pass:** close #344 with a short comment. If a notice asks for a decision, give Kate the options (one line each, real counts) and a recommendation; never fix data by hand in the app.
 4. **Top 3 after #344:** #13 dry-run 2 (Kate clicks; expected partial payment **$139.75**), **#342** (one shared calculation + remove Add/Edit/Delete boarding), #323. Also Sprint 1: #307, #324 Clear-for-Kate, first PST roster Mon 11-02.
-5. **Kate's own items:** migration 030; dry-run 2 clicks; book watch-first with Charlie; #337 chores; #8 calendar; forwarding the roster. Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the 74 week-page rows, the boarding-less $0 dogs; and the two same-name rows of a staff member's dog (no pet IDs) to merge, or its next booking alerts.
+5. **Kate's own items:** dry-run 2 clicks; book watch-first with Charlie; #337 chores; #8 calendar; forwarding the roster. Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the 74 week-page rows, the boarding-less $0 dogs; and the two same-name rows of a staff member's dog (no pet IDs) to merge, or its next booking alerts.
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.
