@@ -16,6 +16,7 @@ import { fetchAndStoreBoardingForm, formJobPetMatches } from './forms.js';
 import { dequeueOne, markDone, markFailed } from './syncQueue.js';
 import { syncLogger, logSyncStart, logSyncEnd } from './logger.js';
 import { readSettingsRow } from './syncSettingsRow.js';
+import { siteMidnight, siteNow } from '../../utils/siteClock.js';
 
 // Use timestamped logging
 const syncLog = syncLogger.log;
@@ -350,7 +351,12 @@ export async function runSync(options = {}) {
         const { skip: shouldSkip, reason: skipReason } = applyDetailFilters(
           details,
           appt.title,
-          { boardingOnly, startDate, endDate },
+          // Stored times are site clock values (ADR-009): compare with the picked days' site midnights
+          {
+            boardingOnly,
+            startDate: startDate ? new Date(siteMidnight(startDate)) : startDate,
+            endDate: endDate ? new Date(siteMidnight(endDate)) : endDate,
+          },
         );
         if (shouldSkip) {
           syncLog(`[Sync] ⏭️ Skipping ${appt.id} — ${skipReason}`);
@@ -452,11 +458,13 @@ export async function runSync(options = {}) {
     try {
       syncLog('[Sync] 🔍 Running archive reconciliation...');
       // For full syncs (no startDate), the schedule starts from today and paginates forward.
-      // Past-ended boardings won't appear on any fetched page — use today as the effective
-      // lower bound so they don't generate false-positive "possible sync bug" warnings.
-      const reconcileStart = startDate ?? new Date();
+      // Past-ended boardings won't appear on any fetched page — use San Francisco's now as
+      // the effective lower bound so they don't generate false-positive "possible sync bug"
+      // warnings. Stored times are site clock values (ADR-009), so the bounds are too (#353).
+      const reconcileStart = new Date(startDate ? siteMidnight(startDate) : siteNow());
+      const reconcileEnd = endDate ? new Date(siteMidnight(endDate)) : endDate;
       const reconcileResult = await reconcileArchivedAppointments(
-        supabase, seenExternalIds, reconcileStart, endDate
+        supabase, seenExternalIds, reconcileStart, reconcileEnd
       );
       result.appointmentsArchived = reconcileResult.archived;
       if (reconcileResult.skipped) {

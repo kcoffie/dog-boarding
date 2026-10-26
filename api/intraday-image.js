@@ -24,6 +24,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { queryBoarders, parseDateParam } from '../src/lib/pictureOfDay.js';
 import { computeIntradayDelta } from './notify-intraday.js';
+import { formatSiteDate } from '../src/utils/siteClock.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -98,17 +99,9 @@ function h(type, style, ...children) {
  * @param {string} departureIso
  * @returns {string}
  */
-function formatReadableDateRange(arrivalIso, departureIso) {
-  const fmt = (iso) => {
-    if (!iso) return '?';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '?';
-    return d.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'America/Los_Angeles',
-    });
-  };
+export function formatReadableDateRange(arrivalIso, departureIso) {
+  // Booking times are site clock values (ADR-009): their UTC date is the San Francisco date
+  const fmt = (iso) => formatSiteDate(iso, { month: 'short', day: 'numeric' }) ?? '?';
   return `${fmt(arrivalIso)} – ${fmt(departureIso)}`; // en dash with spaces
 }
 
@@ -120,8 +113,8 @@ function formatReadableDateRange(arrivalIso, departureIso) {
  */
 function formatHeaderDate(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const date = new Date(y, m - 1, d); // real-moment: a calendar date, not a booking time
+  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); // real-moment: a calendar date, not a booking time
 }
 
 /**
@@ -342,9 +335,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: err.message });
   }
   const dateStr = [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
+    date.getFullYear(), // real-moment: a calendar date, not a booking time
+    String(date.getMonth() + 1).padStart(2, '0'), // real-moment: a calendar date, not a booking time
+    String(date.getDate()).padStart(2, '0'), // real-moment: a calendar date, not a booking time
   ].join('-');
 
   const tsParam = req.query.ts || null;

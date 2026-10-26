@@ -72,14 +72,13 @@ describe('formatAsOf', () => {
 // ---------------------------------------------------------------------------
 
 describe('formatWeekendDatetime', () => {
-  it('formats a known UTC ISO string as weekday + time in LA timezone (PST, Jan)', () => {
-    // 2026-01-17T23:00:00Z = Sat Jan 17 3:00 PM PST (UTC-8, standard time)
-    expect(formatWeekendDatetime('2026-01-17T23:00:00.000Z')).toBe('Sat 3:00 PM');
+  // Booking times are site clock values (#353, ADR-009): the UTC clock is the San Francisco clock
+  it('prints a winter booking time as the site shows it (Sat Jan 17, 3:00pm stored 15:00Z)', () => {
+    expect(formatWeekendDatetime('2026-01-17T15:00:00.000Z')).toBe('Sat 3:00 PM PT');
   });
 
-  it('formats a Friday morning time correctly (PDT, May)', () => {
-    // 2026-05-22T18:00:00Z = Fri May 22 11:00 AM PDT (UTC-7, daylight time)
-    expect(formatWeekendDatetime('2026-05-22T18:00:00.000Z')).toBe('Fri 11:00 AM');
+  it('prints a summer booking time as the site shows it (Fri May 22, 11:00am stored 11:00Z)', () => {
+    expect(formatWeekendDatetime('2026-05-22T11:00:00.000Z')).toBe('Fri 11:00 AM PT');
   });
 
   it('returns "—" for null input', () => {
@@ -113,14 +112,10 @@ describe('formatWeekendHeaderDates', () => {
 // ---------------------------------------------------------------------------
 
 describe('getWeekendWindowISO', () => {
-  it('Friday UTC: daysToMonday = 3 (end is Monday)', () => {
-    // 2026-04-03 is a Friday UTC (day 5)
-    const fri = new Date('2026-04-03T20:00:00Z');
-    const { start, end } = getWeekendWindowISO(fri);
-    const endDate = new Date(end);
-    expect(endDate.getUTCDay()).toBe(1); // Monday
-    expect(endDate.getUTCHours()).toBe(12); // noon UTC
-    expect(new Date(start).toISOString()).toBe(fri.toISOString());
+  it('Friday in San Francisco: daysToMonday = 3 (end is Monday noon)', () => {
+    // 2026-04-03T20:00Z = Fri Apr 3, 1:00pm PDT
+    const { end } = getWeekendWindowISO(new Date('2026-04-03T20:00:00Z'));
+    expect(end).toBe('2026-04-06T12:00:00.000Z');
   });
 
   it('Saturday UTC: daysToMonday = 2 (end is Monday)', () => {
@@ -148,19 +143,17 @@ describe('getWeekendWindowISO', () => {
     expect(endDate.getUTCDate()).toBe(4); // Apr 4
   });
 
-  it('start equals the injected now', () => {
-    const now = new Date('2026-04-03T20:00:00Z');
-    const { start } = getWeekendWindowISO(now);
-    expect(start).toBe(now.toISOString());
+  it("start is San Francisco's now as a site clock value, rounded down to the hour", () => {
+    // 2026-04-03T20:25:40Z = 1:25:40pm PDT
+    const { start } = getWeekendWindowISO(new Date('2026-04-03T20:25:40Z'));
+    expect(start).toBe('2026-04-03T13:00:00.000Z');
   });
 
-  it('returns displayFri and displaySun dates', () => {
+  it('returns displayFri (now) and displayMon (the Monday the window ends on)', () => {
     const fri = new Date('2026-04-03T20:00:00Z');
-    const { displayFri, displaySun } = getWeekendWindowISO(fri);
+    const { displayFri, displayMon } = getWeekendWindowISO(fri);
     expect(displayFri).toBe(fri);
-    // displaySun = end - 1 day
-    const endDate = new Date(getWeekendWindowISO(fri).end);
-    expect(displaySun.getUTCDate()).toBe(endDate.getUTCDate() - 1);
+    expect(displayMon.toISOString()).toBe('2026-04-06T12:00:00.000Z');
   });
 });
 

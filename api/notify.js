@@ -453,9 +453,9 @@ export default async function handler(req, res) {
   }
 
   const dateStr = [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
+    date.getFullYear(), // real-moment: a calendar date, not a booking time
+    String(date.getMonth() + 1).padStart(2, '0'), // real-moment: a calendar date, not a booking time
+    String(date.getDate()).padStart(2, '0'), // real-moment: a calendar date, not a booking time
   ].join('-');
 
   console.log(`[Notify] Entry — window: ${window}, date: ${dateStr}`);

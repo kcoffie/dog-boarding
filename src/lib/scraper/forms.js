@@ -14,6 +14,7 @@ import { createSyncLogger } from './logger.js';
 import { authenticatedFetch } from './auth.js';
 import { classifyRedirect, SESSION_EXPIRED_MESSAGE } from './redirects.js';
 import { SCRAPER_CONFIG } from './config.js';
+import { siteDate } from '../../utils/siteClock.js';
 
 const formsLogger = createSyncLogger('Forms');
 const log = formsLogger.log;
@@ -176,14 +177,14 @@ export function parseMMDDYYYYtoISO(str) {
 export function findFormForBoarding(submissions, boarding) {
   if (!submissions || submissions.length === 0) return null;
 
-  const arrivalDay = new Date(boarding.arrival_datetime);
-  arrivalDay.setHours(23, 59, 59, 999); // include up to end of arrival day
+  // The arrival's San Francisco date (a site clock value, ADR-009), in any runtime's zone (#353)
+  const arrivalDay = siteDate(boarding.arrival_datetime);
+  if (!arrivalDay) return null;
+  const start = new Date(`${arrivalDay}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - 7);
+  const windowStart = start.toISOString().slice(0, 10);
 
-  const windowStart = new Date(boarding.arrival_datetime);
-  windowStart.setDate(windowStart.getDate() - 7);
-  windowStart.setHours(0, 0, 0, 0);
-
-  log(`[Forms] 🗓️  7-day window: ${windowStart.toISOString().slice(0, 10)} → ${arrivalDay.toISOString().slice(0, 10)} (${submissions.length} submissions)`);
+  log(`[Forms] 🗓️  7-day window: ${windowStart} → ${arrivalDay} (${submissions.length} submissions)`);
 
   const candidates = submissions.filter(s => {
     if (!s.submittedDate) {
@@ -195,8 +196,7 @@ export function findFormForBoarding(submissions, boarding) {
       log(`[Forms]   sub ${s.submissionId}: unparseable date "${s.submittedDate}" → ❌ excluded`);
       return false;
     }
-    const subDate = new Date(isoDate + 'T00:00:00');
-    const passes = subDate >= windowStart && subDate <= arrivalDay;
+    const passes = isoDate >= windowStart && isoDate <= arrivalDay; // YYYY-MM-DD compares as text
     log(`[Forms]   sub ${s.submissionId}: submitted ${s.submittedDate} → ${passes ? '✅ in window' : '❌ outside window'}`);
     return passes;
   });

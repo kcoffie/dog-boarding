@@ -28,6 +28,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getPictureOfDay, parseDateParam } from '../src/lib/pictureOfDay.js';
 import { decodeEntities } from '../src/lib/htmlUtils.js';
+import { formatSiteDate, bookingTime, timeStatus, siteNow } from '../src/utils/siteClock.js';
 
 export const config = { runtime: 'nodejs' };
 
@@ -156,8 +157,8 @@ function dogLabel(petNames, clientName) {
  */
 function formatDate(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const date = new Date(y, m - 1, d); // real-moment: a calendar date, not a booking time
+  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); // real-moment: a calendar date, not a booking time
 }
 
 /**
@@ -356,23 +357,14 @@ function workerCard(worker, colWidth, changedDogs = new Set()) {
 
 /**
  * Format a compact date range for the Q Boarding card: "4/29–5/2"
- * Uses America/Los_Angeles to match the rest of the app's date display.
+ * Booking times are site clock values (ADR-009): their UTC date is the San Francisco date.
  *
  * @param {string} arrivalIso
  * @param {string} departureIso
  * @returns {string}
  */
-function formatCompactDateRange(arrivalIso, departureIso) {
-  const fmt = (iso) => {
-    if (!iso) return '?';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '?';
-    return d.toLocaleDateString('en-US', {
-      month: 'numeric',
-      day: 'numeric',
-      timeZone: 'America/Los_Angeles',
-    });
-  };
+export function formatCompactDateRange(arrivalIso, departureIso) {
+  const fmt = (iso) => formatSiteDate(iso, { month: 'numeric', day: 'numeric' }) ?? '?';
   return `${fmt(arrivalIso)}–${fmt(departureIso)}`; // en dash
 }
 
@@ -660,23 +652,27 @@ const WEEKEND_BOARDING_ROW_H = 30;
 const WEEKEND_SECTION_MARGIN = 20;
 
 /**
- * Return { start, end } ISO strings for the "this weekend" query window.
- * start = now. end = Monday noon UTC — safely past Sunday 11:59 PM PDT/PST.
+ * Return { start, end } for the "this weekend" query window, in site clock values
+ * (booking times are San Francisco clock times written as UTC, ADR-009).
+ * start = San Francisco's now, rounded down to the hour, so a run at 3:00:05pm still
+ *   lists a 3:00pm booking, and Friday-afternoon arrivals and departures are in (#353).
+ * end = Monday noon San Francisco, so Monday-morning pick-ups are listed (Kate, Q4).
  *
- * On Fri UTC: +3 days to Monday. On Sat: +2. On Sun: +1.
+ * San Francisco's Fri: +3 days to Monday. Sat: +2. Sun: +1.
  * Falls back to +3 for any other day (manual trigger on non-weekend day).
+ * Header: displayFri is the real now; displayMon is Monday 12:00Z, still Monday in Pacific.
  *
  * @param {Date} [now] - Injectable for testing; defaults to current time.
  */
 export function getWeekendWindowISO(now = new Date()) {
-  const utcDay = now.getUTCDay(); // 0=Sun, 5=Fri, 6=Sat
-  const daysToMonday = utcDay === 6 ? 2 : utcDay === 0 ? 1 : 3;
-  const end = new Date(now);
-  end.setUTCDate(now.getUTCDate() + daysToMonday);
-  end.setUTCHours(12, 0, 0, 0); // Monday noon UTC — past Sunday midnight PDT
-  const displaySun = new Date(now);
-  displaySun.setUTCDate(now.getUTCDate() + daysToMonday - 1);
-  return { start: now.toISOString(), end: end.toISOString(), displayFri: now, displaySun };
+  const start = new Date(siteNow(now));
+  start.setUTCMinutes(0, 0, 0);
+  const siteDay = start.getUTCDay(); // 0=Sun, 5=Fri, 6=Sat
+  const daysToMonday = siteDay === 6 ? 2 : siteDay === 0 ? 1 : 3;
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + daysToMonday);
+  end.setUTCHours(12, 0, 0, 0);
+  return { start: start.toISOString(), end: end.toISOString(), displayFri: now, displayMon: end };
 }
 
 /**
@@ -691,7 +687,7 @@ export async function getWeekendBoardings(supabase, start, end) {
   console.log(`[RosterImage/Weekend] Querying boardings from ${start} to ${end}`);
   const { data, error } = await supabase
     .from('boardings')
-    .select('external_id, arrival_datetime, departure_datetime, booking_status, cancelled_at, dogs(name)')
+    .select('external_id, arrival_datetime, departure_datetime, arrival_ampm, departure_ampm, booking_status, cancelled_at, dogs(name)')
     .or(`and(arrival_datetime.gte.${start},arrival_datetime.lte.${end}),and(departure_datetime.gte.${start},departure_datetime.lte.${end})`)
     .order('arrival_datetime', { ascending: true });
 
@@ -702,6 +698,8 @@ export async function getWeekendBoardings(supabase, start, end) {
     external_id: b.external_id,
     arrival_datetime: b.arrival_datetime,
     departure_datetime: b.departure_datetime,
+    arrival_ampm: b.arrival_ampm ?? null,
+    departure_ampm: b.departure_ampm ?? null,
     booking_status: b.booking_status ?? 'confirmed',
     dog_name: b.dogs?.name ?? 'Unknown',
   }));
@@ -719,33 +717,31 @@ export async function getWeekendBoardings(supabase, start, end) {
 }
 
 /**
- * Format a UTC ISO datetime as "Fri 3:00 PM" in America/Los_Angeles.
+ * Format a booking time (a site clock value, ADR-009) as "Fri 3:00 PM PT".
+ * With only a date known (title-only, or an AM/PM label that contradicts the time), just "Fri".
  */
-export function formatWeekendDatetime(isoStr) {
-  if (!isoStr) return '—';
-  const d = new Date(isoStr);
-  if (isNaN(d.getTime())) return '—';
-  const weekday = d.toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short' });
-  const time = d.toLocaleTimeString('en-US', {
-    timeZone: 'America/Los_Angeles',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-  return `${weekday} ${time}`; // "Fri 3:00 PM"
+export function formatWeekendDatetime(isoStr, ampm = null) {
+  const weekday = formatSiteDate(isoStr, { weekday: 'short' });
+  if (!weekday) return '—';
+  const status = timeStatus(isoStr, ampm);
+  if (status === 'contradicts') {
+    console.warn(`[RosterImage/Weekend] AM/PM label "${ampm}" contradicts ${isoStr}: showing the day only`);
+  }
+  const time = bookingTime(isoStr, ampm);
+  return time ? `${weekday} ${time}` : weekday;
 }
 
 /**
- * Format the weekend header date range: "Fri Mar 17 – Sun Mar 19"
+ * Format the weekend header date range: "Fri Mar 17 – Mon Mar 20"
  */
-export function formatWeekendHeaderDates(displayFri, displaySun) {
+export function formatWeekendHeaderDates(displayFri, displayMon) {
   const fmt = (d) => d
     .toLocaleDateString('en-US', {
       timeZone: 'America/Los_Angeles',
       weekday: 'short', month: 'short', day: 'numeric',
     })
     .replace(',', '');
-  return `${fmt(displayFri)} – ${fmt(displaySun)}`;
+  return `${fmt(displayFri)} – ${fmt(displayMon)}`;
 }
 
 /**
@@ -791,10 +787,10 @@ function weekendBoardingRow(boarding, datetimeField) {
       fontWeight: 400,
       fontSize: 13,
       color: COLORS.unchanged,
-      width: 110,
+      width: 130,
       textAlign: 'right',
       flexShrink: 0,
-    }, formatWeekendDatetime(isoStr)),
+    }, formatWeekendDatetime(isoStr, boarding[datetimeField.replace('datetime', 'ampm')])),
     // Night count
     h('span', {
       fontFamily: 'Inter',
@@ -875,8 +871,8 @@ export function computeWeekendImageHeight(arriving, departing) {
 /**
  * Build the full satori element tree for the weekend roster image.
  */
-function buildWeekendLayout(arriving, departing, displayFri, displaySun) {
-  const headerDates = formatWeekendHeaderDates(displayFri, displaySun);
+function buildWeekendLayout(arriving, departing, displayFri, displayMon) {
+  const headerDates = formatWeekendHeaderDates(displayFri, displayMon);
   const availableWidth = IMAGE_WIDTH - OUTER_PAD * 2;
 
   return h('div', {
@@ -952,10 +948,10 @@ export default async function handler(req, res) {
     console.log('[RosterImage] Generating weekend roster image');
     try {
       const supabase = getSupabase();
-      const { start, end, displayFri, displaySun } = getWeekendWindowISO();
+      const { start, end, displayFri, displayMon } = getWeekendWindowISO();
       const { arriving, departing } = await getWeekendBoardings(supabase, start, end);
 
-      const element = buildWeekendLayout(arriving, departing, displayFri, displaySun);
+      const element = buildWeekendLayout(arriving, departing, displayFri, displayMon);
       const height = computeWeekendImageHeight(arriving, departing);
       console.log(`[RosterImage/Weekend] ${arriving.length} arriving, ${departing.length} departing, height: ${height}px`);
 

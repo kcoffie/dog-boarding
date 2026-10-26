@@ -94,7 +94,7 @@ export default function BoardingMatrix({ startDate, days = DEFAULT_MATRIX_DAYS }
 
   const isWeekend = (dateStr) => {
     const date = new Date(dateStr + 'T00:00:00');
-    const day = date.getDay();
+    const day = date.getDay(); // real-moment: a calendar date, not a booking time
     return day === 0 || day === 6; // Sunday or Saturday
   };
 

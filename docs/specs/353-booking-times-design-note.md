@@ -1,6 +1,6 @@
 # #353 design note: booking times are San Francisco clock times
 
-**Status:** Kate chose option B (2026-10-26, session 51); architect: proceed with changes (folded in below); reviewer findings fixed (session 52). Three small questions open (Q4–Q6). Issue #353 (`priority: high`). #350 PR 2 waits on it.
+**Status:** Kate chose option B (2026-10-26, session 51); architect: proceed with changes (folded in below); reviewer findings fixed (session 52). Kate answered Q4–Q6 (session 52); ADR-009 written. One question for PR 2 (Q7). Issue #353 (`priority: high`). #350 PR 2 waits on it.
 
 ## Problem
 The booking site stores each booking's times as **San Francisco clock times written as if they were UTC**. A 10:00am drop-off is stored as `10:00Z`. The app copies them as they are, then reads them as real moments: in Pacific time `10:00Z` is 3:00am (2:00am in winter). So:
@@ -54,10 +54,11 @@ Real moments stay real moments: `created_at`, `updated_at`, `last_synced_at`, `c
 | Form matching (`findFormForBoarding`, `forms.js:176-199`) | runtime-local end of arrival day (right on Vercel) | `siteDate` (same on Vercel) | 1 |
 | Form-job "departed?" (`enqueueFormJob`, `mapping.js:682`) | runtime-local midnight vs the stored value | `siteDate(departure) >= siteDate(siteNow())` | 1 |
 | Sync Now's cancellation window (`sync.js:457` → `reconcile.js:65`) | starts at the real now | `siteNow()` | 1 |
-| Manual sync range (`appointmentFilter.js:95-101`, `SyncSettings.jsx:97/101`) | device-local Dates | `Date.UTC` | 1 |
+| Manual sync range (`appointmentFilter.js:95-101` and `reconcile.js`, fed by `sync.js` from `SyncSettings.jsx:97/101`) | device-local Dates compared with stored times | `sync.js` passes the picked days' site midnights (`siteMidnight`) to the filter and reconcile; the schedule pages are still fetched by the picked local days (`schedule.js` builds week URLs from them) | 1 |
 | Title-date fallback (`parseServiceTypeDates`) | runtime-local midnight | `Date.UTC` midnight | 1 |
 | Daytime `tsToDate` | right; wrong comment | unchanged; comment fixed | 1 |
 | Seed script (`scripts/seed-test-data.js:212-219`) | local `setDate`/`setHours` on booking times | `setUTC*` | 1 |
+| Title vs timestamp year check (`extraction.js:90`) | local year of a booking time | UTC year | 1 |
 | Dogs page times (`formatTime`/`formatDateTime`, `dateUtils.js:54/63`; `formatDateWithAmPm`, `DogsPage.jsx:34-37`) | device-local, 7–8 h early | `siteTime` / `siteDate` + "PT"; date only for title-only rows (Q2, Q6) and contradicting labels (Q5) | 2 |
 | Dogs page status (`isPastBoarding` `:58`; `getBoardingStatus` `:67-76`, which drives the Current/Upcoming/Past badge and sort) | real now vs fake moment | `siteNow()` | 2 |
 | Calendar: times (`:70`), `isSameDay`, `monthBookings` (`:305-314`), `getBookingsForDay` (`:317-330`), `getBookingsForAnyDay` (`:358-367`), print view and selected day | device-local | `siteTime` / `siteDate` | 2 |
@@ -75,18 +76,19 @@ Fine as they are: `api/roster-image.js:758` (night count). Out of scope: `script
 1. **A pm drop-off and the Dashboard's day icon.** `isDayPresent` counts the arrival day as a day "if they arrived before 5pm". Read correctly, a 4pm drop-off (37 bookings at `16:00Z`) is before 5pm, so it **still** shows a day icon; only the 2 drop-offs at 5:15pm lose it. The issue said "a 4pm arrival doesn't count as a day stay". Which do you want: (a) keep "before 5pm", or (b) use the site's AM/PM label (PM drop-off = no day)? This is display only: pay uses nights (`nightStays`), not `isDayPresent`. The 2 drop-offs at 5:15pm are both a staff member's dog (Goose, no pet ID, $0; March and April), so no client booking has ever arrived after 5pm. **Kate: (a)**, keep "before 5pm" (what a Pacific device shows today); leave the two 5:15pm stays alone (a staff dog dropped off after a shift; it stays the night, and nights don't depend on the time).
 2. **The 24 title-only rows at midnight, 7:00 or 8:00 (Jan–Mar 2026)** would show "8:00 AM PT" as a time. **Kate: (a)**, show no time when the booking has no AM/PM label and the time is midnight, 7:00 or 8:00 (no data change).
 3. **"PT" on every booking time: yes (Kate).**
-4. **Monday-morning pick-ups on the Friday pm roster. Open.** Today the window already ends Monday 12:00Z, which as a site clock time is Monday noon SF, so Monday-morning pick-ups are already listed; only the header ends at "Sun" (`formatWeekendHeaderDates`, `roster-image.js:741`). (a) Keep them and make the header "Fri – Mon" (recommended: no change to which bookings are listed); (b) end the window at Sunday 11:59pm (Monday pick-ups leave the Friday roster; Monday's 4am roster has them).
-5. **The 2 rows whose AM/PM label contradicts the time. Open** (architect point 4): `C63Qgwjs` `10:00Z` "PM", `C63QgNHs` `07:00Z` "PM". (a) Show the date only and log it (recommended); (b) show the stored time.
-6. **`C63QgTXx`'s 23:00Z departure (no label; Goose's March stay). Open.** Kate said to leave its data alone; Q2's rule doesn't cover 23:00, so it would show "Mar 8, 11:00 PM PT". (a) Add 23:00 to Q2's rule, so it shows "Mar 8" with no time (recommended: it's a Paris midnight, the same title-only case); (b) show 11:00 PM.
+4. **Monday-morning pick-ups on the Friday pm roster. Kate: (a), keep them with the header "Fri – Mon".** Today the window already ends Monday 12:00Z, which as a site clock time is Monday noon SF, so Monday-morning pick-ups are already listed; only the header ends at "Sun" (`formatWeekendHeaderDates`, `roster-image.js:741`). (a) Keep them and make the header "Fri – Mon" (recommended: no change to which bookings are listed); (b) end the window at Sunday 11:59pm (Monday pick-ups leave the Friday roster; Monday's 4am roster has them).
+5. **The 2 rows whose AM/PM label contradicts the time. Kate: (a), date only, logged** (architect point 4): `C63Qgwjs` `10:00Z` "PM", `C63QgNHs` `07:00Z` "PM". (a) Show the date only and log it (recommended); (b) show the stored time.
+6. **`C63QgTXx`'s 23:00Z departure (no label; Goose's March stay). Kate: (a), date only.** Its title is "Goose 3/7-8(Sun)", so "Mar 8" is the right date. Kate said to leave its data alone; Q2's rule doesn't cover 23:00, so it would show "Mar 8, 11:00 PM PT". (a) Add 23:00 to Q2's rule, so it shows "Mar 8" with no time; (b) show 11:00 PM.
+7. **For PR 2: `C63QgNHs` ("3/4-19", title-only) has an arrival at `08:00Z` labelled AM.** The label agrees with the time, so Q2's rule doesn't hide it and the Dogs page would show "8:00 AM PT", a time the site never gave. It's the one labelled row of the 24 (E8). Open: (a) date only for any 00:00/07:00/08:00/23:00 time on a booking whose title has no am/pm (needs the title), or (b) leave it (March, a past stay, never on a roster).
 
 ## Architect review (2026-10-26): proceed with changes
 Folded in:
 1. **Test zones that can catch a wrong date.** Every stored time is 07:00–17:15Z, except title-only rows at 00:00Z and one at 23:00Z, so UTC, Pacific, Paris and Tokyo all give `10:00Z` the same date even with `getDate()`. Tests and both scoped Stryker runs use **`Pacific/Kiritimati` (+14)** and **`Pacific/Pago_Pago` (−11)** (no DST in either): `10:00Z` is the next day in one and the day before in the other.
 2. **The guard, concretely:** a vitest test that walks `src/`, `api/`, `scripts/` with `fs` (not `git grep`: Stryker's sandbox is untracked). In any file that names a booking-time field (`arrival_datetime`, `departure_datetime`, `arrivalDateTime`, `departureDateTime`, `check_in_datetime`, `check_out_datetime`, `check_in`, `check_out`, `start_ts`, `day_ts`; ~25 files), it fails on local-zone calls (`get/setHours|Date|Day|Month|FullYear(`, multi-argument `new Date(y, m, d)`, `toLocale*String(` without `timeZone`, `toTimeString(`, `toDateString(`) unless the line says `// real-moment: <why>` or the file is `siteClock.js`.
    - **Limits (accepted):** it catches local-zone reads, not comparisons with the real now (`new Date() > new Date(departureDateTime)`); those are covered by the tests for each reader in the table. It works per file, so legitimate "today" and calendar-grid calls in the same files (`pictureOfDay.js`, `syncRunner.js`, `schedule.js`, `api/notify.js`, `CalendarPage.jsx` and others) need the `// real-moment:` marker: a one-off cost, and each marker says why.
-   - **In PR 1** it carries an allowlist of the files PR 2 fixes (the PR 2 rows above); PR 2 empties it.
+   - **In PR 1** it carries an allowlist (`NOT_YET`) of the files PR 2 fixes (the PR 2 rows above), plus `scripts/integration-check.js` (its "today" is #350's); PR 2 empties the PR 2 part. A marker covers its own line, or the next line when it's a comment line on its own.
 3. **Weekend window:** start at `siteNow()` rounded down to the hour (the cron runs at 22:00:0x, so a 3:00pm Friday booking would miss by seconds). Friday afternoon **departures** come in too, not just arrivals. The header keeps the real `now` (formatting `siteNow()` in Pacific would shift it twice).
-4. **Labels that contradict the time:** when `*_ampm` disagrees with the UTC hour (2 rows: `C63Qgwjs` 10:00Z "PM", `C63QgNHs` 07:00Z "PM"), show the date only and log it. **Pending Kate (Q5).**
+4. **Labels that contradict the time:** when `*_ampm` disagrees with the UTC hour (2 rows: `C63Qgwjs` 10:00Z "PM", `C63QgNHs` 07:00Z "PM"), show the date only and log it. **Kate: yes (Q5).**
 5. **Server code is right only because Vercel runs in UTC:** `queryBoarders` (`pictureOfDay.js:162`) and `findFormForBoarding` (`forms.js:176-199`) move to `Date.UTC` / `siteDate` (no change on Vercel; right in any zone).
 6. **`siteNow()`** uses `formatToParts` with `hourCycle: 'h23'` and returns an ISO string, not a Date, so it can't be handed to a Pacific formatter. In the repeated 1–2am hour on 11-01 it steps back an hour: harmless for comparisons.
 7. **Lasting cost, in ADR-009:** raw SQL against `now()` on these columns is always wrong by 7–8 h (Kate's queries, any future ops-watch rule); #318's engine must use `siteClock`.
@@ -95,7 +97,7 @@ The readers the first draft missed (and those the session 52 review found) are r
 
 ## Kate's decisions on the architect's points (2026-10-26)
 - **Friday-afternoon bookings on the Friday pm roster: yes, list them** (9 Friday 4pm arrivals and 16 Friday 4:15–5pm departures so far were left off; next: a Fri 12-04 4pm arrival).
-- Still open: Q4, Q5 and Q6 above.
+- Q4, Q5 and Q6 answered (session 52); Q7 is for PR 2.
 
 ## Threat
 No new secret, table, job or request. No client data in tests (synthetic names; the real page's shape only).
@@ -116,6 +118,6 @@ No new secret, table, job or request. No client data in tests (synthetic names; 
 - **When it isn't:** a time that differs from the site is a bug (source of truth). Today a person has to notice it, and the Friday roster is the first place Kate or staff would. **Proposed follow-up (not in PR 1 or 2; an issue if Kate agrees):** the Integration Check, which already reads the week page, compares each row's printed time with `siteTime` of the stored value and alerts on a mismatch, with no new booking-site requests.
 
 ## Order of work
-1. This note → architect → Kate's answers (Q4–Q6) → ADR-009 ("booking times are site clock times").
+1. This note → architect → Kate's answers (Q4–Q6) → ADR-009 (`docs/adr/009-booking-times-are-site-clock-times.md`).
 2. **PR 1:** `siteClock.js`, the guard test (with PR 2's files allowlisted), and every row marked **1** above: Friday pm roster (times, window, date ranges), `queryBoarders`, form matching and the form-job check, Sync Now's cancellation window, the manual sync range, the title fallback, the `tsToDate` comment, the seed script. Target: merged before the **Fri 10-30** roster (22:00 UTC).
 3. **PR 2** (= #350 PR 2): every row marked **2** above (Dogs page, Calendar, day/night helpers, Sync History, form view, upcoming forms, `toTimeInputValue`), with "PT"; empties the guard's allowlist.

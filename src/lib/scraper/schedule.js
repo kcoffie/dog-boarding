@@ -111,9 +111,9 @@ function buildScheduleStartUrl(startDate) {
   if (!startDate) {
     return `${SCRAPER_CONFIG.baseUrl}/schedule`;
   }
-  const y = startDate.getFullYear();
-  const m = startDate.getMonth() + 1; // 0-indexed
-  const d = startDate.getDate();
+  const y = startDate.getFullYear(); // real-moment: the schedule's local calendar days, never compared with stored times
+  const m = startDate.getMonth() + 1; // 0-indexed // real-moment: the schedule's local calendar days, never compared with stored times
+  const d = startDate.getDate(); // real-moment: the schedule's local calendar days, never compared with stored times
   return `${SCRAPER_CONFIG.baseUrl}/schedule/days-7/${y}/${m}/${d}`;
 }
 
@@ -134,7 +134,7 @@ function buildScheduleStartUrl(startDate) {
  * @param {number} [year] - Defaults to current year
  * @returns {Date|null}
  */
-export function parseAppointmentStartDate(timeStr, year = new Date().getFullYear()) {
+export function parseAppointmentStartDate(timeStr, year = new Date().getFullYear()) { // real-moment: the schedule's local calendar days, never compared with stored times
   if (!timeStr) return null;
 
   const MONTHS = {
@@ -150,7 +150,7 @@ export function parseAppointmentStartDate(timeStr, year = new Date().getFullYear
   const month = MONTHS[monthKey];
   if (month === undefined) return null;
 
-  return new Date(year, month, day);
+  return new Date(year, month, day); // real-moment: the schedule's local calendar days, never compared with stored times
 }
 
 /**
@@ -265,7 +265,7 @@ export async function fetchAllSchedulePages(options = {}) {
     // prevent the stop from ever firing.
     if (fetchOptions.endDate && result.appointments.length > 0) {
       const endDateMidnight = new Date(fetchOptions.endDate);
-      endDateMidnight.setHours(23, 59, 59, 999);
+      endDateMidnight.setHours(23, 59, 59, 999); // real-moment: the schedule's local calendar days, never compared with stored times
       const parseableDates = result.appointments
         .map(appt => parseAppointmentStartDate(appt.time))
         .filter(Boolean);

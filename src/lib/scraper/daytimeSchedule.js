@@ -94,9 +94,8 @@ function innerText(html, className) {
 /**
  * Convert a Unix timestamp (seconds) to a YYYY-MM-DD date string.
  *
- * data-ts values represent midnight of the day column in Pacific time.
- * Midnight PT (UTC-7/8) corresponds to 07:00–08:00 UTC the same calendar
- * date, so toISOString().slice(0,10) always returns the correct local date.
+ * data-ts values are site clock values (ADR-009): a San Francisco clock time
+ * written as UTC (09:00Z = 9am), so their UTC date is the day column's date.
  *
  * Error-handling: returns null for falsy or unparseable inputs.
  *

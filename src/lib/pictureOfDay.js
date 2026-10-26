@@ -33,9 +33,9 @@ const logWarn = logger.warn;
  * @returns {string}
  */
 function toDateStr(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
+  const y = date.getFullYear(); // real-moment: a calendar date, not a booking time
+  const m = String(date.getMonth() + 1).padStart(2, '0'); // real-moment: a calendar date, not a booking time
+  const d = String(date.getDate()).padStart(2, '0'); // real-moment: a calendar date, not a booking time
   return `${y}-${m}-${d}`;
 }
 
@@ -51,7 +51,7 @@ export function parseDateParam(dateStr) {
     throw new Error(`Invalid date param: "${dateStr}". Expected YYYY-MM-DD.`);
   }
   const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d); // local midnight, no UTC trap
+  const date = new Date(y, m - 1, d); // local midnight, no UTC trap // real-moment: a calendar date, not a booking time
   if (isNaN(date.getTime())) {
     throw new Error(`Invalid date param: "${dateStr}" does not resolve to a valid date.`);
   }
@@ -66,7 +66,7 @@ export function parseDateParam(dateStr) {
  */
 function yesterdayStr(date) {
   const d = new Date(date);
-  d.setDate(d.getDate() - 1);
+  d.setDate(d.getDate() - 1); // real-moment: a calendar date, not a booking time
   return toDateStr(d);
 }
 
@@ -142,8 +142,9 @@ async function queryAppointmentsByDate(supabase, dateStr, label) {
  * daytime appointments on the same day as their overnight stay.
  *
  * A dog is "overnight tonight" if:
- *   arrival_datetime  <  midnight(dateStr+1) local time  (arrived by end of today)
- *   departure_datetime >= midnight(dateStr+1) local time  (departs tomorrow or later)
+ *   arrival_datetime  <  midnight(dateStr+1)  (arrived by end of today)
+ *   departure_datetime >= midnight(dateStr+1)  (departs tomorrow or later)
+ * Booking times are site clock values (ADR-009), so that midnight is 00:00Z in any zone.
  *
  * Error-handling: returns [] on DB error (boarders list is non-critical;
  * a failed boarders query should not block the image send).
@@ -155,11 +156,10 @@ async function queryAppointmentsByDate(supabase, dateStr, label) {
 export async function queryBoarders(supabase, dateStr) {
   log(`Querying boarders for ${dateStr} (from boardings table)`);
 
-  // Midnight of dateStr+1 in local time — dogs staying overnight must depart
-  // at or after this moment. Using local Date to stay consistent with
-  // parseDateParam and the rest of the date logic in this module.
+  // Site clock midnight of dateStr+1 — dogs staying overnight depart at or after it.
+  // Date.UTC, not local time: right on any runtime, not only on Vercel's UTC (#353).
   const [y, m, d] = dateStr.split('-').map(Number);
-  const nextDayMidnight = new Date(y, m - 1, d + 1); // JS handles month/day overflow
+  const nextDayMidnight = new Date(Date.UTC(y, m - 1, d + 1)); // handles month/day overflow
   const nextDayISO = nextDayMidnight.toISOString();
 
   log(`Boarders date boundary: arrival < ${nextDayISO} AND departure >= ${nextDayISO}`);
@@ -371,7 +371,7 @@ export async function getPictureOfDay(supabase, date) {
   // Monday gate: skip diff so dogs don't falsely show as added after the weekend.
   // Decision: date.getDay() === 1 in local time. The date param is always local midnight
   // (constructed via parseDateParam or new Date()), so getDay() is the correct local weekday.
-  const isMonday = date.getDay() === 1;
+  const isMonday = date.getDay() === 1; // real-moment: a calendar date, not a booking time
   if (isMonday) {
     log(`Monday detected (${dateStr}) — skipDiff=true, all dogs will render as unchanged`);
   }

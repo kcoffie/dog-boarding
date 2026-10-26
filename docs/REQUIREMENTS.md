@@ -580,6 +580,25 @@ The business runs on San Francisco time (`America/Los_Angeles`), whatever the de
 
 ---
 
+### REQ-065: Booking times read as the booking site shows them
+**Added:** 2026-10-26 (#353) | **Status:** In Progress (PR 1: server side; PR 2: screens)
+
+The booking site stores each booking's times as San Francisco clock times written as UTC (10:00am is `10:00Z`, all year, no DST shift). They stay stored that way and are read only through `src/utils/siteClock.js` (ADR-009), so every date and time matches the site on any device and any server.
+
+**Acceptance Criteria:**
+- A booking time reads as the site's San Francisco date and time (`siteDate`, `siteTime`), labelled "PT", with the host in UTC, Pacific, Paris, Tokyo, `Pacific/Kiritimati` or `Pacific/Pago_Pago`, before and after a DST change
+- Only the date is shown when the time isn't known: a title-only date (no AM/PM label and a time of 00:00, 07:00, 08:00 or 23:00), or an AM/PM label that contradicts the time (logged) (Kate, Q2, Q5, Q6)
+- Comparisons with "now" use San Francisco's now written the same way (`siteNow`)
+- The Friday pm roster lists bookings from the run's hour (San Francisco, rounded down) to Monday noon, including Friday-afternoon arrivals and departures and Monday-morning pick-ups; its header reads "Fri – Mon" (Kate, Q4)
+- Server dates don't depend on the runtime's zone: the roster's boarders, form matching, a boarding's form job (until the end of its departure day), Sync Now's date filter and reconcile window, and a title-only date (`Date.UTC` midnight)
+- No file that names a booking-time field reads it with a local-zone call outside `siteClock.js`, unless the line is marked `// real-moment:` (guard test)
+
+**Not yet (PR 2):** the Dogs page, Calendar, day/night helpers, Sync History, form view and upcoming forms (the guard's `NOT_YET` list).
+
+**Tests:** `src/__tests__/siteClock.test.js`, `src/__tests__/scraper/syncSiteRange.test.js`, `src/__tests__/siteClockGuard.test.js`, `src/__tests__/rosterImage.test.js`
+
+---
+
 ## v2.0: External Data Sync
 
 ### REQ-100: External Source Authentication
@@ -1316,12 +1335,12 @@ An independent GH Actions script verifies that the DB matches the live external 
 ### REQ-630: Friday PM Weekend Boarding Preview
 **Added:** v4.4 | **Status:** Complete
 
-Every Friday afternoon, a WhatsApp image previews weekend boarding activity (arrivals and departures Sat–Sun).
+Every Friday afternoon, an image previews weekend boarding activity (arrivals and departures from Friday afternoon to Monday noon).
 
 **Acceptance Criteria:**
 - Vercel crons send it in the 3pm Pacific hour on Fridays, with the 4pm hour as a retry (REQ-659). `notify-friday-pm.yml` is a manual run only
 - `GET /api/notify?window=friday-pm` generates a weekend-themed image
-- Shows two sections: dogs arriving and dogs departing Fri–Sun with check-in/out times and night counts
+- Shows two sections: dogs arriving and dogs departing from the run's hour on Friday to Monday noon (header "Fri – Mon"), with check-in/out times as the booking site shows them ("Sat 10:15 AM PT") and night counts (REQ-065)
 - Always sends regardless of hash (weekend preview is always useful)
 - A send that reached no recipient records `notify-friday-pm` `failure` (`No recipient received the roster (N of N sends failed)`) and returns 500 (#255)
 - `cron_health` row written for `notify-friday-pm`

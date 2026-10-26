@@ -43,7 +43,7 @@ async function fetchSyncLogs(options = {}) {
   if (endDate) {
     // Add a day to include the entire end date
     const endOfDay = new Date(endDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    endOfDay.setHours(23, 59, 59, 999); // real-moment: started_at is a real moment
     query = query.lte('started_at', endOfDay.toISOString());
   }
 
