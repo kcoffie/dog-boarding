@@ -1,6 +1,6 @@
 # #316 design note: a booking removed on the booking site is cancelled in the app automatically
 
-**Status:** architect: proceed with changes (folded in below, session 52, 2026-10-26); Kate answered Q1 and Q3; Q2 and Q4–Q5 open. Builds on #353 PR 1 (`siteMidnight`, merged 10-26 as `f317878`). Issue #316 (`priority: high`, Kate 2026-10-26: "very soon"). Kate: the booking site is the source of truth (2026-10-23).
+**Status:** architect: proceed with changes (folded in below, session 52, 2026-10-26); Kate answered Q1–Q3; Q4–Q5 open. Builds on #353 PR 1 (`siteMidnight`, merged 10-26 as `f317878`). Issue #316 (`priority: high`, Kate 2026-10-26: "very soon"). Kate: the booking site is the source of truth (2026-10-23).
 
 ## Problem
 A booking deleted on the booking site stays in the app: on the rosters, in nights and in pay. Only the browser's Sync Now notices it: `reconcile.js` is called only from `sync.js` (`src/lib/scraper/sync.js:458`), which only `useSyncSettings.js` imports. The scheduled syncs read just the bookings they see on the week pages (`runScheduleSync`, `src/lib/scraper/syncRunner.js:261`), and a deleted booking simply isn't there, so nothing scheduled looks at it again.
@@ -57,7 +57,7 @@ A booking deleted on the booking site stays in the app: on the rosters, in night
 
 ## Questions for Kate
 1. ~~Does a week page list a stay that began before its Sunday?~~ **Yes** (Kate, 2026-10-26, E4b). No exclusion needed.
-2. **Does `C63QhB7h` answer 302 → `/schedule`?** Kate checks once in her browser's Network tab, **before merge**: a 403 or 429 there would trip the breaker on the first night (above).
+2. ~~Does `C63QhB7h` answer 302 → `/schedule`?~~ **Yes: 302 with Location `/schedule`** (Kate, browser Network tab, 2026-10-26). A second observation of E1; no 403/429.
 3. ~~Alert wording and channel~~ **One Telegram alert per run, listing each cancelled or restored booking: yes** (Kate, 2026-10-26).
 4. **A booking moved outside the next two weeks:** (a) accept it: cancelled until it reappears on a page, then restored, and both alerts name it (recommended: no extra requests); (b) before marking, also open the ID-only URL `/schedule/a/<id>` (`extraction.js:179`); unproven whether the site serves the current version there, so it needs a test page load.
 5. **First night report-only?** (a) The first night classifies and alerts "would cancel …" but marks nothing; live from the next night (recommended: `C63QhB7h` starts 11-03, so there's room); (b) live from the first night.
@@ -83,4 +83,4 @@ No new secret, table or request type: the same signed-in page loads Sync Now mak
 - **When it isn't:** a booking gone from the site but still in the app after a night is a bug; every stop is an alert, never silent.
 
 ## Order of work
-Architect (done) → Kate's answers (Q2, Q4, Q5) → build (one PR, ~1 day) → reviewer → merge → first night checked (report-only if Q5a) → live.
+Architect (done) → Kate's answers (Q4, Q5) → build (one PR, ~1 day) → reviewer → merge → first night checked (report-only if Q5a) → live.
