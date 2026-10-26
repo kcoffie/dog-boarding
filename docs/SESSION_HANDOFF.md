@@ -34,15 +34,13 @@
    - **The 15 re-queued bookings** were all read again with no errors. Vercel `detail` read 1 at 00:16 and 1 at 00:50; Integration Check run `40259684634` (02:33 UTC) read the rest.
    - **Dogs:** none renamed or created (still 107). The 4 corrected rows kept their IDs. 59 dogs have a pet ID, all distinct.
    - **Two links by evidence, each sent as a `sync-detail` alert.** Each dog already had a boarding on that booking (rule 1a):
-     - **Tracy** (160430, booking `C63QhFVc`): Annie's second pet on all 6 of Annie's two-pet bookings since February.
-     - **Marlee Hill** (201014, booking `C63QhB7h`): Mochi Hill's second pet on all 15 of their bookings.
+     - **Pet 160430** (booking `C63QhFVc`): the second pet on all 6 of this client's two-pet bookings since February.
+     - **Pet 201014** (booking `C63QhB7h`): the second pet on all 15 of this household's bookings.
      - Neither needs a decision. Their form jobs were queued (7 done by 03:20 UTC, 7 pending).
    - **Forms under another pet's ID:** still 0 (93 forms).
    - **The IC log shows `[Extraction] 🐾 2-pet page: pet IDs 90053,201014; data-pets="201014,90053"; priced pet IDs 90053,201014`.** So the raw page's prices carry `data-pet`.
    - **Overnight:** `auth` refreshed at 00:37 (good until 10-27 06:37), `site_access` not blocked, ops-watch 10-25 had no findings.
-   - **Unexplained, not a #344 problem:** `sync_appointments` without dates is **73**, not the 74 of 10-24.
-     - The total is still 481, no code deletes these rows, and no row gained dates since 10-24.
-     - The old list of IDs wasn't saved. I asked Kate whether she ran SQL on 10-24/25; no answer yet.
+   - **`sync_appointments` without dates is 73, not the 74 of 10-24: explained.** `C63QhLBU` (saved dateless on 10-23 from the week page) gained its dates when the sync re-read it on its new URL; a later update on 10-26 02:35 UTC overwrote its `previous_data`, which hid the change at first. Kate ran no SQL. The other 73 have no boarding and haven't been re-read since 10-23.
 2. **#342 shipped: PR #349 merged as `332d53a`, `check:deploy` OK.** REQ-036; REQ-020 to REQ-023 are now **Removed**.
    - **`nightStays(dogs, boardings, date)`** in `src/utils/calculations.js` is now the only place that decides a night. The rules (Kate, 2026-10-26):
      - a cancelled boarding has no night;
@@ -71,8 +69,8 @@
      - Two reviewer passes (the second on the whole final diff: no must-fix), posted as a PR comment.
    - **Tool note:** the classifier blocked `gh pr merge` as "Merge Without Review" until Kate said "do the merge" in chat. The reviewer's findings are now posted on the PR as well.
 3. **Filed:**
-   - **#350:** the UI takes "today" as the UTC date. After 5pm Pacific, "Dogs Tonight", the phone view's default day and the "today" highlight show tomorrow, and **a payment recorded in the evening gets tomorrow's `paid_date`**. Kate: "the UI should reflect the time in San Francisco." No priority label yet; Claude suggested high.
-   - **#351:** the Dogs page still edits dogs by hand (Add Dog, Import CSV, Deactivate, plus the delete-dog functions). Kate's Q3 = separate issue. Open question in it: keep Deactivate?
+   - **#350:** the UI takes "today" as the UTC date. After 5pm Pacific, "Dogs Tonight", the phone view's default day and the "today" highlight show tomorrow, and **a payment recorded in the evening gets tomorrow's `paid_date`**. Kate: "the UI should reflect the time in San Francisco." **`priority: high`**, next in Sprint 1 (Kate, 10-26).
+   - **#351:** the Dogs page still edits dogs by hand (Add Dog, Import CSV, Deactivate, plus the delete-dog functions). Kate's Q3 = separate issue. **`priority: medium`**, Sprint 1 or 2; Deactivate goes too (Kate, 10-26).
 4. Nothing else changed: no SQL by Claude, no booking-site requests, no messages sent.
 
 ## Earlier sessions (reference)
@@ -243,7 +241,7 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run` (2221 passed / 1 skipped at `332d53a`), open PRs (expect #291, #285 and this docs PR's successor, if any).
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md` and **`docs/SPRINT_PLAN.md`**. Baseline: `git status`, `npm run test:run` (2221 passed / 1 skipped at `332d53a`), open PRs (expect #291 and #285 only).
 2. **#342 is live (`332d53a`):** ask Kate to look at the Dashboard and Payroll for 10-23, on desktop and phone.
    - Expected: **8 dogs, $440 gross, $286 net** on the footer, the phone card and Payroll. The phone list should show 8 dogs, each at its booking's price.
    - The Calendar's day panel for 10-23 should show the same.
@@ -256,18 +254,14 @@ Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-inve
 4. **Top 3 now (Sprint 1, ends Wed 11-04):**
    1. **#13 dry-run 2:** Kate clicks, Claude verifies from the tables (`docs/UAT_SCRIPT.md` Part D). Expected partial payment **$139.75**. Re-check that figure first against the new shared calculation; it came from Payroll, which didn't change.
    2. **#323:** private job logs. It needs a new table, so: design note → architect gate → Kate runs the migration.
-   3. **#350:** "today" in San Francisco time. Payments can get tomorrow's date; the priority label is Kate's to set.
+   3. **#350:** "today" in San Francisco time. Payments can get tomorrow's date. `priority: high`.
 
    Also Sprint 1:
    - #307 (remove invite codes)
    - #324 Clear-for-Kate
    - #351 (dogs edited by hand)
    - DST ends **Sun 11-01**; check the first PST 4am roster **Mon 11-02**.
-5. **Open questions for Kate:**
-   - The 73 vs 74 dateless `sync_appointments` rows: did she run SQL on 10-24/25?
-   - #350's priority.
-   - #351: keep Deactivate?
-6. **Kate's own items:**
+5. **Kate's own items:**
    - dry-run 2 clicks; book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forwarding the roster.
    - Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the week-page rows, the boarding-less $0 dogs, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
 
