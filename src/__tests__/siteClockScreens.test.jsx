@@ -33,8 +33,6 @@ const data = (dogs, boardings) => ({
   settings: { netPercentage: 65, netPercentageHistory: [], employees: [] },
   getNetPercentageForDate: () => 65,
   nightAssignments: [],
-  addDog: vi.fn(),
-  toggleDogActive: vi.fn(),
 });
 
 const atClock = (instant) => {

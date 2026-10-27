@@ -15,20 +15,6 @@ vi.mock('../../lib/supabase', () => ({
       select: vi.fn(() => ({
         order: vi.fn(() => Promise.resolve({ data: mockData.dogs, error: mockData.error })),
       })),
-      insert: vi.fn(() => ({
-        select: vi.fn(() => ({
-          single: vi.fn(() => Promise.resolve({
-            data: { id: 'new-dog', name: 'New Dog', day_rate: 35, night_rate: 45, notes: '', active: true },
-            error: null
-          })),
-        })),
-      })),
-      update: vi.fn(() => ({
-        eq: vi.fn(() => Promise.resolve({ error: null })),
-      })),
-      delete: vi.fn(() => ({
-        eq: vi.fn(() => Promise.resolve({ error: null })),
-      })),
     })),
   },
 }));
@@ -36,9 +22,9 @@ vi.mock('../../lib/supabase', () => ({
 import { useDogs } from '../../hooks/useDogs';
 
 /**
- * @requirements REQ-012, REQ-013
+ * @requirements REQ-010, REQ-012, REQ-013
  */
-describe('REQ-012, REQ-013: useDogs Hook - Dog Management', () => {
+describe('REQ-010, REQ-012, REQ-013: useDogs Hook - dogs come only from the sync (#351)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockData.dogs = [
@@ -54,35 +40,13 @@ describe('REQ-012, REQ-013: useDogs Hook - Dog Management', () => {
     expect(result.current).toHaveProperty('dogs');
     expect(result.current).toHaveProperty('loading');
     expect(result.current).toHaveProperty('error');
-    expect(result.current).toHaveProperty('addDog');
-    expect(result.current).toHaveProperty('updateDog');
-    expect(result.current).toHaveProperty('deleteDog');
-    expect(result.current).toHaveProperty('toggleDogActive');
   });
 
-  it('provides deleteDog as a function', () => {
+  it("can't add, import, edit, delete or deactivate a dog by hand (the booking site is the source of truth)", () => {
     const { result } = renderHook(() => useDogs());
-    expect(typeof result.current.deleteDog).toBe('function');
-  });
-
-  it('provides toggleDogActive as a function', () => {
-    const { result } = renderHook(() => useDogs());
-    expect(typeof result.current.toggleDogActive).toBe('function');
-  });
-
-  it('provides updateDog as a function', () => {
-    const { result } = renderHook(() => useDogs());
-    expect(typeof result.current.updateDog).toBe('function');
-  });
-
-  it('provides addDog as a function', () => {
-    const { result } = renderHook(() => useDogs());
-    expect(typeof result.current.addDog).toBe('function');
-  });
-
-  it('provides addDogs as a function for batch import', () => {
-    const { result } = renderHook(() => useDogs());
-    expect(typeof result.current.addDogs).toBe('function');
+    for (const write of ['addDog', 'addDogs', 'updateDog', 'deleteDog', 'toggleDogActive']) {
+      expect(result.current).not.toHaveProperty(write);
+    }
   });
 
   it('provides refresh as a function', () => {
@@ -100,15 +64,7 @@ describe('REQ-012, REQ-013: useDogs Hook - Dog Management', () => {
     expect(Array.isArray(result.current.dogs)).toBe(true);
   });
 
-  /**
-   * @requirements REQ-012
-   */
-  describe('REQ-012: Delete Dog', () => {
-    it('deleteDog function exists and can be called', () => {
-      const { result } = renderHook(() => useDogs());
-      expect(typeof result.current.deleteDog).toBe('function');
-    });
-
+  describe('Fetch dogs', () => {
     it('fetches dogs from supabase on mount', async () => {
       const { result } = renderHook(() => useDogs());
 
@@ -120,15 +76,7 @@ describe('REQ-012, REQ-013: useDogs Hook - Dog Management', () => {
     });
   });
 
-  /**
-   * @requirements REQ-013
-   */
-  describe('REQ-013: Toggle Dog Active Status', () => {
-    it('toggleDogActive function exists', () => {
-      const { result } = renderHook(() => useDogs());
-      expect(typeof result.current.toggleDogActive).toBe('function');
-    });
-
+  describe('Dog active status (set by the sync)', () => {
     it('dogs have active property', async () => {
       const { result } = renderHook(() => useDogs());
 

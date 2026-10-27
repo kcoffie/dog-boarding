@@ -73,14 +73,9 @@ describe('REQ-036: useBoardings Hook (boardings come only from the sync)', () =>
 
   it("can't add, edit or delete a boarding by hand (the booking site is the source of truth)", () => {
     const { result } = renderHook(() => useBoardings());
-    for (const write of ['addBoarding', 'addBoardings', 'updateBoarding', 'deleteBoarding']) {
+    for (const write of ['addBoarding', 'addBoardings', 'updateBoarding', 'deleteBoarding', 'deleteBoardingsForDog']) {
       expect(result.current).not.toHaveProperty(write);
     }
-  });
-
-  it('provides deleteBoardingsForDog as a function', () => {
-    const { result } = renderHook(() => useBoardings());
-    expect(typeof result.current.deleteBoardingsForDog).toBe('function');
   });
 
   it('provides refresh as a function', () => {

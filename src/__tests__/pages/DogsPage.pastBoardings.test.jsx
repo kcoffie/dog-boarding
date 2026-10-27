@@ -68,10 +68,6 @@ vi.mock('../../context/DataContext', () => ({
   useData: () => ({
     dogs: mockDogs,
     boardings: mockBoardings,
-    addDog: vi.fn(),
-    updateDog: vi.fn(),
-    deleteDog: vi.fn(),
-    toggleDogActive: vi.fn(),
   }),
 }));
 
@@ -197,10 +193,6 @@ describe('Past Boardings - Empty State', () => {
       useData: () => ({
         dogs: mockDogs,
         boardings: [mockBoardings[0]], // Only current boarding
-        addDog: vi.fn(),
-        updateDog: vi.fn(),
-        deleteDog: vi.fn(),
-        toggleDogActive: vi.fn(),
       }),
     }));
 
