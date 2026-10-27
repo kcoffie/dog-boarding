@@ -75,6 +75,9 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 5. **#350 (added 2026-10-26, high):** every date and time in the app is San Francisco time, whatever the device (Kate: "I don't want Charlie to see anything weird").
    - **PR 1 merged 2026-10-26 (PR #354, `7b191bd`, REQ-064):** "today" and every calendar date the UI builds. PR 2 (booking times, nights, labels with "PT") waits on #353.
 6. **#353 (added 2026-10-26, high, next):** the booking site's times are Pacific clock times stored as UTC, so the app and the Friday roster show them 7–8 hours early, and `isDayPresent`'s 5pm rule reads a 4pm arrival as 9am. Design note → architect first (stored data, a pay rule, the roster), then #350 PR 2.
+   - **Option B chosen (Kate, 10-26), ADR-009. PR 1 merged 2026-10-26 (PR #357, `f317878`, REQ-065):** `siteClock.js`, the Friday pm roster ("Fri – Mon", site times), zone-proof server dates, the guard test. PR 2 (the screens) next.
+6b. **#316 (added 2026-10-26, high, Kate: "very soon"):** a booking removed on the booking site stayed on the rosters and in pay (only Sync Now noticed).
+   - **Merged 2026-10-27 (PR #358, `ee20596`, REQ-108, ADR-010):** the nightly sync cancels it (every dog), restores on proof, one `sync-reconcile` alert a night. First night report-only (10-27 SF), live from 10-28. Close after the first live night's checks.
 7. **#351 (added 2026-10-26, medium; Sprint 1 or 2):** remove the Dogs page's hand edits: Add Dog, Import CSV, delete dog and Deactivate.
 8. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
 
@@ -140,7 +143,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 | #313 | Step 8 |
 
 ## Backlog by priority
-- **High:** #353, #350 (PR 2), #318, #324, #323, #321, #295, #312, #314, #307, #8, #9, #13, #260, #315, #337, #338
+- **High:** #353 (PR 2), #350 (PR 2), #316 (verify, close), #318, #324, #323, #321, #295, #312, #314, #307, #8, #9, #13, #260, #315, #337, #338
 - **Medium:** #351, #343, #326, #319, #7
 - **Low:** #6, #17, #23, #24, a third watcher for when both schedulers die (no issue)
 
