@@ -1,6 +1,6 @@
 # #353 design note: booking times are San Francisco clock times
 
-**Status:** Kate chose option B (2026-10-26, session 51); architect: proceed with changes (folded in below); reviewer findings fixed (session 52). Kate answered Q4–Q6 (session 52); ADR-009 written. Q7 answered (leave it). PR 1 merged 2026-10-26 (PR #357, `f317878`); PR 2 built 2026-10-27 (session 53), see "As built (PR 2)". Issue #353 (`priority: high`). #350 PR 2 waits on it.
+**Status:** Kate chose option B (2026-10-26, session 51); architect: proceed with changes (folded in below); reviewer findings fixed (session 52). Kate answered Q4–Q6 (session 52); ADR-009 written. Q7 answered (leave it). **PR 1 merged 2026-10-26 (PR #357, `f317878`); PR 2 = PR #360 (session 53), see "As built (PR 2)".** Issue #353 (`priority: high`).
 
 ## Problem
 The booking site stores each booking's times as **San Francisco clock times written as if they were UTC**. A 10:00am drop-off is stored as `10:00Z`. The app copies them as they are, then reads them as real moments: in Pacific time `10:00Z` is 3:00am (2:00am in winter). So:
@@ -109,8 +109,8 @@ No new secret, table, job or request. No client data in tests (synthetic names; 
   - from 9:15am Pacific a 4:15pm pick-up is neither past nor "past" in the status badge (`isPastBoarding`, `getBoardingStatus`);
   - the weekend window starts at `siteNow()` rounded down to the hour: a run at Fri 22:00:05Z lists a Friday 3:00pm and a 4pm arrival and a Friday 4:15pm departure; the roster prints "Sat 10:15 AM PT";
   - `isDayPresent` counts a `16:00Z` drop-off as a day and a `17:15Z` one as not (Q1);
-  - a title-only boarding with no label shows its date and no time (Q2, and Q6 if Kate says yes);
-  - a label that contradicts its time shows the date only and logs it (Q5, if Kate says yes);
+  - a title-only boarding with no label shows its date and no time (Q2, Q6: Kate yes);
+  - a label that contradicts its time shows the date only and logs it (Q5: Kate yes);
   - `findFormForBoarding` and `queryBoarders` give the same result with the host at `Pacific/Kiritimati` and `Pacific/Pago_Pago`;
   - the guard fails on a local-zone read of a booking time outside `siteClock.js`.
   Scoped Stryker on the changed lines, run once with host `TZ=Pacific/Kiritimati` and once with `TZ=Pacific/Pago_Pago`.
@@ -118,7 +118,7 @@ No new secret, table, job or request. No client data in tests (synthetic names; 
 - **When it isn't:** a time that differs from the site is a bug (source of truth). Today a person has to notice it, and the Friday roster is the first place Kate or staff would. **Proposed follow-up (not in PR 1 or 2; an issue if Kate agrees):** the Integration Check, which already reads the week page, compares each row's printed time with `siteTime` of the stored value and alerts on a mismatch, with no new booking-site requests.
 
 ## Order of work
-1. This note → architect → Kate's answers (Q4–Q6) → ADR-009 (`docs/adr/009-booking-times-are-site-clock-times.md`).
+1. This note → architect → Kate's answers (Q4–Q7) → ADR-009 (`docs/adr/009-booking-times-are-site-clock-times.md`).
 2. **PR 1:** `siteClock.js`, the guard test (with PR 2's files allowlisted), and every row marked **1** above: Friday pm roster (times, window, date ranges), `queryBoarders`, form matching and the form-job check, Sync Now's cancellation window, the manual sync range, the title fallback, the `tsToDate` comment, the seed script. Target: merged before the **Fri 10-30** roster (22:00 UTC).
 3. **PR 2** (= #350 PR 2): every row marked **2** above (Dogs page, Calendar, day/night helpers, Sync History, form view, upcoming forms, `toTimeInputValue`), with "PT"; empties the guard's allowlist.
 
