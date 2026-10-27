@@ -51,6 +51,10 @@ describe('REQ-065: nights and days fall on the site dates', () => {
     expect(isDayPresent({ arrivalDateTime: '2026-10-29T17:15:00Z', departureDateTime: '2026-10-31T11:00:00Z' }, '2026-10-29')).toBe(false);
   });
 
+  eachZone('a 5:15pm drop-off is present all day on the days after its arrival day', () => {
+    expect(isDayPresent({ arrivalDateTime: '2026-10-29T17:15:00Z', departureDateTime: '2026-10-31T11:00:00Z' }, '2026-10-30')).toBe(true);
+  });
+
   eachZone('the stay is present on its departure day and not the day before arrival or after departure', () => {
     expect(isDayPresent(STAY, '2026-10-28')).toBe(false);
     expect(isDayPresent(STAY, '2026-11-02')).toBe(true);

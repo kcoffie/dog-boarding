@@ -105,6 +105,12 @@ describe('REQ-065: the Dogs page shows booking times as the site does', () => {
     expect(screen.queryByText(/Historical boarding records/)).toHaveTextContent('(2 total)');
   });
 
+  eachZone('at 4:15pm exactly, a 4:15pm pick-up is still Current', () => {
+    atClock('2026-10-29T23:15:00Z');
+    render(<BrowserRouter><DogsPage /></BrowserRouter>);
+    expect(rowCells('Birch Test')[1]).toBe('Current');
+  });
+
   eachZone('a title-only stay shows its dates with no time (Q2, Q6)', () => {
     render(<BrowserRouter><DogsPage /></BrowserRouter>);
     const cells = rowCells('Cedar Test');
@@ -180,6 +186,71 @@ describe('REQ-065: the Calendar places bookings on their site dates', () => {
     expect(print.queryByText('Ivy Test')).toBeNull();
     expect(print.queryByText('Juniper Test')).toBeNull();
   });
+  // A grid day's cell, and its bars (one per booking, in the cell's bar list)
+  const gridCell = (day) => dayCell(day).closest('.cursor-pointer');
+  const barRadii = (day) => [...gridCell(day).querySelectorAll('.space-y-0\\.5 > div')].map((bar) => bar.style.borderRadius).sort();
+
+  eachZone('the grid names a stay on its arrival day only: Aspen on Oct 29, Juniper on Oct 30', () => {
+    render(<CalendarPage />);
+    expect(gridCell('29').textContent).toContain('Aspen Test');
+    expect(gridCell('29').textContent).not.toContain('Juniper Test');
+    expect(gridCell('30').textContent).toContain('Juniper Test');
+    expect(gridCell('30').textContent).not.toContain('Aspen Test');
+  });
+
+  eachZone("Oct 29's bars: Aspen's starts, Hazel's runs through, Gum's ends", () => {
+    render(<CalendarPage />);
+    expect(barRadii('29')).toEqual(['0 4px 4px 0', '0px', '4px 0 0 4px']);
+  });
+
+  eachZone("the grid marks Oct 27, San Francisco's today, and not Oct 29", () => {
+    render(<CalendarPage />);
+    expect(gridCell('27').querySelector('.bg-indigo-600')?.textContent).toBe('27');
+    expect(gridCell('29').querySelector('.bg-indigo-600')).toBeNull();
+  });
+});
+
+describe('REQ-065: the Calendar shows only the date when a booking has no known time (Q2)', () => {
+  const NOW = '2026-10-27T18:00:00Z';
+  const dogs = [dog('d1', 'Kiwi Test'), dog('d2', 'Lime Test'), dog('d3', 'Maple Test')];
+  const boardings = [
+    stay('b1', 'd1', '2026-10-29T00:00:00Z', '2026-10-31T00:00:00Z'), // title-only "10/29-31"
+    stay('b2', 'd2', '2026-10-27T00:00:00Z', '2026-10-29T00:00:00Z'), // title-only "10/27-29"
+    stay('b3', 'd3', '2026-09-04T10:00:00Z', '2026-09-06T11:00:00Z', 'AM', 'AM'), // September
+  ];
+  const dayCell = (day) => screen.getAllByText(day).find((el) => el.closest('.cursor-pointer'));
+
+  beforeEach(() => {
+    atClock(NOW);
+    useData.mockReturnValue(data(dogs, boardings));
+  });
+
+  eachZone('Oct 29 lists the title-only arrival as "→ Oct 31" and departure as "Oct 27 →"', () => {
+    render(<CalendarPage />);
+    fireEvent.click(dayCell('29'));
+    expect(screen.getAllByText('Kiwi Test').at(-1).nextElementSibling.textContent).toBe('→ Oct 31');
+    expect(screen.getAllByText('Lime Test').at(-1).nextElementSibling.textContent).toBe('Oct 27 →');
+  });
+
+  eachZone('the print view for Oct 29 shows "→ Oct 31" and "Oct 27 →" with no time', () => {
+    vi.spyOn(window, 'print').mockImplementation(() => {});
+    render(<CalendarPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Print' }));
+    const [from, to] = document.querySelectorAll('input[type="date"]');
+    fireEvent.change(from, { target: { value: '2026-10-29' } });
+    fireEvent.change(to, { target: { value: '2026-10-29' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generate & Print' }));
+    const print = within(document.querySelector('#calendar-print-view'));
+    expect(print.getByText('Kiwi Test').nextElementSibling.textContent).toBe('→ Oct 31');
+    expect(print.getByText('Lime Test').nextElementSibling.textContent).toBe('Oct 27 →');
+  });
+
+  eachZone('a September stay (Sep 4 → Sep 6) is listed as staying on Sep 5, one month back', () => {
+    render(<CalendarPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }).previousElementSibling);
+    fireEvent.click(dayCell('5'));
+    expect(screen.getAllByText('Maple Test').at(-1).nextElementSibling.textContent).toBe('Since Sep 4 → Sep 6');
+  });
 });
 
 describe('REQ-065: Sync History shows booking dates as the site does, and run times in San Francisco time', () => {
@@ -223,6 +294,18 @@ describe('REQ-065: Sync History shows booking dates as the site does, and run ti
   eachZone('the history list shows the run at "Oct 27, 5:05 PM PT"', () => {
     render(<SyncHistoryTable logs={[log]} loading={false} onSelectLog={() => {}} />);
     expect(screen.getAllByText('Oct 27, 5:05 PM PT').length).toBeGreaterThan(0);
+  });
+
+  eachZone('the history table shows the run at "Oct 27, 2026, 5:05 PM PT"', () => {
+    render(<SyncHistoryTable logs={[log]} loading={false} onSelectLog={() => {}} />);
+    expect(screen.getAllByText('Oct 27, 2026, 5:05 PM PT').length).toBeGreaterThan(0);
+  });
+
+  eachZone('a changed date field that is not a date is shown as it came', () => {
+    const odd = { ...log, change_details: [{ action: 'updated', dog_name: 'Gum Test', changes: { check_out_datetime: { old: 'unknown', new: '2026-10-31T11:00:00Z' } } }] };
+    render(<SyncDetailModal isOpen onClose={() => {}} log={odd} details={null} loading={false} />);
+    expect(screen.getByText('check out datetime:').parentElement.textContent)
+      .toBe('check out datetime: unknown→Oct 31, 2026 11:00 AM PT');
   });
 });
 
