@@ -306,7 +306,7 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2486 passed / 1 skipped**), open PRs (#291, #285, plus this handoff's docs PR if not merged).
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2486 passed / 1 skipped**), open PRs (#291, #285, plus **#359** = this handoff: reviewer already run and posted, CI green; if still open, ask Kate to merge it, then `check:deploy`).
 2. **Read-only checks (fix nothing without asking):**
    - **After 00:05 UTC 10-28 (report-only night):** `cron_health` `schedule` `result.reconcile` (mode `report_only`, candidates, gone, skipped, errors, alertDelivered); a `sync-reconcile` row in `message_log` naming `C63QhB7h` as "Would cancel" (and nothing else unexpected); both its boardings still not cancelled.
    - **After 00:05 UTC 10-29 (first live night):** both `C63QhB7h` boardings (`C63QhB7h`, `C63QhB7h_p1`) have `cancellation_reason = 'appointment_archived'`, its row `archived`; one "Cancelled" alert; the 11-03 rosters list neither dog. Then close #316 with a comment (PRs #358; results; no AI mention).
