@@ -94,7 +94,7 @@ describe('REQ-036: every view shows the same night (3 dogs, $140, $91)', () => {
   });
 
   it('Dashboard rate column shows a range when a dog has two prices in the period', () => {
-    const second = { id: 'b2', dogId: 'b', arrivalDateTime: '2026-10-24T16:00:00', departureDateTime: '2026-10-26T10:00:00', nightRate: 60 };
+    const second = { id: 'b2', dogId: 'b', arrivalDateTime: '2026-10-24T16:00:00Z', departureDateTime: '2026-10-26T10:00:00Z', nightRate: 60 };
     useData.mockReturnValue(data({ boardings: [...boardings, second] }));
     render(<BrowserRouter><BoardingMatrix startDate={NIGHT} days={3} /></BrowserRouter>);
     const birchRow = screen.getAllByRole('row').find(r => r.textContent.startsWith('BBirch'));
@@ -158,7 +158,7 @@ describe('REQ-036: every view shows the same night (3 dogs, $140, $91)', () => {
   });
 
   it("Dashboard rate column ignores a cancelled boarding's price: $40, not $40–60", () => {
-    const cancelled = { id: 'b3', dogId: 'b', arrivalDateTime: '2026-10-22T16:00:00', departureDateTime: '2026-10-25T10:00:00', nightRate: 60, cancelledAt: '2026-10-20T12:00:00Z' };
+    const cancelled = { id: 'b3', dogId: 'b', arrivalDateTime: '2026-10-22T16:00:00Z', departureDateTime: '2026-10-25T10:00:00Z', nightRate: 60, cancelledAt: '2026-10-20T12:00:00Z' };
     useData.mockReturnValue(data({ boardings: [...boardings, cancelled] }));
     render(<BrowserRouter><BoardingMatrix startDate={NIGHT} days={1} /></BrowserRouter>);
     const birchRow = screen.getAllByRole('row').find(r => r.textContent.startsWith('BBirch'));
@@ -166,7 +166,7 @@ describe('REQ-036: every view shows the same night (3 dogs, $140, $91)', () => {
   });
 
   it("Dashboard rate column ignores a day visit's price: $40, not $40–60", () => {
-    const dayVisit = { id: 'b0', dogId: 'b', arrivalDateTime: '2026-10-23T08:00:00', departureDateTime: '2026-10-23T12:00:00', nightRate: null };
+    const dayVisit = { id: 'b0', dogId: 'b', arrivalDateTime: '2026-10-23T08:00:00Z', departureDateTime: '2026-10-23T12:00:00Z', nightRate: null };
     useData.mockReturnValue(data({ boardings: [...boardings, dayVisit] }));
     render(<BrowserRouter><BoardingMatrix startDate={NIGHT} days={1} /></BrowserRouter>);
     const birchRow = screen.getAllByRole('row').find(r => r.textContent.startsWith('BBirch'));
@@ -174,7 +174,7 @@ describe('REQ-036: every view shows the same night (3 dogs, $140, $91)', () => {
   });
 
   it("Calendar leaves a cancelled boarding out of the day's Arriving, Staying and Departing lists", () => {
-    const cancelledArrival = { id: 'd2', dogId: 'd', arrivalDateTime: '2026-10-23T16:00:00', departureDateTime: '2026-10-25T10:00:00', nightRate: 60, cancelledAt: '2026-10-20T12:00:00Z' };
+    const cancelledArrival = { id: 'd2', dogId: 'd', arrivalDateTime: '2026-10-23T16:00:00Z', departureDateTime: '2026-10-25T10:00:00Z', nightRate: 60, cancelledAt: '2026-10-20T12:00:00Z' };
     useData.mockReturnValue(data({ boardings: [...boardings, cancelledArrival] }));
     render(<CalendarPage />);
     fireEvent.click(dayCell('23'));

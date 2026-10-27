@@ -42,7 +42,7 @@ describe('REQ-202: RevenueView', () => {
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: [
-          { id: '1', dogId: '1', arrivalDateTime: '2025-01-10T14:00:00', departureDateTime: '2025-01-12T10:00:00' },
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-10T14:00:00Z', departureDateTime: '2025-01-12T10:00:00Z' },
         ],
       });
       render(<RevenueView startDate={START_DATE} days={7} />);
@@ -53,7 +53,7 @@ describe('REQ-202: RevenueView', () => {
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: [
-          { id: '1', dogId: '1', arrivalDateTime: '2025-01-25T14:00:00', departureDateTime: '2025-01-27T10:00:00' },
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-25T14:00:00Z', departureDateTime: '2025-01-27T10:00:00Z' },
         ],
       });
       render(<RevenueView startDate={START_DATE} days={7} />);
@@ -66,7 +66,7 @@ describe('REQ-202: RevenueView', () => {
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: [
-          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00' },
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z' },
         ],
       });
       render(<RevenueView startDate={START_DATE} days={7} />);
@@ -77,7 +77,7 @@ describe('REQ-202: RevenueView', () => {
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: [
-          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00', billedAmount: 750, source: 'external' },
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z', billedAmount: 750, source: 'external' },
         ],
       });
       render(<RevenueView startDate={START_DATE} days={7} />);
@@ -91,7 +91,7 @@ describe('REQ-202: RevenueView', () => {
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: [
-          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00' },
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z' },
         ],
       });
       render(<RevenueView startDate={START_DATE} days={7} />);
@@ -104,7 +104,7 @@ describe('REQ-202: RevenueView', () => {
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: [
-          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00', nightRate: 65 },
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z', nightRate: 65 },
         ],
       });
       render(<RevenueView startDate={START_DATE} days={7} />);
@@ -117,7 +117,7 @@ describe('REQ-202: RevenueView', () => {
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: [
-          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00', billedAmount: 200 },
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z', billedAmount: 200 },
         ],
       });
       render(<RevenueView startDate={START_DATE} days={7} />);
@@ -128,8 +128,8 @@ describe('REQ-202: RevenueView', () => {
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: [
-          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00', billedAmount: 200 },
-          { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T14:00:00', departureDateTime: '2025-01-18T10:00:00', billedAmount: 300 },
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z', billedAmount: 200 },
+          { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T14:00:00Z', departureDateTime: '2025-01-18T10:00:00Z', billedAmount: 300 },
         ],
       });
       render(<RevenueView startDate={START_DATE} days={7} />);
@@ -144,8 +144,8 @@ describe('REQ-202: RevenueView', () => {
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: [
-          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00', billedAmount: 200 },
-          { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T14:00:00', departureDateTime: '2025-01-18T10:00:00', billedAmount: 300, cancelledAt: '2025-01-14T12:00:00Z' },
+          { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z', billedAmount: 200 },
+          { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T14:00:00Z', departureDateTime: '2025-01-18T10:00:00Z', billedAmount: 300, cancelledAt: '2025-01-14T12:00:00Z' },
         ],
       });
       render(<RevenueView startDate={START_DATE} days={7} />);

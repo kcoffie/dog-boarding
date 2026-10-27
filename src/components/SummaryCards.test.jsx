@@ -19,9 +19,9 @@ describe('REQ-035: SummaryCards', () => {
 
   const mockBoardings = [
     // Luna: stays Jan 15-17 (2 nights: 15, 16)
-    { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00' },
+    { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z' },
     // Cooper: stays Jan 16-18 (2 nights: 16, 17)
-    { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T14:00:00', departureDateTime: '2025-01-18T10:00:00' },
+    { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T14:00:00Z', departureDateTime: '2025-01-18T10:00:00Z' },
   ];
 
   const mockSettings = {
@@ -183,7 +183,7 @@ describe('REQ-035: SummaryCards', () => {
 
   /** @requirements REQ-108 */
   describe('REQ-108: boardings marked gone (#322)', () => {
-    const gone = { id: '3', dogId: '1', arrivalDateTime: '2025-01-17T14:00:00', departureDateTime: '2025-01-19T10:00:00', cancelledAt: '2025-01-14T12:00:00Z' };
+    const gone = { id: '3', dogId: '1', arrivalDateTime: '2025-01-17T14:00:00Z', departureDateTime: '2025-01-19T10:00:00Z', cancelledAt: '2025-01-14T12:00:00Z' };
 
     it('a boarding marked gone adds nothing to period revenue', () => {
       useData.mockReturnValue({

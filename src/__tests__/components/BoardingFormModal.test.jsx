@@ -17,8 +17,8 @@ const baseProps = {
   onClose: vi.fn(),
   dogName: 'Buddy',
   boarding: {
-    arrivalDateTime: '2026-03-10T12:00:00',
-    departureDateTime: '2026-03-14T12:00:00',
+    arrivalDateTime: '2026-03-10T12:00:00Z',
+    departureDateTime: '2026-03-14T12:00:00Z',
   },
 };
 
