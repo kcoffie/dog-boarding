@@ -746,7 +746,7 @@ and archived so it doesn't appear as an active boarding.
 **Added:** v2.0 | **Status:** Complete
 
 The system automatically syncs appointment data on a schedule using three Vercel
-cron functions that each complete within the Hobby plan's 10-second limit.
+cron functions. They have no explicit `maxDuration`: the project runs on Vercel's Fluid compute (runs of 10.7–22.7 s finish with no `maxDuration` set, which the old 10 s Hobby limit wouldn't allow), whose Hobby default and maximum are 300 s (#316).
 
 **Architecture:**
 

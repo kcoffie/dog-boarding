@@ -126,12 +126,13 @@ export async function cancelBoardingForArchivedAppointment(supabase, boardingId)
  *
  * Throws only SiteThrottled (a 429/403 ends the whole run). Everything else is logged and counted.
  *
+ * Every one of a removed booking's boardings is cancelled (`<id>` and each `<id>_pN`, one per dog), then
+ * its row is archived; if a write fails, the dogs already cancelled are un-cancelled and the row stays
+ * active, so the next run finds it again (#316). Each candidate is opened at its newest known URL (its
+ * queue item's). With `reportOnly`, the candidates are checked but nothing is marked (Kate, Q5).
+ *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {Set<string>} seenExternalIds
- * Every one of a removed booking's boardings is cancelled (`<id>` and each `<id>_pN`, one per dog),
- * then its row is archived: a stop in between leaves the row active, so the next run finds it again (#316).
- * With `reportOnly`, the candidates are checked but nothing is marked (#316's first night, Kate Q5).
- *
  * @param {Date|null} startDate
  * @param {Date|null} endDate
  * @param {{ reportOnly?: boolean }} [options]
@@ -171,7 +172,16 @@ export async function reconcileArchivedAppointments(supabase, seenExternalIds, s
     let verdict;
     let status;
     try {
-      const response = await authenticatedFetch(candidate.source_url, { redirect: 'manual' });
+      // The newest URL the sync knows: an edited booking's stored URL also redirects to /schedule,
+      // but the schedule scan puts its new URL on its queue item (#316)
+      const { data: queued, error: queueErr } = await supabase
+        .from('sync_queue')
+        .select('source_url')
+        .eq('external_id', candidate.external_id)
+        .maybeSingle();
+      if (queueErr) throw new Error(`its queue item couldn't be read: ${queueErr.message}`);
+      const pageUrl = queued?.source_url || candidate.source_url;
+      const response = await authenticatedFetch(pageUrl, { redirect: 'manual' });
       status = response.status;
       verdict = classifyCandidateResponse(response, await response.text());
     } catch (fetchErr) {
@@ -216,10 +226,12 @@ export async function reconcileArchivedAppointments(supabase, seenExternalIds, s
   }
 
   for (const [i, candidate] of gone.entries()) {
+    const cancelled = [];
     try {
       const boardings = await findBookingBoardings(supabase, candidate.external_id);
       for (const boarding of boardings) {
         await cancelBoardingForArchivedAppointment(supabase, boarding.id);
+        cancelled.push(boarding.id);
         syncLog(`[Reconcile] ✅ Marked boarding ${boarding.id} (${boarding.external_id}) as cancelled`);
       }
       counts.gone[i].dogs = boardings.length;
@@ -228,6 +240,12 @@ export async function reconcileArchivedAppointments(supabase, seenExternalIds, s
     } catch (markErr) {
       syncError(`[Reconcile] ❌ Failed to cancel ${candidate.external_id}:`, markErr.message);
       counts.errors++;
+      // All or nothing: a booking left active must not keep some dogs cancelled, because a booking
+      // seen again later is never a candidate, and only archived ones are restored
+      for (const id of cancelled) {
+        const { error } = await supabase.from('boardings').update({ cancelled_at: null, cancellation_reason: null }).eq('id', id);
+        if (error) syncError(`[Reconcile] ❌ Couldn't undo the cancel of boarding ${id}: ${error.message}`);
+      }
     }
   }
 
@@ -243,9 +261,19 @@ export async function reconcileArchivedAppointments(supabase, seenExternalIds, s
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} externalId
- * @returns {Promise<{restored: boolean, boardings: number, conflicts: string[]}>}
+ * A booking that isn't archived (a restore mark left on its queue item) is left alone: `notArchived`.
+ *
+ * @returns {Promise<{restored: boolean, boardings: number, conflicts: string[], notArchived?: boolean}>}
  */
 export async function restoreArchivedBooking(supabase, externalId) {
+  const { data: row, error: rowErr } = await supabase
+    .from('sync_appointments')
+    .select('sync_status')
+    .eq('external_id', externalId)
+    .maybeSingle();
+  if (rowErr) throw rowErr;
+  if (row?.sync_status !== 'archived') return { restored: false, boardings: 0, conflicts: [], notArchived: true };
+
   const boardings = await findBookingBoardings(supabase, externalId);
   const own = new Set(boardings.map((b) => b.id));
   const conflicts = [];

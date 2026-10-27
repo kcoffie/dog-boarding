@@ -28,6 +28,7 @@ function likeToRegExp(pattern, flags) {
 }
 
 // Timestamps compare as moments, as in Postgres: "…+00:00" and "….000Z" don't sort as text
+// (a timestamp without a zone would be read in the host's zone here, unlike Postgres: tests don't use one)
 const ISO_MOMENT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 const order = (a, b) => (ISO_MOMENT.test(a) && ISO_MOMENT.test(b) ? Date.parse(a) - Date.parse(b) : a < b ? -1 : a > b ? 1 : 0);
 

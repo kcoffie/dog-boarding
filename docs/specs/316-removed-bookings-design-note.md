@@ -1,6 +1,6 @@
 # #316 design note: a booking removed on the booking site is cancelled in the app automatically
 
-**Status:** architect: proceed with changes (folded in below, session 52, 2026-10-26); Kate answered Q1–Q5; ADR-010; built (branch `docs/316-removed-bookings-design-note`). Builds on #353 PR 1 (`siteMidnight`, merged 10-26 as `f317878`). Issue #316 (`priority: high`, Kate 2026-10-26: "very soon"). Kate: the booking site is the source of truth (2026-10-23).
+**Status:** architect: proceed with changes (folded in below, session 52, 2026-10-26); Kate answered Q1–Q5; ADR-010; built (branch `feat/316-removed-bookings`). Builds on #353 PR 1 (`siteMidnight`, merged 10-26 as `f317878`). Issue #316 (`priority: high`, Kate 2026-10-26: "very soon"). Kate: the booking site is the source of truth (2026-10-23).
 
 ## Problem
 A booking deleted on the booking site stays in the app: on the rosters, in nights and in pay. Only the browser's Sync Now notices it: `reconcile.js` is called only from `sync.js` (`src/lib/scraper/sync.js:458`), which only `useSyncSettings.js` imports. The scheduled syncs read just the bookings they see on the week pages (`runScheduleSync`, `src/lib/scraper/syncRunner.js:261`), and a deleted booking simply isn't there, so nothing scheduled looks at it again.
@@ -42,7 +42,7 @@ A booking deleted on the booking site stays in the app: on the rosters, in night
    - one Telegram alert per run (new job **`sync-reconcile`**, added to ops-watch's `ALERT_JOBS`, `opsWatch.js:135`) listing each cancelled or restored booking (booking ID, dates, dog names), every stop (`skipped`), any error (a failed candidate query or write sets `errors`, which today leaves `skipped` null, `reconcile.js:138-144, 204-212`), and the count of `present` bookings (live pages not on the schedule: the only sign the parser is missing bookings);
    - a quiet run sends nothing;
    - the `schedule` row's `cron_health` result gets `reconcile: { candidates, present, gone, archived, restored, skipped, errors, alertDelivered }` (`api/cron-schedule.js:72-82` lists its fields); an undelivered alert makes the run `failure` (REQ-652, `alertKate.js:75`).
-6. **`cron-schedule` gets an explicit `maxDuration`:** runs take 10.7–22.7 s today (2–3 pages); 10 candidates add ~50–85 s.
+6. **Function time:** runs take 10.7–22.7 s today (2–3 pages) with no `maxDuration`, so the project is on Fluid compute (default and maximum 300 s on Hobby; the legacy default was 10 s). 10 candidates add ~50–85 s, well inside it. No `maxDuration` is set: on a project without Fluid compute a 300 would fail the build (reviewer).
 7. **An archived booking's own queue item** is skipped by the detail run unless it carries `meta.restore`, so a redirect doesn't also raise a `sync-detail` alert.
 8. **Docs:** REQ-108 (both paths), RUNBOOK ("a booking was cancelled by the sync"), the `cron-schedule` job doc, and the comment at `schedule.js:101`.
 
@@ -86,7 +86,8 @@ No new secret, table or request type: the same signed-in page loads Sync Now mak
 Architect (done) → Kate's answers (done) → build (one PR, ~1 day) → reviewer → merge → first night checked (report-only if Q5a) → live.
 
 ## As built (session 52)
-- `reconcileScheduleWindow` and `alertReconcile` in `src/lib/scraper/syncRunner.js`; `restoreArchivedBooking` and the all-dogs cancel in `reconcile.js`; `requeueForRestore` in `syncQueue.js`; Sync Now re-queues archived bookings (`sync.js`); `cron-schedule` records `reconcile` and goes red on an undelivered alert; `sync-reconcile` in ops-watch's `ALERT_JOBS`; `maxDuration` 300 s.
+- `reconcileScheduleWindow` and `alertReconcile` in `src/lib/scraper/syncRunner.js`; `restoreArchivedBooking` and the all-dogs cancel in `reconcile.js`; `requeueForRestore` in `syncQueue.js`; Sync Now re-queues archived bookings (`sync.js`); `cron-schedule` records `reconcile` and goes red on an undelivered alert; `sync-reconcile` in ops-watch's `ALERT_JOBS`.
+- **Reviewer fixes (session 52):** each candidate is opened at its newest known URL (its queue item's), so an edited booking the scan missed isn't cancelled on its old URL's redirect; a failed write un-cancels the dogs already cancelled (all or nothing); a restore mark on a booking that isn't archived does nothing; a restore that doesn't happen (redirect, no dates, skip, overlap) sets `meta.restore_blocked` to that URL so the same page isn't re-read every night; the cron's HTTP response carries counts, not names.
 - **Report-only first night:** `RECONCILE_LIVE_FROM` (San Francisco's date) in `syncRunner.js`; it's set at merge so the first cron run after the deploy is report-only (re-reads too).
 - **A restore is reported in the detail run's `sync-detail` alert**, not `sync-reconcile`, because it happens when the detail step reads the page (the next run after the scan).
 - **Not built (should-consider 6):** skipping an archived booking's own queue item in the detail step. In the rare case it's still queued, its redirect also raises a `sync-detail` notice: the same news twice, no harm.

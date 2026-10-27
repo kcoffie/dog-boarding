@@ -448,22 +448,30 @@ export async function reconcileScheduleWindow(supabase, { seenIds, appointments,
   const reportOnly = siteDate(siteNow(now)) < RECONCILE_LIVE_FROM;
   const out = { mode: reportOnly ? 'report_only' : 'live', candidates: 0, present: [], gone: [], archived: 0, restores: [], skipped: null, errors: 0 };
 
+  let archivedSeen = [];
   try {
     const { data, error } = await supabase
       .from('sync_appointments')
       .select('external_id')
       .eq('sync_status', 'archived')
       .in('external_id', [...seenIds]);
-    // Stryker disable next-line ConditionalExpression: on an error Supabase's data is null, so the loop throws into the same catch
     if (error) throw error;
-    for (const { external_id: id } of data) {
-      const appt = appointments.find((a) => a.id === id);
-      if (!reportOnly) await requeueForRestore(supabase, { external_id: id, source_url: appt.url, title: appt.title || '' });
-      out.restores.push(id);
-    }
+    archivedSeen = data.map((row) => row.external_id);
   } catch (err) {
-    console.error(`[SyncRunner:Reconcile] ❌ Couldn't queue cancelled bookings seen again: ${errorText(err)}`);
+    console.error(`[SyncRunner:Reconcile] ❌ Couldn't look up cancelled bookings seen again: ${errorText(err)}`);
     out.errors++;
+  }
+  for (const id of archivedSeen) {
+    const appt = appointments.find((a) => a.id === id);
+    try {
+      // Listed only when it's really queued: not while in flight, nor when blocked at this URL
+      const outcome = reportOnly ? 'report_only'
+        : await requeueForRestore(supabase, { external_id: id, source_url: appt.url, title: appt.title || '' });
+      if (outcome !== 'in_flight' && outcome !== 'blocked') out.restores.push(id);
+    } catch (err) {
+      console.error(`[SyncRunner:Reconcile] ❌ Couldn't queue ${id} to check it's back: ${errorText(err)}`);
+      out.errors++;
+    }
   }
 
   if (pageCounts[0] === 0 || pageCounts[1] === 0) {
@@ -599,6 +607,15 @@ async function heldAStay(supabase, externalId) {
   }
 }
 
+// A restore read that didn't restore (a redirect, no dates, skipped): remember the URL, so the nightly
+// scan doesn't re-read the same page every night while the booking is still listed (#316)
+function withRestoreBlocked(meta, url) {
+  if (!meta.restore) return meta;
+  const next = { ...meta, restore_blocked: url };
+  delete next.restore;
+  return next;
+}
+
 // A booking page that redirected: nothing is written (#344). The item is marked `detail_redirect`, not
 // `detail_skip`, because syncQueue ignores URL changes on skipped items and an edited stay's new URL
 // must still be read. Kate hears once per URL about a stay that can't be read or an unknown target.
@@ -614,7 +631,7 @@ async function finishRedirected(supabase, item, err) {
       notice = `${item.external_id} "${title}": its page now redirects to the schedule (stay moved or cancelled?), so it can't be read. Its boarding is unchanged until checked.`;
     }
   }
-  const meta = { ...(item.meta || {}), detail_redirect: { kind: err.kind, url: item.source_url } };
+  const meta = withRestoreBlocked({ ...(item.meta || {}), detail_redirect: { kind: err.kind, url: item.source_url } }, item.source_url);
   delete meta.detail_skip;
   await markDone(supabase, item.id, { meta });
   const queueDepth = await getQueueDepth(supabase);
@@ -640,7 +657,7 @@ async function finishDateless(supabase, item) {
   console.warn(`[SyncRunner:Detail] ⛔ ${item.external_id}: no dates on the page, nothing written`);
   const notice = item.meta?.detail_dateless === item.source_url ? null
     : `${item.external_id} "${item.title || ''}": its page had no check-in/check-out dates, so nothing was saved. The booking site's page layout may have changed.`;
-  const meta = { ...(item.meta || {}), detail_dateless: item.source_url };
+  const meta = withRestoreBlocked({ ...(item.meta || {}), detail_dateless: item.source_url }, item.source_url);
   delete meta.detail_skip;
   await markDone(supabase, item.id, { meta });
   const queueDepth = await getQueueDepth(supabase);
@@ -787,7 +804,7 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
   if (shouldSkip) {
     console.log(`[SyncRunner:Detail] ⏭️ SKIP ${item.external_id} — ${skipReason}`);
     // Recorded so later URL changes on this item aren't taken as edits (#278, syncQueue.enqueue)
-    await markDone(supabase, item.id, { meta: { ...(item.meta || {}), detail_skip: skipReason } });
+    await markDone(supabase, item.id, { meta: withRestoreBlocked({ ...(item.meta || {}), detail_skip: skipReason }, item.source_url) });
     const remaining = await getQueueDepth(supabase);
     return { action: 'skipped', reason: skipReason, externalId: item.external_id, queueDepth: remaining };
   }
@@ -805,12 +822,15 @@ export async function runDetailSync(supabase, { runResetStuck = true } = {}) {
     // A cancelled booking back on the site, read and saved: un-cancel it, and say so (#316)
     if (item.meta?.restore) {
       const restore = await restoreArchivedBooking(supabase, item.external_id);
-      const restoreNotice = restore.restored
-        ? `${item.external_id} "${item.title || ''}": back on the booking site, so its cancellation was cleared`
-        : `${item.external_id} "${item.title || ''}": back on the booking site, but its dog(s) already have ${restore.conflicts.join(', ')} on those dates, so it stays cancelled`;
-      notice = notice ? `${notice}; ${restoreNotice}` : restoreNotice;
       const meta = { ...(readAgain?.meta ?? item.meta) };
       delete meta.restore;
+      if (!restore.notArchived) {
+        const restoreNotice = restore.restored
+          ? `${item.external_id} "${item.title || ''}": back on the booking site, so its cancellation was cleared`
+          : `${item.external_id} "${item.title || ''}": back on the booking site, but its dog(s) already have ${restore.conflicts.join(', ')} on those dates, so it stays cancelled`;
+        notice = notice ? `${notice}; ${restoreNotice}` : restoreNotice;
+        if (!restore.restored) meta.restore_blocked = item.source_url;
+      }
       readAgain = { meta };
     }
     if (readAgain) await markDone(supabase, item.id, readAgain);

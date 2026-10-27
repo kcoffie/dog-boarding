@@ -35,10 +35,15 @@ const answers = (byId) => authenticatedFetch.mockImplementation(async (u) => {
 // Tonight's pages: Tue 10-27 (the week of Sun 10-25) and Tue 11-03 (the week of Sun 11-01), as the
 // runner passes them (local calendar dates). So the window is Sun 10-25 to Sun 11-08.
 const PAGES = [new Date(2026, 9, 27), new Date(2026, 10, 3)];
-// The cron at 00:05 UTC on 10-29 is 5:05pm on 10-28 in San Francisco: on or after RECONCILE_LIVE_FROM
-const LIVE_NIGHT = new Date('2026-10-29T00:05:00Z');
-// The night before, 5:05pm on 10-27 in San Francisco: report only
-const FIRST_NIGHT = new Date('2026-10-28T00:05:00Z');
+// The cron at 00:05 UTC is 5:05pm the day before in San Francisco (PDT). Derived from RECONCILE_LIVE_FROM,
+// which is set at merge: the night of that SF date is live, the night before only reports.
+const cronOn = (sfDate, days) => {
+  const d = new Date(`${sfDate}T00:05:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+};
+const LIVE_NIGHT = cronOn(RECONCILE_LIVE_FROM, 1);
+const FIRST_NIGHT = cronOn(RECONCILE_LIVE_FROM, 0);
 
 function booking(db, id, checkIn, checkOut, extra = {}) {
   db._addSyncAppointment({
@@ -117,6 +122,35 @@ describe('REQ-108: the nightly check cancels a booking removed from the booking 
     answers({ ENDSMON: live, STARTSAT: live });
     await night(db);
     expect(opened()).toEqual(['ENDSMON', 'STARTSAT']);
+  });
+
+  it('a page date on a Sunday (the cron on a Saturday evening in SF): the window starts that Sunday, 11-01 to 11-15', async () => {
+    const db = createFakeSupabase();
+    booking(db, 'ENDS1101', '2026-10-28T10:00:00+00:00', '2026-11-01T16:15:00+00:00');
+    booking(db, 'ENDS1102', '2026-10-28T10:00:00+00:00', '2026-11-02T10:15:00+00:00');
+    booking(db, 'STARTS14', '2026-11-14T10:00:00+00:00', '2026-11-16T16:15:00+00:00');
+    booking(db, 'STARTS15', '2026-11-15T10:00:00+00:00', '2026-11-16T16:15:00+00:00');
+    answers({ ENDS1102: live, STARTS14: live });
+    await night(db, { pageDates: [new Date(2026, 10, 1), new Date(2026, 10, 8)] });
+    expect(opened()).toEqual(['ENDS1102', 'STARTS14']);
+  });
+
+  it('a page date on a Saturday: its week still starts on the Sunday before (10-31 → 10-25)', async () => {
+    const db = createFakeSupabase();
+    booking(db, 'ENDSSUN', '2026-10-20T10:00:00+00:00', '2026-10-25T16:15:00+00:00');
+    booking(db, 'ENDSMON', '2026-10-20T10:00:00+00:00', '2026-10-26T10:15:00+00:00');
+    booking(db, 'STARTSUN', '2026-11-08T10:00:00+00:00', '2026-11-10T16:15:00+00:00');
+    answers({ ENDSMON: live });
+    await night(db, { pageDates: [new Date(2026, 9, 31), new Date(2026, 10, 7)] });
+    expect(opened()).toEqual(['ENDSMON']);
+  });
+
+  it("a booking's queue item can't be read: a stop, nothing opened or cancelled", async () => {
+    const db = createFakeSupabase({ failOn: (t, op) => (t === 'sync_queue' && op === 'select' ? { message: 'boom' } : null) });
+    booking(db, 'BKGONE01', '2026-11-03T16:00:00+00:00', '2026-11-12T17:00:00+00:00');
+    const rec = await night(db);
+    expect(authenticatedFetch).not.toHaveBeenCalled();
+    expect(rec.skipped).toBe("Reconciliation stopped: BKGONE01 couldn't be opened (its queue item couldn't be read: boom), nothing marked");
   });
 
   for (const zone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
@@ -217,6 +251,48 @@ describe('REQ-108: a cancelled booking back on the booking site is restored only
     expect([rec.restores, item.status, item.source_url, item.title, item.type, item.meta.restore]).toEqual([['BKBACK01'], 'pending', url('BKBACK01'), 'back', 'appointment', true]);
   });
 
+  it('a booking whose restore was blocked at this same URL is not re-read, not listed, and a quiet night sends no alert', async () => {
+    const db = createFakeSupabase();
+    booking(db, 'BKBACK01', '2026-11-03T16:00:00+00:00', '2026-11-12T17:00:00+00:00', { sync_status: 'archived' });
+    db._addQueueItem({ external_id: 'BKBACK01', source_url: url('BKBACK01'), status: 'done', type: 'appointment', meta: { restore_blocked: url('BKBACK01') } });
+    const rec = await night(db, { seen: ['BKBACK01'], appointments: [{ id: 'BKBACK01', url: url('BKBACK01'), title: 'back' }] });
+    expect([rec.restores, db._mockData.sync_queue[0].status]).toEqual([[], 'done']);
+    expect(await alertReconcile(db, rec)).toBeNull();
+  });
+
+  it('a blocked restore is tried again once its URL changes, and the old block is dropped', async () => {
+    const db = createFakeSupabase();
+    db._addQueueItem({ external_id: 'BKBACK01', source_url: `${SITE}/schedule/a/BKBACK01/1`, status: 'done', type: 'appointment', meta: { restore_blocked: `${SITE}/schedule/a/BKBACK01/1` } });
+    expect(await requeueForRestore(db, { external_id: 'BKBACK01', source_url: url('BKBACK01') })).toBe('requeued');
+    expect(db._mockData.sync_queue[0].meta).toEqual({ restore: true });
+  });
+
+  it('a booking already being processed is not listed as re-read', async () => {
+    const db = createFakeSupabase();
+    booking(db, 'BKBACK01', '2026-11-03T16:00:00+00:00', '2026-11-12T17:00:00+00:00', { sync_status: 'archived' });
+    db._addQueueItem({ external_id: 'BKBACK01', source_url: url('BKBACK01'), status: 'processing', meta: {} });
+    const rec = await night(db, { seen: ['BKBACK01'], appointments: [{ id: 'BKBACK01', url: url('BKBACK01'), title: 'back' }] });
+    expect(rec.restores).toEqual([]);
+  });
+
+  it('one re-queue failing counts an error and the next booking is still queued', async () => {
+    let failed = false;
+    const db = createFakeSupabase({ failOn: (t, op) => (t === 'sync_queue' && op === 'insert' && !failed ? (failed = true, { message: 'boom' }) : null) });
+    booking(db, 'BKBACK01', '2026-11-03T16:00:00+00:00', '2026-11-12T17:00:00+00:00', { sync_status: 'archived' });
+    booking(db, 'BKBACK02', '2026-11-03T16:00:00+00:00', '2026-11-12T17:00:00+00:00', { sync_status: 'archived' });
+    const rec = await night(db, { seen: ['BKBACK01', 'BKBACK02'], appointments: [
+      { id: 'BKBACK01', url: url('BKBACK01'), title: 'a' }, { id: 'BKBACK02', url: url('BKBACK02'), title: 'b' }] });
+    expect([rec.errors, rec.restores]).toEqual([1, ['BKBACK02']]);
+  });
+
+  it('a booking that is not archived is not restored and nothing is written', async () => {
+    const db = createFakeSupabase();
+    booking(db, 'BKACT001', '2026-11-03T16:00:00+00:00', '2026-11-12T17:00:00+00:00');
+    boardingRow(db, 'BKACT001', { cancelled_at: '2026-10-29T00:10:00Z', cancellation_reason: 'by hand' });
+    expect(await restoreArchivedBooking(db, 'BKACT001')).toEqual({ restored: false, boardings: 0, conflicts: [], notArchived: true });
+    expect([boardingOf(db, 'BKACT001').cancellation_reason, syncRow(db, 'BKACT001').last_change_type]).toEqual(['by hand', undefined]);
+  });
+
   it("restoring clears both dogs' cancellations and makes the booking active; booking_status is untouched", async () => {
     const db = createFakeSupabase();
     booking(db, 'BKBACK01', '2026-11-03T16:00:00+00:00', '2026-11-12T17:00:00+00:00', { sync_status: 'archived' });
@@ -259,6 +335,7 @@ describe('REQ-108: a cancelled booking back on the booking site is restored only
     ["its dogs' boardings can't be read", (t, op, f) => (t === 'boardings' && op === 'select' && f.some(([o]) => o === 'is') ? { message: 'boom' } : null)],
     ["a boarding can't be un-cancelled", (t, op) => (t === 'boardings' && op === 'update' ? { message: 'boom' } : null)],
     ["the booking can't be made active", (t, op) => (t === 'sync_appointments' && op === 'update' ? { message: 'boom' } : null)],
+    ["the booking's row can't be read", (t, op) => (t === 'sync_appointments' && op === 'select' ? { message: 'boom' } : null)],
   ]) {
     it(`${what}: the restore fails loudly (the detail step retries it)`, async () => {
       const db = createFakeSupabase({ failOn });

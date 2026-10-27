@@ -102,7 +102,9 @@ export default async function handler(req, res) {
       } : {}),
     }, errors.length > 0 ? errors.join('; ') : null);
 
-    return res.status(200).json({ ok: true, ...result });
+    // The response carries counts only, not the removed bookings' names
+    const { reconcile: _rec, ...counts } = result;
+    return res.status(200).json({ ok: true, ...counts, ...(rec ? { reconcile: { mode: rec.mode, gone: rec.gone.length, archived: rec.archived } } : {}) });
   } catch (err) {
     console.error('[CronSchedule] ❌ Unhandled error:', err.message, err.stack);
     try {

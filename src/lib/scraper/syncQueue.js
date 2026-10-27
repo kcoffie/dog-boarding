@@ -102,18 +102,15 @@ export async function enqueue(supabase, { external_id, source_url, title, type =
 }
 
 /**
- * The update that puts an appointment back to pending with what the scan just saw.
- * Meta is merged so a stored `external_pet_id` survives a scan copy without one, and `detail_skip`
- * is dropped so the next detail result decides again. A blank incoming title never replaces a stored one.
- */
-/**
  * A cancelled booking that's on the schedule again: read its page once more (#316). The detail step
  * un-cancels it only if the page is a booking and saves (`meta.restore`); a redirect leaves it cancelled.
- * An item already being processed is left alone.
+ * An item already being processed is left alone. One whose restore was already blocked at this same URL
+ * (`meta.restore_blocked`: it redirected, or another boarding covers its dates) isn't read again until
+ * its URL changes, so a booking still listed but not restorable costs nothing each night.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{ external_id: string, source_url: string, title?: string }} item
- * @returns {Promise<'queued'|'requeued'|'in_flight'>}
+ * @returns {Promise<'queued'|'requeued'|'in_flight'|'blocked'>}
  */
 export async function requeueForRestore(supabase, { external_id, source_url, title = '' }) {
   const { data: existing, error: fetchError } = await supabase
@@ -125,10 +122,13 @@ export async function requeueForRestore(supabase, { external_id, source_url, tit
   if (fetchError) throw fetchError;
 
   if (existing?.status === 'processing') return 'in_flight';
+  if (existing?.meta?.restore_blocked === source_url) return 'blocked';
   if (existing) {
+    const fields = requeueFields(existing, { source_url, title, type: 'appointment', meta: { restore: true } });
+    delete fields.meta.restore_blocked;
     const { error } = await supabase
       .from('sync_queue')
-      .update(requeueFields(existing, { source_url, title, type: 'appointment', meta: { restore: true } }))
+      .update(fields)
       .eq('id', existing.id);
     if (error) throw error;
     log(`[SyncQueue] ♻️ Re-queued cancelled booking ${external_id} to check it's back`);
@@ -142,6 +142,11 @@ export async function requeueForRestore(supabase, { external_id, source_url, tit
   return 'queued';
 }
 
+/**
+ * The update that puts an appointment back to pending with what the scan just saw.
+ * Meta is merged so a stored `external_pet_id` survives a scan copy without one, and `detail_skip`
+ * is dropped so the next detail result decides again. A blank incoming title never replaces a stored one.
+ */
 function requeueFields(existing, { source_url, title, type, meta }) {
   const merged = { ...(existing.meta || {}), ...meta };
   delete merged.detail_skip;

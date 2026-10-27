@@ -17,6 +17,7 @@ import { dequeueOne } from '../../lib/scraper/syncQueue.js';
 import { fetchAppointmentDetails } from '../../lib/scraper/extraction.js';
 import { mapAndSaveAppointment } from '../../lib/scraper/mapping.js';
 import { DetailRedirected } from '../../lib/scraper/redirects.js';
+import { applyDetailFilters } from '../../lib/scraper/appointmentFilter.js';
 import { createFakeSupabase } from './fakeSupabase.js';
 
 const URL = 'https://agirlandyourdog.com/schedule/a/BKBACK01/1793721600';
@@ -61,6 +62,33 @@ describe('REQ-108: the detail step restores a cancelled booking that is back (#3
     await runDetailSync(db, { runResetStuck: false });
     expect(reasons(db)).toEqual(['appointment_archived', 'appointment_archived']);
     expect(db._mockData.sync_appointments[0].sync_status).toBe('archived');
+    const meta = db._mockData.sync_queue[0].meta;
+    expect([meta.restore, meta.restore_blocked]).toEqual([undefined, URL]);
+  });
+
+  it('its page has no dates: no restore, and blocked at this URL', async () => {
+    const db = setUp();
+    mapAndSaveAppointment.mockResolvedValue({ stats: {}, notices: [], skipped: 'dateless_page' });
+    await runDetailSync(db, { runResetStuck: false });
+    expect(reasons(db)).toEqual(['appointment_archived', 'appointment_archived']);
+    const meta = db._mockData.sync_queue[0].meta;
+    expect([meta.restore, meta.restore_blocked]).toEqual([undefined, URL]);
+  });
+
+  it("it's no longer a boarding (skipped): no restore, and blocked at this URL", async () => {
+    const db = setUp();
+    applyDetailFilters.mockReturnValueOnce({ skip: true, reason: 'same_day' });
+    await runDetailSync(db, { runResetStuck: false });
+    expect(reasons(db)).toEqual(['appointment_archived', 'appointment_archived']);
+    const meta = db._mockData.sync_queue[0].meta;
+    expect([meta.restore, meta.restore_blocked, meta.detail_skip]).toEqual([undefined, URL, 'same_day']);
+  });
+
+  it('a restore mark on a booking that is active (not cancelled by the sync) does nothing and says nothing', async () => {
+    const db = setUp();
+    db._mockData.sync_appointments[0].sync_status = 'active';
+    const result = await runDetailSync(db, { runResetStuck: false });
+    expect([reasons(db), result.notice, db._mockData.sync_queue[0].meta]).toEqual([['appointment_archived', 'appointment_archived'], null, {}]);
   });
 
   it('the save fails: it stays cancelled and the item keeps its restore mark for the retry', async () => {
@@ -85,6 +113,7 @@ describe('REQ-108: the detail step restores a cancelled booking that is back (#3
     const result = await runDetailSync(db, { runResetStuck: false });
     expect(result.notice).toBe('BKBACK01 "11/3-12": back on the booking site, but its dog(s) already have BKNEW001, BKNEW002 on those dates, so it stays cancelled');
     expect(db._mockData.sync_appointments[0].sync_status).toBe('archived');
+    expect(db._mockData.sync_queue[0].meta).toEqual({ restore_blocked: URL });
   });
 
   it('the restore mark is dropped but the rest of the item\'s meta is kept', async () => {
