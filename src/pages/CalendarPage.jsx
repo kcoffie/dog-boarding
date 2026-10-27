@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useData } from '../context/DataContext';
 import { formatName, businessTodayDate, toDateStr, BUSINESS_TIME_ZONE } from '../utils/dateUtils';
 import { activeBoardings, calculateNet, nightStays } from '../utils/calculations';
+import { siteDate, formatSiteDate, bookingTime } from '../utils/siteClock';
 import { getEmployeeNameById } from '../utils/employeeHelpers';
 
 // Swipe gesture hook
@@ -52,30 +53,35 @@ function stringToColor(str) {
   };
 }
 
-// Date utilities
+// Date utilities. The grid's days are calendar dates; booking times are site clock
+// values (#353, ADR-009), placed on the grid by their San Francisco date (siteDate).
 function getMonthData(year, month) {
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const daysInMonth = lastDay.getDate();
-  const startingDay = firstDay.getDay();
+  const firstDay = new Date(year, month, 1); // real-moment: the grid's calendar month
+  const lastDay = new Date(year, month + 1, 0); // real-moment: the grid's calendar month
+  const daysInMonth = lastDay.getDate(); // real-moment: the grid's calendar month
+  const startingDay = firstDay.getDay(); // real-moment: the grid's calendar month
 
   return { firstDay, lastDay, daysInMonth, startingDay };
 }
 
-function formatDate(dateStr) {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+// A grid day as YYYY-MM-DD (month 0-based), to compare with a booking's siteDate
+function dayKey(year, month, day) {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function formatTime(dateStr) {
-  const date = new Date(dateStr);
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+// A booking's San Francisco date, "Oct 29"
+function formatDate(iso) {
+  return formatSiteDate(iso, { month: 'short', day: 'numeric' });
 }
 
-function isSameDay(date1, date2) {
-  return date1.getFullYear() === date2.getFullYear() &&
-         date1.getMonth() === date2.getMonth() &&
-         date1.getDate() === date2.getDate();
+// A booking's date and, when known, its time: "Oct 29 10:00 AM PT"
+function formatDateAndTime(iso, ampm) {
+  return [formatDate(iso), bookingTime(iso, ampm)].filter(Boolean).join(' ');
+}
+
+// The bookings on a day, from arrival day to departure day
+function bookingsOnDay(bookings, key) {
+  return bookings.filter(b => siteDate(b.arrival_datetime) <= key && key <= siteDate(b.departure_datetime));
 }
 
 // ─── Print helpers ───────────────────────────────────────────────────────────
@@ -83,11 +89,13 @@ function isSameDay(date1, date2) {
 /** Build a sorted array of {year, month, day} objects for [startDate, endDate]. */
 function eachDayInRange(startDate, endDate) {
   const days = [];
+  // real-moment: the picked print range's calendar days
   const cur = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  // real-moment: the picked print range's calendar days
   const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
   while (cur <= end) {
     days.push(new Date(cur));
-    cur.setDate(cur.getDate() + 1);
+    cur.setDate(cur.getDate() + 1); // real-moment: the picked print range's calendar days
   }
   return days;
 }
@@ -114,7 +122,7 @@ function PrintView({ days, getBookingsForDayFn, getNightTotals }) {
 
   // When it was printed, in San Francisco time (#350)
   const now = new Date();
-  const part = (opts) => now.toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, ...opts });
+  const part = (opts) => now.toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, ...opts }); // real-moment: the time it was printed
   const timeStr  = part({ hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
   const printedAt = `Printed at ${timeStr} ${part({ weekday: 'short' })} ${part({ day: 'numeric' })} ${part({ month: 'short' })} ${part({ year: 'numeric' })}`;
 
@@ -134,19 +142,17 @@ function PrintView({ days, getBookingsForDayFn, getNightTotals }) {
       </div>
 
       {days.map((date) => {
-        const d = date.getDate();
-        const m = date.getMonth();
-        const y = date.getFullYear();
-        const bookings = getBookingsForDayFn(d, m, y);
+        const dateStr = toDateStr(date);
+        const bookings = getBookingsForDayFn(dateStr);
         if (bookings.length === 0) return null;
 
+        // real-moment: the printed day's calendar date
         const dateLabel = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
-        const arriving  = bookings.filter(b => isSameDay(new Date(b.arrival_datetime), date));
-        const departing = bookings.filter(b => isSameDay(new Date(b.departure_datetime), date));
-        const staying   = bookings.filter(b => !isSameDay(new Date(b.arrival_datetime), date) && !isSameDay(new Date(b.departure_datetime), date));
+        const arriving  = bookings.filter(b => siteDate(b.arrival_datetime) === dateStr);
+        const departing = bookings.filter(b => siteDate(b.departure_datetime) === dateStr);
+        const staying   = bookings.filter(b => siteDate(b.arrival_datetime) !== dateStr && siteDate(b.departure_datetime) !== dateStr);
 
-        const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const { overnightCount, grossTotal, netPct, netTotal } = getNightTotals(dateStr);
 
         return (
@@ -186,9 +192,9 @@ function PrintSection({ label, color, bgColor, items, mode }) {
           <div key={b.id} style={{ backgroundColor: bgColor, border: `1px solid ${color}22`, borderRadius: '4px', padding: '4px 8px', fontSize: '17px' }}>
             <span style={{ fontWeight: '500', color: '#0f172a' }}>{b.dog_name}</span>
             <span style={{ color: '#64748b', marginLeft: '6px' }}>
-              {mode === 'arriving'  && `${b.arrival_ampm ? b.arrival_ampm + ' ' : ''}→ ${b.departure_ampm ? b.departure_ampm + ' ' : ''}${formatDate(b.departure_datetime)}`}
-              {mode === 'departing' && `${formatDate(b.arrival_datetime)}${b.arrival_ampm ? ' ' + b.arrival_ampm : ''} → ${b.departure_ampm || ''}`}
-              {mode === 'staying'   && `Since ${formatDate(b.arrival_datetime)}${b.arrival_ampm ? ' ' + b.arrival_ampm : ''} → ${b.departure_ampm ? b.departure_ampm + ' ' : ''}${formatDate(b.departure_datetime)}`}
+              {mode === 'arriving'  && [bookingTime(b.arrival_datetime, b.arrival_ampm), '→', formatDateAndTime(b.departure_datetime, b.departure_ampm)].filter(Boolean).join(' ')}
+              {mode === 'departing' && [formatDateAndTime(b.arrival_datetime, b.arrival_ampm), '→', bookingTime(b.departure_datetime, b.departure_ampm)].filter(Boolean).join(' ')}
+              {mode === 'staying'   && `Since ${formatDateAndTime(b.arrival_datetime, b.arrival_ampm)} → ${formatDateAndTime(b.departure_datetime, b.departure_ampm)}`}
             </span>
           </div>
         ))}
@@ -264,16 +270,17 @@ export default function CalendarPage() {
   const boardings = useMemo(() => activeBoardings(allBoardings), [allBoardings]);
   const [currentDate, setCurrentDate] = useState(() => {
     const today = businessTodayDate();
-    return new Date(today.getFullYear(), today.getMonth(), 1);
+    return new Date(today.getFullYear(), today.getMonth(), 1); // real-moment: the grid's calendar month
   });
   const [selectedDate, setSelectedDate] = useState(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printRange, setPrintRange] = useState(null); // { from, to } as 'YYYY-MM-DD' strings
 
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
+  const year = currentDate.getFullYear(); // real-moment: the grid's calendar month
+  const month = currentDate.getMonth(); // real-moment: the grid's calendar month
   const { daysInMonth, startingDay } = getMonthData(year, month);
 
+  // real-moment: the grid's calendar month
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   // Get dog info by ID
@@ -303,42 +310,24 @@ export default function CalendarPage() {
 
   // Filter bookings that overlap with current month
   const monthBookings = useMemo(() => {
-    const monthStart = new Date(year, month, 1);
-    const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+    const monthStart = dayKey(year, month, 1);
+    const monthEnd = dayKey(year, month, daysInMonth);
 
-    return calendarBookings.filter(b => {
-      const arrival = new Date(b.arrival_datetime);
-      const departure = new Date(b.departure_datetime);
-      return arrival <= monthEnd && departure >= monthStart;
-    });
-  }, [calendarBookings, year, month]);
+    return calendarBookings.filter(b =>
+      siteDate(b.arrival_datetime) <= monthEnd && siteDate(b.departure_datetime) >= monthStart);
+  }, [calendarBookings, year, month, daysInMonth]);
 
   // Get bookings for a specific day
-  const getBookingsForDay = (day) => {
-    const date = new Date(year, month, day);
-    return monthBookings.filter(b => {
-      const arrival = new Date(b.arrival_datetime);
-      const departure = new Date(b.departure_datetime);
-      const arrivalDate = new Date(arrival);
-      arrivalDate.setHours(0, 0, 0, 0);
-      const depDate = new Date(departure);
-      depDate.setHours(0, 0, 0, 0);
-      const checkDate = new Date(date);
-      checkDate.setHours(0, 0, 0, 0);
-      return checkDate >= arrivalDate && checkDate <= depDate;
-    });
-  };
+  const getBookingsForDay = (day) => bookingsOnDay(monthBookings, dayKey(year, month, day));
 
   // Calculate bar positions for a day
   const getBarSegments = (day) => {
     const bookings = getBookingsForDay(day);
-    const date = new Date(year, month, day);
+    const key = dayKey(year, month, day);
 
     return bookings.map(b => {
-      const arrival = new Date(b.arrival_datetime);
-      const departure = new Date(b.departure_datetime);
-      const isStart = isSameDay(arrival, date);
-      const isEnd = isSameDay(departure, date);
+      const isStart = siteDate(b.arrival_datetime) === key;
+      const isEnd = siteDate(b.departure_datetime) === key;
 
       return {
         ...b,
@@ -354,17 +343,8 @@ export default function CalendarPage() {
     return Math.max(0, bookings.length - 4);
   };
 
-  // Get bookings for any arbitrary date (used by print view)
-  const getBookingsForAnyDay = (day, m, y) => {
-    return calendarBookings.filter(b => {
-      const arrival = new Date(b.arrival_datetime);
-      const departure = new Date(b.departure_datetime);
-      const arrDate = new Date(arrival.getFullYear(), arrival.getMonth(), arrival.getDate());
-      const depDate = new Date(departure.getFullYear(), departure.getMonth(), departure.getDate());
-      const checkDate = new Date(y, m, day);
-      return checkDate >= arrDate && checkDate <= depDate;
-    });
-  };
+  // Get bookings for any date, YYYY-MM-DD (used by print view)
+  const getBookingsForAnyDay = (dateStr) => bookingsOnDay(calendarBookings, dateStr);
 
   // Inject print CSS once
   useEffect(() => {
@@ -389,7 +369,7 @@ export default function CalendarPage() {
   const handlePrint = (from, to) => {
     const [fy, fm, fd] = from.split('-').map(Number);
     const [ty, tm, td] = to.split('-').map(Number);
-    const range = { startDate: new Date(fy, fm - 1, fd), endDate: new Date(ty, tm - 1, td) };
+    const range = { startDate: new Date(fy, fm - 1, fd), endDate: new Date(ty, tm - 1, td) }; // real-moment: the picked print range
     console.log(`[print] handlePrint → ${from} to ${to}`);
     setPrintRange(range);
     setShowPrintModal(false);
@@ -397,16 +377,16 @@ export default function CalendarPage() {
 
   // Default print range = today → today+7
   const printToday    = businessTodayDate();
-  const printWeekOut  = new Date(printToday.getFullYear(), printToday.getMonth(), printToday.getDate() + 7);
+  const printWeekOut  = new Date(printToday.getFullYear(), printToday.getMonth(), printToday.getDate() + 7); // real-moment: today's calendar date
   const printDefaultFrom = toDateStr(printToday);
   const printDefaultTo   = toDateStr(printWeekOut);
 
   // Navigation
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1)); // real-moment: the grid's calendar days
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1)); // real-moment: the grid's calendar days
   const goToToday = () => {
     const today = businessTodayDate();
-    setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
+    setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1)); // real-moment: the grid's calendar days
   };
 
   // Swipe handlers for mobile
@@ -440,17 +420,13 @@ export default function CalendarPage() {
 
   // Selected day details
   const selectedDayBookings = selectedDate ? getBookingsForDay(selectedDate) : [];
-  const selectedDateObj = selectedDate ? new Date(year, month, selectedDate) : null;
-  const selectedDateStr = selectedDateObj
-    ? `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}`
-    : null;
+  const selectedDateObj = selectedDate ? new Date(year, month, selectedDate) : null; // real-moment: the grid's calendar days
+  const selectedDateStr = selectedDate ? dayKey(year, month, selectedDate) : null;
 
   const getStatus = (booking) => {
-    if (!selectedDateObj) return '';
-    const arrival = new Date(booking.arrival_datetime);
-    const departure = new Date(booking.departure_datetime);
-    if (isSameDay(arrival, selectedDateObj)) return 'arriving';
-    if (isSameDay(departure, selectedDateObj)) return 'departing';
+    if (!selectedDateStr) return '';
+    if (siteDate(booking.arrival_datetime) === selectedDateStr) return 'arriving';
+    if (siteDate(booking.departure_datetime) === selectedDateStr) return 'departing';
     return 'staying';
   };
 
@@ -465,10 +441,9 @@ export default function CalendarPage() {
   // Check if a day is today (in San Francisco)
   const today = businessTodayDate();
   const isToday = (day) => {
-    return day === today.getDate() &&
-           month === today.getMonth() &&
-           year === today.getFullYear();
+    return dayKey(year, month, day) === toDateStr(today);
   };
+  const todayDay = today.getDate(); // real-moment: today's calendar date
 
   // Look up overnight staff assignment for a given calendar day
   const getStaffForDay = (day) => {
@@ -626,6 +601,7 @@ export default function CalendarPage() {
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-slate-900">
                 {selectedDateObj
+                  // real-moment: the selected grid day
                   ? selectedDateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
                   : 'Select a day'
                 }
@@ -656,7 +632,7 @@ export default function CalendarPage() {
                       <div key={b.id} className="p-2 rounded-lg bg-emerald-50 border border-emerald-100">
                         <div className="font-medium text-slate-900">{b.dog_name}</div>
                         <div className="text-xs text-slate-500">
-                          {b.arrival_ampm || formatTime(b.arrival_datetime)} → {formatDate(b.departure_datetime)}
+                          {[bookingTime(b.arrival_datetime, b.arrival_ampm), '→', formatDate(b.departure_datetime)].filter(Boolean).join(' ')}
                         </div>
                       </div>
                     ))}
@@ -694,7 +670,7 @@ export default function CalendarPage() {
                       <div key={b.id} className="p-2 rounded-lg bg-amber-50 border border-amber-100">
                         <div className="font-medium text-slate-900">{b.dog_name}</div>
                         <div className="text-xs text-slate-500">
-                          {formatDate(b.arrival_datetime)} → {b.departure_ampm || formatTime(b.departure_datetime)}
+                          {[formatDate(b.arrival_datetime), '→', bookingTime(b.departure_datetime, b.departure_ampm)].filter(Boolean).join(' ')}
                         </div>
                       </div>
                     ))}
@@ -817,7 +793,7 @@ export default function CalendarPage() {
           <span className="w-2 h-2 bg-amber-500 rounded-full"></span> Departing
         </div>
         <div className="flex items-center gap-1">
-          <span className="inline-flex items-center justify-center w-4 h-4 bg-indigo-600 text-white rounded-full text-[10px]">{today.getDate()}</span> Today
+          <span className="inline-flex items-center justify-center w-4 h-4 bg-indigo-600 text-white rounded-full text-[10px]">{todayDay}</span> Today
         </div>
       </div>
 

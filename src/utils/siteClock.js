@@ -3,7 +3,10 @@
 // Their UTC parts ARE the San Francisco date and time. Read them only through this module;
 // a local-zone method (getHours, toLocaleString without timeZone...) shows them 7–8 h off.
 // Real moments (created_at, cancelled_at, paid_date, cron times) are not site clock values.
-import { BUSINESS_TIME_ZONE } from './dateUtils.js';
+
+// The business runs on San Francisco time, whatever the device's timezone (#350).
+// Defined here, not in dateUtils.js, so dateUtils can read booking times through this module.
+export const BUSINESS_TIME_ZONE = 'America/Los_Angeles';
 
 const valid = (iso) => {
   if (!iso) return null;
@@ -48,6 +51,19 @@ export function timeStatus(iso, ampm) {
 export function bookingTime(iso, ampm) {
   const time = siteTime(iso);
   return time && timeStatus(iso, ampm) === 'shown' ? `${time} PT` : null;
+}
+
+// A booking's date and, when it's known, its time: "Oct 29, 2026 10:00 AM PT" or "Oct 29, 2026"
+export function bookingDateTime(iso, ampm) {
+  const date = formatSiteDate(iso, { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = bookingTime(iso, ampm);
+  return date && time ? `${date} ${time}` : date;
+}
+
+// The booking's San Francisco clock hour, 0–23
+export function siteHour(iso) {
+  const d = valid(iso);
+  return d ? d.getUTCHours() : null;
 }
 
 // San Francisco's wall clock now, written the same way, to compare with booking times.

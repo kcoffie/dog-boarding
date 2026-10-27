@@ -17,9 +17,9 @@ export const dogs = [
 ];
 
 export const boardings = [
-  { id: 'a1', dogId: 'a', arrivalDateTime: '2026-10-22T16:00:00', departureDateTime: '2026-10-25T10:00:00', nightRate: 60 },
-  { id: 'b1', dogId: 'b', arrivalDateTime: '2026-10-23T16:00:00', departureDateTime: '2026-10-24T10:00:00', nightRate: 40 },
-  { id: 'c1', dogId: 'c', arrivalDateTime: '2026-10-23T16:00:00', departureDateTime: '2026-10-24T10:00:00', nightRate: 40 },
-  { id: 'd1', dogId: 'd', arrivalDateTime: '2026-10-21T16:00:00', departureDateTime: '2026-10-26T10:00:00', nightRate: 60, cancelledAt: '2026-10-20T12:00:00Z' },
-  { id: 'e1', dogId: 'e', arrivalDateTime: '2026-10-23T09:00:00', departureDateTime: '2026-10-23T17:00:00', nightRate: 60 },
+  { id: 'a1', dogId: 'a', arrivalDateTime: '2026-10-22T16:00:00Z', departureDateTime: '2026-10-25T10:00:00Z', nightRate: 60 },
+  { id: 'b1', dogId: 'b', arrivalDateTime: '2026-10-23T16:00:00Z', departureDateTime: '2026-10-24T10:00:00Z', nightRate: 40 },
+  { id: 'c1', dogId: 'c', arrivalDateTime: '2026-10-23T16:00:00Z', departureDateTime: '2026-10-24T10:00:00Z', nightRate: 40 },
+  { id: 'd1', dogId: 'd', arrivalDateTime: '2026-10-21T16:00:00Z', departureDateTime: '2026-10-26T10:00:00Z', nightRate: 60, cancelledAt: '2026-10-20T12:00:00Z' },
+  { id: 'e1', dogId: 'e', arrivalDateTime: '2026-10-23T09:00:00Z', departureDateTime: '2026-10-23T17:00:00Z', nightRate: 60 },
 ];

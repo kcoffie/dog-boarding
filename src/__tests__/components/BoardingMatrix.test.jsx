@@ -36,8 +36,8 @@ const dog = { id: 'dog-1', name: 'Buddy', nightRate: 50, dayRate: 30 };
 const boarding = {
   id: 'boarding-1',
   dogId: 'dog-1',
-  arrivalDateTime: `${yesterday}T12:00:00`,
-  departureDateTime: `${nextWeek}T12:00:00`,
+  arrivalDateTime: `${yesterday}T12:00:00Z`,
+  departureDateTime: `${nextWeek}T12:00:00Z`,
 };
 
 const defaultDataMock = {

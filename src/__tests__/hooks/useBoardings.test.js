@@ -21,8 +21,8 @@ vi.mock('../../lib/supabase', () => ({
             data: {
               id: 'new-boarding',
               dog_id: 'dog-1',
-              arrival_datetime: '2024-01-15T10:00:00',
-              departure_datetime: '2024-01-18T14:00:00',
+              arrival_datetime: '2024-01-15T10:00:00Z',
+              departure_datetime: '2024-01-18T14:00:00Z',
             },
             error: null
           })),
@@ -50,14 +50,14 @@ describe('REQ-036: useBoardings Hook (boardings come only from the sync)', () =>
       {
         id: 'boarding-1',
         dog_id: 'dog-1',
-        arrival_datetime: '2024-01-10T10:00:00',
-        departure_datetime: '2024-01-15T14:00:00',
+        arrival_datetime: '2024-01-10T10:00:00Z',
+        departure_datetime: '2024-01-15T14:00:00Z',
       },
       {
         id: 'boarding-2',
         dog_id: 'dog-2',
-        arrival_datetime: '2024-01-12T09:00:00',
-        departure_datetime: '2024-01-14T16:00:00',
+        arrival_datetime: '2024-01-12T09:00:00Z',
+        departure_datetime: '2024-01-14T16:00:00Z',
       },
     ];
     mockData.error = null;

@@ -15,14 +15,8 @@ import { join, relative } from 'path';
 
 const ROOT = join(__dirname, '..', '..');
 
-// Files #353 PR 2 (= #350 PR 2) fixes; PR 2 empties this list
+// Files still waiting for a fix (#353 PR 2 emptied its part)
 const NOT_YET = {
-  'src/utils/dateUtils.js': 'PR 2: formatTime, formatDateTime, the day/night helpers',
-  'src/pages/DogsPage.jsx': 'PR 2: times, status badge',
-  'src/pages/CalendarPage.jsx': 'PR 2: times and day placement',
-  'src/components/SyncDetailModal.jsx': 'PR 2: Sync History dates',
-  'src/components/BoardingFormModal.jsx': 'PR 2: form view dates',
-  'src/hooks/useBoardingForms.js': 'PR 2: upcoming filter',
   'scripts/integration-check.js': "#350: today from the runner's zone (right only on GitHub's UTC)",
 };
 
@@ -105,7 +99,7 @@ describe('REQ-065: only siteClock.js reads booking times', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('every file waiting for PR 2 still exists', () => {
+  it('every file still waiting still exists', () => {
     for (const file of Object.keys(NOT_YET)) expect(existsSync(join(ROOT, file)), file).toBe(true);
   });
 

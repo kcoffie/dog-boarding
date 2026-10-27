@@ -32,10 +32,10 @@ const getTestDates = () => {
     day2: formatDate(day2),
     day3: formatDate(day3),
     day4: formatDate(day4),
-    day1DateTime: `${formatDate(day1)}T14:00:00`,
-    day3DateTime: `${formatDate(day3)}T10:00:00`,
-    day2DateTime: `${formatDate(day2)}T14:00:00`,
-    day4DateTime: `${formatDate(day4)}T10:00:00`,
+    day1DateTime: `${formatDate(day1)}T14:00:00Z`,
+    day3DateTime: `${formatDate(day3)}T10:00:00Z`,
+    day2DateTime: `${formatDate(day2)}T14:00:00Z`,
+    day4DateTime: `${formatDate(day4)}T10:00:00Z`,
   };
 };
 

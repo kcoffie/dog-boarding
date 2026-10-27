@@ -19,9 +19,9 @@ describe('REQ-040: EmployeeTotals', () => {
 
   const mockBoardings = [
     // Luna: stays Jan 15-18 (3 nights: 15, 16, 17)
-    { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-18T10:00:00' },
+    { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-18T10:00:00Z' },
     // Cooper: stays Jan 16-18 (2 nights: 16, 17)
-    { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T14:00:00', departureDateTime: '2025-01-18T10:00:00' },
+    { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T14:00:00Z', departureDateTime: '2025-01-18T10:00:00Z' },
   ];
 
   const mockSettings = {
@@ -247,7 +247,7 @@ describe('REQ-040: EmployeeTotals', () => {
       const boardings = [
         ...mockBoardings,
         // Cooper, Jan 15-16, marked gone: would add $45 on Jan 15
-        { id: '3', dogId: '2', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-16T10:00:00', cancelledAt: '2025-01-14T12:00:00Z' },
+        { id: '3', dogId: '2', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-16T10:00:00Z', cancelledAt: '2025-01-14T12:00:00Z' },
       ];
       useData.mockReturnValue({
         ...mockDaytimeExtras,

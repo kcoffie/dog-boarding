@@ -8,6 +8,7 @@
 
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { formatSiteDate } from '../utils/siteClock';
 
 /**
  * Format a YYYY-MM-DD date as "Mon DD, YYYY" (e.g. "Feb 13, 2026").
@@ -17,17 +18,15 @@ function formatDate(isoDate) {
   if (!isoDate) return '';
   const [year, month, day] = isoDate.split('-').map(Number);
   if (!year || !month || !day) return isoDate;
-  const d = new Date(year, month - 1, day);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatSiteDate(`${isoDate}T00:00:00Z`, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**
- * Format a booking date from an ISO datetime string as "Mon DD, YYYY".
+ * Format a booking date (a site clock value, #353) as its San Francisco date, "Mon DD, YYYY".
  */
 function formatBookingDate(isoDatetime) {
   if (!isoDatetime) return '';
-  const d = new Date(isoDatetime);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatSiteDate(isoDatetime, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**

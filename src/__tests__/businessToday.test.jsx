@@ -179,8 +179,8 @@ describe('REQ-064: screens use San Francisco today', () => {
   ];
   // Pip stays the nights of 10-26 and 10-27; Rex only from 10-27
   const boardings = [
-    { id: 'b1', dogId: 'd1', arrivalDateTime: '2026-10-26T10:00:00', departureDateTime: '2026-10-28T10:00:00' },
-    { id: 'b2', dogId: 'd2', arrivalDateTime: '2026-10-27T10:00:00', departureDateTime: '2026-10-29T10:00:00' },
+    { id: 'b1', dogId: 'd1', arrivalDateTime: '2026-10-26T10:00:00Z', departureDateTime: '2026-10-28T10:00:00Z' },
+    { id: 'b2', dogId: 'd2', arrivalDateTime: '2026-10-27T10:00:00Z', departureDateTime: '2026-10-29T10:00:00Z' },
   ];
 
   beforeEach(() => {
