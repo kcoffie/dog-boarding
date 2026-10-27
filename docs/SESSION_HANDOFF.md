@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 27, 2026, ~01:00 UTC (session 52). **Production = main (`ee20596`, #358), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 52: #353 PR 1 shipped (#357: booking times read as the site's SF clock times on the server and the Friday roster). #316 shipped (#358: the nightly sync cancels bookings removed from the booking site, restores them on proof; first night report-only). Next: check the report-only run (00:05 UTC 10-28) and the first live run (00:05 UTC 10-29), then #353 PR 2.**
+**Last updated:** October 27, 2026, ~19:00 UTC (session 53). **Production = main (`5a8546c`, #360), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 53: #353 PR 2 shipped (#360: every screen reads booking times as the site's SF clock times). Next: check #316's report-only run (00:05 UTC 10-28) and first live run (00:05 UTC 10-29: `C63QhB7h` must be cancelled, both dogs), then the Fri 10-30 roster.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -28,7 +28,27 @@
 
 ---
 
-## Current State (2026-10-27 ~01:00 UTC, session 52)
+## Current State (2026-10-27 ~19:00 UTC, session 53)
+
+### Session 53: what happened (2026-10-27)
+1. **Baseline:** main `ee20596`, 2486 passed / 1 skipped. **#359 (session 52 handoff) merged as `6f7eb21`** on Kate's word, `check:deploy` OK.
+2. **Read-only checks (10:00 PDT):** neither #316 night had happened yet. Overnight 10-27 clean: `schedule` 00:14, `detail` 00:50 idle, `auth` 00:37 refreshed (good to 10-28 06:37); `site_access` not blocked; queue 0; no alerts except the 4am roster (Vercel, 11:40). Integration Check 03:08 passed; **the 13:45 Integration Check was cancelled**: `npx playwright install chromium --with-deps` hung in apt for 10 min and hit `timeout-minutes: 10` before the script ran (no requests, nothing written; GitHub runner problem). Watch for a repeat (2 of the last 40 runs cancelled). CI Mutation on `ee20596`: 66.06% (incremental).
+3. **Dogs Tonight after 5pm:** Kate asked what to check. The count can't tell (10-27 and 10-28 are both 2 dogs): check that the Dashboard's **today mark** (and the phone view's first day) is the SF date after 5pm PDT. Not yet checked.
+4. **#353 PR 2 (= #350 PR 2) shipped: #360 → `5a8546c`, `check:deploy` OK. REQ-065 Complete, REQ-504 updated.**
+   - Dogs page "Oct 29, 2026 10:00 AM PT" (date only under Q2/Q5/Q6) and its badge vs `siteNow`; Calendar grid, bars, day panel, print view on site dates with site times; `calculateNights`/`isOvernight`/`isDayPresent` on site dates; Sync History booking dates as the site shows them and run times in SF ("PT"); form view's Date Discrepancy; upcoming forms to the end of the SF departure day, query with `!inner` (it returned all 93 forms before; 6 now, checked read-only on production).
+   - `siteClock.js` gains `bookingDateTime`, `siteHour` and now holds `BUSINESS_TIME_ZONE` (re-exported by `dateUtils.js`). Removed: `formatDate`, `formatTime`, `formatDateTime`, `toTimeInputValue`. Guard `NOT_YET` = only `scripts/integration-check.js`.
+   - Test fixtures that stored booking times with no zone (read as device-local) now carry `Z` (the database always returns `+00:00`). Shared host-zone harness: `src/__tests__/hostZones.js`.
+   - **Evidence:** suite 2704 passed / 1 skipped; new tests in 6 host zones, each behaviour test failing on main in at least one; **scoped Stryker on the changed lines (UI files included) 92.1% (Kiritimati) / 93.5% (Pago Pago)** (survivors: marker-only lines, the Calendar's month pre-filter which is equivalent, an unreachable guard). **10-23 still 8 dogs / $440 / $286** on production data with the host in Pacific, Kiritimati, Pago Pago.
+   - Reviewer: no must-fix; findings + what was done posted on #360. Accepted (design note): Sync History can't show a genuine 7:00/8:00am changed time (no AM/PM label there).
+   - **Filed #361 (low, Kate: fine for now):** Settings page, booking-site access card, Sync Settings and Profile show real moments in the device's zone.
+   - Tool note: a force-push after a rebase is blocked by the classifier ("Git Destructive"); merge `origin/main` into the branch instead.
+5. **Kate asked why two runs:** only the first night is report-only (her Q5a). From 10-29 every nightly run is live, so a booking removed on the site is cancelled within ~24 h (next 00:05 UTC run), if it overlaps the next two weeks; further out it's caught when it enters the window. Sync Now does the same check at once; twice-a-day is #318 step 5.
+6. **`C63QhB7h` (Mochi + Marlee, 11-03 → 11-12) is gone from the site and still `confirmed` in the app** (Kate). Read-only 18:17 UTC: row active, last read 10-26, queue item `done` with URL `…/C63QhB7h/1793721600`, both boardings not cancelled; 13 active bookings overlap tonight's window (Sun 10-25 → 11-08). If the week pages no longer list it, tonight's report says "would cancel" and 10-29's run cancels both boardings. If tonight's report doesn't name it, the site still lists it somewhere: investigate before 10-29.
+7. Nothing else changed: no SQL by Claude, no booking-site requests, no messages sent.
+
+## Previous session (52)
+
+### (was Current State, 2026-10-27 ~01:00 UTC, session 52)
 
 ### Session 52: what happened (2026-10-26 / 10-27 UTC)
 1. **Baseline:** main `a558dc6`, 2252 passed / 1 skipped. No overnight run yet at the start; 10-27's ran later: `schedule` 00:14 (192 found, 95 queued), `detail` 00:16, `auth` 00:37 refreshed (good to 10-28 06:37), queue empty, `site_access` not blocked. Kate: Dogs Tonight after 5pm not checked yet (it was 4pm PDT).
@@ -306,21 +326,21 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2486 passed / 1 skipped**), open PRs (#291, #285, plus **#359** = this handoff: reviewer already run and posted, CI green; if still open, ask Kate to merge it, then `check:deploy`).
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2704 passed / 1 skipped**), open PRs (#291, #285, plus this handoff's docs PR: ask Kate to merge it if still open, then `check:deploy`).
 2. **Read-only checks (fix nothing without asking):**
-   - **After 00:05 UTC 10-28 (report-only night):** `cron_health` `schedule` `result.reconcile` (mode `report_only`, candidates, gone, skipped, errors, alertDelivered); a `sync-reconcile` row in `message_log` naming `C63QhB7h` as "Would cancel" (and nothing else unexpected); both its boardings still not cancelled.
-   - **After 00:05 UTC 10-29 (first live night):** both `C63QhB7h` boardings (`C63QhB7h`, `C63QhB7h_p1`) have `cancellation_reason = 'appointment_archived'`, its row `archived`; one "Cancelled" alert; the 11-03 rosters list neither dog. Then close #316 with a comment (PRs #358; results; no AI mention).
-   - Overnight crons, `site_access`, queue; ask Kate whether Dogs Tonight showed today after 5pm Pacific.
-   - **Fri 10-30 Friday pm roster (first on #357; 22:00 UTC, retry 23:00):** times match the site (Kate compares 2); header "Fri – Mon"; Friday-afternoon arrivals/departures listed.
+   - **After 00:05 UTC 10-28 (report-only night):** `cron_health` `schedule` `result.reconcile` (mode `report_only`, candidates, gone, skipped, errors, alertDelivered); one `sync-reconcile` row in `message_log` naming `C63QhB7h` as "Would cancel"; both its boardings still not cancelled. **If `C63QhB7h` isn't named, tell Kate before the 10-29 run** (the site still lists it on a page read that night).
+   - **After 00:05 UTC 10-29 (first live night):** both `C63QhB7h` boardings (`C63QhB7h`, `C63QhB7h_p1`) have `cancellation_reason = 'appointment_archived'`, its row `archived`; one "Cancelled" alert; no night or pay 11-03 → 11-12; the 11-03 rosters list neither dog. Then ask Kate to close #316 (comment: PR #358 + results, no AI mention) and drop `to-investigate`.
+   - Overnight crons, `site_access`, queue; whether the 13:45 Integration Check cancel (Playwright apt hang) repeated; ask Kate whether the Dashboard's today mark showed the SF date after 5pm PDT.
+   - **Fri 10-30 Friday pm roster (first on #357; 22:00 UTC, retry 23:00):** times match the site (Kate compares 2); header "Fri – Mon"; Friday-afternoon arrivals/departures listed. Then ask Kate to close #353 and #350 (#361 tracks the four leftover screens).
 3. **Top 3 (Sprint 1, ends 11-04):**
-   1. **#353 PR 2 (= #350 PR 2):** the rows marked 2 in the design note's table: Dogs page times and status badge, Calendar (times and day placement), `isOvernight`/`isDayPresent`/`calculateNights`, Sync History, form view, upcoming forms, `toTimeInputValue` removed, "PT"; empty the guard's PR 2 entries in `NOT_YET`. Check after: 10-23 still 8 dogs / $440 / $286. Same test zones and Stryker approach as PR 1.
+   1. **#316 verify and close** (above).
    2. **#13 dry-run 2** (Kate clicks; re-check $139.75 first).
    3. **#323** private job logs (design note → architect → migration by Kate).
-   Dates: DST ends Sun 11-01; first PST 4am roster Mon 11-02.
+   Then #351 (remove the Dogs page's hand edits). Dates: DST ends Sun 11-01; first PST 4am roster Mon 11-02.
 4. **Kate's own items:**
    - dry-run 2 clicks; book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forwarding the roster.
    - Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the week-page rows (73 dateless rows), the boarding-less $0 dogs, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
-5. **Small follow-ups found this session (not filed yet; ask Kate):** the 3 tests that fail with the host in Kiritimati/Pago Pago (above); the Integration Check's "today" (#350); an automated check that the site's printed times match `siteTime` (design note #353 "When it isn't").
+5. **Small follow-ups (not filed yet; ask Kate):** the 3 tests that fail with the host in Kiritimati/Pago Pago (pet birthdate a day early east of UTC is a real bug for a browser sync run from Paris; DateNavigator's Today test; `toDateInputValue`, no callers); the Integration Check's "today" (#350); an automated check that the site's printed times match `siteTime` (design note #353 "When it isn't").
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.
