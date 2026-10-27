@@ -617,6 +617,74 @@ describe('REQ-109 runScheduleSync', () => {
     expect(fetchedUrls()[2]).toBe(`${SITE}/schedule/days-7/2026/10/12`);
   });
 
+  /** @requirements REQ-108 */
+  it('with { reconcile: true } the scan checks the two weeks it read: check-out from Mon 10-19, check-in before Sun 11-01 (#316)', async () => {
+    const db = makeDb({ cursor: '2026-11-16' });
+    const base = db.from.bind(db);
+    const bounds = {};
+    db.from = (table) => {
+      if (table !== 'sync_appointments') return base(table);
+      const c = { select: () => c, eq: () => c, in: () => c,
+        gte: (f, v) => { bounds[f] = v; return c; }, lt: (f, v) => { bounds[f] = v; return c; },
+        then: (resolve) => resolve({ data: [], error: null }) };
+      return c;
+    };
+    const result = await runScheduleSync(db, { reconcile: true });
+    // Today is Mon 10-19 (week of Sun 10-18): the window is Sun 10-18 to Sun 11-01; a quiet night sends nothing
+    expect(bounds).toEqual({ check_out_datetime: '2026-10-19T00:00:00.000Z', check_in_datetime: '2026-11-01T00:00:00.000Z' });
+    expect([result.reconcile.mode, result.reconcile.candidates, result.reconcile.alertDelivered]).toEqual(['report_only', 0, null]);
+  });
+
+  // A db whose sync_appointments answers `rows` and whose sync_queue has no items, for the reconcile step
+  const reconcileDb = (rows, calls = { sync: 0 }) => {
+    const db = makeDb({ cursor: '2026-11-16' });
+    const base = db.from.bind(db);
+    db.from = (table) => {
+      if (table === 'sync_queue') return { ...base(table), select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) };
+      if (table !== 'sync_appointments') return base(table);
+      calls.sync++;
+      const c = { select: () => c, eq: () => c, in: () => c, gte: () => c, lt: () => c,
+        then: (resolve) => resolve({ data: rows, error: null }) };
+      return c;
+    };
+    return db;
+  };
+
+  /** @requirements REQ-108 */
+  it('a booking listed only on the cursor page is never opened; one on no page is (#316)', async () => {
+    servePages({
+      [`${SITE}/schedule/days-7/2026/10/19`]: DAYCARE_ONLY,
+      [`${SITE}/schedule/days-7/2026/10/26`]: DAYCARE_ONLY,
+      [`${SITE}/schedule/days-7/2026/11/16`]: link({ id: 'CURSORONLY', title: '10/27-30' }),
+    });
+    const rows = [
+      { external_id: 'CURSORONLY', source_url: `${SITE}/schedule/a/CURSORONLY/1` },
+      { external_id: 'NOWHERE1', source_url: `${SITE}/schedule/a/NOWHERE1/1` },
+    ];
+    await runScheduleSync(reconcileDb(rows), { reconcile: true });
+    const opened = fetchedUrls().filter((u) => u.includes('/schedule/a/'));
+    expect(opened).toEqual([`${SITE}/schedule/a/NOWHERE1/1`]);
+  });
+
+  /** @requirements REQ-108 */
+  it("next week's page empty: nothing is checked, and the run says so (#316)", async () => {
+    servePages({
+      [`${SITE}/schedule/days-7/2026/10/19`]: DAYCARE_ONLY,
+      [`${SITE}/schedule/days-7/2026/11/16`]: DAYCARE_ONLY,
+    });
+    const calls = { sync: 0 };
+    const result = await runScheduleSync(reconcileDb([{ external_id: 'NOWHERE1', source_url: `${SITE}/schedule/a/NOWHERE1/1` }], calls), { reconcile: true });
+    expect(result.reconcile.skipped).toBe("Not checked: this week's or next week's page showed no bookings");
+    expect(fetchedUrls().filter((u) => u.includes('/schedule/a/'))).toEqual([]);
+  });
+
+  /** @requirements REQ-108 */
+  it("without { reconcile: true } (the Integration Check's scans) nothing is reconciled: only the pages are fetched (#316)", async () => {
+    const result = await runScheduleSync(makeDb({ cursor: '2026-11-16' }));
+    expect(result.reconcile).toBeUndefined();
+    expect(fetchedUrls()).toHaveLength(3);
+  });
+
   it('with no session, returns session_failed and fetches nothing', async () => {
     getSiteSession.mockRejectedValue(new Error('no credentials'));
     const result = await runScheduleSync(makeDb());

@@ -264,6 +264,43 @@ describe('REQ-109: cron-schedule', () => {
     }, null]);
   });
 
+  // Removed bookings (#316, REQ-108)
+  const REC = { mode: 'live', candidates: 2, present: ['BKLIVE01'], gone: [{ external_id: 'BKGONE01' }], archived: 1, restores: [], skipped: null, errors: 0, alertDelivered: true };
+  const STATS = { pagesScanned: 3, found: 12, skipped: 7, queued: 5, requeuedEdited: 2, urlChangesIgnored: 4, cursorAdvancedTo: '2026-11-02', queueDepth: 9 };
+
+  it('only this nightly run asks the scan to reconcile removed bookings', async () => {
+    await call(cronSchedule);
+    expect(runScheduleSync.mock.calls[0][1]).toStrictEqual({ reconcile: true });
+  });
+
+  it("records the removed-bookings counts with the scan's", async () => {
+    runScheduleSync.mockResolvedValue({ action: 'scanned', ...STATS, reconcile: REC });
+    await call(cronSchedule);
+    expect(writes('schedule').at(-1)).toStrictEqual(['success', {
+      ...STATS,
+      reconcile: { mode: 'live', candidates: 2, present: 1, gone: 1, archived: 1, restores: 0, skipped: null, errors: 0, alertDelivered: true },
+    }, null]);
+  });
+
+  it('a removed-bookings alert that was not delivered makes the run a failure (REQ-652)', async () => {
+    runScheduleSync.mockResolvedValue({ action: 'scanned', ...STATS, reconcile: { ...REC, alertDelivered: false } });
+    await call(cronSchedule);
+    const [status, result, error] = writes('schedule').at(-1);
+    expect([status, result.reconcile.alertDelivered, error]).toStrictEqual(['failure', false, 'the removed-bookings alert was not delivered']);
+  });
+
+  it('a quiet night (no alert to send) is a success', async () => {
+    runScheduleSync.mockResolvedValue({ action: 'scanned', ...STATS, reconcile: { ...REC, gone: [], present: [], archived: 0, alertDelivered: null } });
+    await call(cronSchedule);
+    expect(writes('schedule').at(-1)[0]).toBe('success');
+  });
+
+  it('failed enqueues and an undelivered alert are both named', async () => {
+    runScheduleSync.mockResolvedValue({ action: 'enqueue_failed', failedEnqueues: 1, failedEnqueueIds: ['A'], ...STATS, reconcile: { ...REC, alertDelivered: false } });
+    await call(cronSchedule);
+    expect(writes('schedule').at(-1)[2]).toBe('1 enqueue(s) failed; the removed-bookings alert was not delivered');
+  });
+
   it('returns the scan result to the caller', async () => {
     const res = await call(cronSchedule);
     expect(res.body).toStrictEqual({ ok: true, action: 'scanned', pagesScanned: 3, found: 12, skipped: 7, queued: 5, requeuedEdited: 2, urlChangesIgnored: 4, cursorAdvancedTo: '2026-11-02', queueDepth: 9 });

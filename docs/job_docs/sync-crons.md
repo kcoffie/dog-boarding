@@ -74,6 +74,11 @@ Each run fetches **exactly three** schedule pages to balance freshness vs. cover
 
 This ensures bookings in the next 2 weeks are seen every night, and bookings 2–8 weeks out appear in the queue within 6 nights (one full cursor cycle). The cursor date is persisted in `sync_settings.schedule_cursor_date`.
 
+A page `/schedule/days-7/YYYY/M/D` shows the Sunday–Saturday week **containing** that date (live pages, 2026-10-19). On Vercel (UTC) at 00:05 that date is San Francisco's date + 1.
+
+#### Removed bookings (#316, REQ-108)
+After queueing, `runScheduleSync(supabase, { reconcile: true })` (only this cron passes it) reconciles the two weeks of the current and next pages: stored bookings in that window not seen on any page tonight are opened once each without following redirects (up to 10; usually none), and those answering 302 → `/schedule` have every dog's boarding cancelled. Cancelled bookings seen again are re-queued with `meta.restore` and restored by the detail step after a good read. One `sync-reconcile` alert per night with anything to say; counts in `cron_health.result.reconcile`; an undelivered alert makes the run a failure. Before `RECONCILE_LIVE_FROM` it only reports. A restore that doesn't happen (a redirect, no dates, a skip, another boarding over those dates) marks the queue item `restore_blocked` with that URL, so it isn't re-read every night until its URL changes. No `maxDuration`: Fluid compute's 300 s covers ~23 s of scan plus up to ~85 s for 10 candidates.
+
 #### Page parsing — regex only (no DOMParser)
 Unlike `schedule.js` (the browser scraper), this cron uses a regex-based `parseScheduleHtml()` because `DOMParser` is a browser API unavailable in Node.js. The regex matches `<a href="/schedule/a/{id}/{ts}">` blocks and extracts:
 - `id`, `url`, `timestamp`
@@ -121,7 +126,7 @@ Picks one item off the `sync_queue`, fetches its full detail page (or form page)
 **Pet identity (#344, REQ-661):** a dog is its booking-site pet ID, read from each pet's own element on the booking page. The sync never renames a dog or changes a stored pet ID; a same-name dog without one is linked only with evidence. What it won't decide goes in the same alert, once per change. Form jobs are fetched only when the pet ID is the boarding's dog's.
 
 ### Why one item per run
-Vercel Hobby functions have a **10-second execution timeout**. A single detail page fetch + parse + DB write fits in ~2–4s. Processing multiple items would risk timeout on slow responses. For bulk catch-up, the UI "Sync Now" button calls this endpoint in a loop until the queue is empty.
+Function time: the project runs on Vercel's Fluid compute (runs of 10.7–22.7 s finish with no `maxDuration` set, which the old 10 s Hobby limit wouldn't allow), whose Hobby default and maximum are 300 s (#316); this used to be a 10-second limit. A single detail page fetch + parse + DB write fits in ~2–4s. Processing multiple items would risk timeout on slow responses. For bulk catch-up, the UI "Sync Now" button calls this endpoint in a loop until the queue is empty.
 
 ### How it works
 

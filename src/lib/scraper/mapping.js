@@ -659,7 +659,7 @@ export async function upsertSyncAppointment(supabase, syncData, options = {}) {
 }
 
 // The booking's boardings: its own ID for one pet, `<id>_pN` for the others
-async function findBookingBoardings(supabase, bookingId) {
+export async function findBookingBoardings(supabase, bookingId) {
   const { data, error } = await supabase
     .from('boardings')
     .select('*')

@@ -262,12 +262,12 @@ describe("REQ-652: Kate's alert channel", () => {
     ]);
   });
 
-  it('failed alerts are read from message_log: status failed, the nine alert jobs, the last 24 hours', async () => {
+  it('failed alerts are read from message_log: status failed, the ten alert jobs, the last 24 hours', async () => {
     await call(AUTH, { dryRun: '1' });
     const q = calls.filter(([t]) => t === 'message_log').map(([, m, ...a]) => [m, ...a]);
     expect(q.slice(-4)).toEqual([
       ['select', 'job_name'], ['eq', 'status', 'failed'],
-      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert', 'sync-detail']],
+      ['in', 'job_name', ['cron-health-check', 'integration-check', 'gmail-monitor', 'send-question', 'notify-refresh-alert', 'site-access', 'notify-4am-alert', 'notify-alert', 'sync-detail', 'sync-reconcile']],
       ['gte', 'sent_at', '2026-10-15T17:00:00.000Z'],
     ]);
   });

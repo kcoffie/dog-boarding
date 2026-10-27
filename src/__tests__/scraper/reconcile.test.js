@@ -48,17 +48,21 @@ const SCHEDULE_PAGE_HTML = '<div class="schedule">No appointment here</div>';
  * The builder is made thenable so `await query` works correctly after all
  * chainable methods (.select, .eq, .lt, .gte) have been called.
  */
-const createMockSupabase = (records = [], { failQuery = false, failUpdate = false } = {}) => {
+// A record's table is its `_table` (default sync_appointments), so boardings can sit beside the sync rows
+const tableOf = (r) => r._table ?? 'sync_appointments';
+const createMockSupabase = (records = [], { failQuery = false, failUpdate = false, failUpdateWhere = null } = {}) => {
   const _records = records.map(r => ({ ...r }));
 
   return {
     _records,
-    from: () => {
-      const state = { filters: {}, lt: null, gte: null };
+    from: (table) => {
+      const state = { filters: {}, lt: null, gte: null, like: null };
 
       const computeQueryResult = () => {
         if (failQuery) return { data: null, error: { message: 'Query failed' } };
         const data = _records.filter(r => {
+          if (tableOf(r) !== table) return false;
+          if (state.like && !(r[state.like.f] ?? '').startsWith(state.like.v.replace(/%$/, ''))) return false;
           for (const [f, v] of Object.entries(state.filters)) {
             if (r[f] !== v) return false;
           }
@@ -74,10 +78,12 @@ const createMockSupabase = (records = [], { failQuery = false, failUpdate = fals
         eq: (f, v) => { state.filters[f] = v; return builder; },
         lt: (f, v) => { state.lt = { f, v }; return builder; },
         gte: (f, v) => { state.gte = { f, v }; return builder; },
+        like: (f, v) => { state.like = { f, v }; return builder; },
+        maybeSingle: () => Promise.resolve((({ data, error }) => ({ data: data ? data[0] ?? null : null, error }))(computeQueryResult())),
         update: (data) => ({
           eq: (f, v) => {
-            if (failUpdate) return Promise.resolve({ error: { message: 'Update failed' } });
-            const idx = _records.findIndex(r => r[f] === v);
+            if (failUpdate || failUpdateWhere?.(table, f, v, data)) return Promise.resolve({ error: { message: 'Update failed' } });
+            const idx = _records.findIndex(r => tableOf(r) === table && r[f] === v);
             if (idx >= 0) _records[idx] = { ..._records[idx], ...data };
             return Promise.resolve({ error: null });
           },
@@ -272,7 +278,7 @@ describe('REQ-108: archiveSyncAppointment()', () => {
 
 describe('REQ-108: cancelBoardingForArchivedAppointment()', () => {
   it('sets cancelled_at and cancellation_reason on the boarding record', async () => {
-    const records = [{ id: 'boarding-uuid-1' }];
+    const records = [{ _table: 'boardings', id: 'boarding-uuid-1' }];
     const supabase = createMockSupabase(records);
 
     await cancelBoardingForArchivedAppointment(supabase, 'boarding-uuid-1');
@@ -391,6 +397,7 @@ describe('REQ-108: reconcileArchivedAppointments()', () => {
     expect(authenticatedFetch).not.toHaveBeenCalled();
     expect(counts.archived).toBe(0);
     expect(counts.skipped).toBe('Reconciliation skipped: 11 bookings missing from the schedule (more than 10), none opened');
+    expect([counts.candidates, counts.gone, counts.present]).toEqual([11, [], []]);
   });
 
   /** @requirements REQ-657 */
@@ -449,10 +456,12 @@ describe('REQ-108: reconcileArchivedAppointments()', () => {
     expect(counts.archived).toBe(0);
   });
 
-  it('cascades cancelled_at to mapped boarding when mapped_boarding_id is present', async () => {
+  it("cancels every dog's boarding of a removed two-dog booking (<id> and <id>_p1), not another booking's (#316)", async () => {
     const records = [
       makeRecord({ external_id: 'AAA', mapped_boarding_id: 'boarding-uuid-1' }),
-      { id: 'boarding-uuid-1' },
+      { _table: 'boardings', id: 'boarding-uuid-1', external_id: 'AAA' },
+      { _table: 'boardings', id: 'boarding-uuid-2', external_id: 'AAA_p1' },
+      { _table: 'boardings', id: 'boarding-uuid-3', external_id: 'AAAB' },
     ];
     const supabase = createMockSupabase(records);
     authenticatedFetch.mockResolvedValue(goneResponse());
@@ -461,12 +470,45 @@ describe('REQ-108: reconcileArchivedAppointments()', () => {
 
     expect(counts.archived).toBe(1);
     expect(counts.errors).toBe(0);
-    const boarding = supabase._records.find(r => r.id === 'boarding-uuid-1');
-    expect(boarding.cancelled_at).toBeTruthy();
-    expect(boarding.cancellation_reason).toBe('appointment_archived');
+    const reason = (id) => supabase._records.find(r => r.id === id).cancellation_reason ?? null;
+    expect([reason('boarding-uuid-1'), reason('boarding-uuid-2'), reason('boarding-uuid-3')])
+      .toEqual(['appointment_archived', 'appointment_archived', null]);
+    expect(counts.gone[0].dogs).toBe(2);
   });
 
-  it('skips boarding cascade when mapped_boarding_id is null', async () => {
+  it("one dog's cancel fails: the dog already cancelled is un-cancelled, so the booking isn't left half-cancelled (#316)", async () => {
+    const records = [
+      makeRecord({ external_id: 'AAA' }),
+      { _table: 'boardings', id: 'boarding-uuid-1', external_id: 'AAA' },
+      { _table: 'boardings', id: 'boarding-uuid-2', external_id: 'AAA_p1' },
+    ];
+    const supabase = createMockSupabase(records, {
+      failUpdateWhere: (table, f, v, data) => table === 'boardings' && v === 'boarding-uuid-2' && data.cancelled_at !== null,
+    });
+    authenticatedFetch.mockResolvedValue(goneResponse());
+
+    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    const b1 = supabase._records.find(r => r.id === 'boarding-uuid-1');
+    expect([b1.cancelled_at, b1.cancellation_reason, supabase._records[0].sync_status, counts.archived, counts.errors])
+      .toEqual([null, null, 'active', 0, 1]);
+  });
+
+  it("a booking is opened at its queue item's URL, the newest the scan saw, not its stored one (an edit moves it) (#316)", async () => {
+    const records = [
+      makeRecord({ external_id: 'AAA', source_url: 'https://agirlandyourdog.com/schedule/a/AAA/1' }),
+      { _table: 'sync_queue', external_id: 'AAA', source_url: 'https://agirlandyourdog.com/schedule/a/AAA/2' },
+    ];
+    const supabase = createMockSupabase(records);
+    authenticatedFetch.mockResolvedValue(okResponse(VALID_APPT_HTML));
+
+    const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
+
+    expect(authenticatedFetch.mock.calls.map(([u]) => u)).toEqual(['https://agirlandyourdog.com/schedule/a/AAA/2']);
+    expect([counts.archived, counts.present]).toEqual([0, ['AAA']]);
+  });
+
+  it('a booking with no boarding is still archived', async () => {
     const records = [makeRecord({ external_id: 'AAA', mapped_boarding_id: null })];
     const supabase = createMockSupabase(records);
     authenticatedFetch.mockResolvedValue(goneResponse());
@@ -477,51 +519,20 @@ describe('REQ-108: reconcileArchivedAppointments()', () => {
     expect(counts.errors).toBe(0);
   });
 
-  it('counts cascade error in errors but still increments archived', async () => {
-    const record = makeRecord({ external_id: 'AAA', mapped_boarding_id: 'boarding-uuid-1' });
-    // Custom mock: sync_appointment update (by external_id) succeeds; boarding update (by id) fails
-    const mockRecords = [{ ...record }];
-    const supabase = {
-      _records: mockRecords,
-      from: () => {
-        const state = { filters: {}, lt: null, gte: null };
-        const computeQueryResult = () => {
-          const data = mockRecords.filter(r => {
-            for (const [f, v] of Object.entries(state.filters)) {
-              if (r[f] !== v) return false;
-            }
-            if (state.lt && r[state.lt.f] >= state.lt.v) return false;
-            if (state.gte && r[state.gte.f] < state.gte.v) return false;
-            return true;
-          });
-          return { data, error: null };
-        };
-        const builder = {
-          select: () => builder,
-          eq: (f, v) => { state.filters[f] = v; return builder; },
-          lt: (f, v) => { state.lt = { f, v }; return builder; },
-          gte: (f, v) => { state.gte = { f, v }; return builder; },
-          update: (data) => ({
-            eq: (f, v) => {
-              if (f === 'id') return Promise.resolve({ error: { message: 'Boarding update failed' } });
-              const idx = mockRecords.findIndex(r => r[f] === v);
-              if (idx >= 0) mockRecords[idx] = { ...mockRecords[idx], ...data };
-              return Promise.resolve({ error: null });
-            },
-          }),
-          then: (onFulfilled, onRejected) =>
-            Promise.resolve(computeQueryResult()).then(onFulfilled, onRejected),
-          catch: (onRejected) =>
-            Promise.resolve(computeQueryResult()).catch(onRejected),
-        };
-        return builder;
-      },
-    };
+  it('a failed boarding cancel leaves the booking active for the next run, and counts an error (#316)', async () => {
+    const records = [
+      makeRecord({ external_id: 'AAA' }),
+      { _table: 'boardings', id: 'boarding-uuid-1', external_id: 'AAA' },
+    ];
+    // Only the boardings' writes fail: the archive itself would work
+    const supabase = createMockSupabase(records, { failUpdateWhere: (table) => table === 'boardings' });
     authenticatedFetch.mockResolvedValue(goneResponse());
 
     const counts = await reconcileArchivedAppointments(supabase, new Set(), null, null);
 
-    expect(counts.archived).toBe(1);
+    expect(counts.archived).toBe(0);
     expect(counts.errors).toBe(1);
+    expect(supabase._records[0].sync_status).toBe('active');
   });
+
 });

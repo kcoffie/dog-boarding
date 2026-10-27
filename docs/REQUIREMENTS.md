@@ -731,8 +731,14 @@ and archived so it doesn't appear as an active boarding.
 - For full syncs (no date range), all active records not seen are checked
 - Confirmation fetches are paced like every booking-site request (REQ-657)
 - A boarding marked gone (`cancelled_at` set) is left out everywhere the boarding matrix already hides it: the morning roster, the weekend roster, payroll (night pay and the daytime follow-on credit), the matrix page's employee totals, summary cards and revenue table. The row is kept, never deleted (#322)
+- **Every night, not only on Sync Now (#316, ADR-010):** the nightly `cron-schedule` reconciles the two weeks it reads (this week's and next week's pages, Sunday to Saturday, as site clock values). A stay that ended on the window's Sunday isn't checked. A booking seen on any page that night (the cursor week included) is never a candidate. Only the nightly cron does this; the Integration Check's scans don't
+- A removed booking cancels **every one of its boardings** (`<id>` and each `<id>_pN`, one per dog), then is archived; a failed write leaves it active for the next night
+- The first night after the deploy (before `RECONCILE_LIVE_FROM`, San Francisco's date) only reports what it would cancel (Kate, Q5)
+- **A cancelled booking back on the booking site is restored on proof:** when a page shows its ID again it's re-queued (`meta.restore`); after its page is read as a booking and saved, its boardings' `cancelled_at` / `cancellation_reason` are cleared and it's active again. A redirect leaves it cancelled; if one of its dogs already has another live boarding over those dates, it stays cancelled and Kate is told. Sync Now re-queues it the same way (it used to skip archived bookings forever)
+- One Telegram alert per night with anything to say (job `sync-reconcile`, watched by ops-watch): each booking cancelled ("would cancel" the first night), each re-read, live pages missing from the schedule, any stop or error. A quiet night sends nothing. A restore or a blocked restore is told in the detail run's `sync-detail` alert
+- The `schedule` row's `cron_health` result carries `reconcile` (mode, candidates, present, gone, archived, restores, skipped, errors, alertDelivered); an undelivered alert makes the run a failure
 
-**Tests:** `src/__tests__/scraper/reconcile.test.js`; #322: `src/__tests__/utils/calculations.test.js`, `src/__tests__/pictureOfDay.test.js`, `src/__tests__/rosterImage.test.js`, `src/pages/PayrollPage.test.jsx`, `src/components/EmployeeTotals.test.jsx`, `src/components/SummaryCards.test.jsx`, `src/__tests__/pages/RevenueView.test.jsx`
+**Tests:** `src/__tests__/scraper/reconcile.test.js`; #316: `src/__tests__/scraper/removedBookings.test.js`, `src/__tests__/scraper/restoreDetail.test.js`, `src/__tests__/scraper/runSyncSafety.test.js`, `src/__tests__/scraper/syncRunner.test.js`, `src/__tests__/syncCronHandlers.test.js`; #322: `src/__tests__/utils/calculations.test.js`, `src/__tests__/pictureOfDay.test.js`, `src/__tests__/rosterImage.test.js`, `src/pages/PayrollPage.test.jsx`, `src/components/EmployeeTotals.test.jsx`, `src/components/SummaryCards.test.jsx`, `src/__tests__/pages/RevenueView.test.jsx`
 
 ---
 
@@ -740,7 +746,7 @@ and archived so it doesn't appear as an active boarding.
 **Added:** v2.0 | **Status:** Complete
 
 The system automatically syncs appointment data on a schedule using three Vercel
-cron functions that each complete within the Hobby plan's 10-second limit.
+cron functions. They have no explicit `maxDuration`: the project runs on Vercel's Fluid compute (runs of 10.7–22.7 s finish with no `maxDuration` set, which the old 10 s Hobby limit wouldn't allow), whose Hobby default and maximum are 300 s (#316).
 
 **Architecture:**
 

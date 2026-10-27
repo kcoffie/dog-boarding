@@ -49,7 +49,8 @@ export default async function handler(req, res) {
     // Write 'started' immediately so the health checker can detect hard crashes.
     await writeCronHealth(supabase, 'schedule', 'started', { action: 'running' }, null);
 
-    const result = await runScheduleSync(supabase);
+    // Only this nightly run reconciles removed bookings (#316)
+    const result = await runScheduleSync(supabase, { reconcile: true });
 
     if (result.action === 'session_failed') {
       await writeCronHealth(supabase, 'schedule', 'failure', { action: 'session_failed' }, result.error?.slice(0, 500));
@@ -68,8 +69,15 @@ export default async function handler(req, res) {
     }
 
     // A scan whose enqueues failed is red, with the same counts so ops-watch can read `found` (#275).
+    // So is one whose removed-bookings alert wasn't delivered: never silent (REQ-652, #316).
+    const rec = result.reconcile;
+    const alertLost = rec?.alertDelivered === false;
     const failed = result.action === 'enqueue_failed';
-    await writeCronHealth(supabase, 'schedule', failed ? 'failure' : 'success', {
+    const errors = [
+      failed ? `${result.failedEnqueues} enqueue(s) failed` : null,
+      alertLost ? 'the removed-bookings alert was not delivered' : null,
+    ].filter(Boolean);
+    await writeCronHealth(supabase, 'schedule', errors.length > 0 ? 'failure' : 'success', {
       ...(failed ? { action: 'enqueue_failed', failedEnqueues: result.failedEnqueues, failedEnqueueIds: result.failedEnqueueIds } : {}),
       pagesScanned: result.pagesScanned,
       found: result.found,
@@ -79,9 +87,24 @@ export default async function handler(req, res) {
       urlChangesIgnored: result.urlChangesIgnored,
       cursorAdvancedTo: result.cursorAdvancedTo,
       queueDepth: result.queueDepth,
-    }, failed ? `${result.failedEnqueues} enqueue(s) failed` : null);
+      ...(rec ? {
+        reconcile: {
+          mode: rec.mode,
+          candidates: rec.candidates,
+          present: rec.present.length,
+          gone: rec.gone.length,
+          archived: rec.archived,
+          restores: rec.restores.length,
+          skipped: rec.skipped,
+          errors: rec.errors,
+          alertDelivered: rec.alertDelivered,
+        },
+      } : {}),
+    }, errors.length > 0 ? errors.join('; ') : null);
 
-    return res.status(200).json({ ok: true, ...result });
+    // The response carries counts only, not the removed bookings' names
+    const { reconcile: _rec, ...counts } = result;
+    return res.status(200).json({ ok: true, ...counts, ...(rec ? { reconcile: { mode: rec.mode, gone: rec.gone.length, archived: rec.archived } } : {}) });
   } catch (err) {
     console.error('[CronSchedule] ❌ Unhandled error:', err.message, err.stack);
     try {
