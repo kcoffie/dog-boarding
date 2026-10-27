@@ -10,7 +10,6 @@ const isEnabled = () => {
 };
 
 const styles = {
-  dog: 'color: #f59e0b; font-weight: bold',
   boarding: 'color: #6366f1; font-weight: bold',
   settings: 'color: #10b981; font-weight: bold',
   data: 'color: #64748b',
@@ -25,11 +24,6 @@ export const logger = {
   disable() {
     localStorage.removeItem('debug');
     console.log('%c🔧 Logging disabled', 'color: #64748b');
-  },
-
-  dog(action, data) {
-    if (!isEnabled()) return;
-    console.log(`%c🐕 ${action}`, styles.dog, data);
   },
 
   boarding(action, data) {

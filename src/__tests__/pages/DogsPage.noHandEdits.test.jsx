@@ -29,9 +29,9 @@ const renderDogsPage = (dogs) => {
 const dogsSection = () => screen.getByRole('heading', { name: 'Dogs' }).closest('div').parentElement.parentElement;
 
 /**
- * @requirements REQ-010, REQ-012, REQ-013
+ * @requirements REQ-010, REQ-011, REQ-012, REQ-013
  */
-describe('REQ-010, REQ-012, REQ-013: the Dogs page has no hand edits (#351)', () => {
+describe('REQ-010, REQ-011, REQ-012, REQ-013: the Dogs page has no hand edits (#351)', () => {
   const dogs = [
     { id: 'dog-1', name: 'Biscuit Sample', dayRate: 25, nightRate: 50, active: true },
     { id: 'dog-2', name: 'Clover Sample', dayRate: 30, nightRate: 60, active: false },
@@ -60,9 +60,22 @@ describe('REQ-010, REQ-012, REQ-013: the Dogs page has no hand edits (#351)', ()
     expect(within(section).getAllByText('$60.00')).toHaveLength(2);
   });
 
+  it('greys an inactive dog (set by the sync) and not an active one', () => {
+    renderDogsPage(dogs);
+    const row = (name) => within(dogsSection()).getAllByText(name).find(el => el.closest('tr')).closest('tr');
+    expect(row('Clover Sample')).toHaveClass('opacity-50');
+    expect(row('Biscuit Sample')).not.toHaveClass('opacity-50');
+  });
+
   it('with no dogs, says they come from the booking site, not "Click Add Dog"', () => {
     renderDogsPage([]);
     expect(screen.getByText('Dogs appear here after the booking site syncs')).toBeInTheDocument();
     expect(screen.queryByText(/click "add dog"/i)).not.toBeInTheDocument();
+  });
+
+  it('with no boardings, says they come from the booking site, not "Add Boarding" or "Add dogs first"', () => {
+    renderDogsPage([]);
+    expect(screen.getByText('Boardings appear here after the booking site syncs')).toBeInTheDocument();
+    expect(screen.queryByText(/add boarding|add dogs first|manage boarding/i)).not.toBeInTheDocument();
   });
 });

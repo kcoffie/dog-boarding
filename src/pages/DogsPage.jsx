@@ -189,7 +189,7 @@ export default function DogsPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Boardings</h1>
-            <p className="text-slate-500 mt-1">Manage boarding reservations</p>
+            <p className="text-slate-500 mt-1">From the booking site</p>
           </div>
         </div>
 
@@ -203,7 +203,7 @@ export default function DogsPage() {
                 </svg>
               </div>
               <h3 className="text-lg font-medium text-slate-900 mb-1">No boardings yet</h3>
-              <p className="text-slate-500">{dogs.length === 0 ? 'Add dogs first to create boardings' : 'Click "Add Boarding" to get started'}</p>
+              <p className="text-slate-500">Boardings appear here after the booking site syncs</p>
             </div>
           ) : (
             <>
