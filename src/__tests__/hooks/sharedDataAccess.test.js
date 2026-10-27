@@ -35,7 +35,7 @@ describe('REQ-005: Shared Data Access', () => {
 
     it('all authenticated users can edit any dog or boarding', () => {
       // RLS policies allow UPDATE operations for authenticated users
-      // The hook functions (updateDog) work on shared data; boardings are never edited by hand (#342)
+      // Dogs and boardings are never edited by hand (#342, #351); the other hook functions work on shared data
       expect(true).toBe(true);
     });
   });
@@ -51,7 +51,7 @@ describe('REQ-005: Shared Data Access', () => {
     });
 
     it('hooks prevent mutations when user is null', () => {
-      // Mutation functions (addDog, updateDog, etc.) check:
+      // Mutation functions (addEmployee, addPayment, etc.) check:
       // if (!user) return null;
       // This prevents unauthenticated writes
       expect(true).toBe(true);

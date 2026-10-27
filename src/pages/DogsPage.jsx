@@ -1,7 +1,5 @@
 import { useState, Fragment } from 'react';
 import { useData } from '../context/DataContext';
-import DogForm from '../components/DogForm';
-import DogCsvImport from '../components/DogCsvImport';
 import BoardingFormModal from '../components/BoardingFormModal';
 import { useBoardingForms } from '../hooks/useBoardingForms';
 import { calculateNights, formatName } from '../utils/dateUtils';
@@ -9,12 +7,11 @@ import { bookingDateTime, siteNow } from '../utils/siteClock';
 import { nightRate } from '../utils/calculations';
 
 export default function DogsPage() {
-  const { dogs, boardings, addDog, toggleDogActive } = useData();
+  // Dogs and boardings come only from the booking site's sync: no add, edit, delete or deactivate here (#351, #342)
+  const { dogs, boardings } = useData();
   const { formsByBoardingId } = useBoardingForms();
 
-  const [showAddDogForm, setShowAddDogForm] = useState(false);
   const [formModalState, setFormModalState] = useState({ isOpen: false, dogName: '', formData: null, boarding: null });
-  const [showDogCsvImport, setShowDogCsvImport] = useState(false);
   const [sortColumn, setSortColumn] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
   const [boardingSortColumn, setBoardingSortColumn] = useState('arrivalDateTime');
@@ -22,15 +19,6 @@ export default function DogsPage() {
   const [pastBoardingSortColumn, setPastBoardingSortColumn] = useState('departureDateTime');
   const [pastBoardingSortDirection, setPastBoardingSortDirection] = useState('desc');
   const [searchTerm, setSearchTerm] = useState('');
-
-  const handleAddDog = async (dogData) => {
-    try {
-      await addDog(dogData);
-      setShowAddDogForm(false);
-    } catch (err) {
-      console.error('Failed to add dog:', err);
-    }
-  };
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -81,8 +69,6 @@ export default function DogsPage() {
     past: { label: 'Past', bg: 'bg-slate-100', text: 'text-slate-500' },
     cancelled: { label: 'Cancelled', bg: 'bg-slate-100', text: 'text-slate-400 line-through' },
   };
-
-  const isFormOpen = showAddDogForm || showDogCsvImport;
 
   const handleSort = (column) => {
     if (sortColumn === column) {
@@ -370,49 +356,9 @@ export default function DogsPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">Dogs</h2>
-            <p className="text-slate-500 mt-1">Manage your dog roster</p>
+            <p className="text-slate-500 mt-1">From the booking site</p>
           </div>
-          {!isFormOpen && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowDogCsvImport(true)}
-                className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                Import CSV
-              </button>
-              <button
-                onClick={() => setShowAddDogForm(true)}
-                className="inline-flex items-center justify-center px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-sm"
-              >
-                <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Dog
-              </button>
-            </div>
-          )}
         </div>
-
-        {/* Add Dog Form */}
-        {showAddDogForm && (
-          <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6 mb-6">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Add New Dog</h2>
-            <DogForm
-              onSave={handleAddDog}
-              onCancel={() => setShowAddDogForm(false)}
-            />
-          </div>
-        )}
-
-        {/* Dog CSV Import */}
-        {showDogCsvImport && (
-          <div className="mb-6">
-            <DogCsvImport onClose={() => setShowDogCsvImport(false)} />
-          </div>
-        )}
 
         {/* Search */}
         {dogs.length > 0 && (
@@ -442,7 +388,7 @@ export default function DogsPage() {
                 </svg>
               </div>
               <h3 className="text-lg font-medium text-slate-900 mb-1">No dogs yet</h3>
-              <p className="text-slate-500">Click "Add Dog" to get started</p>
+              <p className="text-slate-500">Dogs appear here after the booking site syncs</p>
             </div>
           ) : (
             <>
@@ -481,15 +427,6 @@ export default function DogsPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      onClick={() => toggleDogActive(dog.id)}
-                      disabled={isFormOpen}
-                      className="min-h-[44px] flex-1 px-3 py-2 text-sm font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all select-none"
-                    >
-                      {dog.active === false ? 'Activate' : 'Deactivate'}
-                    </button>
-                  </div>
                 </div>
               ))}
             </div>
@@ -516,7 +453,6 @@ export default function DogsPage() {
                   >
                     Night Rate{renderSortIcon('nightRate')}
                   </th>
-                  <th className="text-right px-5 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -541,15 +477,6 @@ export default function DogsPage() {
                       </td>
                       <td className={`px-5 py-4 text-sm text-right tabular-nums ${dog.active === false ? 'text-slate-400' : 'text-slate-600'}`}>{formatCurrency(dog.dayRate)}</td>
                       <td className={`px-5 py-4 text-sm text-right tabular-nums ${dog.active === false ? 'text-slate-400' : 'text-slate-600'}`}>{formatCurrency(dog.nightRate)}</td>
-                      <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => toggleDogActive(dog.id)}
-                          disabled={isFormOpen}
-                          className="text-sm font-medium text-amber-600 hover:text-amber-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {dog.active === false ? 'Activate' : 'Deactivate'}
-                        </button>
-                      </td>
                     </tr>
                   </Fragment>
                 ))}

@@ -100,7 +100,6 @@ The app: **https://qboarding.vercel.app**. It works on a laptop and on a phone. 
 
 ### 10. Leave these alone for now
 - **Settings**, except **Change Password**. **Invite Users** makes codes that nothing accepts (until it's removed in #307); Kate creates accounts. **Net Percentage** and **Employees** change everyone's pay. **Booking site access**, **Cron Health** and **External Sync** are Kate's.
-- **On the Dogs page:** **Add Dog**, **Import CSV** and **Deactivate**. The booking site is the source of truth (boardings can no longer be edited in the app, #342). Use Send a Question instead.
 - **Sync** and **Sync Now:** the app syncs with the booking site on its own every night. If something's missing, send a question.
 
 ### 11. Feedback (15 minutes, after every pay period)

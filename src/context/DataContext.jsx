@@ -36,18 +36,12 @@ export function DataProvider({ children }) {
   const {
     dogs,
     loading: dogsLoading,
-    addDog: addSupabaseDog,
-    addDogs: addSupabaseDogs,
-    updateDog: updateSupabaseDog,
-    deleteDog: deleteSupabaseDog,
-    toggleDogActive: toggleSupabaseDogActive,
   } = useSupabaseDogs();
 
   // Use Supabase for boardings
   const {
     boardings,
     loading: boardingsLoading,
-    deleteBoardingsForDog: deleteSupabaseBoardingsForDog,
   } = useSupabaseBoardings();
 
   // Use Supabase for night assignments (needs employees for name<->ID conversion)
@@ -76,64 +70,6 @@ export function DataProvider({ children }) {
     netPercentageHistory: supabaseSettings?.netPercentageHistory ?? [],
     employees: supabaseEmployees ?? [],
   }), [supabaseSettings, supabaseEmployees]);
-
-  // Dog operations (using Supabase)
-  const addDog = async (dog) => {
-    try {
-      const newDog = await addSupabaseDog(dog);
-      logger.dog('Added', newDog.name);
-      return newDog;
-    } catch (err) {
-      console.error('Failed to add dog:', err);
-      throw err;
-    }
-  };
-
-  const updateDog = async (id, updates) => {
-    const dog = dogs.find(d => d.id === id);
-    try {
-      await updateSupabaseDog(id, updates);
-      logger.dog('Updated', dog?.name);
-    } catch (err) {
-      console.error('Failed to update dog:', err);
-      throw err;
-    }
-  };
-
-  const deleteDog = async (id) => {
-    const dog = dogs.find(d => d.id === id);
-    try {
-      // Boardings are cascade deleted in Supabase, but we need to refresh local state
-      await deleteSupabaseBoardingsForDog(id);
-      await deleteSupabaseDog(id);
-      logger.dog('Deleted', dog?.name);
-    } catch (err) {
-      console.error('Failed to delete dog:', err);
-      throw err;
-    }
-  };
-
-  const toggleDogActive = async (id) => {
-    const dog = dogs.find(d => d.id === id);
-    const newActive = !dog?.active;
-    try {
-      await toggleSupabaseDogActive(id);
-      logger.dog(newActive ? 'Activated' : 'Deactivated', dog?.name);
-    } catch (err) {
-      console.error('Failed to toggle dog:', err);
-      throw err;
-    }
-  };
-
-  const addDogs = async (newDogs) => {
-    try {
-      await addSupabaseDogs(newDogs);
-      logger.dog('Imported', `${newDogs.length} dogs`);
-    } catch (err) {
-      console.error('Failed to import dogs:', err);
-      throw err;
-    }
-  };
 
   // Settings operations - employee sorting is now handled locally in SettingsPage
   const updateSettings = () => {
@@ -285,13 +221,7 @@ export function DataProvider({ children }) {
     paymentsLoading,
     nightAssignments,
     payments,
-    // Dog operations
-    addDog,
-    addDogs,
-    updateDog,
-    deleteDog,
-    toggleDogActive,
-    // Boardings come only from the booking site's sync: no add, edit or delete here (#342)
+    // Dogs and boardings come only from the booking site's sync: no add, edit, delete or deactivate here (#342, #351)
     // Settings operations
     updateSettings,
     getNetPercentageForDate,

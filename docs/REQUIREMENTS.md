@@ -128,7 +128,7 @@ Authenticated users can create and manage invite codes.
 ## Dogs
 
 ### REQ-010: Add Dog
-**Added:** v1.0 | **Status:** Complete
+**Added:** v1.0 | **Changed:** 2026-10-27 (#351) | **Status:** Removed
 
 Users can add new dogs to the system.
 
@@ -139,12 +139,14 @@ Users can add new dogs to the system.
 - Dog appears in list after save
 - New dogs default to active status
 
-**Tests:** `src/components/DogForm.test.jsx`
+**Tests:** `src/__tests__/pages/DogsPage.noHandEdits.test.jsx`, `src/__tests__/context/DataContext.noHandEdits.test.jsx`, `src/__tests__/hooks/useDogs.test.js` (the controls and functions are gone)
+
+**Removed (2026-10-27, #351):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, imports, edits, deletes or deactivates a dog by hand; a difference is a bug to fix at the source or in the sync. The Dogs page's controls, `DogForm`, `DogCsvImport` and the hook and context functions are gone (Kate, triage 2026-10-26: Deactivate too). The sync still sets `active` (a dog the site books again is set back to active, `src/lib/scraper/mapping.js`); the Dogs page greys an inactive dog as before.
 
 ---
 
 ### REQ-011: Edit Dog
-**Added:** v1.0 | **Status:** Complete
+**Added:** v1.0 | **Changed:** 2026-10-27 (#351) | **Status:** Removed
 
 Users can edit existing dogs.
 
@@ -154,14 +156,14 @@ Users can edit existing dogs.
 - Changes persist after save
 - Cancel discards changes
 
-**Tests:** `src/components/DogForm.test.jsx`
+**Tests:** `src/__tests__/pages/DogsPage.noHandEdits.test.jsx`, `src/__tests__/context/DataContext.noHandEdits.test.jsx`, `src/__tests__/hooks/useDogs.test.js` (the controls and functions are gone)
 
-**Note (2026-10-23):** the Dogs page has had no Edit button since 2026-02-27, and that's by design (Kate): dogs and rates come only from the booking site, so the app can't drift from it. The form and its tests remain; it's used for Add Dog.
+**Note (2026-10-23):** the Dogs page has had no Edit button since 2026-02-27, and that's by design (Kate): dogs and rates come only from the booking site, so the app can't drift from it. **Removed (2026-10-27, #351):** the form went with Add Dog (REQ-010).
 
 ---
 
 ### REQ-012: Delete Dog
-**Added:** v1.0 | **Status:** Complete
+**Added:** v1.0 | **Changed:** 2026-10-27 (#351) | **Status:** Removed
 
 Users can delete dogs.
 
@@ -170,12 +172,14 @@ Users can delete dogs.
 - Dog removed from list after delete
 - Associated boardings are also deleted
 
-**Tests:** `src/pages/DogsPage.test.jsx`
+**Tests:** `src/__tests__/pages/DogsPage.noHandEdits.test.jsx`, `src/__tests__/context/DataContext.noHandEdits.test.jsx`, `src/__tests__/hooks/useDogs.test.js` (the controls and functions are gone)
+
+**Removed (2026-10-27, #351):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, imports, edits, deletes or deactivates a dog by hand; a difference is a bug to fix at the source or in the sync. The Dogs page's controls, `DogForm`, `DogCsvImport` and the hook and context functions are gone (Kate, triage 2026-10-26: Deactivate too). The sync still sets `active` (a dog the site books again is set back to active, `src/lib/scraper/mapping.js`); the Dogs page greys an inactive dog as before. It was the last path that deleted boardings by hand (`deleteBoardingsForDog`, REQ-036).
 
 ---
 
 ### REQ-013: Toggle Dog Active Status
-**Added:** v1.0 | **Status:** Complete
+**Added:** v1.0 | **Changed:** 2026-10-27 (#351) | **Status:** Removed
 
 Users can mark dogs as active or inactive.
 
@@ -185,7 +189,9 @@ Users can mark dogs as active or inactive.
 - Inactive dogs still visible in historical data
 - Toggle persists after page refresh
 
-**Tests:** `src/pages/DogsPage.test.jsx`
+**Tests:** `src/__tests__/pages/DogsPage.noHandEdits.test.jsx`, `src/__tests__/context/DataContext.noHandEdits.test.jsx`, `src/__tests__/hooks/useDogs.test.js` (the controls and functions are gone)
+
+**Removed (2026-10-27, #351):** the booking site is the source of truth for dogs, rates and boardings (Kate, 2026-10-23), so the app never adds, imports, edits, deletes or deactivates a dog by hand; a difference is a bug to fix at the source or in the sync. The Dogs page's controls, `DogForm`, `DogCsvImport` and the hook and context functions are gone (Kate, triage 2026-10-26: Deactivate too). The sync still sets `active` (a dog the site books again is set back to active, `src/lib/scraper/mapping.js`); the Dogs page greys an inactive dog as before.
 
 ---
 
@@ -383,7 +389,7 @@ Every view that counts a night's dogs or money gets them from one function (`nig
 - The Dashboard's rate column shows the booking's price for the dog's stays with a night in range, or a range ("$40–60") when they differ (Kate, 2026-10-26); a day visit doesn't change it. The phone list shows each dog's rate for that night
 - A boarding's gross on the Dogs page is its nights × the same rate; a cancelled boarding shows as Cancelled at $0
 - The Calendar leaves cancelled boardings out entirely (day cells, Arriving/Staying/Departing, print view), not only out of its totals
-- The app can't add, edit or delete a boarding by hand (REQ-020 to REQ-023 removed). Deleting a dog, which also deletes its boardings, has no screen today and belongs with the dog-editing issue
+- The app can't add, edit or delete a boarding by hand (REQ-020 to REQ-023 removed), nor a dog (REQ-010 to REQ-013 removed, #351; deleting a dog used to delete its boardings)
 - Out of scope: the Revenue view (it shows the billed amount per booking, REQ-202) and the roster image (server side)
 
 **Tests:** `src/utils/calculations.test.js`, `src/__tests__/components/oneNightAcrossViews.test.jsx`, `src/__tests__/hooks/useBoardings.test.js`

@@ -51,54 +51,10 @@ export function useBoardings() {
     fetchBoardings();
   }, [fetchBoardings]);
 
-  const deleteBoardingsForDog = async (dogId) => {
-    if (!user) return;
-
-    try {
-      // Fetch boarding IDs first so we can null their FKs (no subquery support in Supabase JS)
-      const { data: boardingRows, error: fetchError } = await supabase
-        .from('boardings')
-        .select('id')
-        .eq('dog_id', dogId);
-
-      if (fetchError) throw fetchError;
-
-      // Guard against Supabase returning null data on a network error that
-      // didn't populate the error field (rare but possible).
-      const boardingIds = (boardingRows ?? []).map(b => b.id);
-
-      if (boardingIds.length > 0) {
-        console.log('[deleteBoardingsForDog] Nulling mapped_boarding_id for %d boardings, dog_id=%s', boardingIds.length, dogId);
-        const { error: nullError } = await supabase
-          .from('sync_appointments')
-          .update({ mapped_boarding_id: null })
-          .in('mapped_boarding_id', boardingIds);
-
-        if (nullError) throw nullError;
-      } else {
-        console.log('[deleteBoardingsForDog] No boardings found for dog_id=%s — skipping FK null step', dogId);
-      }
-
-      const { error } = await supabase
-        .from('boardings')
-        .delete()
-        .eq('dog_id', dogId);
-
-      if (error) throw error;
-
-      setBoardings(prev => prev.filter(b => b.dogId !== dogId));
-    } catch (err) {
-      console.error('[deleteBoardingsForDog] Failed for dog_id=%s:', dogId, err);
-      setError(err.message);
-      throw err;
-    }
-  };
-
   return {
     boardings,
     loading,
     error,
-    deleteBoardingsForDog,
     refresh: fetchBoardings,
   };
 }
