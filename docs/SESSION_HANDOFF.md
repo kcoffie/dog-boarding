@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 27, 2026, ~01:00 UTC (session 52). **Production = main (`ee20596`, #358), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 52: #353 PR 1 shipped (#357: booking times read as the site's SF clock times on the server and the Friday roster). #316 shipped (#358: the nightly sync cancels bookings removed from the booking site, restores them on proof; first night report-only). Next: check the 10-28 report-only alert and the 10-28 live night, then #353 PR 2.**
+**Last updated:** October 27, 2026, ~01:00 UTC (session 52). **Production = main (`ee20596`, #358), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 52: #353 PR 1 shipped (#357: booking times read as the site's SF clock times on the server and the Friday roster). #316 shipped (#358: the nightly sync cancels bookings removed from the booking site, restores them on proof; first night report-only). Next: check the report-only run (00:05 UTC 10-28) and the first live run (00:05 UTC 10-29), then #353 PR 2.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -42,7 +42,7 @@
    - Reviewer must-fix found and fixed: the weekend window compared Supabase's `+00:00` times as text with the start's `.000Z`, which would have dropped every booking exactly at the start hour (3pm arrivals on the 3pm run, 4pm on the retry).
    - Evidence: each behaviour test fails on main in at least one host zone; scoped Stryker on the changed lines **96.6% with host `TZ=Pacific/Kiritimati` and `TZ=Pacific/Pago_Pago`** (`siteClock.js` 100%).
    - **Found, not fixed (fail on main too):** with the host in Kiritimati, DateNavigator "Today" and pet birthdate extraction; in Pago Pago, `toDateInputValue`. Stryker runs in those zones need a vitest config leaving those 3 files out (scratch: `.stryker-tmp/pr1/vitest.config.mjs`, gitignored).
-5. **#316 (Kate: priority high, "very soon"): shipped as #358 → `ee20596`, `check:deploy` OK. ADR-010, REQ-108.** Design note `docs/specs/316-removed-bookings-design-note.md` (architect: proceed with changes, all folded in).
+5. **#316 (Kate: priority high, "very soon"): shipped as #358 → `ee20596`, `check:deploy` OK. ADR-010, REQ-108, REQ-109.** Design note `docs/specs/316-removed-bookings-design-note.md` (architect: proceed with changes, all folded in).
    - The nightly `cron-schedule` (only it; the Integration Check stays check-only) reconciles the two weeks it reads: a stored booking on no page tonight is opened once at its newest known URL (its queue item's); a 302 → `/schedule` cancels every dog's boarding (all or nothing), then archives it. #324's limits unchanged (≤10 opened, ≤3 marked).
    - A cancelled booking seen again is re-queued (`meta.restore`) and un-cancelled after its page is read and saved; not when its dog has another live boarding on those dates. A restore that doesn't happen sets `meta.restore_blocked` = that URL (not re-read until the URL changes). Sync Now re-queues archived bookings the same way (it used to skip them forever).
    - One Telegram alert per night with anything to say: job **`sync-reconcile`** (in ops-watch `ALERT_JOBS`); restores go in `sync-detail`. Counts in `cron_health` `schedule` `result.reconcile`; an undelivered alert makes the run a failure.
@@ -50,7 +50,7 @@
    - Kate's answers: Q1 a stay is listed on every week page it covers; Q2 `C63QhB7h` answers **302 → `/schedule`** (her Network tab); Q3 one alert per run, OK; Q4 (a) a booking moved more than two weeks out is cancelled, then restored when it reappears; Q5 (a) report-only first night.
    - Reviewer: no path where a correct read cancels a live booking; 9 should-fixes all done (newest URL, all-or-nothing cancel, restore guards, `restore_blocked`, `maxDuration` removed: runs already take 10.7–22.7 s, so Fluid compute's 300 s applies). 9 of 9 scripted rule-breaks red; scoped Stryker on the changed lines **91.76%** (TZ=UTC; same in Kiritimati).
    - The RUNBOOK's old "mark a boarding as archived" SQL (a column `boardings` doesn't have) is replaced by a playbook for the new alert.
-6. **Labels:** #316 now `priority: high` (Kate). Nothing else changed: no SQL by Claude, no booking-site requests (Kate checked the 302 herself), no messages sent.
+6. **Labels:** #316 now `priority: high` (Kate); `to-investigate` kept (ask Kate to drop it when #316 closes). Nothing else changed: no SQL by Claude, no booking-site requests (Kate checked the 302 herself), no messages sent.
 
 ## Previous session (51)
 
@@ -311,7 +311,7 @@ Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-inve
    - **After 00:05 UTC 10-28 (report-only night):** `cron_health` `schedule` `result.reconcile` (mode `report_only`, candidates, gone, skipped, errors, alertDelivered); a `sync-reconcile` row in `message_log` naming `C63QhB7h` as "Would cancel" (and nothing else unexpected); both its boardings still not cancelled.
    - **After 00:05 UTC 10-29 (first live night):** both `C63QhB7h` boardings (`C63QhB7h`, `C63QhB7h_p1`) have `cancellation_reason = 'appointment_archived'`, its row `archived`; one "Cancelled" alert; the 11-03 rosters list neither dog. Then close #316 with a comment (PRs #358; results; no AI mention).
    - Overnight crons, `site_access`, queue; ask Kate whether Dogs Tonight showed today after 5pm Pacific.
-   - **Fri 10-30 Friday pm roster (first on #357):** times match the site (Kate compares 2); header "Fri – Mon"; Friday-afternoon arrivals/departures listed.
+   - **Fri 10-30 Friday pm roster (first on #357; 22:00 UTC, retry 23:00):** times match the site (Kate compares 2); header "Fri – Mon"; Friday-afternoon arrivals/departures listed.
 3. **Top 3 (Sprint 1, ends 11-04):**
    1. **#353 PR 2 (= #350 PR 2):** the rows marked 2 in the design note's table: Dogs page times and status badge, Calendar (times and day placement), `isOvernight`/`isDayPresent`/`calculateNights`, Sync History, form view, upcoming forms, `toTimeInputValue` removed, "PT"; empty the guard's PR 2 entries in `NOT_YET`. Check after: 10-23 still 8 dogs / $440 / $286. Same test zones and Stryker approach as PR 1.
    2. **#13 dry-run 2** (Kate clicks; re-check $139.75 first).

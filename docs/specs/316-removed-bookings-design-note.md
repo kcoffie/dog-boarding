@@ -1,6 +1,6 @@
 # #316 design note: a booking removed on the booking site is cancelled in the app automatically
 
-**Status:** architect: proceed with changes (folded in below, session 52, 2026-10-26); Kate answered Q1–Q5; ADR-010; built (branch `feat/316-removed-bookings`). Builds on #353 PR 1 (`siteMidnight`, merged 10-26 as `f317878`). Issue #316 (`priority: high`, Kate 2026-10-26: "very soon"). Kate: the booking site is the source of truth (2026-10-23).
+**Status:** architect: proceed with changes (folded in below, session 52, 2026-10-26); Kate answered Q1–Q5; ADR-010; merged 2026-10-27 (PR #358, `ee20596`); report-only run 00:05 UTC 10-28, live from 00:05 UTC 10-29. Builds on #353 PR 1 (`siteMidnight`, merged 10-26 as `f317878`). Issue #316 (`priority: high`, Kate 2026-10-26: "very soon"). Kate: the booking site is the source of truth (2026-10-23).
 
 ## Problem
 A booking deleted on the booking site stays in the app: on the rosters, in nights and in pay. Only the browser's Sync Now notices it: `reconcile.js` is called only from `sync.js` (`src/lib/scraper/sync.js:458`), which only `useSyncSettings.js` imports. The scheduled syncs read just the bookings they see on the week pages (`runScheduleSync`, `src/lib/scraper/syncRunner.js:261`), and a deleted booking simply isn't there, so nothing scheduled looks at it again.
