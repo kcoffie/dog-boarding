@@ -768,7 +768,7 @@ cron functions. They have no explicit `maxDuration`: the project runs on Vercel'
 - Failed detail fetches retry up to 3 times with backoff: +5m, +10m, then permanently `failed`
 - All cron handlers verify `CRON_SECRET` header when the env var is set (skipped in local dev)
 - Session error (server rejects cached cookies) → clear DB session + return 200 (cron-auth will re-auth)
-- Reconciliation (REQ-108) does NOT run in micro mode — only via manual sync or standard mode
+- Removed-booking reconciliation of the two weeks read runs nightly in `cron-schedule` (REQ-108, ADR-010, #316); the full reconciliation runs only via manual sync or standard mode
 - `SYNC_MODE=standard` env var enables upgrade path to full `runSync()` without code changes
 - All env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_EXTERNAL_SITE_*`) accessible
   via `process.env` fallback in cron context (where `import.meta.env` is unavailable)

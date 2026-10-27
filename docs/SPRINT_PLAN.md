@@ -73,10 +73,13 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 4. **#342 (added 2026-10-23, after #344):** one shared calculation for nights and pay. The Dashboard and Payroll disagree today (10-23: Net $338 vs $286), which fails UAT step 5. Includes removing Add/Edit/Delete boarding (source of truth). The duplicate-dog merge and the 3 pet-ID fixes were done by SQL on 2026-10-23.
    - **Merged 2026-10-26 (PR #349, `332d53a`, REQ-036):** `nightStays` is the one calculation for every view. Add/Edit/Delete boarding removed (REQ-020–023). Production 10-23: $286 net everywhere. Follow-ups: #350 (UI "today" in San Francisco time), #351 (dogs still edited by hand).
 5. **#350 (added 2026-10-26, high):** every date and time in the app is San Francisco time, whatever the device (Kate: "I don't want Charlie to see anything weird").
-   - **PR 1 merged 2026-10-26 (PR #354, `7b191bd`, REQ-064):** "today" and every calendar date the UI builds. PR 2 (booking times, nights, labels with "PT") waits on #353.
+   - **PR 1 merged 2026-10-26 (PR #354, `7b191bd`, REQ-064):** "today" and every calendar date the UI builds. PR 2 = #353 PR 2, next.
 6. **#353 (added 2026-10-26, high, next):** the booking site's times are Pacific clock times stored as UTC, so the app and the Friday roster show them 7–8 hours early, and `isDayPresent`'s 5pm rule reads a 4pm arrival as 9am. Design note → architect first (stored data, a pay rule, the roster), then #350 PR 2.
-7. **#351 (added 2026-10-26, medium; Sprint 1 or 2):** remove the Dogs page's hand edits: Add Dog, Import CSV, delete dog and Deactivate.
-8. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
+   - **Option B chosen (Kate, 10-26), ADR-009. PR 1 merged 2026-10-26 (PR #357, `f317878`, REQ-065):** `siteClock.js`, the Friday pm roster ("Fri – Mon", site times), zone-proof server dates, the guard test. PR 2 (the screens) next.
+7. **#316 (added to the plan 2026-10-26, high, Kate: "very soon"):** a booking removed on the booking site stayed on the rosters and in pay (only Sync Now noticed).
+   - **Merged 2026-10-27 (PR #358, `ee20596`, REQ-108, REQ-109, ADR-010):** the nightly sync cancels it (every dog), restores on proof, one `sync-reconcile` alert a night. Report-only run 00:05 UTC 10-28 (SF 10-27), live from 00:05 UTC 10-29 (SF 10-28). Close after the first live night's checks.
+8. **#351 (added 2026-10-26, medium; Sprint 1 or 2):** remove the Dogs page's hand edits: Add Dog, Import CSV, delete dog and Deactivate.
+9. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
@@ -140,7 +143,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 | #313 | Step 8 |
 
 ## Backlog by priority
-- **High:** #353, #350 (PR 2), #318, #324, #323, #321, #295, #312, #314, #307, #8, #9, #13, #260, #315, #337, #338
+- **High:** #353 (PR 2), #350 (PR 2), #316 (verify, close), #318, #324, #323, #321, #295, #312, #314, #307, #8, #9, #13, #260, #315, #337, #338
 - **Medium:** #351, #343, #326, #319, #7
 - **Low:** #6, #17, #23, #24, a third watcher for when both schedulers die (no issue)
 
