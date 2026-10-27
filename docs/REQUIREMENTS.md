@@ -587,7 +587,7 @@ The booking site stores each booking's times as San Francisco clock times writte
 
 **Acceptance Criteria:**
 - A booking time reads as the site's San Francisco date and time (`siteDate`, `siteTime`), labelled "PT", with the host in UTC, Pacific, Paris, Tokyo, `Pacific/Kiritimati` or `Pacific/Pago_Pago`, before and after a DST change
-- Only the date is shown when the time isn't known: a title-only date (no AM/PM label and a time of 00:00, 07:00, 08:00 or 23:00), or an AM/PM label that contradicts the time (logged) (Kate, Q2, Q5, Q6)
+- Only the date is shown when the time isn't known: a title-only date (no AM/PM label and a time of 00:00, 07:00, 08:00 or 23:00), or an AM/PM label that contradicts the time (the Friday roster logs it) (Kate, Q2, Q5, Q6)
 - Comparisons with "now" use San Francisco's now written the same way (`siteNow`)
 - The Friday pm roster lists bookings from the run's hour (San Francisco, rounded down) to Monday noon, including Friday-afternoon arrivals and departures and Monday-morning pick-ups; its header reads "Fri – Mon" (Kate, Q4)
 - Server dates don't depend on the runtime's zone: the roster's boarders, form matching, a boarding's form job (until the end of its departure day), Sync Now's date filter and reconcile window, and a title-only date (`Date.UTC` midnight)
@@ -1132,10 +1132,10 @@ If a form is found, the button is styled indigo.
 - No form found → amber color + "No Boarding Form Found!" tooltip
 - Form found → indigo color + "View boarding form" tooltip
 - "Relevant boarding" = most imminent current/upcoming boarding for the dog
-- `isBoardingUpcoming(boarding)` = `departure_datetime >= today midnight`
-- `useBoardingForms()` hook queries `boarding_forms` joined to `boardings`; filters to departures >= today midnight; returns `formsByBoardingId` map
+- `isBoardingUpcoming(boarding)` = the boarding departs today or later in San Francisco (`siteDate(departure) >= siteDate(siteNow())`, REQ-065)
+- `useBoardingForms()` hook queries `boarding_forms` joined to `boardings` with `!inner`, so only forms whose boarding departs from San Francisco's today (site clock midnight) on are returned; returns `formsByBoardingId` map
 
-**Tests:** Manual/visual
+**Tests:** Manual/visual for the link colours; `src/__tests__/siteClockHelpers.test.js` for the upcoming rule and the query
 
 ---
 

@@ -130,6 +130,7 @@ No new secret, table, job or request. No client data in tests (synthetic names; 
 - Sync History: booking dates via `formatSiteDate`, changed check-in/out values via `bookingDateTime`; a run's start time (a real moment) in San Francisco time with "PT", in the modal and the list.
 - Form view: `formatSiteDate`. Upcoming forms: `siteDate(departure) >= siteDate(siteNow())`; the query is `boardings!boarding_id!inner(...)` from today's site midnight (checked read-only on production 10-27: 6 forms, where the old query returned all 93, 87 with an empty embed).
 - The guard's `NOT_YET` now holds only `scripts/integration-check.js` (#350's "today").
+- Sync History's changed check-in/out values come from `sync_appointments`, which has no AM/PM column, so Q2's rule hides a genuine 7:00 or 8:00am there (the Dogs page, which has the label, shows it). Accepted: rare, an admin view, and never a wrong time.
 - A contradicting label isn't logged from the screens (it would log on every render); the Friday roster logs it (PR 1).
 - Old tests that stored times without a zone (`'2025-01-15T14:00:00'`, read as device-local) now use `Z`, the shape the database returns.
 - 10-23 checked with the new code on production data: 8 dogs, $440, $286 net, with the host in Pacific, Kiritimati and Pago Pago.

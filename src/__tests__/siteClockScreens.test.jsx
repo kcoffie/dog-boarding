@@ -210,6 +210,35 @@ describe('REQ-065: the Calendar places bookings on their site dates', () => {
   });
 });
 
+describe('REQ-065: the Calendar grid across a month edge and at 9pm', () => {
+  const dogs = [dog('d1', 'Oak Test')];
+  // Oct 31 10:00am → Nov 2 11:00am
+  const boardings = [stay('b1', 'd1', '2026-10-31T10:00:00Z', '2026-11-02T11:00:00Z', 'AM', 'AM')];
+  const dayCell = (day) => screen.getAllByText(day).find((el) => el.closest('.cursor-pointer'));
+  const gridCell = (day) => dayCell(day).closest('.cursor-pointer');
+  const barRadii = (day) => [...gridCell(day).querySelectorAll('.space-y-0\\.5 > div')].map((bar) => bar.style.borderRadius);
+
+  beforeEach(() => useData.mockReturnValue(data(dogs, boardings)));
+
+  eachZone('October shows the stay starting on Oct 31 and nothing on Oct 30; November ends it on Nov 2', () => {
+    atClock('2026-10-27T18:00:00Z');
+    render(<CalendarPage />);
+    expect(barRadii('30')).toEqual([]);
+    expect(barRadii('31')).toEqual(['4px 0 0 4px']);
+    fireEvent.click(screen.getByRole('button', { name: 'Today' }).nextElementSibling);
+    expect(barRadii('1')).toEqual(['0px']);
+    expect(barRadii('2')).toEqual(['0 4px 4px 0']);
+    expect(barRadii('3')).toEqual([]);
+  });
+
+  eachZone("at 9pm Pacific on Oct 27 (Oct 28 in UTC) the grid's today is Oct 27", () => {
+    atClock('2026-10-28T04:00:00Z');
+    render(<CalendarPage />);
+    expect(gridCell('27').querySelector('.bg-indigo-600')?.textContent).toBe('27');
+    expect(gridCell('28').querySelector('.bg-indigo-600')).toBeNull();
+  });
+});
+
 describe('REQ-065: the Calendar shows only the date when a booking has no known time (Q2)', () => {
   const NOW = '2026-10-27T18:00:00Z';
   const dogs = [dog('d1', 'Kiwi Test'), dog('d2', 'Lime Test'), dog('d3', 'Maple Test')];
@@ -293,12 +322,12 @@ describe('REQ-065: Sync History shows booking dates as the site does, and run ti
 
   eachZone('the history list shows the run at "Oct 27, 5:05 PM PT"', () => {
     render(<SyncHistoryTable logs={[log]} loading={false} onSelectLog={() => {}} />);
-    expect(screen.getAllByText('Oct 27, 5:05 PM PT').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Oct 27, 5:05 PM PT')).toHaveLength(1);
   });
 
   eachZone('the history table shows the run at "Oct 27, 2026, 5:05 PM PT"', () => {
     render(<SyncHistoryTable logs={[log]} loading={false} onSelectLog={() => {}} />);
-    expect(screen.getAllByText('Oct 27, 2026, 5:05 PM PT').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Oct 27, 2026, 5:05 PM PT')).toHaveLength(1);
   });
 
   eachZone('a changed date field that is not a date is shown as it came', () => {
