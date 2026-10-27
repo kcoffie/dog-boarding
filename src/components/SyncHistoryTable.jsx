@@ -3,6 +3,8 @@
  * @requirements REQ-211
  */
 
+import { BUSINESS_TIME_ZONE } from '../utils/dateUtils';
+
 /**
  * Format duration in milliseconds to human readable string
  */
@@ -24,23 +26,16 @@ function formatDuration(ms) {
 function formatDateTime(isoString, compact = false) {
   if (!isoString) return 'N/A';
   const date = new Date(isoString);
-  if (compact) {
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
-  }
-  return date.toLocaleString('en-US', {
+  // A run's time is a real moment, shown in San Francisco time (#350)
+  return `${date.toLocaleString('en-US', {
+    timeZone: BUSINESS_TIME_ZONE,
     month: 'short',
     day: 'numeric',
-    year: 'numeric',
+    ...(compact ? {} : { year: 'numeric' }),
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-  });
+  })} PT`;
 }
 
 /**

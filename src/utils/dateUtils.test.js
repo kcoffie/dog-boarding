@@ -5,11 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatName,
-  formatDate,
-  formatTime,
-  formatDateTime,
   toDateInputValue,
-  toTimeInputValue,
   combineDateAndTime,
   calculateNights,
   isOvernight,
@@ -43,29 +39,8 @@ describe('REQ-060: formatName', () => {
   });
 });
 
-describe('formatDate', () => {
-  it('formats date in readable format', () => {
-    const result = formatDate('2025-01-15T14:00:00');
-    expect(result).toContain('Jan');
-    expect(result).toContain('15');
-    expect(result).toContain('2025');
-  });
-});
 
-describe('formatTime', () => {
-  it('formats time in readable format', () => {
-    const result = formatTime('2025-01-15T14:30:00');
-    expect(result).toMatch(/2:30|14:30/); // Depends on locale
-  });
-});
 
-describe('formatDateTime', () => {
-  it('combines date and time formatting', () => {
-    const result = formatDateTime('2025-01-15T14:30:00');
-    expect(result).toContain('Jan');
-    expect(result).toContain('15');
-  });
-});
 
 describe('toDateInputValue', () => {
   it('converts datetime to YYYY-MM-DD format', () => {
@@ -73,11 +48,6 @@ describe('toDateInputValue', () => {
   });
 });
 
-describe('toTimeInputValue', () => {
-  it('converts datetime to HH:MM format', () => {
-    expect(toTimeInputValue('2025-01-15T14:30:00')).toBe('14:30');
-  });
-});
 
 describe('combineDateAndTime', () => {
   it('combines date and time strings into ISO format', () => {
@@ -91,22 +61,22 @@ describe('combineDateAndTime', () => {
 describe('REQ-061: calculateNights', () => {
   it('calculates nights for multi-day stay', () => {
     // Mon 2PM -> Wed 10AM = 2 nights (Mon night, Tue night)
-    expect(calculateNights('2025-01-13T14:00', '2025-01-15T10:00')).toBe(2);
+    expect(calculateNights('2025-01-13T14:00Z', '2025-01-15T10:00Z')).toBe(2);
   });
 
   it('calculates nights for single overnight', () => {
     // Mon 2PM -> Tue 10AM = 1 night
-    expect(calculateNights('2025-01-13T14:00', '2025-01-14T10:00')).toBe(1);
+    expect(calculateNights('2025-01-13T14:00Z', '2025-01-14T10:00Z')).toBe(1);
   });
 
   it('returns 0 for same-day departure', () => {
     // Arrive and leave same day
-    expect(calculateNights('2025-01-13T10:00', '2025-01-13T16:00')).toBe(0);
+    expect(calculateNights('2025-01-13T10:00Z', '2025-01-13T16:00Z')).toBe(0);
   });
 
   it('handles week-long stay', () => {
     // Mon -> Mon = 7 nights
-    expect(calculateNights('2025-01-13T10:00', '2025-01-20T10:00')).toBe(7);
+    expect(calculateNights('2025-01-13T10:00Z', '2025-01-20T10:00Z')).toBe(7);
   });
 });
 
@@ -115,8 +85,8 @@ describe('REQ-061: calculateNights', () => {
  */
 describe('REQ-061: isOvernight', () => {
   const boarding = {
-    arrivalDateTime: '2025-01-15T14:00:00',
-    departureDateTime: '2025-01-18T10:00:00',
+    arrivalDateTime: '2025-01-15T14:00:00Z',
+    departureDateTime: '2025-01-18T10:00:00Z',
   };
 
   it('returns true for nights during stay', () => {
@@ -140,16 +110,16 @@ describe('REQ-061: isOvernight', () => {
 
   it('handles same-day boarding (no overnight)', () => {
     const sameDayBoarding = {
-      arrivalDateTime: '2025-01-15T10:00:00',
-      departureDateTime: '2025-01-15T16:00:00',
+      arrivalDateTime: '2025-01-15T10:00:00Z',
+      departureDateTime: '2025-01-15T16:00:00Z',
     };
     expect(isOvernight(sameDayBoarding, '2025-01-15')).toBe(false);
   });
 
   it('handles arrival at exactly 5 PM', () => {
     const eveningBoarding = {
-      arrivalDateTime: '2025-01-15T17:00:00',
-      departureDateTime: '2025-01-16T10:00:00',
+      arrivalDateTime: '2025-01-15T17:00:00Z',
+      departureDateTime: '2025-01-16T10:00:00Z',
     };
     expect(isOvernight(eveningBoarding, '2025-01-15')).toBe(true);
   });
@@ -157,8 +127,8 @@ describe('REQ-061: isOvernight', () => {
 
 describe('isDayPresent', () => {
   const boarding = {
-    arrivalDateTime: '2025-01-15T14:00:00', // 2 PM
-    departureDateTime: '2025-01-18T10:00:00', // 10 AM
+    arrivalDateTime: '2025-01-15T14:00:00Z', // 2 PM
+    departureDateTime: '2025-01-18T10:00:00Z', // 10 AM
   };
 
   it('returns true for days during stay', () => {
@@ -170,8 +140,8 @@ describe('isDayPresent', () => {
 
   it('returns false for arrival day if arrived after 5 PM', () => {
     const eveningBoarding = {
-      arrivalDateTime: '2025-01-15T18:00:00', // 6 PM
-      departureDateTime: '2025-01-17T10:00:00',
+      arrivalDateTime: '2025-01-15T18:00:00Z', // 6 PM
+      departureDateTime: '2025-01-17T10:00:00Z',
     };
     expect(isDayPresent(eveningBoarding, '2025-01-15')).toBe(false);
   });
@@ -190,8 +160,8 @@ describe('isDayPresent', () => {
 
   it('handles arrival at exactly 5 PM (not day present)', () => {
     const exactlyFiveBoarding = {
-      arrivalDateTime: '2025-01-15T17:00:00',
-      departureDateTime: '2025-01-17T10:00:00',
+      arrivalDateTime: '2025-01-15T17:00:00Z',
+      departureDateTime: '2025-01-17T10:00:00Z',
     };
     expect(isDayPresent(exactlyFiveBoarding, '2025-01-15')).toBe(false);
   });

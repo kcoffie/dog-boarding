@@ -5,17 +5,17 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { siteDate, siteNow } from '../utils/siteClock';
 
 /**
- * Returns true if the boarding's departure is today or in the future.
+ * Returns true if the boarding departs today or later, in San Francisco (#353: booking
+ * times are site clock values, so compare site dates).
  * @param {{ departureDateTime: string }} boarding
  * @returns {boolean}
  */
 export function isBoardingUpcoming(boarding) {
   if (!boarding?.departureDateTime) return false;
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
-  return new Date(boarding.departureDateTime) >= todayMidnight;
+  return siteDate(boarding.departureDateTime) >= siteDate(siteNow());
 }
 
 /**
@@ -32,20 +32,18 @@ export function useBoardingForms() {
     async function fetchForms() {
       setIsLoading(true);
       try {
-        // Get today's midnight as ISO string for server-side filtering
-        const todayMidnight = new Date();
-        todayMidnight.setHours(0, 0, 0, 0);
+        // Today's midnight on the site clock (San Francisco's date written as UTC)
+        const todayMidnight = `${siteDate(siteNow())}T00:00:00.000Z`;
 
-        // Join boarding_forms with boardings to filter by departure date.
-        // We fetch all boarding_forms and filter client-side based on the
-        // boarding's departure_datetime via a joined query.
+        // Join boarding_forms with boardings to filter by departure date. !inner makes
+        // the filter drop the form; without it, it only drops the embedded boarding.
         const { data, error } = await supabase
           .from('boarding_forms')
           .select(`
             *,
-            boardings!boarding_id(id, departure_datetime)
+            boardings!boarding_id!inner(id, departure_datetime)
           `)
-          .gte('boardings.departure_datetime', todayMidnight.toISOString());
+          .gte('boardings.departure_datetime', todayMidnight);
 
         if (error) throw error;
 

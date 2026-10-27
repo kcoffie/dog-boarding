@@ -20,11 +20,11 @@ const sampleDogs = [
 
 const sampleBoardings = [
   // Luna: Jan 15 2PM -> Jan 18 10AM (3 nights: 15, 16, 17)
-  { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-18T10:00:00' },
+  { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-18T10:00:00Z' },
   // Cooper: Jan 16 9AM -> Jan 17 5PM (1 night: 16)
-  { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T09:00:00', departureDateTime: '2025-01-17T17:00:00' },
+  { id: '2', dogId: '2', arrivalDateTime: '2025-01-16T09:00:00Z', departureDateTime: '2025-01-17T17:00:00Z' },
   // Bella: Jan 15 6PM -> Jan 20 11AM (5 nights: 15, 16, 17, 18, 19)
-  { id: '3', dogId: '3', arrivalDateTime: '2025-01-15T18:00:00', departureDateTime: '2025-01-20T11:00:00' },
+  { id: '3', dogId: '3', arrivalDateTime: '2025-01-15T18:00:00Z', departureDateTime: '2025-01-20T11:00:00Z' },
 ];
 
 /**
@@ -61,8 +61,8 @@ describe('REQ-063: calculateGross', () => {
   it('only counts dog once even with multiple boardings same night', () => {
     const dogsWithOne = [{ id: '1', name: 'Luna', dayRate: 35, nightRate: 45 }];
     const multipleBoardings = [
-      { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T10:00:00', departureDateTime: '2025-01-16T10:00:00' },
-      { id: '2', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00' },
+      { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T10:00:00Z', departureDateTime: '2025-01-16T10:00:00Z' },
+      { id: '2', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z' },
     ];
     const gross = calculateGross(dogsWithOne, multipleBoardings, '2025-01-15');
     expect(gross).toBe(45); // Only counted once
@@ -184,8 +184,8 @@ describe('REQ-063: calculateBoardingGross', () => {
   const lunaBoarding = {
     id: '1',
     dogId: '1',
-    arrivalDateTime: '2025-01-15T14:00:00',
-    departureDateTime: '2025-01-18T10:00:00',
+    arrivalDateTime: '2025-01-15T14:00:00Z',
+    departureDateTime: '2025-01-18T10:00:00Z',
   };
 
   it('calculates gross for full stay', () => {
@@ -273,12 +273,12 @@ describe('REQ-036: one calculation for nights and pay', () => {
   });
 
   it("a booking with no price counts at the dog's rate", () => {
-    const stays = nightStays([dog('x', 55)], [b('x1', 'x', '2026-10-22T16:00:00', '2026-10-24T10:00:00', null)], '2026-10-23');
+    const stays = nightStays([dog('x', 55)], [b('x1', 'x', '2026-10-22T16:00:00Z', '2026-10-24T10:00:00Z', null)], '2026-10-23');
     expect(stays[0].rate).toBe(55);
   });
 
   it("a booking priced $0 counts $0, not the dog's rate", () => {
-    expect(calculateGross([dog('x', 55)], [b('x1', 'x', '2026-10-22T16:00:00', '2026-10-24T10:00:00', 0)], '2026-10-23')).toBe(0);
+    expect(calculateGross([dog('x', 55)], [b('x1', 'x', '2026-10-22T16:00:00Z', '2026-10-24T10:00:00Z', 0)], '2026-10-23')).toBe(0);
   });
 
   it("nightRate(): with no dog loaded, a boarding counts at its own price, else $0 (Revenue view, Dogs page)", () => {
@@ -287,12 +287,12 @@ describe('REQ-036: one calculation for nights and pay', () => {
   });
 
   it('a dog with no rate anywhere counts $0', () => {
-    expect(calculateGross([dog('x', null)], [b('x1', 'x', '2026-10-22T16:00:00', '2026-10-24T10:00:00', null)], '2026-10-23')).toBe(0);
+    expect(calculateGross([dog('x', null)], [b('x1', 'x', '2026-10-22T16:00:00Z', '2026-10-24T10:00:00Z', null)], '2026-10-23')).toBe(0);
   });
 
   it('a dog with two boardings on one night counts once, at the rate of the one that arrived first', () => {
-    const earlier = b('x2', 'x', '2026-10-20T16:00:00', '2026-10-25T10:00:00', 55);
-    const later = b('x1', 'x', '2026-10-22T16:00:00', '2026-10-25T10:00:00', 60);
+    const earlier = b('x2', 'x', '2026-10-20T16:00:00Z', '2026-10-25T10:00:00Z', 55);
+    const later = b('x1', 'x', '2026-10-22T16:00:00Z', '2026-10-25T10:00:00Z', 60);
     for (const order of [[earlier, later], [later, earlier]]) {
       expect(countOvernightDogs([dog('x', 70)], order, '2026-10-23')).toBe(1);
       expect(calculateGross([dog('x', 70)], order, '2026-10-23')).toBe(55);
@@ -300,15 +300,15 @@ describe('REQ-036: one calculation for nights and pay', () => {
   });
 
   it('two boardings arriving at the same time: the lower id sets the rate, whatever the load order', () => {
-    const p = b('p', 'x', '2026-10-22T16:00:00', '2026-10-25T10:00:00', 55);
-    const q = b('q', 'x', '2026-10-22T16:00:00', '2026-10-25T10:00:00', 60);
+    const p = b('p', 'x', '2026-10-22T16:00:00Z', '2026-10-25T10:00:00Z', 55);
+    const q = b('q', 'x', '2026-10-22T16:00:00Z', '2026-10-25T10:00:00Z', 60);
     expect(calculateGross([dog('x', 70)], [p, q], '2026-10-23')).toBe(55);
     expect(calculateGross([dog('x', 70)], [q, p], '2026-10-23')).toBe(55);
   });
 
   it("a cancelled boarding never sets a dog's rate, even when it arrived first", () => {
-    const cancelled = b('x1', 'x', '2026-10-20T16:00:00', '2026-10-25T10:00:00', 55, { cancelledAt: '2026-10-19T00:00:00Z' });
-    const active = b('x2', 'x', '2026-10-22T16:00:00', '2026-10-25T10:00:00', 60);
+    const cancelled = b('x1', 'x', '2026-10-20T16:00:00Z', '2026-10-25T10:00:00Z', 55, { cancelledAt: '2026-10-19T00:00:00Z' });
+    const active = b('x2', 'x', '2026-10-22T16:00:00Z', '2026-10-25T10:00:00Z', 60);
     expect(calculateGross([dog('x', 70)], [cancelled, active], '2026-10-23')).toBe(60);
   });
 
@@ -317,12 +317,12 @@ describe('REQ-036: one calculation for nights and pay', () => {
   });
 
   it('a dog with two boardings on one night adds its day rate once', () => {
-    const two = [b('x1', 'x', '2026-10-20T16:00:00', '2026-10-25T10:00:00', 55), b('x2', 'x', '2026-10-22T16:00:00', '2026-10-25T10:00:00', 60)];
+    const two = [b('x1', 'x', '2026-10-20T16:00:00Z', '2026-10-25T10:00:00Z', 55), b('x2', 'x', '2026-10-22T16:00:00Z', '2026-10-25T10:00:00Z', 60)];
     expect(calculateDaytimeGross([dog('x', 70, 30)], two, '2026-10-23')).toBe(30);
   });
 
   it('a dog with no day rate adds $0 to the daytime credit', () => {
     const noDayRate = { id: 'x', name: 'Dog x', nightRate: 70 };
-    expect(calculateDaytimeGross([noDayRate], [b('x1', 'x', '2026-10-22T16:00:00', '2026-10-24T10:00:00', 60)], '2026-10-23')).toBe(0);
+    expect(calculateDaytimeGross([noDayRate], [b('x1', 'x', '2026-10-22T16:00:00Z', '2026-10-24T10:00:00Z', 60)], '2026-10-23')).toBe(0);
   });
 });

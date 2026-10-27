@@ -4,6 +4,8 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { BUSINESS_TIME_ZONE } from '../utils/dateUtils';
+import { bookingDateTime, formatSiteDate } from '../utils/siteClock';
 
 /**
  * Format duration in milliseconds to human readable string
@@ -21,20 +23,25 @@ function formatDuration(ms) {
 }
 
 /**
- * Format date/time for display
+ * Format a run's time (a real moment) in San Francisco time, "Oct 27, 2026, 5:05 PM PT" (#350)
  */
 function formatDateTime(isoString) {
   if (!isoString) return 'N/A';
   const date = new Date(isoString);
-  return date.toLocaleString('en-US', {
+  return `${date.toLocaleString('en-US', { // real-moment: when the sync ran
+    timeZone: BUSINESS_TIME_ZONE,
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-  });
+  })} PT`;
 }
+
+// A booking's San Francisco date (a site clock value, #353): "Oct 29" or with the year
+const bookingDate = (iso, year = false) =>
+  formatSiteDate(iso, year ? { month: 'short', day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric' });
 
 /**
  * Get status badge styling
@@ -80,23 +87,10 @@ function getStatusBadge(status) {
 function formatChangeValue(value, field) {
   if (value === null || value === undefined || value === '') return '(empty)';
 
-  // Handle datetime fields
+  // The changed fields with dates are booking times (check_in/check_out_datetime): site clock values
   if (field.includes('datetime') || field.includes('date')) {
-    try {
-      const date = new Date(value);
-      if (!isNaN(date.getTime())) {
-        return date.toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-        });
-      }
-    } catch {
-      // Fall through to default
-    }
+    const shown = bookingDateTime(value, null);
+    if (shown) return shown;
   }
 
   // Truncate long strings
@@ -344,9 +338,9 @@ export default function SyncDetailModal({ isOpen, onClose, log, details, loading
                             </div>
                             {(change.check_in || change.check_out) && (
                               <p className="text-xs text-emerald-700 mt-1">
-                                {change.check_in && new Date(change.check_in).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                {change.check_in && bookingDate(change.check_in, true)}
                                 {change.check_out && (
-                                  <> → {new Date(change.check_out).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</>
+                                  <> → {bookingDate(change.check_out, true)}</>
                                 )}
                               </p>
                             )}
@@ -372,8 +366,8 @@ export default function SyncDetailModal({ isOpen, onClose, log, details, loading
                               <p className="font-medium text-slate-900">{change.dog_name}</p>
                               {(change.check_in || change.check_out) && (
                                 <span className="text-xs text-slate-500">
-                                  {change.check_in && new Date(change.check_in).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                  {change.check_out && <> - {new Date(change.check_out).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</>}
+                                  {change.check_in && bookingDate(change.check_in)}
+                                  {change.check_out && <> - {bookingDate(change.check_out)}</>}
                                 </span>
                               )}
                             </div>
@@ -424,15 +418,9 @@ export default function SyncDetailModal({ isOpen, onClose, log, details, loading
                         </div>
                         {appt.check_in_datetime && (
                           <p className="text-xs text-slate-500 mt-1">
-                            {new Date(appt.check_in_datetime).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
+                            {bookingDate(appt.check_in_datetime)}
                             {appt.check_out_datetime && (
-                              <> - {new Date(appt.check_out_datetime).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                              })}</>
+                              <> - {bookingDate(appt.check_out_datetime)}</>
                             )}
                           </p>
                         )}

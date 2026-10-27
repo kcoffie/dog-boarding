@@ -1,10 +1,11 @@
-// The business runs on San Francisco time, whatever the device's timezone (#350)
-export const BUSINESS_TIME_ZONE = 'America/Los_Angeles';
+import { BUSINESS_TIME_ZONE, siteDate, siteHour } from './siteClock.js';
+
+export { BUSINESS_TIME_ZONE };
 
 // Today's date in San Francisco as YYYY-MM-DD
 export function businessToday(now = new Date()) {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
+    new Intl.DateTimeFormat('en-US', { // real-moment: today's date, from the real now
       timeZone: BUSINESS_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
     }).formatToParts(now).map((p) => [p.type, p.value]),
   );
@@ -14,20 +15,20 @@ export function businessToday(now = new Date()) {
 // Today in San Francisco as a calendar date (local midnight), for the date pickers
 export function businessTodayDate(now = new Date()) {
   const [y, m, d] = businessToday(now).split('-').map(Number);
-  return new Date(y, m - 1, d);
+  return new Date(y, m - 1, d); // real-moment: a calendar date for the pickers, not a booking time
 }
 
 // A calendar date (local midnight) as YYYY-MM-DD, from its own year, month and day.
 // Never via toISOString(): east of UTC, local midnight is still the day before in UTC.
 export function toDateStr(date) {
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${m}-${d}`;
+  const m = String(date.getMonth() + 1).padStart(2, '0'); // real-moment: a calendar date, not a booking time
+  const d = String(date.getDate()).padStart(2, '0'); // real-moment: a calendar date, not a booking time
+  return `${date.getFullYear()}-${m}-${d}`; // real-moment: a calendar date, not a booking time
 }
 
 // Whole calendar days from start to end. A DST change in between doesn't shift it.
 export function daysBetween(start, end) {
-  const utc = (date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  const utc = (date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()); // real-moment: a calendar date, not a booking time
   return (utc(end) - utc(start)) / (1000 * 60 * 60 * 24);
 }
 
@@ -40,40 +41,10 @@ export function formatName(name) {
     .join(' ');
 }
 
-// Format date for display
-export function formatDate(dateString) {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-// Format time for display
-export function formatTime(dateString) {
-  const date = new Date(dateString);
-  return date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-// Format date and time together
-export function formatDateTime(dateString) {
-  return `${formatDate(dateString)} ${formatTime(dateString)}`;
-}
-
 // Get date string in YYYY-MM-DD format
 export function toDateInputValue(dateString) {
   const date = new Date(dateString);
   return date.toISOString().split('T')[0];
-}
-
-// Get time string in HH:MM format
-export function toTimeInputValue(dateString) {
-  const date = new Date(dateString);
-  return date.toTimeString().slice(0, 5);
 }
 
 // Combine date and time inputs into ISO string
@@ -81,74 +52,28 @@ export function combineDateAndTime(dateStr, timeStr) {
   return `${dateStr}T${timeStr}`;
 }
 
-// Calculate number of overnight stays
+// Booking times are site clock values (#353, ADR-009): their dates are San Francisco dates
+// on any device, read with siteDate. A YYYY-MM-DD string compares as a date.
+const ONE_DAY = 1000 * 60 * 60 * 24;
+
+// Number of overnight stays: calendar days from the arrival date to the departure date
 export function calculateNights(arrivalDateTime, departureDateTime) {
-  const arrival = new Date(arrivalDateTime);
-  const departure = new Date(departureDateTime);
-
-  // Get the date parts only (midnight)
-  const arrivalDate = new Date(arrival.getFullYear(), arrival.getMonth(), arrival.getDate());
-  const departureDate = new Date(departure.getFullYear(), departure.getMonth(), departure.getDate());
-
-  // Calculate days between (nights = days difference)
-  const daysDiff = Math.floor((departureDate - arrivalDate) / (1000 * 60 * 60 * 24));
-
+  const daysDiff = (Date.parse(siteDate(departureDateTime)) - Date.parse(siteDate(arrivalDateTime))) / ONE_DAY;
   return Math.max(0, daysDiff);
 }
 
-// Check if a dog is staying overnight on a specific date
+// A dog stays the night of dateStr (into the next day) if it arrived on or before
+// that date and departs after it
 export function isOvernight(boarding, dateStr) {
-  // Parse dateStr as local time by appending time component
-  const date = new Date(dateStr + 'T00:00:00');
-  const arrival = new Date(boarding.arrivalDateTime);
-  const departure = new Date(boarding.departureDateTime);
-
-  // Set all to midnight for date comparison
-  const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const arrivalDate = new Date(arrival.getFullYear(), arrival.getMonth(), arrival.getDate());
-  const departureDate = new Date(departure.getFullYear(), departure.getMonth(), departure.getDate());
-
-  // Dog is overnight on date X if:
-  // 1. They arrived on or before date X
-  // 2. They depart after date X (i.e., on date X+1 or later)
-  // This means they stay the night of date X into date X+1
-
-  return checkDate >= arrivalDate && checkDate < departureDate;
+  return siteDate(boarding.arrivalDateTime) <= dateStr && dateStr < siteDate(boarding.departureDateTime);
 }
 
-// Check if a dog is present during day hours on a specific date
+// A dog is present during the day on any date from arrival to departure, except an
+// arrival day when it arrived at 5pm or later (Kate, #353 Q1)
 export function isDayPresent(boarding, dateStr) {
-  // Parse dateStr as local time by appending time component
-  const date = new Date(dateStr + 'T00:00:00');
-  const arrival = new Date(boarding.arrivalDateTime);
-  const departure = new Date(boarding.departureDateTime);
-
-  // Set check date to midnight
-  const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const arrivalDate = new Date(arrival.getFullYear(), arrival.getMonth(), arrival.getDate());
-  const departureDate = new Date(departure.getFullYear(), departure.getMonth(), departure.getDate());
-
-  // Dog is present during day if:
-  // 1. Check date is between arrival date and departure date (inclusive)
-  // 2. If it's arrival day, they arrived before 5 PM
-  // 3. If it's departure day, any presence counts
-
-  if (checkDate < arrivalDate || checkDate > departureDate) {
-    return false;
-  }
-
-  // On arrival day, check if they arrived before 5 PM
-  if (checkDate.getTime() === arrivalDate.getTime()) {
-    const arrivalHour = arrival.getHours();
-    return arrivalHour < 17;
-  }
-
-  // On departure day, they're present during day
-  if (checkDate.getTime() === departureDate.getTime()) {
-    return true;
-  }
-
-  // Any day in between, they're present all day
+  const arrivalDate = siteDate(boarding.arrivalDateTime);
+  if (dateStr < arrivalDate || dateStr > siteDate(boarding.departureDateTime)) return false;
+  if (dateStr === arrivalDate) return siteHour(boarding.arrivalDateTime) < 17;
   return true;
 }
 
@@ -160,11 +85,11 @@ export function getDateRange(startDate, days) {
   const start = startDate instanceof Date
     ? new Date(startDate)
     : new Date(startDate + 'T00:00:00');
-  start.setHours(0, 0, 0, 0);
+  start.setHours(0, 0, 0, 0); // real-moment: a calendar date, not a booking time
 
   for (let i = 0; i < days; i++) {
     const date = new Date(start);
-    date.setDate(start.getDate() + i);
+    date.setDate(start.getDate() + i); // real-moment: a calendar date, not a booking time
     dates.push(toDateStr(date));
   }
 
@@ -174,7 +99,7 @@ export function getDateRange(startDate, days) {
 // Format date for column header
 export function formatDateShort(dateStr) {
   const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString('en-US', { // real-moment: a calendar date, not a booking time
     month: 'short',
     day: 'numeric',
   });
@@ -183,5 +108,5 @@ export function formatDateShort(dateStr) {
 // Get day of week abbreviation
 export function getDayOfWeek(dateStr) {
   const date = new Date(dateStr + 'T00:00:00');
-  return date.toLocaleDateString('en-US', { weekday: 'short' });
+  return date.toLocaleDateString('en-US', { weekday: 'short' }); // real-moment: a calendar date, not a booking time
 }

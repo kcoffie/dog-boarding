@@ -4,7 +4,8 @@ import DogForm from '../components/DogForm';
 import DogCsvImport from '../components/DogCsvImport';
 import BoardingFormModal from '../components/BoardingFormModal';
 import { useBoardingForms } from '../hooks/useBoardingForms';
-import { formatDateTime, calculateNights, formatName } from '../utils/dateUtils';
+import { calculateNights, formatName } from '../utils/dateUtils';
+import { bookingDateTime, siteNow } from '../utils/siteClock';
 import { nightRate } from '../utils/calculations';
 
 export default function DogsPage() {
@@ -31,11 +32,6 @@ export default function DogsPage() {
     }
   };
 
-  const formatDateWithAmPm = (dt, ampm) =>
-    ampm
-      ? new Date(dt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + ampm
-      : formatDateTime(dt);
-
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -54,8 +50,12 @@ export default function DogsPage() {
     calculateNights(boarding.arrivalDateTime, boarding.departureDateTime) *
     nightRate(boarding, dogs.find(d => d.id === boarding.dogId));
 
+  // Booking times are San Francisco clock times written as UTC (ADR-009): compare them with
+  // San Francisco's now written the same way, as moments (Supabase writes "+00:00", not "Z")
+  const siteNowMs = () => Date.parse(siteNow());
+
   // Past = departed; a cancelled boarding stays in whichever table its dates put it in
-  const isPastBoarding = (boarding) => new Date() > new Date(boarding.departureDateTime);
+  const isPastBoarding = (boarding) => siteNowMs() > Date.parse(boarding.departureDateTime);
 
   const getInitials = (name) => {
     if (!name) return '?';
@@ -66,9 +66,9 @@ export default function DogsPage() {
 
   const getBoardingStatus = (boarding) => {
     if (boarding.cancelledAt) return 'cancelled';
-    const now = new Date();
-    const arrival = new Date(boarding.arrivalDateTime);
-    const departure = new Date(boarding.departureDateTime);
+    const now = siteNowMs();
+    const arrival = Date.parse(boarding.arrivalDateTime);
+    const departure = Date.parse(boarding.departureDateTime);
 
     if (now < arrival) return 'upcoming';
     if (now > departure) return 'past';
@@ -263,11 +263,11 @@ export default function DogsPage() {
                     <div className="mt-3 text-sm text-slate-600">
                       <div className="flex justify-between">
                         <span className="text-slate-500">Arrival:</span>
-                        <span>{formatDateWithAmPm(boarding.arrivalDateTime, boarding.arrivalAmPm)}</span>
+                        <span>{bookingDateTime(boarding.arrivalDateTime, boarding.arrivalAmPm)}</span>
                       </div>
                       <div className="flex justify-between mt-1">
                         <span className="text-slate-500">Departure:</span>
-                        <span>{formatDateWithAmPm(boarding.departureDateTime, boarding.departureAmPm)}</span>
+                        <span>{bookingDateTime(boarding.departureDateTime, boarding.departureAmPm)}</span>
                       </div>
                     </div>
                   </div>
@@ -351,8 +351,8 @@ export default function DogsPage() {
                             {statusStyle.label}
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{formatDateWithAmPm(boarding.arrivalDateTime, boarding.arrivalAmPm)}</td>
-                        <td className="px-5 py-4 text-sm text-slate-600">{formatDateWithAmPm(boarding.departureDateTime, boarding.departureAmPm)}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{bookingDateTime(boarding.arrivalDateTime, boarding.arrivalAmPm)}</td>
+                        <td className="px-5 py-4 text-sm text-slate-600">{bookingDateTime(boarding.departureDateTime, boarding.departureAmPm)}</td>
                         <td className="px-5 py-4 text-sm text-slate-600 text-right tabular-nums">{nights}</td>
                         <td className="px-5 py-4 text-sm font-medium text-slate-900 text-right tabular-nums">{formatCurrency(gross)}</td>
                       </tr>
@@ -639,11 +639,11 @@ export default function DogsPage() {
                       <div className="mt-3 text-sm text-slate-600">
                         <div className="flex justify-between">
                           <span className="text-slate-500">Arrival:</span>
-                          <span>{formatDateTime(boarding.arrivalDateTime)}</span>
+                          <span>{bookingDateTime(boarding.arrivalDateTime, boarding.arrivalAmPm)}</span>
                         </div>
                         <div className="flex justify-between mt-1">
                           <span className="text-slate-500">Departure:</span>
-                          <span>{formatDateTime(boarding.departureDateTime)}</span>
+                          <span>{bookingDateTime(boarding.departureDateTime, boarding.departureAmPm)}</span>
                         </div>
                       </div>
                     </div>
@@ -704,8 +704,8 @@ export default function DogsPage() {
                               <span className="text-sm font-medium text-slate-900">{dogName}</span>
                             </div>
                           </td>
-                          <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.arrivalDateTime)}</td>
-                          <td className="px-5 py-4 text-sm text-slate-600">{formatDateTime(boarding.departureDateTime)}</td>
+                          <td className="px-5 py-4 text-sm text-slate-600">{bookingDateTime(boarding.arrivalDateTime, boarding.arrivalAmPm)}</td>
+                          <td className="px-5 py-4 text-sm text-slate-600">{bookingDateTime(boarding.departureDateTime, boarding.departureAmPm)}</td>
                           <td className="px-5 py-4 text-sm text-slate-600 text-right tabular-nums">{nights}</td>
                           <td className="px-5 py-4 text-sm font-medium text-slate-900 text-right tabular-nums">{formatCurrency(gross)}</td>
                         </tr>

@@ -34,7 +34,7 @@ describe('REQ-030: BoardingMatrix', () => {
   ];
 
   const mockBoardings = [
-    { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-18T10:00:00' },
+    { id: '1', dogId: '1', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-18T10:00:00Z' },
   ];
 
   const mockSettings = {
@@ -132,10 +132,10 @@ describe('REQ-034: BoardingMatrix sorting', () => {
   // Charlie: overnight on Jan 16 only
   // Zeus: day-only on Jan 15, overnight on Jan 17
   const mockBoardingsForSorting = [
-    { id: '1', dogId: '2', arrivalDateTime: '2025-01-15T14:00:00', departureDateTime: '2025-01-17T10:00:00' }, // Apollo: overnight 15, 16
-    { id: '2', dogId: '1', arrivalDateTime: '2025-01-16T14:00:00', departureDateTime: '2025-01-18T10:00:00' }, // Charlie: overnight 16, 17
-    { id: '3', dogId: '3', arrivalDateTime: '2025-01-15T08:00:00', departureDateTime: '2025-01-15T18:00:00' }, // Zeus: day-only Jan 15
-    { id: '4', dogId: '3', arrivalDateTime: '2025-01-17T14:00:00', departureDateTime: '2025-01-19T10:00:00' }, // Zeus: overnight 17, 18
+    { id: '1', dogId: '2', arrivalDateTime: '2025-01-15T14:00:00Z', departureDateTime: '2025-01-17T10:00:00Z' }, // Apollo: overnight 15, 16
+    { id: '2', dogId: '1', arrivalDateTime: '2025-01-16T14:00:00Z', departureDateTime: '2025-01-18T10:00:00Z' }, // Charlie: overnight 16, 17
+    { id: '3', dogId: '3', arrivalDateTime: '2025-01-15T08:00:00Z', departureDateTime: '2025-01-15T18:00:00Z' }, // Zeus: day-only Jan 15
+    { id: '4', dogId: '3', arrivalDateTime: '2025-01-17T14:00:00Z', departureDateTime: '2025-01-19T10:00:00Z' }, // Zeus: overnight 17, 18
   ];
 
   const mockSettings = {

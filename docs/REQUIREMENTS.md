@@ -581,7 +581,7 @@ The business runs on San Francisco time (`America/Los_Angeles`), whatever the de
 ---
 
 ### REQ-065: Booking times read as the booking site shows them
-**Added:** 2026-10-26 (#353) | **Status:** In Progress (PR 1: server side; PR 2: screens)
+**Added:** 2026-10-26 (#353) | **Status:** Complete (PR 1 #357: server side; PR 2: screens)
 
 The booking site stores each booking's times as San Francisco clock times written as UTC (10:00am is `10:00Z`, all year, no DST shift). They stay stored that way and are read only through `src/utils/siteClock.js` (ADR-009), so every date and time matches the site on any device and any server.
 
@@ -593,9 +593,9 @@ The booking site stores each booking's times as San Francisco clock times writte
 - Server dates don't depend on the runtime's zone: the roster's boarders, form matching, a boarding's form job (until the end of its departure day), Sync Now's date filter and reconcile window, and a title-only date (`Date.UTC` midnight)
 - No file that names a booking-time field reads it with a local-zone call outside `siteClock.js`, unless the line is marked `// real-moment:` (guard test)
 
-**Not yet (PR 2):** the Dogs page, Calendar, day/night helpers, Sync History, form view and upcoming forms (the guard's `NOT_YET` list).
+- The screens (PR 2, = #350 PR 2): the Dogs page shows "Oct 29, 2026 10:00 AM PT" (date only under the rules above) and its Current/Upcoming/Past badge compares with `siteNow`; the Calendar puts each booking on its site dates (grid, day panel, print view) with site times; nights (`calculateNights`, `isOvernight`) and day presence (`isDayPresent`, "before 5pm" on the site clock, Kate Q1) use site dates; Sync History shows booking dates as the site does and run times in San Francisco time ("PT"); the form view's Date Discrepancy uses the booking's site dates; upcoming forms run to the end of the departure day in San Francisco, and the query filters forms, not just the embedded boarding (`!inner`)
 
-**Tests:** `src/__tests__/siteClock.test.js`, `src/__tests__/scraper/syncSiteRange.test.js`, `src/__tests__/siteClockGuard.test.js`, `src/__tests__/rosterImage.test.js`
+**Tests:** `src/__tests__/siteClock.test.js`, `src/__tests__/scraper/syncSiteRange.test.js`, `src/__tests__/siteClockGuard.test.js`, `src/__tests__/rosterImage.test.js`, `src/__tests__/siteClockScreens.test.jsx`, `src/__tests__/siteClockHelpers.test.js`
 
 ---
 
