@@ -285,6 +285,11 @@ describe('REQ-108: a cancelled booking back on the booking site is restored only
     expect([rec.errors, rec.restores]).toEqual([1, ['BKBACK02']]);
   });
 
+  it('a booking with no sync row at all is not restored', async () => {
+    const db = createFakeSupabase();
+    expect(await restoreArchivedBooking(db, 'BKNONE01')).toEqual({ restored: false, boardings: 0, conflicts: [], notArchived: true });
+  });
+
   it('a booking that is not archived is not restored and nothing is written', async () => {
     const db = createFakeSupabase();
     booking(db, 'BKACT001', '2026-11-03T16:00:00+00:00', '2026-11-12T17:00:00+00:00');

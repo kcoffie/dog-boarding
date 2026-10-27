@@ -455,6 +455,7 @@ export async function reconcileScheduleWindow(supabase, { seenIds, appointments,
       .select('external_id')
       .eq('sync_status', 'archived')
       .in('external_id', [...seenIds]);
+    // Stryker disable next-line ConditionalExpression: on an error Supabase's data is null, so .map throws into the same catch
     if (error) throw error;
     archivedSeen = data.map((row) => row.external_id);
   } catch (err) {
