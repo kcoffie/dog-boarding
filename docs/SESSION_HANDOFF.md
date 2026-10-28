@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 27, 2026, ~19:00 UTC (session 53). **Production = main (`5a8546c`, #360), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 53: #353 PR 2 shipped (#360: every screen reads booking times as the site's SF clock times). Next: check #316's report-only run (00:05 UTC 10-28) and first live run (00:05 UTC 10-29: `C63QhB7h` must be cancelled, both dogs), then the Fri 10-30 roster.**
+**Last updated:** October 28, 2026, ~23:30 UTC (session 54). **Production = main (`7b8d5c3`, #366), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 54: #351 shipped (no hand edits on the Dogs page), #307 shipped (no invite codes), #368 data fix run by Kate (37 empty dog rows removed, Iroh re-queued), triage rule adopted. Next: verify the first live #316 night and #368 (after 00:15 UTC 10-29), then the Fri 10-30 roster.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -28,7 +28,20 @@
 
 ---
 
-## Current State (2026-10-27 ~19:00 UTC, session 53)
+## Current State (2026-10-28 ~23:30 UTC, session 54)
+
+### Session 54: what happened (2026-10-27 / 10-28)
+1. **Baseline:** main `6f7eb21`; read-only checks 10-27 ~21:30 UTC: overnight clean, `site_access` not blocked, queue 0; the 13:45 Integration Check cancel (Playwright apt hang) did not repeat. Ops-watch's 17:36 "IC last success 14h" alert was that cancel.
+2. **Triage rule (Kate, 2026-10-27), now in `docs/SPRINT_PLAN.md` rules:** anything that can make the roster or pay wrong gets `priority: high` and its own date. Kate was worried #316 had been parked under #318 step 4 with no date. First uses: **#326 raised to high** (Kate's spec on the issue: alert when a synced change touches a boarding with an employee assigned; Sprint 2) and #368.
+3. **#351 shipped: PR #364 → `b995cd4`, `check:deploy` OK, #351 closed.** Dogs page: no Add Dog, Import CSV, Deactivate or Actions column; `useDogs` fetch-only; `DogForm`, `DogCsvImport` deleted (Kate's `git rm`); REQ-010–013 Removed. papaparse stays in `package.json` until the next lockfile change (Kate OK'd). Stryker: 0 mutants (deletions + JSX text).
+4. **#307 shipped: PR #366 → `7b8d5c3`, `check:deploy` OK, #307 closed.** Settings has no Invite Users; `useInvites` and its test deleted (Kate's `git rm`); REQ-006 Removed; new `SettingsPage.noInvites.test.jsx` (fails on main). The `invite_codes` table stays: dropping it (and its policies) is part of **#367**. Suite **2687 passed / 1 skipped**; Stryker: no mutants (deletions + a comment). Reviewer: no must-fix; findings on the PR.
+5. **#316 report-only night (00:05 UTC 10-28) correct:** "Would cancel" `C63QhB7h` (Mochi + Marlee, 11/3 → 11/12) and `C63QhDpK` (Hank, 10/30 → 11/1); Kate confirmed both are gone from the site. `result.reconcile`: candidates 2, gone 2, errors 0, alertDelivered true. Both still active until the first live run (00:05 UTC 10-29).
+6. **Iroh → #368 (bug, high).** `C63QhMFU` (10/28 → 10/30, pet 236219, $55/night) wasn't saved: an empty "Iroh" dog row (no pet ID, $0, no boardings; made by the old sync) blocked it under ADR-008's "link only with evidence". 37 such rows existed (7 $0 rows from the old sync, 30 hand-entered in January); Iroh was the only booking blocked. **Kate ran the cleanup 2026-10-28 23:14 UTC:** copied to `backup.dogs_removed_2026_10_28` (a schema the API doesn't expose), deleted, `C63QhMFU` re-queued. Verified read-only: 0 of the 37 left, dogs 70, boardings 370 unchanged, queue item pending. Undo: `INSERT INTO dogs SELECT * FROM backup.dogs_removed_2026_10_28;`. No new rows of this kind can appear (#344 fixed the $0 rows, #351 removed hand entry).
+7. **Brinkley `C63QhMVa` ("10/31-1/1"):** a new booking found by the 20:41 UTC Integration Check and queued (pending); its dog has pet 102146, so it links. The title looks like a typo for 11/1; the sync uses the page's timestamps (arrival 10/31 10:00). Check it saved with checkout 11/1.
+8. **Issues:** filed **#363** (low, admin-only project dashboard), **#365** (medium, synced tables writable by signed-in users outside the app's screens; fix after #318 step 7; the how-to stays out of public text), **#367** (medium, admins add people from the app: design, build, drop `invite_codes`), **#368** (high, above). Closed #20, #15, #19 (covered or intended), #22 (superseded by #318/#316). **#21:** 9 groups / 21 live boardings with the same dog and dates under different booking IDs (March–August); nights and pay aren't doubled, Revenue counts both; Kate to check one pair (`C63QgeoP` / `C63QgeoR`) on the site. #294 and #315 still real.
+9. Kate ran SQL (step 6 only). No booking-site requests by Claude, no messages sent. Not yet answered: whether the Dashboard's today mark showed the SF date after 5pm PDT.
+
+## Previous session (53)
 
 ### Session 53: what happened (2026-10-27)
 1. **Baseline:** main `ee20596`, 2486 passed / 1 skipped. **#359 (session 52 handoff) merged as `6f7eb21`** on Kate's word, `check:deploy` OK.
@@ -326,21 +339,21 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2704 passed / 1 skipped**), open PRs (#291, #285, plus **#362** = this handoff: reviewer run, findings fixed; if still open, ask Kate to merge it, then `check:deploy`).
-2. **Read-only checks (fix nothing without asking):**
-   - **After 00:05 UTC 10-28 (report-only night):** `cron_health` `schedule` `result.reconcile` (mode `report_only`, candidates, gone, skipped, errors, alertDelivered); one `sync-reconcile` row in `message_log` naming `C63QhB7h` as "Would cancel"; both its boardings still not cancelled. **If `C63QhB7h` isn't named, tell Kate before the 10-29 run** (the site still lists it on a page read that night).
-   - **After 00:05 UTC 10-29 (first live night):** both `C63QhB7h` boardings (`C63QhB7h`, `C63QhB7h_p1`) have `cancellation_reason = 'appointment_archived'`, its row `archived`; one "Cancelled" alert; no night or pay 11-03 → 11-12; the 11-03 rosters list neither dog. Then ask Kate to close #316 (comment: PR #358 + results, no AI mention) and drop `to-investigate`.
-   - Overnight crons, `site_access`, queue; whether the 13:45 Integration Check cancel (Playwright apt hang) repeated; ask Kate whether the Dashboard's today mark showed the SF date after 5pm PDT.
-   - **Fri 10-30 Friday pm roster (first on #357; 22:00 UTC, retry 23:00):** times match the site (Kate compares 2); header "Fri – Mon"; Friday-afternoon arrivals/departures listed. Then ask Kate to close #353 and #350 (#361 tracks the four leftover screens).
-3. **Top 3 (Sprint 1, ends 11-04):**
-   1. **#316 verify and close** (above).
-   2. **#13 dry-run 2** (Kate clicks; re-check $139.75 first).
-   3. **#323** private job logs (design note → architect → migration by Kate).
-   Then #351 (remove the Dogs page's hand edits). Dates: DST ends Sun 11-01; first PST 4am roster Mon 11-02.
-4. **Kate's own items:**
-   - dry-run 2 clicks; book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forwarding the roster.
-   - Data left from #344 (design note "Data repair" 3–5): the 9 other week-page rows that look like real stays, the week-page rows (73 dateless rows), the boarding-less $0 dogs, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
-5. **Small follow-ups (not filed yet; ask Kate):** the 3 tests that fail with the host in Kiritimati/Pago Pago (pet birthdate a day early east of UTC is a real bug for a browser sync run from Paris; DateNavigator's Today test; `toDateInputValue`, no callers); the Integration Check's "today" (#350); an automated check that the site's printed times match `siteTime` (design note #353 "When it isn't").
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2687 passed / 1 skipped**), open PRs (#291, #285, plus **#369** = this handoff if still open: ask Kate to merge it, then `check:deploy`).
+2. **Read-only checks after 00:15 UTC 10-29 (fix nothing without asking):**
+   - **#316 first live night:** `cron_health` `schedule` `result.reconcile` (mode live, errors 0); `C63QhB7h` and `C63QhB7h_p1` and `C63QhDpK` boardings have `cancellation_reason = 'appointment_archived'`, their `sync_appointments` rows `archived`; one `sync-reconcile` "Cancelled" message; no nights 11-03 → 11-12 for those dogs; the 11-03 roster lists neither. Then ask Kate to close #316 (comment: PR #358 + results, no AI mention) and drop `to-investigate`.
+   - **#368:** a new dog with `external_pet_id = '236219'` (Iroh, night rate 55); boarding `C63QhMFU` 10/28 → 10/30 saved; queue item `done` without a `detail_notice`; no "nothing shows it's this pet" in `message_log` since. Then ask Kate to close #368 and tell her Iroh's 10/28 and 10/29 nights can be assigned.
+   - **Brinkley `C63QhMVa`:** boarding saved on dog pet 102146, checkout 2026-11-01 (not 2027-01-01). If 1/1, the site entry needs Kate's fix.
+   - Overnight crons, `site_access`, queue, Integration Check alerts.
+   - **Fri 10-30 Friday pm roster (22:00 UTC, retry 23:00):** times match the site (Kate compares 2); header "Fri – Mon". Then ask Kate to close #353 and #350.
+   - Ask Kate: did the Dashboard's today mark show the SF date after 5pm PDT?
+3. **Top 3 (Sprint 1, ends Wed 11-04):**
+   1. **Verify and close #316 and #368** (above).
+   2. **#323** private job logs (design note → architect → migration by Kate). The main build left in the sprint.
+   3. **#13 dry-run 2** (Kate clicks; re-check $139.75 first).
+   Dates: DST ends Sun 11-01; first PST 4am roster Mon 11-02 (check it).
+4. **Kate's own items:** check one #21 pair on the site; add Charlie's and the admin's accounts in Supabase (dry-run an invite first); book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forward the roster.
+5. **Small follow-ups (ask Kate):** #294 (call `checkHungCron`, Sprint 2); the 3 tests that fail with the host in Kiritimati/Pago Pago; the 7 no-pet-ID dogs that do have boardings (they link on evidence; check if a booking is ever skipped); the 4 empty rows mapped to a synced booking.
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.

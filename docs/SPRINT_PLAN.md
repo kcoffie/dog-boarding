@@ -14,6 +14,7 @@ Each stage feeds the next. Real use is the portfolio's strongest evidence, so po
 - **Hardening before features:** reliability, security, failure alerts and the booking-site pipeline come first. A new feature that isn't needed for UAT has to justify its effort.
 - **Booking-site safety:** every change that touches the sync says how many requests it adds and what happens if the site throttles or changes.
 - **ADR with each decision:** an architect-gated decision gets an ADR in `docs/adr/` in the same PR.
+- **Triage rule (Kate, 2026-10-27):** anything that can make the roster or pay wrong gets `priority: high` and its own date in this plan. "Closes when #X ships" is not a plan (#316 was parked that way for a week).
 - The existing gates stay as they are (`docs/ENGINEERING_PROCESS.md`): design note and architect before new jobs, tables or secrets; reviewer before every PR; mutation score reported; `check:deploy` after every merge.
 
 ## Dates that constrain the plan
@@ -35,7 +36,7 @@ Each stage feeds the next. Real use is the portfolio's strongest evidence, so po
 - [ ] No unexplained alerts for a week
 - [ ] A dog with no rate alerts Kate (#312 step 1)
 - [ ] The pay breakdown prints and can be sent to a phone (#314)
-- [ ] Invite-code management removed (#307)
+- [x] Invite-code management removed (#307, PR #366, 2026-10-28)
 - [ ] Charlie's and her admin's accounts exist and the invite was dry-run
 - [ ] Payment history sortable (#9); calendar refresh done (#8, Kate)
 - [ ] Job logs private (#323)
@@ -79,13 +80,18 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
    - **Option B chosen (Kate, 10-26), ADR-009. PR 1 merged 2026-10-26 (PR #357, `f317878`, REQ-065):** `siteClock.js`, the Friday pm roster ("Fri – Mon", site times), zone-proof server dates, the guard test. **PR 2 merged 2026-10-27 (PR #360, `5a8546c`):** the screens (Dogs page, Calendar, nights/day icon, Sync History, form view, upcoming forms). Check the Fri 10-30 roster's times with Kate, then close #353 and #350.
 7. **#316 (added to the plan 2026-10-26, high, Kate: "very soon"):** a booking removed on the booking site stayed on the rosters and in pay (only Sync Now noticed).
    - **Merged 2026-10-27 (PR #358, `ee20596`, REQ-108, REQ-109, ADR-010):** the nightly sync cancels it (every dog), restores on proof, one `sync-reconcile` alert a night. Report-only run 00:05 UTC 10-28 (SF 10-27), live from 00:05 UTC 10-29 (SF 10-28). Close after the first live night's checks.
+   - **Report-only night 10-28 correct:** "would cancel" `C63QhB7h` and `C63QhDpK` (Kate confirmed both removed on the site). First live night 00:05 UTC 10-29: check, then close.
 8. **#351 (added 2026-10-26, medium; Sprint 1 or 2):** remove the Dogs page's hand edits: Add Dog, Import CSV, delete dog and Deactivate.
+   - **Merged 2026-10-27 (PR #364, `b995cd4`); REQ-010–013 Removed.**
 9. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
+10. **#368 (added 2026-10-28, high, triage rule):** empty dog rows with no pet ID blocked a dog's first booking (Iroh, `C63QhMFU`, 10/28–10/30: missing from the 10-28 roster and pay).
+   - **Data fix run by Kate 2026-10-28 23:14 UTC:** 37 rows copied to `backup.dogs_removed_2026_10_28` and deleted; `C63QhMFU` re-queued. Verify after 00:15 UTC 10-29 (new dog, pet 236219, $55, boarding saved; no "nothing shows it's this pet" notice), then close.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
 - #324 leftovers: Clear for Kate only (server-side check); the Sync Now 302 proof when it next happens naturally
-- #307: remove invite-code management (moved up from Sprint 2, Kate 2026-10-23: a small removal, and Charlie would click it); Kate creates the admin's account after a dry-run invite
+- #307: remove invite-code management. **Merged 2026-10-28 (PR #366, `7b8d5c3`); REQ-006 Removed.** Kate adds Charlie's and the admin's accounts by hand in Supabase; the in-app way is #367
+- Investigations batch A done 2026-10-27/28: #20, #15, #19, #22 closed; #21 has 9 same-dog same-date groups (Revenue counts both; Kate checks one pair on the site); #294 and #315 still real
 - Docs PR: this plan, the archive of the May plan, the handoff, REQ-652 status, the G-1 WhatsApp delivery-alert item (K-8, M3-7, N-1 are history and stay where they are)
 - Investigations, batch A (below)
 - If #321 lands early: start #318 step 3 with the parser parity test
@@ -93,12 +99,14 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 
 ## Sprint 2: Thu 11-05 → Wed 11-18, "UAT-ready, then start"
 **Top 3:**
-1. **#312 step 1:** alert Kate when a dog with no rate is counted. Step 2 (why it happens) after a real case.
-2. **#314:** pay breakdown image, drafted before watch-first and adjusted after it.
-3. **#318 step 3:** one Node-safe engine: the parser parity test, then the regex parser only, the skip store, `sync_logs` run kind and requests (migration, Kate runs it). The biggest step. It changes `sync.js`, which Sync Now uses; a Sync Now break during UAT is accepted (Kate, 2026-10-22). Any test run against the booking site needs Kate's OK. Target ~11-25.
+1. **#326 (high since 2026-10-27, triage rule):** alert Kate when a synced change touches a boarding that has an employee assigned (Kate's spec on the issue).
+2. **#312 step 1:** alert Kate when a dog with no rate is counted. Step 2 (why it happens) after a real case.
+3. **#314:** pay breakdown image, drafted before watch-first and adjusted after it.
+4. **#318 step 3:** one Node-safe engine: the parser parity test, then the regex parser only, the skip store, `sync_logs` run kind and requests (migration, Kate runs it). The biggest step. It changes `sync.js`, which Sync Now uses; a Sync Now break during UAT is accepted (Kate, 2026-10-22). Any test run against the booking site needs Kate's OK. Target ~11-25.
 
 **Also:**
 - #9 sortable payment history
+- #294 (small: call `checkHungCron`, `scripts/cron-health-check.js:160`)
 - Kate: watch-first with Charlie and her admin; M1 go/no-go; the first side-by-side pay period starts
 
 ## Sprint 3: Thu 11-19 → Wed 12-02, "First UAT round, full pass" (Thanksgiving week)
@@ -119,7 +127,9 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 
 ## After Sprint 4 (late December → January)
 - UAT adoption: 4 pay periods → **M2**
-- Then, by UAT feedback: #317 + #311 (button, Sync History), #313 (drift list), #326, #7 (change history + notify Charlie), #260 (a real roster channel for Charlie and staff), #6/#17/#23/#24 (user roles, low)
+- #365 (medium): make the synced tables read-only for app users, after #318 step 7 (server-side Sync Now). Target mid-December, before M4 if it fits
+- #367 (medium): admins add people from the app (design, build, drop `invite_codes`)
+- Then, by UAT feedback: #317 + #311 (button, Sync History), #313 (drift list), #7 (change history + notify Charlie), #260 (a real roster channel for Charlie and staff), #6/#17/#23/#24 (user roles, low)
 
 ## Investigation queue
 **Batch A (Sprint 1, read-only, quick):**
@@ -144,9 +154,9 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 | #313 | Step 8 |
 
 ## Backlog by priority
-- **High:** #353 and #350 (close after the 10-30 roster check), #316 (verify, close), #318, #324, #323, #321, #295, #312, #314, #307, #8, #9, #13, #260, #315, #337, #338
-- **Medium:** #351, #343, #326, #319, #7
-- **Low:** #6, #17, #23, #24, #361 (four screens' real moments in the device's zone), a third watcher for when both schedulers die (no issue)
+- **High:** #353 and #350 (close after the 10-30 roster check), #316 and #368 (verify, close), #326, #318, #324, #323, #295, #312, #314, #8, #9, #13, #260, #294, #315, #337, #338
+- **Medium:** #343, #319, #7, #21, #365, #367
+- **Low:** #6, #17, #23, #24, #361, #363 (admin-only project dashboard) (four screens' real moments in the device's zone), a third watcher for when both schedulers die (no issue)
 
 ## Kate's decisions (2026-10-22)
 - Start UAT now on today's sync; build #318 alongside it. #318 is done at step 6.
