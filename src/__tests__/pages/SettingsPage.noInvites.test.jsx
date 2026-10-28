@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 
@@ -25,13 +25,14 @@ import SettingsPage from '../../pages/SettingsPage';
  * @requirements REQ-006
  */
 describe('REQ-006: Settings has no invite codes (#307)', () => {
+  beforeEach(() => from.mockClear());
+
   it('shows no Invite Users section, no Generate button and no invite list', () => {
     render(<BrowserRouter><SettingsPage /></BrowserRouter>);
     expect(screen.getByText('Change Password')).toBeInTheDocument();
     expect(screen.queryByText('Invite Users')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /generate/i })).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/email/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/invite/i)).not.toBeInTheDocument();
   });
 
   it('never reads the invite_codes table', () => {

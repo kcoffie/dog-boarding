@@ -63,7 +63,6 @@ const TEST_EMPLOYEES = [
   { name: 'Sam', active: false },
 ];
 
-
 export async function seedDatabase() {
   console.log('🌱 Seeding test data...\n');
   console.log(`Environment: ${environment}`);
