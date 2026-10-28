@@ -31,7 +31,7 @@ The app is only worth building if Charlie uses it to run her week. UAT isn't "do
 
 Decisions and setup for Kate:
 1. **Who gets accounts.** Today every signed-in user can see and change everything, including everyone's pay (REQ-005; #6 asks for admin-only areas). Check the current user list first. Before anyone other than Charlie and her admin signs in, decide what staff may see. **Create the admin's account** in Supabase (Authentication → Users → Add user, with a password, or Send invitation). Supabase sign-up is off (Kate, 2026-10-20), so the app can't create accounts. Dry-run the invite with a spare address of your own first: the app has no special handling for an invite link, so the admin may arrive signed in with no password (#23, #24).
-2. **Warn them about two traps.** Settings → Invite Users still makes invite codes, but nothing can redeem them (#307), so don't use it. And a boarding edited by hand is overwritten by the next sync, so report a wrong dog or night (Send a Question) rather than fixing it in the app.
+2. **Warn them about one trap.** The app can't change a dog or boarding (#342, #351): report a wrong dog or night (Send a Question) and it's fixed on the booking site. (Settings → Invite Users was removed in #307.)
 3. **Which gaps to close first.** At least the silent $0 rate, so that the first numbers she sees can be trusted. Ideally the shareable breakdown too, because she'll ask for it first.
 4. **The pay period.** Read it off her spreadsheet in step 1. The side by side runs on her real periods.
 

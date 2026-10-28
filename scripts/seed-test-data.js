@@ -63,8 +63,6 @@ const TEST_EMPLOYEES = [
   { name: 'Sam', active: false },
 ];
 
-const TEST_INVITE_CODES = ['TESTCODE1', 'TESTCODE2', 'TESTCODE3'];
-
 export async function seedDatabase() {
   console.log('🌱 Seeding test data...\n');
   console.log(`Environment: ${environment}`);
@@ -99,21 +97,6 @@ export async function seedDatabase() {
 
   if (!seedUserId) {
     console.error('  ⚠ Could not get user ID for seeding, some operations may fail');
-  }
-
-  // Create invite codes
-  console.log('\nCreating invite codes...');
-  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-  for (const code of TEST_INVITE_CODES) {
-    const { error } = await supabase.from('invite_codes').upsert(
-      { code, expires_at: expiresAt },
-      { onConflict: 'code' }
-    );
-    if (error) {
-      console.error(`  ✗ ${code}: ${error.message}`);
-    } else {
-      console.log(`  ✓ ${code}`);
-    }
   }
 
   // Create dogs (check if exists first, then insert)
@@ -289,8 +272,6 @@ export async function seedDatabase() {
   console.log('═'.repeat(50));
   console.log('\nTest accounts:');
   TEST_USERS.forEach(u => console.log(`  📧 ${u.email} / ${u.password}`));
-  console.log('\nTest invite codes:');
-  TEST_INVITE_CODES.forEach(c => console.log(`  🎟️  ${c}`));
   console.log('\nData created:');
   console.log(`  🐕 ${dogList.length} dogs`);
   console.log(`  👤 ${employees?.length || 0} employees`);

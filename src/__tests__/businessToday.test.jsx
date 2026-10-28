@@ -18,7 +18,6 @@ vi.mock('../hooks/useBoardingForms', () => ({
 }));
 vi.mock('../components/EmployeeDropdown', () => ({ default: () => null }));
 vi.mock('../components/BoardingFormModal', () => ({ default: () => null }));
-vi.mock('../hooks/useInvites', () => ({ useInvites: () => ({ invites: [], loading: false }) }));
 vi.mock('../hooks/useCronHealth', () => ({ useCronHealth: () => ({ cronHealth: [], loading: false }) }));
 vi.mock('../components/SiteAccessCard', () => ({ default: () => null }));
 vi.mock('../hooks/useSyncSettings', () => ({

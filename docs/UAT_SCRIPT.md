@@ -17,7 +17,7 @@
 **Setup**
 - [ ] The watch-first session (UAT plan step 1) is done, and Charlie's pay period is known.
 - [ ] Charlie's account exists and she can sign in. Her admin's account exists too, or is planned for the next session (UAT plan, "Before UAT starts" 1). Before the admin signs in, decide what she may see: today every signed-in user sees and can change everything, including everyone's pay (REQ-005, #6).
-- [ ] Invite Users is gone from Settings (#307), or Charlie is told to leave it alone (step 10).
+- [x] Invite Users is gone from Settings (#307, 2026-10-28).
 - [ ] The UAT plan's minimum fix is in: a dog with no rate alerts Kate (#312 step 1). Until then, check the period's dogs on the Dogs page for a blank night rate before the session.
 - [ ] This script was dry-run on production within the last week (Part D), and every finding there is fixed or written down.
 - [ ] Today's roster came out on time (Kate's Telegram), so the data on screen is fresh.
@@ -99,7 +99,7 @@ The app: **https://qboarding.vercel.app**. It works on a laptop and on a phone. 
 - **What happens next:** Kate gets it on her phone straight away, with your email. She replies **the same day, by text or email**, and if something needs fixing, she says what and when.
 
 ### 10. Leave these alone for now
-- **Settings**, except **Change Password**. **Invite Users** makes codes that nothing accepts (until it's removed in #307); Kate creates accounts. **Net Percentage** and **Employees** change everyone's pay. **Booking site access**, **Cron Health** and **External Sync** are Kate's.
+- **Settings**, except **Change Password**. Kate creates accounts in Supabase. **Net Percentage** and **Employees** change everyone's pay. **Booking site access**, **Cron Health** and **External Sync** are Kate's.
 - **Sync** and **Sync Now:** the app syncs with the booking site on its own every night. If something's missing, send a question.
 
 ### 11. Feedback (15 minutes, after every pay period)

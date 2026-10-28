@@ -35,7 +35,8 @@ Each stage feeds the next. Real use is the portfolio's strongest evidence, so po
 - [ ] No unexplained alerts for a week
 - [ ] A dog with no rate alerts Kate (#312 step 1)
 - [ ] The pay breakdown prints and can be sent to a phone (#314)
-- [ ] Invite-code management removed; Charlie's and her admin's accounts exist and the invite was dry-run (#307)
+- [ ] Invite-code management removed (#307)
+- [ ] Charlie's and her admin's accounts exist and the invite was dry-run
 - [ ] Payment history sortable (#9); calendar refresh done (#8, Kate)
 - [ ] Job logs private (#323)
 - [ ] UAT script written and dry-run end to end on production (#13)

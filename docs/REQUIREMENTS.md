@@ -110,7 +110,7 @@ All authenticated users see all data (single organization model).
 ---
 
 ### REQ-006: Invite Code Management
-**Added:** v1.3 | **Status:** Complete
+**Added:** v1.3 | **Changed:** 2026-10-28 (#307) | **Status:** Removed
 
 Authenticated users can create and manage invite codes.
 
@@ -121,7 +121,9 @@ Authenticated users can create and manage invite codes.
 - Can delete unused invite codes
 - Deleted codes stay deleted (persist after refresh)
 
-**Tests:** `src/__tests__/auth/useInvites.test.js`
+**Tests:** `src/__tests__/pages/SettingsPage.noInvites.test.jsx` (the section is gone)
+
+**Removed (2026-10-28, #307):** nothing redeems an invite code since the sign-up page went (#301, REQ-001), so Settings no longer makes them; Kate adds accounts in Supabase. The Invite Users section and `useInvites` are gone. The `invite_codes` table stays (a later migration can drop it); the reset and cleanup scripts still clear it, and the seed script no longer fills it.
 
 ---
 
