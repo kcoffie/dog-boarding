@@ -43,7 +43,6 @@ export default defineConfig([
       'src/hooks/useBoardings.js',
       'src/hooks/useDogs.js',
       'src/hooks/useEmployees.js',
-      'src/hooks/useInvites.js',
       'src/hooks/useMessageLog.js',
       'src/hooks/useNightAssignments.js',
       'src/hooks/usePayments.js',

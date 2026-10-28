@@ -116,7 +116,7 @@ async function cleanupTestData() {
     }
   }
 
-  // Delete test invite codes
+  // Delete test invite codes left by older seeds (the app no longer makes codes, #307)
   console.log('\nDeleting test invite codes...');
   const { error: inviteError, count: inviteCount } = await supabase
     .from('invite_codes')

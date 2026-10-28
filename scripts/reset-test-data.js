@@ -92,7 +92,7 @@ async function resetDatabase() {
     console.log('  ✓ dogs cleared');
   }
 
-  // Invite codes
+  // Invite codes (the table stays; the app no longer makes codes, #307)
   const { error: inviteError } = await supabase
     .from('invite_codes')
     .delete()

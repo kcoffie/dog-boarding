@@ -22,16 +22,6 @@ npm run reset-db
 | user1@test.com | TestPass123! | Secondary test account |
 | user2@test.com | TestPass123! | Secondary test account |
 
-## Test Invite Codes
-
-These codes can be used to test the invite-only signup flow:
-
-| Code | Expiration |
-|------|------------|
-| TESTCODE1 | 1 year from seed date |
-| TESTCODE2 | 1 year from seed date |
-| TESTCODE3 | 1 year from seed date |
-
 ## Seeded Data
 
 The seed script creates:
