@@ -54,7 +54,7 @@ Each stage feeds the next. Real use is the portfolio's strongest evidence, so po
 - [ ] The Integration Check compares both ways, once a day, with no false alarms
 - [ ] The old paths are retired (`cron-schedule`, `cron-detail`, `cron-detail-2`, queue booking items, the Integration Check's own sync)
 - [ ] ADR-005 supersedes the rest of ADR-002 (ADR-004 already replaced its notifications part)
-- [ ] Closed: #323, #316, #321, #294, #315, #22 (and #324, #295)
+- [ ] Closed: #323, #316, #321, #294, #315 (and #324, #295; #22 closed 10-27 as superseded)
 
 Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate work after M3, ordered by UAT feedback.
 
@@ -84,8 +84,8 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 8. **#351 (added 2026-10-26, medium; Sprint 1 or 2):** remove the Dogs page's hand edits: Add Dog, Import CSV, delete dog and Deactivate.
    - **Merged 2026-10-27 (PR #364, `b995cd4`); REQ-010–013 Removed.**
 9. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
-10. **#368 (added 2026-10-28, high, triage rule):** empty dog rows with no pet ID blocked a dog's first booking (Iroh, `C63QhMFU`, 10/28–10/30: missing from the 10-28 roster and pay).
-   - **Data fix run by Kate 2026-10-28 23:14 UTC:** 37 rows copied to `backup.dogs_removed_2026_10_28` and deleted; `C63QhMFU` re-queued. Verify after 00:15 UTC 10-29 (new dog, pet 236219, $55, boarding saved; no "nothing shows it's this pet" notice), then close.
+10. **#368 (added 2026-10-28, high, triage rule):** empty dog rows with no pet ID blocked a dog's first booking (`C63QhMFU`, 10/28–10/30: missing from the 10-28 roster and pay).
+   - **Data fix run by Kate 2026-10-28 23:14 UTC:** 37 rows copied to `backup.dogs_removed_2026_10_28` and deleted; `C63QhMFU` re-queued. Verify after 00:15 UTC 10-29 (new dog with the booking's pet ID, $55, boarding saved; no "nothing shows it's this pet" notice), then close.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
@@ -93,7 +93,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 - #307: remove invite-code management. **Merged 2026-10-28 (PR #366, `7b8d5c3`); REQ-006 Removed.** Kate adds Charlie's and the admin's accounts by hand in Supabase; the in-app way is #367
 - Investigations batch A done 2026-10-27/28: #20, #15, #19, #22 closed; #21 has 9 same-dog same-date groups (Revenue counts both; Kate checks one pair on the site); #294 and #315 still real
 - Docs PR: this plan, the archive of the May plan, the handoff, REQ-652 status, the G-1 WhatsApp delivery-alert item (K-8, M3-7, N-1 are history and stay where they are)
-- Investigations, batch A (below)
+- Investigations, batch A (below): the rows still open
 - If #321 lands early: start #318 step 3 with the parser parity test
 - Kate: #337 chores, #8 calendar (browser agent), forward the roster to Charlie by hand
 
@@ -101,10 +101,10 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 **Top 3:**
 1. **#326 (high since 2026-10-27, triage rule):** alert Kate when a synced change touches a boarding that has an employee assigned (Kate's spec on the issue).
 2. **#312 step 1:** alert Kate when a dog with no rate is counted. Step 2 (why it happens) after a real case.
-3. **#314:** pay breakdown image, drafted before watch-first and adjusted after it.
-4. **#318 step 3:** one Node-safe engine: the parser parity test, then the regex parser only, the skip store, `sync_logs` run kind and requests (migration, Kate runs it). The biggest step. It changes `sync.js`, which Sync Now uses; a Sync Now break during UAT is accepted (Kate, 2026-10-22). Any test run against the booking site needs Kate's OK. Target ~11-25.
+3. **#318 step 3:** one Node-safe engine: the parser parity test, then the regex parser only, the skip store, `sync_logs` run kind and requests (migration, Kate runs it). The biggest step. It changes `sync.js`, which Sync Now uses; a Sync Now break during UAT is accepted (Kate, 2026-10-22). Any test run against the booking site needs Kate's OK. Target ~11-25.
 
 **Also:**
+- **#314:** pay breakdown image, drafted before watch-first and adjusted after it
 - #9 sortable payment history
 - #294 (small: call `checkHungCron`, `scripts/cron-health-check.js:160`)
 - Kate: watch-first with Charlie and her admin; M1 go/no-go; the first side-by-side pay period starts
@@ -112,7 +112,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 ## Sprint 3: Thu 11-19 → Wed 12-02, "First UAT round, full pass" (Thanksgiving week)
 **Top 3:**
 1. Fixes from UAT period 1 (keep / fix / wish); ship at least one of Charlie's asks within a week
-2. **#318 steps 4–5:** full pass on GitHub started by Vercel (first run by hand with Kate watching; 3 good nights alongside the old paths; needs #323 merged first), then near-term runs on Vercel. Closes #316
+2. **#318 steps 4–5:** full pass on GitHub started by Vercel (first run by hand with Kate watching; 3 good nights alongside the old paths; needs #323 merged first), then near-term runs on Vercel
 3. **ADRs 005–007** (decisions already made and shipped): sync redesign (supersedes the rest of 002), booking-site breaker and single login, alerts on Telegram. ADR-004 (roster claim rows) shipped with #321
 
 **Also:** the rest of step 3 if it runs over; #319; #315 if the Integration Check still raises false alerts; #338 scope, and Kate starts the independent review (`/code-review ultra`)
@@ -135,9 +135,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 **Batch A (Sprint 1, read-only, quick):**
 | Item | Question |
 |---|---|
-| #21 | Any duplicate boardings in the database? If not, close |
-| #20 | Do the May changes (daytime follow-on pay, "Day boarding" checkbox) already cover it? |
-| #15, #19 | What was asked for, and does something already cover it (REQ-202 revenue, payroll)? |
+| ~~#21, #20, #15, #19~~ | Done 2026-10-27/28 (see Sprint 1 "Also") |
 | #239, #284 / PR #285, #299 | Still needed? (#239 likely feeds #338) |
 | PR #291 | Close if #260 doesn't go to SMS |
 | G-3 status page | Still needed now that ops-watch and Telegram exist? |
@@ -147,16 +145,16 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 **Batch B (re-check as #318 steps ship):**
 | Item | Re-check after |
 |---|---|
-| #316 removed bookings stay | Step 4 |
 | #321 rest | Step 5 |
-| #294, #315, #22, the Integration Check's 7-day window, ops-watch's queue limit (30), findings Q7–Q9 | Step 6 |
+| #294, #315, the Integration Check's 7-day window, ops-watch's queue limit (30), findings Q7–Q9 | Step 6 |
 | #317, #311 | Step 7 |
 | #313 | Step 8 |
 
 ## Backlog by priority
-- **High:** #353 and #350 (close after the 10-30 roster check), #316 and #368 (verify, close), #326, #318, #324, #323, #295, #312, #314, #8, #9, #13, #260, #294, #315, #337, #338
-- **Medium:** #343, #319, #7, #21, #365, #367
-- **Low:** #6, #17, #23, #24, #361, #363 (admin-only project dashboard) (four screens' real moments in the device's zone), a third watcher for when both schedulers die (no issue)
+- **High:** #353 and #350 (close after the 10-30 roster check), #316 and #368 (verify, close), #326, #318, #324, #323, #295, #312, #314, #8, #9, #13, #260, #315, #337, #338
+- **Medium:** #343, #319, #7, #365, #367
+- **No priority label yet (`to-investigate`):** #294 (Sprint 2, small), #21 (waits on Kate's site check)
+- **Low:** #6, #17, #23, #24, #361 (four screens' real moments in the device's zone), #363 (admin-only project dashboard), a third watcher for when both schedulers die (no issue)
 
 ## Kate's decisions (2026-10-22)
 - Start UAT now on today's sync; build #318 alongside it. #318 is done at step 6.
