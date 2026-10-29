@@ -1,6 +1,6 @@
 # #323 design note: detailed job logs go to a private table, public run logs keep only counts and IDs
 
-**Status:** draft for Kate (session 55, 2026-10-29); architect not yet run. Issue #323 (`priority: high`; triage 2026-10-22: "do it", next in the #318 build order, architect gate for the new table). Build step 2 of `docs/specs/sync-redesign-design-note.md:124` ("`job_logs` table, service key only, 30-day delete; the Node entry point replaces `console.*` first; a test fails if a fixture name reaches stdout"). It has to land before #318 step 4, which moves the full sync onto GitHub Actions and would print far more.
+**Status:** Kate answered Q1–Q4 (session 55, 2026-10-29); architect not yet run. Issue #323 (`priority: high`; triage 2026-10-22: "do it", next in the #318 build order, architect gate for the new table). Build step 2 of `docs/specs/sync-redesign-design-note.md:124` ("`job_logs` table, service key only, 30-day delete; the Node entry point replaces `console.*` first; a test fails if a fixture name reaches stdout"). It has to land before #318 step 4, which moves the full sync onto GitHub Actions and would print far more.
 
 ## Problem
 The repo is public, so every GitHub Actions run log is public too: anyone can read it, for 90 days (the repo's retention, `artifact-and-log-retention` = 90, the maximum). The sync code logs booking details with `console.*` to help debugging, and when it runs inside a GitHub job those lines land in the public log. Vercel function logs are private to Kate's account (and kept 1 h on Hobby), and Sync Now logs to Kate's own browser console, so neither is affected.
@@ -67,8 +67,8 @@ The repo is public, so every GitHub Actions run log is public too: anyone can re
 ## Old logs
 106 Integration Check run logs (since 07-31) contain pet names (E5). After this ships: delete those runs' logs with `DELETE /repos/{owner}/{repo}/actions/runs/{id}/logs` (the run stays, only its log goes), Kate's OK first (triage comment on #323). Otherwise they expire by themselves over the next 90 days (Q3).
 
-## Questions for Kate
-1. **What may stay public?** Recommended: booking IDs, counts, pass/fail only. Pet names go private too, although you've said dog names in docs are fine: one simple rule ("details are private") is easier to keep than a list of what's allowed.
-2. **Keep the private details 30 days?** (The issue suggested monthly.)
-3. **Old logs:** delete the 106 runs' logs once the fix is live (recommended), or let them expire?
-4. **The public-logs check:** a script Claude runs (recommended: no new job), or also a daily ops-watch step (it would download logs from GitHub with ops-watch's existing token, a second use of that token: an architect question)?
+## Questions for Kate (answered 2026-10-29)
+1. ~~What may stay public?~~ **Booking IDs, counts and pass/fail only; pet names are private too** (Kate).
+2. ~~Keep the private details 30 days?~~ **Yes, 30 days** (Kate).
+3. ~~Old logs?~~ **Delete the 106 runs' logs once the fix is live** (Kate; any run between now and then is added to the list).
+4. ~~The public-logs check?~~ **A script Claude runs** (`npm run check:public-logs`, after each deploy and at session start); no ops-watch step, so ops-watch's token keeps its one use (Kate).
