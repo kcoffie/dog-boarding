@@ -168,6 +168,21 @@ Anything that writes data needs Kate's OK first and is put back afterwards. Don'
 
 **Dry-run 2 (Kate, by hand, Claude checks the tables):** assign one person to Fri 10-16 and Sat 10-17 (Net $140 and $179) → step 5 → before Mark as Paid, check Payroll's **Total owed** for the two nights matches the Dashboard Net ($140 + $179); if it doesn't, work the expected amounts out again from Payroll's per-booking rates → Mark as Paid with 10-17 unticked (right answer $139.75, as the Net row rounds $215 × 65% to $140; the average bug would give $159.25) → delete it → check the nights return → a double-click on Confirm Payment → delete → set both nights back to — → one Send a Question.
 
+**Dry-run 2: 2026-10-29, ~20:45–21:15 UTC, desktop, signed in as Kate. Kate clicked; Claude checked the tables.** Re-check first, on today's data with the shared night rule: 10-16 = 4 dogs, $215 gross, **$139.75** net; 10-17 = 5 dogs, $275, $178.75 (shown $179).
+
+| Step | Result | Notes |
+|---|---|---|
+| 4 Assign 10-16 and 10-17 | Pass | |
+| 5/7 Total owed for both nights | Pass | $318.50 = $139.75 + $178.75 |
+| 7 Pay 10-16 only (10-17 unticked) | **Fail** | Payment amount **$159.25**; right is $139.75 (average bug, #370) |
+| 7 Delete the payment | Pass | Both nights back in Outstanding at $318.50; 0 payments |
+| 7 Double-click Confirm Payment | **Fail** | First try saved one payment; second saved **two rows for the same night**, 283 ms apart (#370) |
+| 4 Set nights back to — | Pass | |
+| 9 Send a Question | Pass | Delivered 21:09 UTC |
+| Failed save looks saved | Not run | Forcing a failure on production isn't safe; a test covers it (#370) |
+
+**After dry-run 2:** #370 (high, fixed by Fri 11-06) fixes all three, including a database guard so a night can't be paid twice. Step 7 is re-run after it ships, before the watch-first week of 11-09.
+
 **Edge cases to find in real data:**
 - [ ] A dog with a blank night rate
 - [ ] A day-only stay
