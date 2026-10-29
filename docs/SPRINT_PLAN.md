@@ -86,6 +86,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 9. **#323:** private job logs (#318 step 2). Architect gate (new table); Kate runs the migration. After it merges, ask Kate about deleting the old public run logs that contain names.
 10. **#368 (added 2026-10-28, high, triage rule):** empty dog rows with no pet ID blocked a dog's first booking (`C63QhMFU`, 10/28–10/30: missing from the 10-28 roster and pay).
    - **Data fix run by Kate 2026-10-28 23:14 UTC:** 37 rows copied to `backup.dogs_removed_2026_10_28` and deleted; `C63QhMFU` re-queued. Verify after 00:15 UTC 10-29 (new dog with the booking's pet ID, $55, boarding saved; no "nothing shows it's this pet" notice), then close.
+11. **#370 (added 2026-10-29, high, triage rule): fixed by Fri 11-06, before the watch-first week of 11-09.** Mark as Paid can record the wrong payment: a partial payment pays an average per night (confirmed in #13 dry-run 2: $159.25 instead of $139.75), nothing stops a double-click paying twice (not reproduced on a fast connection), and a failed save closes the box as if it worked.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
@@ -151,7 +152,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 | #313 | Step 8 |
 
 ## Backlog by priority
-- **High:** #353 and #350 (close after the 10-30 roster check), #316 and #368 (verify, close), #326, #318, #324, #323, #295, #312, #314, #8, #9, #13, #260, #315, #337, #338
+- **High:** #353 and #350 (close after the 10-30 roster check), #316 and #368 (verify, close), #370 (by 11-06), #326, #318, #324, #323, #295, #312, #314, #8, #9, #13, #260, #315, #337, #338
 - **Medium:** #343, #319, #7, #365, #367
 - **No priority label yet (`to-investigate`):** #294 (Sprint 2, small), #21 (waits on Kate's site check)
 - **Low:** #6, #17, #23, #24, #361 (four screens' real moments in the device's zone), #363 (admin-only project dashboard), a third watcher for when both schedulers die (no issue)
