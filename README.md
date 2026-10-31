@@ -8,8 +8,8 @@ The business books through a third-party site with no API, webhooks or export. T
 
 | | As of 2026-10-31, on `main` |
 |---|---|
-| Tests | 2,687 passing, 1 skipped, in 103 files |
-| Mutation score | 64.22% on the last full run (2026-10-26); 66.14% on the latest incremental run (2026-10-29). CI fails below 50% |
+| Tests | 2,699 passing, 1 skipped, in 103 files |
+| Mutation score | 64.22% on the last full run (2026-10-26); 66.14% on an incremental run (2026-10-29). CI fails below 50% |
 | Scheduled jobs | 13 Vercel crons, plus 7 GitHub Actions workflows on a schedule |
 | Decisions and schema | 7 ADRs, 30 SQL migrations |
 | Stack | React 19, Vite 7, Tailwind 4, Supabase (Postgres), Vercel, GitHub Actions, Playwright, Vitest, Stryker |
