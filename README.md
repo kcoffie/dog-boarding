@@ -1,6 +1,6 @@
 # Pawroll
 
-A dog boarding operations platform: daily rosters and payroll for a small business, running unattended on free-tier infrastructure. I own the product and its engineering: the requirements, the architecture decisions and the quality gates. Claude Code writes the implementation under them.
+A dog boarding operations platform: daily rosters that run unattended on free-tier infrastructure, and payroll calculation and tracking for a small business. I own the product and its engineering: the requirements, the architecture decisions and the quality gates. Claude Code writes the implementation under them.
 
 The business books through a third-party site with no API or webhooks, and only a manual CSV export. This system reads that site every night, keeps its own database in step, sends the morning roster on schedule, and works out what each employee is owed per night. Most of the engineering is in making that reliable when the data source can change without notice, and in making sure a failure is never silent.
 
@@ -60,10 +60,10 @@ Each of these changed how the system or the process works.
 |---|---|---|
 | **Seven silent weeks.** GitHub disabled all 8 scheduled workflows after 60 days without a commit. Notifications stopped, and so did the health check, because it ran on the same scheduler. Later the sync crons kept reporting "success" while bookings stopped updating. | Not by any check: nothing alerted | The Ops rules below: alert on failure, check outcomes rather than runs, and watch from a different scheduler |
 | **Wrong dog identity.** The server followed a redirect from a hidden booking to the week's schedule and read that page as the booking. That gave dogs another pet's ID, renamed one dog, and created empty dog rows. | Pet IDs that didn't match, traced through the logs and tables | Pages are read without following redirects; a redirected page writes nothing. A dog is its pet ID, enforced by a unique index, and the sync never renames one ([ADR-008](docs/adr/008-dog-identity-is-the-pet-id.md)) |
-| **Two answers for the same night.** Eight copies of the nightly calculation had drifted apart: one night showed $338 on the Dashboard and $286 in Payroll. | A scripted end-to-end check against production data | One shared function, with expected values worked out by hand |
+| **Two answers for the same night.** Eight copies of the nightly calculation had drifted apart: one night showed $338 on the Dashboard and $286 in Payroll. | A step-by-step manual walkthrough of the app on production data | One shared function, with expected values worked out by hand |
 | **Times 7–8 hours off.** The site's times are Pacific clock times stored as if they were UTC, so a 10:15am pick-up showed as 3:15am. | A person reading the roster | Stored values kept, with one reader for all of them and a guard test ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)) |
-| **Removed bookings stayed on the roster and in pay.** Only a manual sync noticed them. | Bookings removed on the site were still in the app | Nightly check, with a report-only first night checked by hand before it went live ([ADR-010](docs/adr/010-removed-bookings-cancelled-nightly.md)) |
-| **Open: payroll bugs.** Partial payments were averaged per night ($159.25 instead of $139.75), and a double-click recorded two payments 283 ms apart. | The same scripted check, run with real clicks | Being fixed, including a database guard against paying a night twice |
+| **Removed bookings stayed on the roster and in the pay figures.** Only a manual sync noticed them. | Bookings removed on the site were still in the app | Nightly check, with a report-only first night checked by hand before it went live ([ADR-010](docs/adr/010-removed-bookings-cancelled-nightly.md)) |
+| **Open: payroll bugs.** Partial payments were averaged per night ($159.25 instead of $139.75), and a double-click recorded two payments 283 ms apart. Both appeared on test payments, since deleted; no one was paid wrongly. | The same walkthrough, this time making the writes by hand | Being fixed, including a database guard against paying a night twice |
 
 ## How it's tested
 
