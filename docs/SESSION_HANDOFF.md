@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 31, 2026, ~22:45 UTC (session 56). **Production = main (the session 56 handoff, docs only; code as `451c4ad`, #375), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 56: #338 first pass live (README, repo page, profile, pin; the product is now named Pawroll), #353 and #350 closed, sync crons fail closed (#375). Kate's screening call is Mon 11-02 11:00 (her local time). Next: check the first night of #375, the first PST 4am roster on 11-02, then #370 (due Fri 11-06).**
+**Last updated:** October 31, 2026, ~23:15 UTC (session 57). **Production = main (this handoff, docs only; code as `451c4ad`, #375), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 57: README rewording and root notes moved to docs/ (#379); #370 guard chosen, design note + architect done, failing tests on branch `fix/370-mark-as-paid`. Next: #375 first-night rows (not yet checked), then Kate's Q1/Q2, then build #370 (due Fri 11-06).**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -28,7 +28,23 @@
 
 ---
 
-## Current State (2026-10-31 ~22:45 UTC, session 56)
+## Current State (2026-10-31 ~23:15 UTC, session 57)
+
+### Session 57: what happened (2026-10-31)
+1. **Baseline:** main `05fed30`, suite 2699 passed / 1 skipped. #378 was already merged.
+2. **Read-only checks at 22:48 UTC:** last crons `schedule` 00:15, `auth` 00:37, `detail` 00:50 on 10-31, all success; `site_access` not blocked; queue 0 pending / 0 failed; Integration Check green (last 4 runs). **#375's proof has NOT been seen: the first crons on it run after 00:00 UTC 11-01. Check it first.** The first PST 4am roster is Mon 11-02 12:00-13:59 UTC.
+3. **#379 merged → `f21f448`, `check:deploy` OK (#338).** README reworded (Kate's request), "no export" corrected to a manual CSV export (ADR-001), JavaScript named in the stack. `TechPM_1.md`, `Architect.md`, `REVIEW.md` moved to `docs/`.
+4. **Kate to paste (commands given in chat):** repo description and profile README.
+5. **Pawroll URL, Kate approved add-then-rename:** `pawroll.vercel.app` looks free (Vercel: DEPLOYMENT_NOT_FOUND; only adding it proves it); `pawroll.com` is taken. **Kate adds the domain first** (Vercel qboard → Settings → Domains), and the old URL stays. Then one PR: `api/ops-watch.js:21`, `src/lib/deployCheck.js:82`, `src/lib/scraper/siteAccess.js:23`, tests that pin them, visible name (`index.html:17,76`, `SplashScreen.jsx:17`, `PrivacyPage.jsx:9`, `TermsPage.jsx:9`), docs. Check `APP_URL` in Vercel and GitHub, and Supabase auth redirect URLs. Then Kate changes the repo's website link. Not started.
+6. **#370 (due Fri 11-06):** Kate chose the **per-night table**. Branch **`fix/370-mark-as-paid`** (pushed, no PR, CI red on purpose): `docs/specs/370-mark-as-paid-design-note.md` (architect: proceed with changes, all folded in) and `src/__tests__/markAsPaid.test.jsx`: 8 tests, 7 failing on today's code; "paying both nights" passes today and guards the fix. Evidence: 0 payments on production, 72 night assignments on 72 dates. Design: migration 031 `payment_nights` (night primary key) filled by a trigger on `payments` from a new `night_amounts` column.
+   - **Kate must answer first:** Q1 (night paid to A, reassigned to B: leave it off B's list and show a line; recommended) and Q2 (round night and daytime separately, then add; recommended).
+   - **Then:** build per the note's "What changes"; Kate runs the migration and the `SET LOCAL ROLE authenticated` script before the merge; re-run UAT step 7. New tests change the count: update the README and give Kate the profile command. #323's migration becomes 032.
+   - The architect's Supabase-grants claim (explicit grants needed from 10-30) has one secondary source, so the migration states grants explicitly either way.
+7. Other open items are in Claude's private memory: ask Kate. Kate ran no SQL. No booking-site requests, no messages sent. Reviewer ran on #379. This handoff PR's reviewer has not run. **Suite on main: 2699 passed / 1 skipped.**
+
+## Previous session (56)
+
+### (was Current State, 2026-10-31 ~22:45 UTC, session 56)
 
 ### Session 56: what happened (2026-10-31)
 1. **Baseline:** main `4bad191`, suite 2687 passed / 1 skipped. **#373 (session 55 wrap-up) merged → `f40966b`, `check:deploy` OK.**
