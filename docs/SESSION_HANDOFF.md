@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 29, 2026, ~21:30 UTC (session 55). **Production = main (`4bad191`, #372, docs only; code as `7b8d5c3`), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 55: #316 and #368 verified and closed, #13 dry-run 2 done (two payroll bugs confirmed → #370, high, fix by Fri 11-06), #323 design note through the architect (#371 merged). **Kate has a job screening call Mon 11-02 11:00 (her local time) and will share her GitHub: #338 portfolio work moves up to before then.** Next: #338 README, Fri 10-30 roster check, then #370 and #323 builds.**
+**Last updated:** October 31, 2026, ~22:45 UTC (session 56). **Production = main (the session 56 handoff, docs only; code as `451c4ad`, #375), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 56: #338 first pass live (README, repo page, profile, pin; the product is now named Pawroll), #353 and #350 closed, sync crons fail closed (#375). Kate's screening call is Mon 11-02 11:00 (her local time). Next: check the first night of #375, the first PST 4am roster on 11-02, then #370 (due Fri 11-06).**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -28,7 +28,30 @@
 
 ---
 
-## Current State (2026-10-29 ~21:30 UTC, session 55)
+## Current State (2026-10-31 ~22:45 UTC, session 56)
+
+### Session 56: what happened (2026-10-31)
+1. **Baseline:** main `4bad191`, suite 2687 passed / 1 skipped. **#373 (session 55 wrap-up) merged → `f40966b`, `check:deploy` OK.**
+2. **Read-only checks (09:35 PDT) clean:** `schedule` 00:15, `auth` 00:37 (refreshed), `detail` 00:50; `site_access` not blocked; queue 0 pending / 0 failed; Integration Check passed 10-30 and 10-31 (20 boardings match). One ops-watch alert on 10-30: "gmail-monitor last success 3h ago (limit 3h)", GitHub started it late. The red `Ops alert` run is deliberate (it fails so GitHub emails Kate).
+3. **#353 and #350 closed.** Friday pm roster sent 22:39 UTC 10-30: header "Fri Oct 30 – Mon Nov 2", site times with "PT"; Kate confirmed the times and that the Dashboard's today mark was right after 5pm. `C63QhDpK` (cancelled) not on it.
+4. **#338 first pass done, ahead of Kate's call:**
+   - **README rewritten: #374 → `83841a7`.** Then #376 → `ef6a8d8` (title **Pawroll**) and #377 → `5fb9bf6` (2,699 tests; mutation row reworded so it doesn't go stale). No client, pet, staff, business or booking-site names in it. Built with Claude Code, said openly. It states payroll is not in use yet and lists #370 as open.
+   - **Two screenshots removed** (they showed real staff, client and pet names). **They stay in git history;** no rewrite planned. No replacement yet; screenshots need synthetic data.
+   - **LICENSE:** copyright is now Kate Coffie. `ENGINEERING_PROCESS.md` and `.env.example` no longer carry the business or booking-site name.
+   - **Repo page (Kate ran the command):** description and 13 topics. **Kate kept the website link** (it carries the business name; her call).
+   - **Profile (Kate ran the commands):** public repo `kcoffie/kcoffie` with a README, `dog-boarding` pinned. It says Pawroll and 2,699 tests. To change it, clone that repo; Kate pushes profile changes herself.
+   - **Product name: Pawroll (Kate, 2026-10-31):** neutral and sellable, replacing anything close to the client's name. Only quick web searches so far: **no trademark or domain check done.** The repo stays `dog-boarding`.
+   - **#285 and #291 closed.** The 2 Dependabot alerts (`qs` medium, `source-map-js` high, both development-only) are left: the fix changes the lockfile and forces a full Stryker run.
+5. **Names still in the repo (not cleaning before Monday):** the handoff, RUNBOOK, ADRs 001–003, CHANGELOG, `TechPM_1.md`, `index.html`'s title, and more. The README and the ADRs it links (004, 008, 009, 010) are clean of the client's and booking site's names.
+6. **#375 → `451c4ad`, `check:deploy` OK (part of #239):** `cron-auth`, `cron-schedule` and `cron-detail` (with `cron-detail-2`) reject every request when `CRON_SECRET` is unset or empty, as ops-watch does. Kate confirmed the secret is in Vercel. 12 new tests, all seen failing on the old code; scoped Stryker 30/30 (TZ=UTC). Reviewer: no must-fix; the other API handlers already refuse when their secret is missing. **First proof: new `auth`, `schedule`, `detail` rows after 00:00 UTC 11-01.** If they're missing, every cron is getting a 401: tell Kate at once (RUNBOOK lists this cause).
+7. **#239 comments edited (Kate's OK):** two bullets that described security detail now say what was done. The old text remains in GitHub's edit history unless Kate deletes those revisions in the browser.
+8. **Keep public numbers current:** the README and the profile both state the test count. A PR that changes it needs the README updated, and Kate needs a one-line command for the profile.
+9. Kate ran no SQL. No booking-site requests, no messages sent. Reviewer ran on every PR except #373 (session 55's). **Suite on main: 2699 passed / 1 skipped.**
+10. **Unverified in the README, Kate merged knowing this:** "nearly all of the code was written that way", and how the removed-bookings problem was found. Fix if she corrects them.
+
+## Previous session (55)
+
+### (was Current State, 2026-10-29 ~21:30 UTC, session 55)
 
 ### Session 55: what happened (2026-10-29)
 1. **Baseline:** main `7b8d5c3`, suite **2687 passed / 1 skipped**. **#369 (session 54 handoff) merged → `971a8f8`, `check:deploy` OK.**
@@ -362,17 +385,16 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2687 passed / 1 skipped**), open PRs (#291, #285, and the `docs/session-55-wrap` PR if still open: ask Kate to merge, then `check:deploy`).
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2699 passed / 1 skipped**), open PRs (none expected).
 2. **Read-only checks (fix nothing without asking):**
-   - Overnight crons, `site_access`, queue, Integration Check alerts.
-   - **Fri 10-30 Friday pm roster (22:00 UTC, retry 23:00):** times match the site (Kate compares 2); header "Fri – Mon"; `C63QhDpK` (cancelled) not on it. Then ask Kate to close #353 and #350.
-   - Ask Kate: did the Dashboard's today mark show the SF date after 5pm PDT (she was checking 10-29 evening)?
-3. **Top 3 (Sprint 1, ends Wed 11-04):**
-   1. **#338 portfolio before Mon 11-02 11:00 (Kate's local time):** start with a draft `README.md` on a branch for Kate to review (item 10 above), then the repo description/topics and profile README text for her to paste. Check every fact against main (counts from `npm run test:run`, the mutation score from the latest CI Mutation run, PR/ADR numbers).
-   2. **#370** (fixed by Fri 11-06): design the "a night can't be paid twice" guard (short note: per-night table vs database function; architect if a new table), then the build with a failing test per bug; Kate runs the migration; re-run UAT step 7.
-   3. **#323 build** (design note merged): ADR-011, migration 031 (Kate runs it; signed-in select refused), `jobLog.js`, the three entry scripts, ops-watch checks, `check:public-logs`; then ask Kate before deleting the 106 old logs.
-   Also: #13, Kate books watch-first with Charlie (week of 11-09); UAT step 7 re-run after #370.
-   Dates: DST ends Sun 11-01; first PST 4am roster Mon 11-02 (check it).
+   - **First nights of #375:** `auth`, `schedule`, `detail` rows newer than 00:00 UTC 11-01. Missing rows mean 401s: tell Kate at once.
+   - Overnight crons, `site_access` (select named columns only), queue, Integration Check alerts.
+   - **If it's Mon 11-02 or later:** the first PST 4am roster: `notify-4am-claim` `sent`, `trigger: vercel`, on time (the 11:00 or 12:00 UTC cron, by the Pacific hour). DST ended Sun 11-01. Also tick M1's #321 box once 7am, 8:30am and Friday pm are verified in PST.
+3. **Top 3 (Sprint 1 ends Wed 11-04):**
+   1. **#370 (fixed by Fri 11-06):** Kate hasn't chosen the "a night can't be paid twice" guard. Recommended: a per-night table with a unique night (the database enforces it for every path); the alternative is a database function that checks the `dates` array. Then a design note, the architect (new table), the build with a failing test per bug; Kate runs the migration; re-run UAT step 7. Start after Kate's OK.
+   2. **#323 build** (design note merged): ADR-011, migration 031 (Kate runs it; signed-in select refused), `jobLog.js`, the three entry scripts, ops-watch checks, `check:public-logs`; then ask Kate before deleting the 106 old logs.
+   3. **#338, what's left:** Kate may add a line on her years and team sizes to the profile. Then the December scope (independent review, ADRs 005–007, write-ups, screenshots with synthetic data, a name clean-up decision, a trademark and domain check for Pawroll).
+   Also: #13, Kate books watch-first with Charlie (week of 11-09); UAT step 7 re-run after #370; the Dependabot alerts at the next lockfile change.
 4. **Kate's own items:** check one #21 pair on the site; add Charlie's and the admin's accounts in Supabase (dry-run an invite first); book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forward the roster.
 5. **Data left from #344 (design note "Data repair" 3–5, unchanged by #368):** the 9 other week-page rows that look like real stays, the 73 dateless week-page rows, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
 6. **Small follow-ups (ask Kate):** the Integration Check's "today" (#350); an automated check that the site's printed times match `siteTime` (design note #353 "When it isn't"); #294 (call `checkHungCron`, Sprint 2); the 3 tests that fail with the host in Kiritimati/Pago Pago; the 7 no-pet-ID dogs that do have boardings (they link on evidence; check if a booking is ever skipped); the 4 empty rows mapped to a synced booking.
