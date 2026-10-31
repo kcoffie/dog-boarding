@@ -52,7 +52,7 @@ graph TD
 - **The booking site is the source of truth.** Dogs, rates and bookings can't be edited in the app. A difference is a bug to fix at the source or in the sync.
 - **Rosters.** Crons fire in every UTC hour a roster could fall in, and the code reads the Pacific clock to choose the window, so daylight saving needs no edits. Each window claims its day in one atomic database update, so a duplicate delivery sends once ([ADR-004](docs/adr/004-rosters-on-vercel-crons-with-claim-rows.md)). The roster image is rendered on the server with satori and resvg.
 - **Pay.** A single function, `nightStays`, decides each night's dogs and money, and every screen calls it.
-- **Dates.** The business is in San Francisco, so every date and time in the app is San Francisco time, whatever the device. One module reads booking times, and a test fails if other code formats them in the local zone ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)).
+- **Dates.** The business is in San Francisco, so every date and time in the app is San Francisco time, whatever the device. One module reads booking times, and a guard test catches local-zone formatting in files that handle them ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)).
 
 ## What broke, and what changed
 
@@ -61,7 +61,7 @@ Each of these changed how the system or the process works.
 | What happened | How it was found | What changed |
 |---|---|---|
 | **Seven silent weeks.** GitHub disabled all 8 scheduled workflows after 60 days without a commit. Notifications stopped, and so did the health check, because it ran on the same scheduler. Later the sync crons kept reporting "success" while bookings stopped updating. | Not by any check: nothing alerted | The Ops rules below: alert on failure, check outcomes rather than runs, and watch from a different scheduler |
-| **Wrong dog identity.** The server followed a redirect from a hidden booking to the week's schedule and read that page as the booking. That gave dogs another pet's ID, renamed one dog, and created empty dog rows. | Pet IDs that didn't match, traced through the logs and tables | Pages are read without following redirects; a redirected page writes nothing. A dog is its pet ID, enforced by a unique index, and is never renamed ([ADR-008](docs/adr/008-dog-identity-is-the-pet-id.md)) |
+| **Wrong dog identity.** The server followed a redirect from a hidden booking to the week's schedule and read that page as the booking. That gave dogs another pet's ID, renamed one dog, and created empty dog rows. | Pet IDs that didn't match, traced through the logs and tables | Pages are read without following redirects; a redirected page writes nothing. A dog is its pet ID, enforced by a unique index, and the sync never renames one ([ADR-008](docs/adr/008-dog-identity-is-the-pet-id.md)) |
 | **Two answers for the same night.** Eight copies of the nightly calculation had drifted apart: one night showed $338 on the Dashboard and $286 in Payroll. | A rehearsal of the acceptance test | One shared function, with expected values worked out by hand |
 | **Times 7–8 hours off.** The site's times are Pacific clock times stored as if they were UTC, so a 10:15am pick-up showed as 3:15am. | The operator read the roster | Stored values kept, with one reader for all of them and a guard test ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)) |
 | **Removed bookings stayed on the roster and in pay.** Only a manual sync noticed them. | Bookings removed on the site were still in the app | Nightly check, with a report-only first night checked by hand before it went live ([ADR-010](docs/adr/010-removed-bookings-cancelled-nightly.md)) |
@@ -69,7 +69,7 @@ Each of these changed how the system or the process works.
 
 ## How it's tested
 
-Test counts don't show whether tests would catch a bug, so the measure here is mutation testing. [Stryker](https://stryker-mutator.io/) plants thousands of small bugs in the sync, notification and calculation logic, and counts how many make a test fail. CI runs it on `main` and fails below a threshold that only ever goes up. UI components are outside the score for now, so the 64% is for that logic only, and older code is still being brought up to the bar (#239). New changes are run against their changed lines, and those results are in the [score log](docs/ENGINEERING_PROCESS.md#score-log).
+Test counts don't show whether tests would catch a bug, so the measure here is mutation testing. [Stryker](https://stryker-mutator.io/) plants thousands of small bugs in the sync, notification and calculation logic, and counts how many make a test fail. CI runs it on `main` and fails below a threshold, currently 50%, that the process says is never lowered to make a PR pass. UI components are outside the score for now, so the 64% is for that logic only, and older code is still being brought up to the bar. New changes are run against their changed lines, and those results are in the [score log](docs/ENGINEERING_PROCESS.md#score-log).
 
 The rules for tests ([full list](docs/ENGINEERING_PROCESS.md#good-tests-not-just-tests)):
 
@@ -77,7 +77,7 @@ The rules for tests ([full list](docs/ENGINEERING_PROCESS.md#good-tests-not-just
 - Every test is seen failing once.
 - One rule per test, named as the rule, so a non-programmer can review the list.
 - No snapshots. Only external boundaries are faked, using recorded response shapes.
-- Date logic runs in time zones chosen to expose a wrong date (Kiritimati, Pago Pago), not only the developer's.
+- Booking-time logic is tested in time zones chosen to expose a wrong date (Kiritimati, Pago Pago), not only the developer's.
 
 ## How it's built
 
@@ -96,9 +96,11 @@ The fresh-context review earns its place. On the Friday roster change, the revie
 
 ### Ops rules: silence is never success
 
+These are the rules for new jobs. Auditing the older jobs against them is still open, and some of those only show a red run.
+
 1. **Failure is loud.** A failed job alerts on Telegram, and an alert that can't be delivered fails the run in turn.
 2. **Check outcomes, not runs.** "The cron ran" isn't health. Data freshness, queue depth and delivered messages are.
-3. **The watcher runs somewhere else.** A check on the same scheduler as its job dies with it, so ops-watch runs on Vercel and watches GitHub's jobs.
+3. **The watcher runs somewhere else.** A check on the same scheduler as its job dies with it, so ops-watch runs on Vercel and checks the last successful run of GitHub's main jobs.
 4. **A new job ships with its alert** and its runbook entry, in the same PR.
 
 ## Known gaps
@@ -119,7 +121,7 @@ npm run test:run             # the test suite
 npm run mutate               # mutation testing (a full run takes about an hour on CI)
 ```
 
-Run the migrations in `supabase/migrations/` in order to set up a database.
+To set up a database, run `supabase/schema.sql`, then the migrations in `supabase/migrations/` in order.
 
 ## License
 
