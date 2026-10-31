@@ -87,8 +87,10 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 10. **#368 (added 2026-10-28, high, triage rule):** empty dog rows with no pet ID blocked a dog's first booking (`C63QhMFU`, 10/28–10/30: missing from the 10-28 roster and pay).
    - **Data fix run by Kate 2026-10-28 23:14 UTC:** 37 rows copied to `backup.dogs_removed_2026_10_28` and deleted; `C63QhMFU` re-queued. Verify after 00:15 UTC 10-29 (new dog with the booking's pet ID, $55, boarding saved; no "nothing shows it's this pet" notice), then close.
 11. **#370 (added 2026-10-29, high, triage rule): fixed by Fri 11-06, before the watch-first week of 11-09.** Mark as Paid can record the wrong payment: a partial payment pays an average per night (confirmed in #13 dry-run 2: $159.25 instead of $139.75), a double-click pays twice (confirmed on the second try: two rows for the same night, 283 ms apart), and a failed save closes the box as if it worked.
+    - **2026-10-31:** per-night table chosen (Kate). Design note and architect done, failing tests written: branch `fix/370-mark-as-paid`. Waits on Kate's Q1 and Q2, then build; Kate runs the migration before the merge; re-run UAT step 7.
 12. **#338 portfolio, first pass (moved up 2026-10-29, Kate): by Mon 11-02 11:00 (Kate's local time),** for a job screening call where Kate shares her GitHub: README rewrite (stale counts), repo description/topics, profile README + pin; stale PRs and Dependabot alerts if time. The full #338 (write-ups, independent review) stays in Sprint 4.
     - **Done 2026-10-31:** README (#374, #376, #377), repo description and topics, profile README and pin, #285 and #291 closed. The product is named Pawroll (Kate); trademark and domain unchecked. Dependabot alerts left for the next lockfile change.
+    - **Still to do (2026-10-31):** repo description and profile wording (Kate). Pawroll URL and visible rename approved: Kate adds the domain, then one PR.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
