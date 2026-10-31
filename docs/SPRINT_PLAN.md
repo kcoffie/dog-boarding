@@ -139,8 +139,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 | Item | Question |
 |---|---|
 | ~~#21, #20, #15, #19~~ | Done 2026-10-27/28 (see Sprint 1 "Also") |
-| #239, #284 / PR #285, #299 | Still needed? (#239 likely feeds #338) |
-| PR #291 | Close if #260 doesn't go to SMS |
+| #239, #284, #299 | Still needed? (#239 likely feeds #338; PR #285 closed 2026-10-31) |
 | G-3 status page | Still needed now that ops-watch and Telegram exist? |
 | `mutate:changed` PR check | Worth adding for #338? |
 | Small leftovers | Appointment status parses as null; optional token rename |

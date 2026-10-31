@@ -42,11 +42,11 @@
    - **Profile (Kate ran the commands):** public repo `kcoffie/kcoffie` with a README, `dog-boarding` pinned. It says Pawroll and 2,699 tests. To change it, clone that repo; Kate pushes profile changes herself.
    - **Product name: Pawroll (Kate, 2026-10-31):** neutral and sellable, replacing anything close to the client's name. Only quick web searches so far: **no trademark or domain check done.** The repo stays `dog-boarding`.
    - **#285 and #291 closed.** The 2 Dependabot alerts (`qs` medium, `source-map-js` high, both development-only) are left: the fix changes the lockfile and forces a full Stryker run.
-5. **Names still in the repo (not cleaning before Monday):** the handoff, RUNBOOK, ADRs 001–003, CHANGELOG, `TechPM_1.md`, `index.html`'s title, and more. The README and the ADRs it links (004, 008, 009, 010) are clean of the client's and booking site's names.
+5. **Names still in the repo (not cleaning before Monday):** the handoff, RUNBOOK, ADR-001, CHANGELOG, `TechPM_1.md`, the app's title ("Qboard"), and more. The README and the ADRs it links (004, 008, 009, 010) are clean of the client's and booking site's names.
 6. **#375 → `451c4ad`, `check:deploy` OK (part of #239):** `cron-auth`, `cron-schedule` and `cron-detail` (with `cron-detail-2`) reject every request when `CRON_SECRET` is unset or empty, as ops-watch does. Kate confirmed the secret is in Vercel. 12 new tests, all seen failing on the old code; scoped Stryker 30/30 (TZ=UTC). Reviewer: no must-fix; the other API handlers already refuse when their secret is missing. **First proof: new `auth`, `schedule`, `detail` rows after 00:00 UTC 11-01.** If they're missing, every cron is getting a 401: tell Kate at once (RUNBOOK lists this cause).
-7. **#239 comments edited (Kate's OK):** two bullets that described security detail now say what was done. The old text remains in GitHub's edit history unless Kate deletes those revisions in the browser.
+7. **#239:** two comments tidied to say what was done (Kate's OK).
 8. **Keep public numbers current:** the README and the profile both state the test count. A PR that changes it needs the README updated, and Kate needs a one-line command for the profile.
-9. Kate ran no SQL. No booking-site requests, no messages sent. Reviewer ran on every PR except #373 (session 55's). **Suite on main: 2699 passed / 1 skipped.**
+9. Kate ran no SQL. No booking-site requests, no messages sent. Reviewer ran on #374–#377 (#377's last commit, a one-phrase README rewording, came after its review); #373 was reviewed in session 55's terms, not re-run. **Suite on main: 2699 passed / 1 skipped.**
 10. **Unverified in the README, Kate merged knowing this:** "nearly all of the code was written that way", and how the removed-bookings problem was found. Fix if she corrects them.
 
 ## Previous session (55)
@@ -397,7 +397,7 @@ Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-inve
    Also: #13, Kate books watch-first with Charlie (week of 11-09); UAT step 7 re-run after #370; the Dependabot alerts at the next lockfile change.
 4. **Kate's own items:** check one #21 pair on the site; add Charlie's and the admin's accounts in Supabase (dry-run an invite first); book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forward the roster.
 5. **Data left from #344 (design note "Data repair" 3–5, unchanged by #368):** the 9 other week-page rows that look like real stays, the 73 dateless week-page rows, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
-6. **Small follow-ups (ask Kate):** the Integration Check's "today" (#350); an automated check that the site's printed times match `siteTime` (design note #353 "When it isn't"); #294 (call `checkHungCron`, Sprint 2); the 3 tests that fail with the host in Kiritimati/Pago Pago; the 7 no-pet-ID dogs that do have boardings (they link on evidence; check if a booking is ever skipped); the 4 empty rows mapped to a synced booking.
+6. **Small follow-ups (ask Kate):** the Integration Check's "today" (no issue yet: #350 is closed; file one if Kate wants it); an automated check that the site's printed times match `siteTime` (design note #353 "When it isn't"); #294 (call `checkHungCron`, Sprint 2); the 3 tests that fail with the host in Kiritimati/Pago Pago; the 7 no-pet-ID dogs that do have boardings (they link on evidence; check if a booking is ever skipped); the 4 empty rows mapped to a synced booking.
 
 ## Open TODOs
 The full, prioritised list is **`docs/SPRINT_PLAN.md`** (sprints, milestones, investigation queue, backlog) and the GitHub labels. Don't keep a second copy here; update the sprint plan and the issues instead.
