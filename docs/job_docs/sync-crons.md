@@ -205,7 +205,7 @@ LIMIT 20;
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (bypasses RLS) |
 | `EXTERNAL_SITE_USERNAME` | AGYD login email |
 | `EXTERNAL_SITE_PASSWORD` | AGYD login password |
-| `CRON_SECRET` | Vercel-injected secret — validates that requests come from Vercel, not external callers |
+| `CRON_SECRET` | Set by hand in Vercel's env; Vercel sends it to crons. Validates that requests come from Vercel, not external callers. Required |
 | `VITE_EXTERNAL_SITE_URL` | Override for AGYD base URL (defaults to `https://agirlandyourdog.com`) |
 
 Security: all three handlers check `Authorization: Bearer {CRON_SECRET}` before executing. Requests without this header return 401, and so does every request when `CRON_SECRET` is unset (locally too: set it in `.env.local`).

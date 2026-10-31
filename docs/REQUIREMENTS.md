@@ -1032,7 +1032,7 @@ MUST-FIX:
 RECOMMENDED:
 - [x] REC-1: Add authentication to `/api/sync-proxy` endpoint — `VITE_SYNC_PROXY_TOKEN` Bearer token (intentionally public, browser-readable). Set in Vercel dashboard. Skipped in local dev when unset. commit cc3a9e5
 - [x] REC-2: cron-detail `session_cleared` path — add `writeCronHealth` call before return — commit 80ff992
-- [ ] REC-3: CRON_SECRET guard — add warning log if absent in production
+- [x] REC-3: CRON_SECRET guard — superseded: the crons reject every request when it's absent (#239)
 - [x] REC-4 (partial): batchSync.js removed (commit 154c408) + deletionDetection.js + stagedVerification.js (commit 80ff992). historicalSync.js kept (useful for rebuild from scratch). SyncHistoryPage cluster kept (REQ-107 backlog).
 - [x] REC-5: Remove dead `SCRAPER_CONFIG.retryDelays` (not used by cron path) — commit 80ff992
 

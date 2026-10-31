@@ -92,7 +92,7 @@ The alert message will say which cron missed a run or had consecutive failures (
 **If `cron-auth` is missing/failed:**
 - The other crons don't log in themselves (#324): they use the stored session until its 30 h stamp passes, then record `session_failed`
 - Check Vercel logs for `/api/cron-auth` — look for auth errors (`[Auth]` / `[SiteLogin]` log lines)
-- Common causes: external site password changed (that trips the breaker: see "Booking site blocked"), site is down, Vercel function error
+- Common causes: external site password changed (that trips the breaker: see "Booking site blocked"), site is down, Vercel function error, `CRON_SECRET` missing from Vercel's env (every cron returns 401 and writes no `cron_health` row; ops-watch is down too, so only cron-health-check alerts)
 - Manual fix (a 5xx or a timeout, not a refused login): trigger `cron-auth` manually via `curl https://qboarding.vercel.app/api/cron-auth -H "Authorization: Bearer $CRON_SECRET"`, then trigger `cron-schedule`
 
 ---
@@ -303,7 +303,7 @@ The nightly `cron-schedule` (00:05 UTC) checks this week's and next week's booki
 
 ## Vercel env for ops-watch
 - `GH_ACTIONS_TOKEN`: fine-grained PAT, repository `kcoffie/dog-boarding` only, permissions **Actions: Read and write**. Used by `/api/ops-watch` to read workflow runs and dispatch `ops-alert.yml`. When it expires, ops-watch reports "Couldn't check the scheduled workflows".
-- `CRON_SECRET`: Vercel sends it to crons; ops-watch rejects every request without it.
+- `CRON_SECRET`: Vercel sends it to crons; ops-watch and the sync crons reject every request without it.
 - ops-watch also needs these in **Vercel** env (not just GitHub secrets): `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` (Kate's alert channel, also used by `/api/send-question`), `INTERNAL_API_TOKEN` (roster image) and the Supabase keys. Env changes apply only after a redeploy. If `CRON_SECRET` is missing, every ops-watch call gets 401 and `cron-health-check` reports "ops-watch has never run".
 - Email alerts arrive only if Kate's GitHub notification settings email her about failed Actions runs she triggered (Settings → Notifications → Actions).
 
