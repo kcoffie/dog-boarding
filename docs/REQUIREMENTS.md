@@ -774,7 +774,7 @@ cron functions. They have no explicit `maxDuration`: the project runs on Vercel'
 - `cron-detail` picks the oldest pending item from `sync_queue`, fetches the detail page, upserts to DB
 - `cron-detail` resets items stuck in `processing` for more than 10 minutes at the start of each run
 - Failed detail fetches retry up to 3 times with backoff: +5m, +10m, then permanently `failed`
-- All cron handlers verify `CRON_SECRET` header when the env var is set (skipped in local dev)
+- All cron handlers require `Authorization: Bearer $CRON_SECRET` and reject every request when `CRON_SECRET` is unset (locally too: set it in `.env.local`)
 - Session error (server rejects cached cookies) → clear DB session + return 200 (cron-auth will re-auth)
 - Removed-booking reconciliation of the two weeks read runs nightly in `cron-schedule` (REQ-108, ADR-010, #316); the full reconciliation runs only via manual sync or standard mode
 - `SYNC_MODE=standard` env var enables upgrade path to full `runSync()` without code changes
@@ -1032,7 +1032,7 @@ MUST-FIX:
 RECOMMENDED:
 - [x] REC-1: Add authentication to `/api/sync-proxy` endpoint — `VITE_SYNC_PROXY_TOKEN` Bearer token (intentionally public, browser-readable). Set in Vercel dashboard. Skipped in local dev when unset. commit cc3a9e5
 - [x] REC-2: cron-detail `session_cleared` path — add `writeCronHealth` call before return — commit 80ff992
-- [ ] REC-3: CRON_SECRET guard — add warning log if absent in production
+- [x] REC-3: CRON_SECRET guard — superseded: the crons reject every request when it's absent (#239)
 - [x] REC-4 (partial): batchSync.js removed (commit 154c408) + deletionDetection.js + stagedVerification.js (commit 80ff992). historicalSync.js kept (useful for rebuild from scratch). SyncHistoryPage cluster kept (REQ-107 backlog).
 - [x] REC-5: Remove dead `SCRAPER_CONFIG.retryDelays` (not used by cron path) — commit 80ff992
 

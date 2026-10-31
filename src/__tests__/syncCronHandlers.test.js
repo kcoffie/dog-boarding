@@ -6,9 +6,6 @@
  * These handlers are thin wrappers: auth gate, health tracking, result → HTTP status.
  * Boundaries faked: Supabase client creation, the AGYD login (authenticate), the site_access
  * table (session store and breaker; siteAccess.test.js covers it), the sync runner and queue (tested in scraper/), and the cron_health writer.
- *
- * Not covered on purpose: "runs when CRON_SECRET is unset". REQ-109 allows it, but #239
- * plans to make it fail closed, so a test would lock in the behavior about to change.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -69,7 +66,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 // ---------------------------------------------------------------------------
-// Shared gate (REQ-109): every cron checks CRON_SECRET when it is set
+// Shared gate (REQ-109): every cron requires CRON_SECRET and refuses every request without it
 // ---------------------------------------------------------------------------
 
 describe.each([
@@ -87,6 +84,32 @@ describe.each([
 
   it('a request with no authorization header is rejected', async () => {
     const res = await call(handler, { headers: {} });
+    expect(res.code).toBe(401);
+    expect(work()).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['unset', undefined],
+    ['empty', ''],
+  ])('with CRON_SECRET %s, a request with no authorization header is rejected before any work', async (_label, value) => {
+    if (value === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = value;
+    const res = await call(handler, { headers: {} });
+    expect(res.code).toBe(401);
+    expect(work()).not.toHaveBeenCalled();
+    expect(writeCronHealth).not.toHaveBeenCalled();
+  });
+
+  it('with CRON_SECRET unset, the literal "Bearer undefined" is rejected', async () => {
+    delete process.env.CRON_SECRET;
+    const res = await call(handler, { headers: { authorization: 'Bearer undefined' } });
+    expect(res.code).toBe(401);
+    expect(work()).not.toHaveBeenCalled();
+  });
+
+  it('with CRON_SECRET empty, a bare "Bearer " is rejected', async () => {
+    process.env.CRON_SECRET = '';
+    const res = await call(handler, { headers: { authorization: 'Bearer ' } });
     expect(res.code).toBe(401);
     expect(work()).not.toHaveBeenCalled();
   });

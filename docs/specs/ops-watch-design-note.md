@@ -37,7 +37,7 @@ A quiet day isn't a failure: an empty queue and no new boardings raise nothing (
 ## Threat
 - **New secret:** `GH_ACTIONS_TOKEN`, a fine-grained PAT scoped to `kcoffie/dog-boarding` only, with **Actions read and write** (write is needed to dispatch `ops-alert.yml`; Kate approved, 2026-10-16). It lives only in Vercel env (Production). A leak lets someone read workflow runs and start or cancel workflows in this repo: no code, no secrets. When it expires, ops-watch reports "Couldn't check".
 - **Public log:** the findings text, including error messages from Supabase and GitHub, appears in the public Actions log and step summary of `ops-alert.yml`. Findings hold counts, workflow names and error text only, never client data; each is cut to 200 characters.
-- **Endpoint auth:** `Authorization: Bearer $CRON_SECRET`, **failing closed** when `CRON_SECRET` is unset. The existing crons fail open there; that's tracked in #239.
+- **Endpoint auth:** `Authorization: Bearer $CRON_SECRET`, **failing closed** when `CRON_SECRET` is unset. The sync crons do the same since #239.
 - **The alert text** holds counts and workflow names only, never client or dog names.
 
 ## How we'll know it's working
