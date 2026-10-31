@@ -1,6 +1,6 @@
 # Engineering process: team gates
 
-dog-boarding is built by one person directing an AI coding agent, for a real client (Q Boarding) who relies on it running unattended. A persona prompt ("you are a senior engineer") doesn't add expertise. A team works because the reviewer didn't write the code, checks happen at fixed moments, and rules are enforced by machines. This repo copies that structure (from the dash and dos projects, 2026-10). Each role is a **gate**: a moment, a mechanism, and what it blocks.
+dog-boarding is built by one person directing an AI coding agent, for a real client who relies on it running unattended. A persona prompt ("you are a senior engineer") doesn't add expertise. A team works because the reviewer didn't write the code, checks happen at fixed moments, and rules are enforced by machines. This repo copies that structure (from the dash and dos projects, 2026-10). Each role is a **gate**: a moment, a mechanism, and what it blocks.
 
 | Role | Gate (when) | Mechanism | Blocks |
 |---|---|---|---|
