@@ -1,5 +1,5 @@
 # Dog Boarding App — Session Handoff (v6 — UAT restart)
-**Last updated:** October 29, 2026, ~21:30 UTC (session 55). **Production = main (`971a8f8`, #369, docs only; code as `7b8d5c3`), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 55: #316 and #368 verified and closed, #13 dry-run 2 done (two payroll bugs confirmed → #370, high, fix by Fri 11-06), #323 design note through the architect (PR #371). Next: Fri 10-30 roster check, then #370 and #323 builds.**
+**Last updated:** October 29, 2026, ~21:30 UTC (session 55). **Production = main (`4bad191`, #372, docs only; code as `7b8d5c3`), `check:deploy` OK.** The roster reaches Kate on **Telegram**; she forwards the image to Charlie by hand. **Session 55: #316 and #368 verified and closed, #13 dry-run 2 done (two payroll bugs confirmed → #370, high, fix by Fri 11-06), #323 design note through the architect (#371 merged). **Kate has a job screening call Mon 11-02 11:00 (her local time) and will share her GitHub: #338 portfolio work moves up to before then.** Next: #338 README, Fri 10-30 roster check, then #370 and #323 builds.**
 
 **The goal:** UAT with Charlie and her admin in November (on today's sync), then the app in use in her business, then the project as a portfolio piece (#338). The plan, milestones and dates: **`docs/SPRINT_PLAN.md`**. Do what's needed, simply; nothing more.
 
@@ -39,7 +39,15 @@
 6. **#13 dry-run 2 done** (Kate clicked, Claude checked the tables; results in `docs/UAT_SCRIPT.md` Part D). Re-check first: 10-16 net $139.75, 10-17 $178.75. **Partial payment averaged: confirmed** ($159.25 shown, $139.75 right). **Double-click: confirmed** on the second try: two rows for the same night 283 ms apart. Failed save: not run on production (test instead). Delete, nights back to —, Send a Question all pass. Kate's 3 test night assignments (10-23 → 10-25) were cleared by her. Cleanup verified 21:16 UTC: 0 payments, no night assignments 10-10 → 10-31.
 7. **Filed #370 (bug, high, fixed by Fri 11-06, in Sprint 1 of `docs/SPRINT_PLAN.md`):** Mark as Paid averages partial payments, a double-click pays twice, a failed save looks saved. Results comment on the issue. Proposed fix includes a database guard so a night can't be paid twice (`payments.dates` is an array: a per-night table or a database function; migration run by Kate).
 8. **#323 design note: PR #371** (`docs/specs/323-job-logs-design-note.md`, plus #370 in the sprint plan). Evidence: only the Integration Check's public logs carry pet names (16 lines in the 14:46 run; titles and pricing HTML too), from the shared sync modules; no client names, phones or emails; 106 runs since 07-31 still have logs (90-day retention). Choice: private `job_logs` table (service key only, RLS no policies + revoke), every GitHub Node job captures `console.*`, only booking IDs, counts, pass/fail and "alert delivered" go public. **Kate: pet names private too; keep 30 days; delete the 106 old logs once live; `check:public-logs` is a script Claude runs.** Architect: proceed with changes, folded in (flush via `jobLog.exit` since `process.exit` skips async work; SIGINT + `unhandledRejection`; keepalive left out; install inside each script's run guard; check script scoped to sync jobs).
-9. Kate ran no SQL. No booking-site requests by Claude, no messages sent. Note for the next session: never `select('*')` on `site_access` in a scratch script (it prints the stored session); select the columns needed.
+9. **Merged:** #369 → `971a8f8`, #371 (#323 design note + #370 in the sprint plan) → `3eee342`, #372 (this handoff + UAT dry-run 2 results) → `4bad191`; `check:deploy` OK after each.
+10. **#338 portfolio moved up (Kate, 2026-10-29):** Kate has a first screening call with a company **Mon 11-02 11:00 (her local time)** and will give them her GitHub address. Agreed plan, most visible first (Kate liked it; nothing started):
+    1. **`README.md` rewrite** (it's stale: says 946 tests / 54 files / v5.4.0; main has 2687 tests / 103 files): what the app does and for whom, architecture, how it's tested (mutation testing + score, good-tests rules), the process (design notes → architect → ADRs, ops gate "silence is never success"), real incidents and fixes. **Built with Claude Code, said openly** (Kate's #338 decision), still no AI attribution in commits/PRs. Screenshots with synthetic data only; no client, pet or staff names, no phone numbers, no booking-site name in new text beyond what's already public.
+    2. **Repo page:** one-line description, topics, website link (Kate sets these in GitHub settings; Claude drafts the text).
+    3. **Kate's profile:** short profile README (repo `kcoffie/kcoffie`) and pin dog-boarding (Kate does the account settings; Claude drafts).
+    4. **Tidy-up if time:** stale PRs #291 and #285; the 2 Dependabot alerts on main (1 high, 1 moderate) shown on push.
+    5. **Not now:** the 106 old Integration Check logs with pet names stay until #323 ships (Kate's plan; no client data in them).
+    Keep #370 (due 11-06) on track; nothing else bumped.
+11. Kate ran no SQL. No booking-site requests by Claude, no messages sent. Note for the next session: never `select('*')` on `site_access` in a scratch script (it prints the stored session); select the columns needed.
 
 ## Previous session (54)
 
@@ -354,15 +362,16 @@ Session 44 was planning only; no code changed.
 Priorities and Kate's triage notes are on GitHub (labels `priority: *`, `to-investigate`; "Triage 2026-10-22" comments). The order of work is `docs/SPRINT_PLAN.md`. The January issues still open (#6–#24) are triaged in the first UAT check-in.
 
 ## Immediate Next Steps
-1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2687 passed / 1 skipped**), open PRs (#291, #285, **#371** = #323 design note + #370 in the sprint plan, and this handoff if still open: ask Kate to merge, then `check:deploy`).
+1. **Sync:** `git fetch --prune && git checkout main && git pull --ff-only`. Read memory, this file, `docs/ENGINEERING_PROCESS.md`, `docs/SPRINT_PLAN.md`. Baseline: `npm run test:run` (**2687 passed / 1 skipped**), open PRs (#291, #285, and the `docs/session-55-wrap` PR if still open: ask Kate to merge, then `check:deploy`).
 2. **Read-only checks (fix nothing without asking):**
    - Overnight crons, `site_access`, queue, Integration Check alerts.
    - **Fri 10-30 Friday pm roster (22:00 UTC, retry 23:00):** times match the site (Kate compares 2); header "Fri – Mon"; `C63QhDpK` (cancelled) not on it. Then ask Kate to close #353 and #350.
    - Ask Kate: did the Dashboard's today mark show the SF date after 5pm PDT (she was checking 10-29 evening)?
 3. **Top 3 (Sprint 1, ends Wed 11-04):**
-   1. **#370** (fixed by Fri 11-06): design the "a night can't be paid twice" guard (short note: per-night table vs database function; architect if a new table), then the build with a failing test per bug; Kate runs the migration; re-run UAT step 7.
-   2. **#323 build** after PR #371 merges: ADR-011, migration 031 (Kate runs it; signed-in select refused), `jobLog.js`, the three entry scripts, ops-watch checks, `check:public-logs`; then ask Kate before deleting the 106 old logs.
-   3. **#13:** Kate books watch-first with Charlie (week of 11-09); UAT step 7 re-run after #370.
+   1. **#338 portfolio before Mon 11-02 11:00 (Kate's local time):** start with a draft `README.md` on a branch for Kate to review (item 10 above), then the repo description/topics and profile README text for her to paste. Check every fact against main (counts from `npm run test:run`, the mutation score from the latest CI Mutation run, PR/ADR numbers).
+   2. **#370** (fixed by Fri 11-06): design the "a night can't be paid twice" guard (short note: per-night table vs database function; architect if a new table), then the build with a failing test per bug; Kate runs the migration; re-run UAT step 7.
+   3. **#323 build** (design note merged): ADR-011, migration 031 (Kate runs it; signed-in select refused), `jobLog.js`, the three entry scripts, ops-watch checks, `check:public-logs`; then ask Kate before deleting the 106 old logs.
+   Also: #13, Kate books watch-first with Charlie (week of 11-09); UAT step 7 re-run after #370.
    Dates: DST ends Sun 11-01; first PST 4am roster Mon 11-02 (check it).
 4. **Kate's own items:** check one #21 pair on the site; add Charlie's and the admin's accounts in Supabase (dry-run an invite first); book watch-first with Charlie (week of 11-09); #337 chores; #8 calendar; forward the roster.
 5. **Data left from #344 (design note "Data repair" 3–5, unchanged by #368):** the 9 other week-page rows that look like real stays, the 73 dateless week-page rows, and the two same-name rows of a staff member's dog (no pet IDs) to merge.
