@@ -13,7 +13,7 @@
    - Use `type: description (#issue)` commits. Never add AI attribution: no Co-Authored-By, no Claude-Session, no session links, no "Generated with Claude Code" in PR bodies. A PreToolUse hook, the commit hook and CI reject them, and they overrule Claude Code's per-session reminder.
    - Tests must catch bugs, not just exist. Follow the good-tests rules and report the mutation score, not just "N tests pass".
    - Give options as one line each with real counts, then one recommendation.
-   - `TechPM.md` / `TechPM_1.md` are a persona for **planning sessions only**, when Kate asks for one (Kate, 2026-10-26). The process is `docs/ENGINEERING_PROCESS.md`; its TPM gate is this file plus the sprint plan.
+   - `TechPM.md` (root, untracked) / `docs/TechPM_1.md` are a persona for **planning sessions only**, when Kate asks for one (Kate, 2026-10-26). The process is `docs/ENGINEERING_PROCESS.md`; its TPM gate is this file plus the sprint plan.
    - Ask before sending any message to anyone (Telegram test alerts, SMS, WhatsApp), re-enabling workflows, adding secrets or changing repo settings.
    - Messages must never be tied to the client's (Charlie's) business. The app is Kate's alone, and Kate has no registered business.
 3. **After every merge:** `npm run check:deploy` (REQ-654). It reads main's head from GitHub, waits for qboard's Vercel status, then checks the home page and roster image. Only `main` (and `preview/**` branches) deploy on Vercel (#298).
