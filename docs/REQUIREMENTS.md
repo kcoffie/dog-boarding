@@ -774,7 +774,7 @@ cron functions. They have no explicit `maxDuration`: the project runs on Vercel'
 - `cron-detail` picks the oldest pending item from `sync_queue`, fetches the detail page, upserts to DB
 - `cron-detail` resets items stuck in `processing` for more than 10 minutes at the start of each run
 - Failed detail fetches retry up to 3 times with backoff: +5m, +10m, then permanently `failed`
-- All cron handlers verify `CRON_SECRET` header when the env var is set (skipped in local dev)
+- All cron handlers require `Authorization: Bearer $CRON_SECRET` and reject every request when `CRON_SECRET` is unset (locally too: set it in `.env.local`)
 - Session error (server rejects cached cookies) → clear DB session + return 200 (cron-auth will re-auth)
 - Removed-booking reconciliation of the two weeks read runs nightly in `cron-schedule` (REQ-108, ADR-010, #316); the full reconciliation runs only via manual sync or standard mode
 - `SYNC_MODE=standard` env var enables upgrade path to full `runSync()` without code changes

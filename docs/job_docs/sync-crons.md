@@ -208,7 +208,7 @@ LIMIT 20;
 | `CRON_SECRET` | Vercel-injected secret — validates that requests come from Vercel, not external callers |
 | `VITE_EXTERNAL_SITE_URL` | Override for AGYD base URL (defaults to `https://agirlandyourdog.com`) |
 
-Security: all three handlers check `Authorization: Bearer {CRON_SECRET}` before executing. Requests without this header return 401. In local dev, `CRON_SECRET` is typically unset, so the check is skipped.
+Security: all three handlers check `Authorization: Bearer {CRON_SECRET}` before executing. Requests without this header return 401, and so does every request when `CRON_SECRET` is unset (locally too: set it in `.env.local`).
 
 ---
 
