@@ -1,6 +1,6 @@
-# Dog boarding operations platform
+# Pawroll
 
-Daily rosters and payroll for a small dog boarding business, built by one engineer directing an AI coding agent (Claude Code) and run unattended on free-tier infrastructure.
+A dog boarding operations platform: daily rosters and payroll for a small business, built by one engineer directing an AI coding agent (Claude Code) and run unattended on free-tier infrastructure.
 
 The business books through a third-party site with no API, webhooks or export. This system reads that site every night, keeps its own database in step, sends the morning roster on schedule, and works out what each employee is owed per night. Most of the engineering is in making that reliable when the data source can change without notice, and in making sure a failure is never silent.
 
