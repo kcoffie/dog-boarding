@@ -77,7 +77,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 5. **#350 (added 2026-10-26, high):** every date and time in the app is San Francisco time, whatever the device (Kate: "I don't want Charlie to see anything weird").
    - **PR 1 merged 2026-10-26 (PR #354, `7b191bd`, REQ-064):** "today" and every calendar date the UI builds. **PR 2 = #353 PR 2, merged 2026-10-27 (PR #360).** Four screens still show real moments in the device's zone: #361 (low, Kate: fine for now).
 6. **#353 (added 2026-10-26, high):** the booking site's times are Pacific clock times stored as UTC, so the app and the Friday roster show them 7–8 hours early, and `isDayPresent`'s 5pm rule reads a 4pm arrival as 9am. Design note → architect first (stored data, a pay rule, the roster); PR 1 and PR 2 below (PR 2 = #350 PR 2).
-   - **Option B chosen (Kate, 10-26), ADR-009. PR 1 merged 2026-10-26 (PR #357, `f317878`, REQ-065):** `siteClock.js`, the Friday pm roster ("Fri – Mon", site times), zone-proof server dates, the guard test. **PR 2 merged 2026-10-27 (PR #360, `5a8546c`):** the screens (Dogs page, Calendar, nights/day icon, Sync History, form view, upcoming forms). Check the Fri 10-30 roster's times with Kate, then close #353 and #350.
+   - **Option B chosen (Kate, 10-26), ADR-009. PR 1 merged 2026-10-26 (PR #357, `f317878`, REQ-065):** `siteClock.js`, the Friday pm roster ("Fri – Mon", site times), zone-proof server dates, the guard test. **PR 2 merged 2026-10-27 (PR #360, `5a8546c`):** the screens (Dogs page, Calendar, nights/day icon, Sync History, form view, upcoming forms). Fri 10-30 roster checked with Kate; **#353 and #350 closed 2026-10-31.**
 7. **#316 (added to the plan 2026-10-26, high, Kate: "very soon"):** a booking removed on the booking site stayed on the rosters and in pay (only Sync Now noticed).
    - **Merged 2026-10-27 (PR #358, `ee20596`, REQ-108, REQ-109, ADR-010):** the nightly sync cancels it (every dog), restores on proof, one `sync-reconcile` alert a night. Report-only run 00:05 UTC 10-28 (SF 10-27), live from 00:05 UTC 10-29 (SF 10-28). Close after the first live night's checks.
    - **Report-only night 10-28 correct:** "would cancel" `C63QhB7h` and `C63QhDpK` (Kate confirmed both removed on the site). First live night 00:05 UTC 10-29: check, then close.
@@ -88,6 +88,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
    - **Data fix run by Kate 2026-10-28 23:14 UTC:** 37 rows copied to `backup.dogs_removed_2026_10_28` and deleted; `C63QhMFU` re-queued. Verify after 00:15 UTC 10-29 (new dog with the booking's pet ID, $55, boarding saved; no "nothing shows it's this pet" notice), then close.
 11. **#370 (added 2026-10-29, high, triage rule): fixed by Fri 11-06, before the watch-first week of 11-09.** Mark as Paid can record the wrong payment: a partial payment pays an average per night (confirmed in #13 dry-run 2: $159.25 instead of $139.75), a double-click pays twice (confirmed on the second try: two rows for the same night, 283 ms apart), and a failed save closes the box as if it worked.
 12. **#338 portfolio, first pass (moved up 2026-10-29, Kate): by Mon 11-02 11:00 (Kate's local time),** for a job screening call where Kate shares her GitHub: README rewrite (stale counts), repo description/topics, profile README + pin; stale PRs and Dependabot alerts if time. The full #338 (write-ups, independent review) stays in Sprint 4.
+    - **Done 2026-10-31:** README (#374, #376, #377), repo description and topics, profile README and pin, #285 and #291 closed. The product is named Pawroll (Kate); trademark and domain unchecked. Dependabot alerts left for the next lockfile change.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
@@ -138,8 +139,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 | Item | Question |
 |---|---|
 | ~~#21, #20, #15, #19~~ | Done 2026-10-27/28 (see Sprint 1 "Also") |
-| #239, #284 / PR #285, #299 | Still needed? (#239 likely feeds #338) |
-| PR #291 | Close if #260 doesn't go to SMS |
+| #239, #284, #299 | Still needed? (#239 likely feeds #338; PR #285 closed 2026-10-31) |
 | G-3 status page | Still needed now that ops-watch and Telegram exist? |
 | `mutate:changed` PR check | Worth adding for #338? |
 | Small leftovers | Appointment status parses as null; optional token rename |
@@ -153,7 +153,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 | #313 | Step 8 |
 
 ## Backlog by priority
-- **High:** #353 and #350 (close after the 10-30 roster check), #316 and #368 (verify, close), #370 (by 11-06), #338 first pass (by Mon 11-02), #326, #318, #324, #323, #295, #312, #314, #8, #9, #13, #260, #315, #337, #338
+- **High:** #370 (by 11-06), #326, #318, #324, #323, #295, #312, #314, #8, #9, #13, #260, #315, #337, #338
 - **Medium:** #343, #319, #7, #365, #367
 - **No priority label yet (`to-investigate`):** #294 (Sprint 2, small), #21 (waits on Kate's site check)
 - **Low:** #6, #17, #23, #24, #361 (four screens' real moments in the device's zone), #363 (admin-only project dashboard), a third watcher for when both schedulers die (no issue)
