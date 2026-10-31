@@ -1,10 +1,8 @@
 # Pawroll
 
-A dog boarding operations platform: daily rosters and payroll for a small business, built by one engineer directing an AI coding agent (Claude Code) and run unattended on free-tier infrastructure.
+A dog boarding operations platform: daily rosters and payroll for a small business, running unattended on free-tier infrastructure. I own the product and its engineering: the requirements, the architecture decisions and the quality gates. Claude Code writes the implementation under them.
 
-The business books through a third-party site with no API, webhooks or export. This system reads that site every night, keeps its own database in step, sends the morning roster on schedule, and works out what each employee is owed per night. Most of the engineering is in making that reliable when the data source can change without notice, and in making sure a failure is never silent.
-
-**Status (2026-10-31):** rosters and alerts run in production every day. The roster goes to the operator on Telegram, who forwards it to the client by hand. Payroll is not in use yet: user acceptance testing with the client is planned for November, and the rehearsal found payment bugs that are being fixed first (see [What broke](#what-broke-and-what-changed)).
+The business books through a third-party site with no API or webhooks, and only a manual CSV export. This system reads that site every night, keeps its own database in step, sends the morning roster on schedule, and works out what each employee is owed per night. Most of the engineering is in making that reliable when the data source can change without notice, and in making sure a failure is never silent.
 
 | | As of 2026-10-31, on `main` |
 |---|---|
@@ -12,7 +10,7 @@ The business books through a third-party site with no API, webhooks or export. T
 | Mutation score | 64.22% on the last full run (2026-10-26); 66.14% on an incremental run (2026-10-29). CI fails below 50% |
 | Scheduled jobs | 13 Vercel crons, plus 7 GitHub Actions workflows on a schedule |
 | Decisions and schema | 7 ADRs, 30 SQL migrations |
-| Stack | React 19, Vite 7, Tailwind 4, Supabase (Postgres), Vercel, GitHub Actions, Playwright, Vitest, Stryker |
+| Stack | JavaScript, React 19, Vite 7, Tailwind 4, Supabase (Postgres), Vercel, GitHub Actions, Playwright, Vitest, Stryker |
 
 ## How it works
 
@@ -62,10 +60,10 @@ Each of these changed how the system or the process works.
 |---|---|---|
 | **Seven silent weeks.** GitHub disabled all 8 scheduled workflows after 60 days without a commit. Notifications stopped, and so did the health check, because it ran on the same scheduler. Later the sync crons kept reporting "success" while bookings stopped updating. | Not by any check: nothing alerted | The Ops rules below: alert on failure, check outcomes rather than runs, and watch from a different scheduler |
 | **Wrong dog identity.** The server followed a redirect from a hidden booking to the week's schedule and read that page as the booking. That gave dogs another pet's ID, renamed one dog, and created empty dog rows. | Pet IDs that didn't match, traced through the logs and tables | Pages are read without following redirects; a redirected page writes nothing. A dog is its pet ID, enforced by a unique index, and the sync never renames one ([ADR-008](docs/adr/008-dog-identity-is-the-pet-id.md)) |
-| **Two answers for the same night.** Eight copies of the nightly calculation had drifted apart: one night showed $338 on the Dashboard and $286 in Payroll. | A rehearsal of the acceptance test | One shared function, with expected values worked out by hand |
-| **Times 7–8 hours off.** The site's times are Pacific clock times stored as if they were UTC, so a 10:15am pick-up showed as 3:15am. | The operator read the roster | Stored values kept, with one reader for all of them and a guard test ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)) |
+| **Two answers for the same night.** Eight copies of the nightly calculation had drifted apart: one night showed $338 on the Dashboard and $286 in Payroll. | A scripted end-to-end check against production data | One shared function, with expected values worked out by hand |
+| **Times 7–8 hours off.** The site's times are Pacific clock times stored as if they were UTC, so a 10:15am pick-up showed as 3:15am. | A person reading the roster | Stored values kept, with one reader for all of them and a guard test ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)) |
 | **Removed bookings stayed on the roster and in pay.** Only a manual sync noticed them. | Bookings removed on the site were still in the app | Nightly check, with a report-only first night checked by hand before it went live ([ADR-010](docs/adr/010-removed-bookings-cancelled-nightly.md)) |
-| **Open: payroll bugs.** Partial payments were averaged per night ($159.25 instead of $139.75), and a double-click recorded two payments 283 ms apart. | The second acceptance-test rehearsal | Being fixed before the client sees it, including a database guard against paying a night twice |
+| **Open: payroll bugs.** Partial payments were averaged per night ($159.25 instead of $139.75), and a double-click recorded two payments 283 ms apart. | The same scripted check, run with real clicks | Being fixed, including a database guard against paying a night twice |
 
 ## How it's tested
 
@@ -81,7 +79,7 @@ The rules for tests ([full list](docs/ENGINEERING_PROCESS.md#good-tests-not-just
 
 ## How it's built
 
-This is one person directing Claude Code, and nearly all of the code was written that way. An agent's confidence isn't evidence, so a persona prompt isn't the safeguard. The process copies what makes a team work instead: the reviewer didn't write the code, checks happen at fixed moments, and machines enforce the rules ([full process](docs/ENGINEERING_PROCESS.md)).
+Claude Code writes nearly all of the code. I decide what gets built and how it's judged: the requirements, the choice between design options, the rules users see, and the gates below. An agent's confidence isn't evidence, so I run this the way I'd run a team: the reviewer didn't write the code, checks happen at fixed moments, and machines enforce the rules ([full process](docs/ENGINEERING_PROCESS.md)).
 
 | Gate | When | How |
 |---|---|---|
@@ -90,7 +88,7 @@ This is one person directing Claude Code, and nearly all of the code was written
 | QA | Every push and PR | Required checks for lint, requirement coverage, tests and build; mutation score on `main`; a post-merge check that production changed |
 | Security | Before secrets go live, and in review | Each secret's scope and leak impact are written down; CI rejects realistic phone numbers and emails in tests |
 | Ops | Every scheduled run | Rules below |
-| Human | Every rule the client sees | The operator decides those rules, runs all production SQL, and approves anything that sends a message |
+| Owner (me) | Every rule users see | I decide those rules, run all production SQL, and approve anything that sends a message |
 
 The fresh-context review earns its place. On the Friday roster change, the reviewer found that a window comparison was matching timestamps as text (`+00:00` against `.000Z`), which would have dropped every booking exactly at the start hour.
 
