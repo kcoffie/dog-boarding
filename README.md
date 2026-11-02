@@ -1,13 +1,13 @@
 # Pawroll
 
-A dog boarding operations platform: daily rosters that run unattended on free-tier infrastructure, and payroll calculation and tracking for a small business. I own the product and its engineering: the requirements, the architecture decisions and the quality gates. Claude Code writes the implementation under them.
+A dog boarding operations platform: daily rosters that run unattended on free-tier infrastructure, and per-night payroll calculation. I own the product and its engineering: the requirements, the architecture decisions and the quality gates. Claude Code writes the implementation under them.
 
-The business books through a third-party site with no API or webhooks, and only a manual CSV export. This system reads that site every night, keeps its own database in step, sends the morning roster on schedule, and works out what each employee is owed per night. Most of the engineering is in making that reliable when the data source can change without notice, and in making sure a failure is never silent.
+The business books through a third-party site with no API or webhooks. This system reads that site multiple times a day, keeps its own database in step, sends the morning roster on schedule, and works out what each employee would be owed per night. Most of the engineering is in making that reliable when the data source can change without notice, and in making sure a failure is never silent.
 
-| | As of 2026-10-31, on `main` |
+| | As of 2026-11-02, on `main` |
 |---|---|
 | Tests | 2,699 passing, 1 skipped, in 103 files |
-| Mutation score | 64.22% on the last full run (2026-10-26); 66.14% on an incremental run (2026-10-29). CI fails below 50% |
+| Mutation score | About two-thirds of planted bugs caught. CI fails below 50% |
 | Scheduled jobs | 13 Vercel crons, plus 7 GitHub Actions workflows on a schedule |
 | Decisions and schema | 7 ADRs, 30 SQL migrations |
 | Stack | JavaScript, React 19, Vite 7, Tailwind 4, Supabase (Postgres), Vercel, GitHub Actions, Playwright, Vitest, Stryker |
@@ -67,7 +67,7 @@ Each of these changed how the system or the process works.
 
 ## How it's tested
 
-Test counts don't show whether tests would catch a bug, so the measure here is mutation testing. [Stryker](https://stryker-mutator.io/) plants thousands of small bugs in the sync, notification and calculation logic, and counts how many make a test fail. CI runs it on `main` and fails below a threshold, currently 50%, that the process says is never lowered to make a PR pass. UI components are outside the score for now, so the 64% is for that logic only, and older code is still being brought up to the bar. New changes are run against their changed lines, and those results are in the [score log](docs/ENGINEERING_PROCESS.md#score-log).
+Test counts don't show whether tests would catch a bug, so the measure here is mutation testing. [Stryker](https://stryker-mutator.io/) plants thousands of small bugs in the sync, notification and calculation logic, and counts how many make a test fail. CI runs it on `main` and fails below a threshold, currently 50%, that the process says is never lowered to make a PR pass. UI components are outside the score for now, so the score is for that logic only, and older code is still being brought up to the bar. New changes are run against their changed lines, and those results are in the [score log](docs/ENGINEERING_PROCESS.md#score-log).
 
 The rules for tests ([full list](docs/ENGINEERING_PROCESS.md#good-tests-not-just-tests)):
 
