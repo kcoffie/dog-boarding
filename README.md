@@ -1,6 +1,6 @@
 # Pawroll
 
-A dog boarding operations platform: daily rosters that run unattended on free-tier infrastructure, and per-night payroll calculation. I own the product and its engineering: the requirements, the architecture decisions and the quality gates. Claude Code writes the implementation under them.
+A dog boarding operations platform: daily rosters that run unattended on free-tier infrastructure, and per-night payroll calculation. Developed with Claude Code. I own the product and its engineering: the requirements, the architecture decisions and the quality gates.
 
 The business books through a third-party site with no API or webhooks. This system reads that site multiple times a day, keeps its own database in step, sends the morning roster on schedule, and works out what each employee would be owed per night. Most of the engineering is in making that reliable when the data source can change without notice, and in making sure a failure is never silent.
 
@@ -79,7 +79,7 @@ The rules for tests ([full list](docs/ENGINEERING_PROCESS.md#good-tests-not-just
 
 ## How it's built
 
-Claude Code writes nearly all of the code. I decide what gets built and how it's judged: the requirements, the choice between design options, the rules users see, and the gates below. An agent's confidence isn't evidence, so I run this the way I'd run a team: the reviewer didn't write the code, checks happen at fixed moments, and machines enforce the rules ([full process](docs/ENGINEERING_PROCESS.md)).
+This is developed with Claude Code. I decide what gets built and how it's judged: the requirements, the choice between design options, the rules users see, and the gates below. An agent's confidence isn't evidence, so I run this the way I'd run a team: the reviewer didn't write the code, checks happen at fixed moments, and machines enforce the rules ([full process](docs/ENGINEERING_PROCESS.md)).
 
 | Gate | When | How |
 |---|---|---|
