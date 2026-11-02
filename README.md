@@ -63,7 +63,7 @@ Each of these changed how the system or the process works.
 | **Two answers for the same night.** Eight copies of the nightly calculation had drifted apart: one night showed $338 on the Dashboard and $286 in Payroll. | A step-by-step manual walkthrough of the app on production data | One shared function, with expected values worked out by hand |
 | **Times 7–8 hours off.** The site's times are Pacific clock times stored as if they were UTC, so a 10:15am pick-up showed as 3:15am. | A person reading the roster | Stored values kept, with one reader for all of them and a guard test ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)) |
 | **Removed bookings stayed on the roster and in the pay figures.** Only a manual sync noticed them. | Bookings removed on the site were still in the app | Nightly check, with a report-only first night checked by hand before it went live ([ADR-010](docs/adr/010-removed-bookings-cancelled-nightly.md)) |
-| **Open: payroll bugs.** Partial payments were averaged per night ($159.25 instead of $139.75), and a double-click recorded two payments 283 ms apart. Both appeared on test payments, since deleted; no one was paid wrongly. | The same walkthrough, this time making the writes by hand | Being fixed, including a database guard against paying a night twice |
+| **Open: payroll bugs.** Partial payments were averaged per night ($159.25 instead of $139.75), and a double-click recorded two payments 283 ms apart. Both appeared on test payments, since deleted. | The same walkthrough, this time making the writes by hand | Being fixed, including a database guard against paying a night twice |
 
 ## How it's tested
 
