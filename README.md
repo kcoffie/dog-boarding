@@ -49,7 +49,7 @@ graph TD
 - **Sync.** Nightly crons refresh the login session, read the schedule pages to queue bookings, and read each booking's page into Postgres. A booking gone from the site is confirmed by opening its own page, and only then cancelled ([ADR-010](docs/adr/010-removed-bookings-cancelled-nightly.md)).
 - **The booking site is the source of truth.** Dogs, rates and bookings can't be edited in the app. A difference is a bug to fix at the source or in the sync.
 - **Rosters.** Crons fire in every UTC hour a roster could fall in, and the code reads the Pacific clock to choose the window, so daylight saving needs no edits. Each window claims its day in one atomic database update, so a duplicate delivery sends once ([ADR-004](docs/adr/004-rosters-on-vercel-crons-with-claim-rows.md)). The roster image is rendered on the server with satori and resvg.
-- **Pay.** A single function, `nightStays`, decides each night's dogs and money for the Dashboard, Calendar and Payroll, so those screens agree.
+- **Pay.** A single function, `nightStays`, decides each night's dogs and money for the Dashboard, Calendar and Payroll, so those screens agree on every night's figures.
 - **Dates.** The business is in San Francisco, so every date and time in the app is San Francisco time, whatever the device. One module reads booking times, and a guard test catches local-zone formatting in files that handle them ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)).
 
 ## What broke, and what changed
