@@ -1,16 +1,16 @@
 # Pawroll
 
-A dog boarding operations platform: daily rosters that run unattended on free-tier infrastructure, and payroll calculation and tracking for a small business. I own the product and its engineering: the requirements, the architecture decisions and the quality gates. Claude Code writes the implementation under them.
+A dog boarding operations platform: daily rosters that run unattended, and per-night payroll calculation. Developed with Claude Code. I own the product and its engineering: the requirements, the architecture decisions and the quality gates.
 
-The business books through a third-party site with no API or webhooks, and only a manual CSV export. This system reads that site every night, keeps its own database in step, sends the morning roster on schedule, and works out what each employee is owed per night. Most of the engineering is in making that reliable when the data source can change without notice, and in making sure a failure is never silent.
+The business books through a third-party site with no API or webhooks. This system reads that site multiple times a day, keeps its own database in step, sends the morning roster on schedule, and works out what each employee would be owed per night. Most of the engineering is in making that reliable when the data source can change without notice, and in making sure a failure is never silent.
 
-| | As of 2026-10-31, on `main` |
+| | |
 |---|---|
-| Tests | 2,699 passing, 1 skipped, in 103 files |
-| Mutation score | 64.22% on the last full run (2026-10-26); 66.14% on an incremental run (2026-10-29). CI fails below 50% |
-| Scheduled jobs | 13 Vercel crons, plus 7 GitHub Actions workflows on a schedule |
-| Decisions and schema | 7 ADRs, 30 SQL migrations |
-| Stack | JavaScript, React 19, Vite 7, Tailwind 4, Supabase (Postgres), Vercel, GitHub Actions, Playwright, Vitest, Stryker |
+| Tests | Thousands, judged by mutation testing rather than by count |
+| Mutation score | Most planted bugs caught, with a minimum enforced in CI |
+| Scheduled jobs | Vercel crons and GitHub Actions workflows |
+| Decisions and schema | Architecture decision records and versioned SQL migrations |
+| Stack | JavaScript, React, Vite, Tailwind, Supabase (Postgres), Vercel, GitHub Actions, Playwright, Vitest, Stryker |
 
 ## How it works
 
@@ -49,12 +49,12 @@ graph TD
 - **Sync.** Nightly crons refresh the login session, read the schedule pages to queue bookings, and read each booking's page into Postgres. A booking gone from the site is confirmed by opening its own page, and only then cancelled ([ADR-010](docs/adr/010-removed-bookings-cancelled-nightly.md)).
 - **The booking site is the source of truth.** Dogs, rates and bookings can't be edited in the app. A difference is a bug to fix at the source or in the sync.
 - **Rosters.** Crons fire in every UTC hour a roster could fall in, and the code reads the Pacific clock to choose the window, so daylight saving needs no edits. Each window claims its day in one atomic database update, so a duplicate delivery sends once ([ADR-004](docs/adr/004-rosters-on-vercel-crons-with-claim-rows.md)). The roster image is rendered on the server with satori and resvg.
-- **Pay.** A single function, `nightStays`, decides each night's dogs and money, and every screen calls it.
+- **Pay.** A single function, `nightStays`, decides each night's dogs and money for the Dashboard, Calendar and Payroll, so those screens agree on every night's figures.
 - **Dates.** The business is in San Francisco, so every date and time in the app is San Francisco time, whatever the device. One module reads booking times, and a guard test catches local-zone formatting in files that handle them ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)).
 
 ## What broke, and what changed
 
-Each of these changed how the system or the process works.
+Each of these shaped how the system or the process works.
 
 | What happened | How it was found | What changed |
 |---|---|---|
@@ -63,11 +63,11 @@ Each of these changed how the system or the process works.
 | **Two answers for the same night.** Eight copies of the nightly calculation had drifted apart: one night showed $338 on the Dashboard and $286 in Payroll. | A step-by-step manual walkthrough of the app on production data | One shared function, with expected values worked out by hand |
 | **Times 7–8 hours off.** The site's times are Pacific clock times stored as if they were UTC, so a 10:15am pick-up showed as 3:15am. | A person reading the roster | Stored values kept, with one reader for all of them and a guard test ([ADR-009](docs/adr/009-booking-times-are-site-clock-times.md)) |
 | **Removed bookings stayed on the roster and in the pay figures.** Only a manual sync noticed them. | Bookings removed on the site were still in the app | Nightly check, with a report-only first night checked by hand before it went live ([ADR-010](docs/adr/010-removed-bookings-cancelled-nightly.md)) |
-| **Open: payroll bugs.** Partial payments were averaged per night ($159.25 instead of $139.75), and a double-click recorded two payments 283 ms apart. Both appeared on test payments, since deleted; no one was paid wrongly. | The same walkthrough, this time making the writes by hand | Being fixed, including a database guard against paying a night twice |
+| **Payroll bugs.** Partial payments were averaged per night ($159.25 instead of $139.75), and a double-click recorded two payments 283 ms apart. Both appeared on test payments, since deleted. | The same walkthrough, this time making the writes by hand | The chosen fix: each night keeps its own amount, with a database guard against paying a night twice |
 
 ## How it's tested
 
-Test counts don't show whether tests would catch a bug, so the measure here is mutation testing. [Stryker](https://stryker-mutator.io/) plants thousands of small bugs in the sync, notification and calculation logic, and counts how many make a test fail. CI runs it on `main` and fails below a threshold, currently 50%, that the process says is never lowered to make a PR pass. UI components are outside the score for now, so the 64% is for that logic only, and older code is still being brought up to the bar. New changes are run against their changed lines, and those results are in the [score log](docs/ENGINEERING_PROCESS.md#score-log).
+Test counts don't show whether tests would catch a bug, so the measure here is mutation testing. [Stryker](https://stryker-mutator.io/) plants thousands of small bugs in the sync, notification and calculation logic, and counts how many make a test fail. CI runs it on `main` and fails below a threshold that the process says is never lowered to make a PR pass. UI components are outside the score for now, so the score is for that logic only, and older code is still being brought up to the bar. New changes are run against their changed lines, and those results are in the [score log](docs/ENGINEERING_PROCESS.md#score-log).
 
 The rules for tests ([full list](docs/ENGINEERING_PROCESS.md#good-tests-not-just-tests)):
 
@@ -79,7 +79,7 @@ The rules for tests ([full list](docs/ENGINEERING_PROCESS.md#good-tests-not-just
 
 ## How it's built
 
-Claude Code writes nearly all of the code. I decide what gets built and how it's judged: the requirements, the choice between design options, the rules users see, and the gates below. An agent's confidence isn't evidence, so I run this the way I'd run a team: the reviewer didn't write the code, checks happen at fixed moments, and machines enforce the rules ([full process](docs/ENGINEERING_PROCESS.md)).
+This is developed with Claude Code. I decide what gets built and how it's judged: the requirements, the choice between design options, the rules users see, and the gates below. An agent's confidence isn't evidence, so I run this the way I'd run a team: the reviewer didn't write the code, checks happen at fixed moments, and machines enforce the rules ([full process](docs/ENGINEERING_PROCESS.md)).
 
 | Gate | When | How |
 |---|---|---|
@@ -103,9 +103,9 @@ These are the rules for new jobs. Auditing the older jobs against them is still 
 
 ## Known gaps
 
-- Hosted on free tiers, where a cron can start late in its hour. GitHub's schedules can run hours late, which is why the rosters moved to Vercel.
+- A cron can start late in its hour. GitHub's schedules can run hours late, which is why the rosters moved to Vercel.
 - A sync redesign is under way to replace the overlapping nightly paths and cap requests to the booking site.
-- The older ADRs and some docs in `docs/` are working records, not polished write-ups. ADR numbers 005–007 are reserved for decisions already shipped and still to be written up.
+- The older ADRs and some docs in `docs/` are working records, not polished write-ups. Some decisions already shipped are still to be written up as ADRs.
 
 ## Running it locally
 
