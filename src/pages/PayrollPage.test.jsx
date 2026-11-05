@@ -74,7 +74,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
 
   const mockAddPayment = vi.fn();
   const mockDeletePayment = vi.fn();
-  const mockGetPaidDatesForEmployee = vi.fn(() => []);
   const mockQueryDaytimePetNames = vi.fn().mockResolvedValue({});
 
   // nightAssignments array (shape mirrors useNightAssignments return value)
@@ -86,7 +85,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetPaidDatesForEmployee.mockReturnValue([]);
     mockQueryDaytimePetNames.mockResolvedValue({});
     useData.mockReturnValue({
       dogs: mockDogs,
@@ -99,7 +97,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
       getNetPercentageForDate: () => 65,
       addPayment: mockAddPayment,
       deletePayment: mockDeletePayment,
-      getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
     });
   });
 
@@ -134,7 +131,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
         deletePayment: mockDeletePayment,
-        getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
       });
 
       render(<PayrollPage />);
@@ -157,7 +153,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
         deletePayment: mockDeletePayment,
-        getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
       });
 
       render(<PayrollPage />);
@@ -169,11 +164,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
     });
 
     it('excludes already paid dates from outstanding', () => {
-      mockGetPaidDatesForEmployee.mockImplementation((name) => {
-        if (name === 'Kate') return [dates.day1, dates.day2];
-        return [];
-      });
-
       useData.mockReturnValue({
         dogs: mockDogs,
         boardings: mockBoardings,
@@ -194,7 +184,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
         deletePayment: mockDeletePayment,
-        getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
       });
 
       render(<PayrollPage />);
@@ -280,7 +269,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
         deletePayment: mockDeletePayment,
-        getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
       });
 
       render(<PayrollPage />);
@@ -311,7 +299,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
         deletePayment: mockDeletePayment,
-        getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
       });
 
       render(<PayrollPage />);
@@ -345,7 +332,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
         deletePayment: mockDeletePayment,
-        getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
       });
 
       render(<PayrollPage />);
@@ -385,7 +371,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
         deletePayment: mockDeletePayment,
-        getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
       });
 
       render(<PayrollPage />);
@@ -412,7 +397,6 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
         getNetPercentageForDate: () => 65,
         addPayment: mockAddPayment,
         deletePayment: mockDeletePayment,
-        getPaidDatesForEmployee: mockGetPaidDatesForEmployee,
       });
 
       render(<PayrollPage />);

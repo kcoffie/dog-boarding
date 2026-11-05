@@ -1,6 +1,6 @@
 # #370 design note: Mark as Paid records each night's own amount, and a night can't be paid twice
 
-**Status:** guard chosen by Kate (per-night table, 2026-10-31). Architect: proceed with changes (folded in below, 2026-10-31). Fix due Fri 11-06. Issue #370 (`priority: high`).
+**Status:** guard chosen by Kate (per-night table, 2026-10-31). Architect: proceed with changes (folded in below, 2026-10-31). Q1 and Q2 answered 2026-11-05; built (ADR-011). Fix due Fri 11-06. Issue #370 (`priority: high`).
 
 ## Problem
 Mark as Paid can record the wrong payment (confirmed in UAT dry-run 2, `docs/UAT_SCRIPT.md` Part D):
@@ -36,16 +36,21 @@ The table is chosen. A payment and its nights must save together or not at all, 
    - `AFTER INSERT` trigger. PL/pgSQL skips an `IF` on NULL, so checks use `IS DISTINCT FROM`. It raises unless `night_amounts` is an object, `dates` is non-empty with no repeats, the keys equal `dates`, each value is non-negative whole cents, and the sum equals `amount`. It then inserts one row per night, `ORDER BY night` (so overlapping payments can't deadlock). A taken night raises unique violation `23505`.
    - A column-limited `BEFORE UPDATE OF dates, amount, night_amounts` raises (deleting an employee still works): nothing in the app edits a payment; a mistake is fixed by Delete and pay again (UAT step 7). #343 changes this on purpose later.
    - Delete cascades, so a deleted payment's nights return to Outstanding (existing behaviour).
-   - #323's planned migration moves to 032.
+   - #323's planned migration moves to 033 (#389 takes 032).
 2. **`PayrollPage`:** `calculateOutstanding` holds whole cents per date, night and daytime each rounded by one tested `toCents` helper (exact half-up, so it agrees with the displayed amount; `Math.round(x*100)/100` doesn't), then added. Totals sum those cents, so a full payment equals the total shown and the card's lines add up. It already uses the shared rule (`calculateGross`, REQ-036). Paid nights are read from all `payments`, not by employee name (`getPaidDatesForEmployee` goes). A night assigned to B but paid to A shows a visible line (Q1). `confirmPayment` stops swallowing errors. `confirmDelete` gets the same treatment: a failed delete shows an error, since Delete is the recovery path.
 3. **`PaymentDialog`:** each row shows that night's amount; the payment is the sum of the ticked nights, in whole cents. Confirm awaits the save; Confirm and Cancel are disabled while saving, guarded by a ref (reset on open) so a second click in the same tick does nothing. Ticks are set only when the box opens, keyed on `isOpen` and `employee`; a data change can remove a tick, never add one, because the page rebuilds `outstandingData` every render and today's effect would re-tick excluded nights. On failure the box stays open with the error. If a refresh leaves no nights, the box closes and the page shows the error.
 4. **`usePayments`:** sends `night_amounts`; no signed-in user throws instead of returning null. On `23505`, it refreshes payments and throws a clear error ("One of these nights has already been paid. The list has been refreshed."). The refresh also removes the stale nights from the box.
-5. **`scripts/smoke-test.js`** sends matching `night_amounts` and asserts a second insert gets `23505`. **`docs/specs/323-job-logs-design-note.md`** moves to migration 032.
+5. **`scripts/smoke-test.js`** sends matching `night_amounts` and asserts a second insert gets `23505`. **`docs/specs/323-job-logs-design-note.md`** moves to migration 033.
 6. **REQ-041** gains the criteria; **ADR-011** in the same PR. The README's open-bugs row and the test count are updated.
 
 ## Questions for Kate
 - **Q1. A night paid to A, then reassigned to B.** A unique night refuses paying B. Recommended: B's Outstanding leaves the night out and shows a line, "10-16 is assigned to B but was paid to A. Delete A's payment to change it." Moving one night from a 5-night payment means deleting all 5 and paying again at current rates.
 - **Q2. Half-cent amounts.** Recommended: round night pay and daytime credit separately, then add ($42.50 night + $12.50 day at 65% = $35.76; rounded together, $35.75). Whole-dollar rates at 65% never hit this.
+
+## Kate's answers (2026-11-05)
+- **Q1:** Kate wants paid nights not editable at all: a paid night's employee can't be changed until its payment is deleted, and deleted payments are kept and shown. That is bigger than this fix, so it's split out as **#389** (high, due 11-12). Until then this PR ships the recommended line.
+- **Q2:** round each part, then add (recommended).
+- The check script is `supabase/checks/031_payment_nights_check.sql`.
 
 ## What breaks
 - **Deploy before migration:** the insert names a missing column and fails, and the box shows the error. Nothing wrong is saved. Order: migration, then merge.

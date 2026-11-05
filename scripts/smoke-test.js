@@ -174,6 +174,8 @@ async function runSmokeTests() {
         end_date: '2099-01-17',
         nights: 3,
         dates: ['2099-01-15', '2099-01-16', '2099-01-17'],
+        // Each night's own amount, adding up to `amount` (#370, migration 031)
+        night_amounts: { '2099-01-15': 0.01, '2099-01-16': 0, '2099-01-17': 0 },
         paid_date: '2099-01-20',
         user_id: user.id,  // This was the bug!
       }])
@@ -198,6 +200,28 @@ async function runSmokeTests() {
     if (!data.dates) throw new Error('Payment missing dates array');
     if (!data.paid_date) throw new Error('Payment missing paid_date');
     if (data.nights !== 3) throw new Error('Payment nights mismatch');
+  });
+
+  await test('A paid night cannot be paid again (#370, 23505)', async () => {
+    const { data, error } = await supabase
+      .from('payments')
+      .insert([{
+        employee_id: employee.id,
+        amount: 0,
+        start_date: '2099-01-16',
+        end_date: '2099-01-16',
+        nights: 1,
+        dates: ['2099-01-16'],
+        night_amounts: { '2099-01-16': 0 },
+        paid_date: '2099-01-20',
+        user_id: user.id,
+      }])
+      .select()
+      .single();
+
+    if (data?.id) cleanup.payments.push(data.id);
+    if (!error) throw new Error('A second payment for a paid night was saved');
+    if (error.code !== '23505') throw new Error(`Expected 23505, got ${error.code}: ${error.message}`);
   });
 
   await test('Payment appears in list query', async () => {

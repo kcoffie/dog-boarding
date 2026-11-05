@@ -3,19 +3,20 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 
 // Mock dependencies before imports
 const mockUser = { id: 'user-123', email: 'test@test.com' };
+const mockAuth = { user: mockUser };
 vi.mock('../../context/AuthContext', () => ({
-  useAuth: () => ({ user: mockUser }),
+  useAuth: () => mockAuth,
 }));
 
 // Create stable mock data and capture insert calls
 const mockData = { payments: [], error: null };
-const mockInsertData = { capturedData: null };
+const mockInsertData = { capturedData: null, error: null };
 
 const mockInsert = vi.fn((data) => {
   mockInsertData.capturedData = data;
   return {
     select: vi.fn(() => ({
-      single: vi.fn(() => Promise.resolve({
+      single: vi.fn(() => Promise.resolve(mockInsertData.error ? { data: null, error: mockInsertData.error } : {
         data: {
           id: 'new-payment-id',
           employee_id: 'emp-1',
@@ -49,7 +50,8 @@ vi.mock('../../lib/supabase', () => ({
   },
 }));
 
-import { usePayments } from '../../hooks/usePayments';
+import { usePayments, ALREADY_PAID_MESSAGE } from '../../hooks/usePayments';
+import { paidNightOwners } from '../../utils/payroll';
 
 const mockEmployees = [
   { id: 'emp-1', name: 'Kate', active: true },
@@ -76,6 +78,8 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
     ];
     mockData.error = null;
     mockInsertData.capturedData = null;
+    mockInsertData.error = null;
+    mockAuth.user = mockUser;
   });
 
   describe('Hook Initialization', () => {
@@ -87,7 +91,7 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       expect(result.current).toHaveProperty('error');
       expect(result.current).toHaveProperty('addPayment');
       expect(result.current).toHaveProperty('deletePayment');
-      expect(result.current).toHaveProperty('getPaidDatesForEmployee');
+      expect(result.current).not.toHaveProperty('getPaidDatesForEmployee');
     });
 
     it('provides addPayment as a function', () => {
@@ -100,10 +104,6 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       expect(typeof result.current.deletePayment).toBe('function');
     });
 
-    it('provides getPaidDatesForEmployee as a function', () => {
-      const { result } = renderHook(() => usePayments(mockEmployees));
-      expect(typeof result.current.getPaidDatesForEmployee).toBe('function');
-    });
 
     it('starts with loading state true', () => {
       const { result } = renderHook(() => usePayments(mockEmployees));
@@ -247,29 +247,6 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
     });
   });
 
-  describe('getPaidDatesForEmployee', () => {
-    it('returns paid dates for specified employee', async () => {
-      const { result } = renderHook(() => usePayments(mockEmployees));
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      const paidDates = result.current.getPaidDatesForEmployee('Kate');
-      expect(paidDates).toEqual(['2025-01-01', '2025-01-02', '2025-01-03']);
-    });
-
-    it('returns empty array for employee with no payments', async () => {
-      const { result } = renderHook(() => usePayments(mockEmployees));
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      const paidDates = result.current.getPaidDatesForEmployee('Nick');
-      expect(paidDates).toEqual([]);
-    });
-  });
 
   describe('Payment Data Transformation', () => {
     it('transforms payments from DB format to app format', async () => {
@@ -351,7 +328,7 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       expect(newPayment.dates).toEqual(['2025-01-15', '2025-01-16', '2025-01-17']);
     });
 
-    it('paid dates appear in getPaidDatesForEmployee after payment', async () => {
+    it('paid nights show as paid to the employee after payment', async () => {
       // Start with no payments for Nick
       mockData.payments = [];
       const { result } = renderHook(() => usePayments(mockEmployees));
@@ -361,7 +338,7 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       });
 
       // Initially no paid dates
-      expect(result.current.getPaidDatesForEmployee('Kate')).toEqual([]);
+      expect(paidNightOwners(result.current.payments)).toEqual({});
 
       await act(async () => {
         await result.current.addPayment({
@@ -375,10 +352,9 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       });
 
       // Now dates should be marked as paid
-      const paidDates = result.current.getPaidDatesForEmployee('Kate');
-      expect(paidDates).toContain('2025-01-15');
-      expect(paidDates).toContain('2025-01-16');
-      expect(paidDates).toContain('2025-01-17');
+      expect(paidNightOwners(result.current.payments)).toEqual({
+        '2025-01-15': 'Kate', '2025-01-16': 'Kate', '2025-01-17': 'Kate',
+      });
     });
 
     it('deleting payment removes it from payments list', async () => {
@@ -399,7 +375,7 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       expect(result.current.payments.find(p => p.id === paymentToDelete.id)).toBeUndefined();
     });
 
-    it('deleting payment removes dates from getPaidDatesForEmployee', async () => {
+    it('deleting payment returns its nights to unpaid', async () => {
       const { result } = renderHook(() => usePayments(mockEmployees));
 
       await waitFor(() => {
@@ -407,7 +383,7 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       });
 
       // Initially Kate has paid dates from mock data
-      expect(result.current.getPaidDatesForEmployee('Kate')).toEqual(['2025-01-01', '2025-01-02', '2025-01-03']);
+      expect(Object.keys(paidNightOwners(result.current.payments))).toEqual(['2025-01-01', '2025-01-02', '2025-01-03']);
 
       const paymentToDelete = result.current.payments[0];
 
@@ -416,7 +392,71 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       });
 
       // After deletion, dates should no longer be marked as paid
-      expect(result.current.getPaidDatesForEmployee('Kate')).toEqual([]);
+      expect(paidNightOwners(result.current.payments)).toEqual({});
+    });
+  });
+  describe('#370: a payment carries each night\'s amount, and a night is paid once', () => {
+    const pay = {
+      employeeName: 'Kate',
+      startDate: '2026-10-16',
+      endDate: '2026-10-17',
+      amount: 318.5,
+      nights: 2,
+      dates: ['2026-10-16', '2026-10-17'],
+      nightAmounts: { '2026-10-16': 139.75, '2026-10-17': 178.75 },
+    };
+
+    it('sends night_amounts with the payment', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => { await result.current.addPayment(pay); });
+      expect(mockInsertData.capturedData[0].night_amounts).toEqual({ '2026-10-16': 139.75, '2026-10-17': 178.75 });
+      expect(mockInsertData.capturedData[0].amount).toBe(318.5);
+    });
+
+    it('an already-paid night refreshes the list and throws a clear error', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      // Another tab paid Kate's nights meanwhile: the refresh must bring that payment in.
+      mockData.payments = [...mockData.payments, {
+        id: 'payment-other-tab', employee_id: 'emp-1', amount: 318.5, nights: 2,
+        dates: ['2026-10-16', '2026-10-17'], paid_date: '2026-11-05',
+      }];
+      mockInsertData.error = { code: '23505', message: 'duplicate key value violates unique constraint "payment_nights_pkey"' };
+      let thrown;
+      await act(async () => {
+        try { await result.current.addPayment(pay); } catch (err) { thrown = err; }
+      });
+      expect(thrown?.message).toBe(ALREADY_PAID_MESSAGE);
+      expect(result.current.payments.map((p) => p.id)).toContain('payment-other-tab');
+    });
+
+    it('any other database error is thrown as it is and nothing is added', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      const before = result.current.payments.length;
+      mockInsertData.error = { code: '42501', message: 'permission denied for table payments' };
+      let thrown;
+      await act(async () => {
+        try { await result.current.addPayment(pay); } catch (err) { thrown = err; }
+      });
+      expect(thrown?.message).toBe('permission denied for table payments');
+      expect(result.current.payments.length).toBe(before);
+    });
+
+    it('with no signed-in user, the save throws instead of looking done', async () => {
+      mockAuth.user = null;
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await expect(result.current.addPayment(pay)).rejects.toThrow('Not signed in');
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
+
+    it('reads each payment\'s night amounts', async () => {
+      mockData.payments[0].night_amounts = { '2025-01-01': 50, '2025-01-02': 50, '2025-01-03': 50 };
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.payments[0].nightAmounts).toEqual({ '2025-01-01': 50, '2025-01-02': 50, '2025-01-03': 50 });
     });
   });
 });

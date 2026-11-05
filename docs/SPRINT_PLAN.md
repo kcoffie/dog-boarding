@@ -87,10 +87,12 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 10. **#368 (added 2026-10-28, high, triage rule):** empty dog rows with no pet ID blocked a dog's first booking (`C63QhMFU`, 10/28–10/30: missing from the 10-28 roster and pay).
    - **Data fix run by Kate 2026-10-28 23:14 UTC:** 37 rows copied to `backup.dogs_removed_2026_10_28` and deleted; `C63QhMFU` re-queued. Verify after 00:15 UTC 10-29 (new dog with the booking's pet ID, $55, boarding saved; no "nothing shows it's this pet" notice), then close.
 11. **#370 (added 2026-10-29, high, triage rule): fixed by Fri 11-06, before the watch-first week of 11-09.** Mark as Paid can record the wrong payment: a partial payment pays an average per night (confirmed in #13 dry-run 2: $159.25 instead of $139.75), a double-click pays twice (confirmed on the second try: two rows for the same night, 283 ms apart), and a failed save closes the box as if it worked.
-    - **2026-10-31:** per-night table chosen (Kate). Design note and architect done, failing tests written: branch `fix/370-mark-as-paid`. Waits on Kate's Q1 and Q2, then build; Kate runs the migration before the merge; re-run UAT step 7.
+    - **2026-10-31:** per-night table chosen (Kate). Design note and architect done, failing tests written: branch `fix/370-mark-as-paid`.
+    - **2026-11-05:** Q1 and Q2 answered; built (ADR-011, migration 031). Kate runs the migration and its check script before the merge; then re-run UAT step 7. Locking paid nights split out as #389.
 12. **#338 portfolio, first pass (moved up 2026-10-29, Kate): by Mon 11-02 11:00 (Kate's local time),** for a job screening call where Kate shares her GitHub: README rewrite (stale counts), repo description/topics, profile README + pin; stale PRs and Dependabot alerts if time. The full #338 (write-ups, independent review) stays in Sprint 4.
     - **Done 2026-10-31:** README (#374, #376, #377), repo description and topics, profile README and pin, #285 and #291 closed. The product is named Pawroll (Kate); trademark and domain unchecked. Dependabot alerts left for the next lockfile change.
-    - **Still to do (2026-10-31):** repo description and profile wording (Kate). Pawroll URL and visible rename approved: Kate adds the domain, then one PR.
+    - **Still to do:** profile wording (Kate; the repo description was changed 2026-11-05). Pawroll URL and visible rename approved: Kate adds the domain, then one PR.
+13. **#389 (added 2026-11-05, high, triage rule): fixed by Thu 11-12, before UAT watch-first.** A paid night can't be edited (employee, worked-following-day, clearing it), in the database and the app; an employee with paid nights can only be deactivated; deleting a payment keeps it, marked deleted with who, when and an optional note, and frees its nights; no restore (pay again); payment history shows deleted payments behind a toggle. Design note and architect first; migration 032.
 
 **Also:**
 - Check the on-time 4am roster: Fri 10-23 and the first PST run Mon 11-02
@@ -155,7 +157,7 @@ Steps 7 (button #317, Sync History #311) and 8 (drift list #313) are separate wo
 | #313 | Step 8 |
 
 ## Backlog by priority
-- **High:** #370 (by 11-06), #326, #318, #324, #323, #295, #312, #314, #8, #9, #13, #260, #315, #337, #338
+- **High:** #370 (by 11-06), #389 (by 11-12), #326, #318, #324, #323, #295, #312, #314, #8, #9, #13, #260, #315, #337, #338
 - **Medium:** #343, #319, #7, #365, #367
 - **No priority label yet (`to-investigate`):** #294 (Sprint 2, small), #21 (waits on Kate's site check)
 - **Low:** #6, #17, #23, #24, #361 (four screens' real moments in the device's zone), #363 (admin-only project dashboard), a third watcher for when both schedulers die (no issue)

@@ -4,6 +4,23 @@ import { useAuth } from '../context/AuthContext';
 import { getEmployeeNameById, getEmployeeIdByName } from '../utils/employeeHelpers';
 import { businessToday } from '../utils/dateUtils';
 
+/** Postgres unique violation: payment_nights refuses a night that's already paid (#370). */
+const UNIQUE_VIOLATION = '23505';
+export const ALREADY_PAID_MESSAGE = 'One of these nights has already been paid. The list has been refreshed.';
+
+const toAppPayment = (p, employeeName) => ({
+  id: p.id,
+  employeeId: p.employee_id,
+  employeeName,
+  startDate: p.start_date,
+  endDate: p.end_date,
+  amount: parseFloat(p.amount),
+  nights: p.nights,
+  dates: p.dates || [],
+  nightAmounts: p.night_amounts || {},
+  paidDate: p.paid_date,
+});
+
 export function usePayments(employees = []) {
   const { user } = useAuth();
   const [payments, setPayments] = useState([]);
@@ -28,17 +45,7 @@ export function usePayments(employees = []) {
       if (error) throw error;
 
       // Transform from DB format to app format
-      setPayments(data.map(p => ({
-        id: p.id,
-        employeeId: p.employee_id,
-        employeeName: getEmployeeNameById(employees, p.employee_id),
-        startDate: p.start_date,
-        endDate: p.end_date,
-        amount: parseFloat(p.amount),
-        nights: p.nights,
-        dates: p.dates || [],
-        paidDate: p.paid_date,
-      })));
+      setPayments(data.map(p => toAppPayment(p, getEmployeeNameById(employees, p.employee_id))));
     } catch (err) {
       console.error('Error fetching payments:', err);
       setError(err.message);
@@ -61,8 +68,13 @@ export function usePayments(employees = []) {
     }
   }, [employees]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Saves one payment with each night's amount (`night_amounts`, whole cents in dollars). The
+   * database refuses a night that's already paid; then the list is refreshed and a clear error thrown.
+   * @requirements REQ-041
+   */
   const addPayment = async (payment) => {
-    if (!user) return null;
+    if (!user) throw new Error('Not signed in: the payment was not saved.');
 
     const employeeId = getEmployeeIdByName(employees, payment.employeeName);
     if (!employeeId) {
@@ -79,25 +91,20 @@ export function usePayments(employees = []) {
           amount: payment.amount,
           nights: payment.nights,
           dates: payment.dates,
+          night_amounts: payment.nightAmounts,
           paid_date: businessToday(),
           user_id: user.id,
         }])
         .select()
         .single();
 
+      if (error?.code === UNIQUE_VIOLATION) {
+        await fetchPayments();
+        throw new Error(ALREADY_PAID_MESSAGE);
+      }
       if (error) throw error;
 
-      const newPayment = {
-        id: data.id,
-        employeeId: data.employee_id,
-        employeeName: payment.employeeName,
-        startDate: data.start_date,
-        endDate: data.end_date,
-        amount: parseFloat(data.amount),
-        nights: data.nights,
-        dates: data.dates || [],
-        paidDate: data.paid_date,
-      };
+      const newPayment = toAppPayment(data, payment.employeeName);
 
       setPayments(prev => [newPayment, ...prev]);
       return newPayment;
@@ -127,19 +134,12 @@ export function usePayments(employees = []) {
     }
   };
 
-  const getPaidDatesForEmployee = useCallback((employeeName) => {
-    return payments
-      .filter(p => p.employeeName === employeeName)
-      .flatMap(p => p.dates);
-  }, [payments]);
-
   return {
     payments,
     loading,
     error,
     addPayment,
     deletePayment,
-    getPaidDatesForEmployee,
     refresh: fetchPayments,
   };
 }
