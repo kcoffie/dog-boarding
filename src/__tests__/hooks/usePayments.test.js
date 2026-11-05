@@ -428,6 +428,7 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
         try { await result.current.addPayment(pay); } catch (err) { thrown = err; }
       });
       expect(thrown?.message).toBe(ALREADY_PAID_MESSAGE);
+      expect(ALREADY_PAID_MESSAGE).toBe('One of these nights has already been paid. The list has been refreshed.');
       expect(result.current.payments.map((p) => p.id)).toContain('payment-other-tab');
     });
 

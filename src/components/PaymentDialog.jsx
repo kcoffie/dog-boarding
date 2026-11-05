@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 
 /**
  * Mark as Paid: each night shows its own amount and the payment is the sum of the ticked nights,
@@ -10,6 +10,7 @@ export default function PaymentDialog({ isOpen, employee, outstandingData, onCon
   const [openedFor, setOpenedFor] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // A ref, so a second click in the same tick sees it (state updates later); reset in `finally`.
   const savingRef = useRef(false);
 
   // Tick every night only when the box opens (or opens for someone else), adjusting state during
@@ -22,11 +23,6 @@ export default function PaymentDialog({ isOpen, employee, outstandingData, onCon
     setSaving(false);
     setError(null);
   }
-
-  // The saving guard is a ref so a second click in the same tick sees it; reset it on each open.
-  useEffect(() => {
-    if (openKey !== null) savingRef.current = false;
-  }, [openKey]);
 
   if (!isOpen || !outstandingData) return null;
 

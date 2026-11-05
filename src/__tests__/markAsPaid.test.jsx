@@ -158,6 +158,8 @@ describe('REQ-041: Mark as Paid (#370)', () => {
       expect(screen.queryByText('Mark as Paid')).not.toBeInTheDocument();
       const line = screen.getByRole('list', { name: 'Nights paid to someone else' });
       expect(line.textContent).toContain('is assigned to Nick but was paid to Kate');
+      // Starts with the night as a short date, e.g. "Oct 31 is assigned…"
+      expect(line.textContent).toMatch(/^[A-Z][a-z]{2} \d{1,2} is assigned/);
       expect(line.textContent).toContain('Delete Kate’s payment to change it.');
     });
 
@@ -177,6 +179,7 @@ describe('REQ-041: Mark as Paid (#370)', () => {
       await waitFor(() => expect(data.addPayment).toHaveBeenCalledTimes(1));
       expect(data.addPayment).toHaveBeenCalledWith(expect.objectContaining({
         employeeName: 'Nick', amount: 65, nights: 1, dates: [night], nightAmounts: { [night]: 65 },
+        startDate: night, endDate: night,
       }));
       await waitFor(() => expect(screen.queryByText('Pay Nick')).not.toBeInTheDocument());
     });
@@ -190,11 +193,17 @@ describe('REQ-041: Mark as Paid (#370)', () => {
         throw new Error('One of these nights has already been paid. The list has been refreshed.');
       });
       useData.mockReturnValue(data);
-      render(<PayrollPage />);
+      const { rerender } = render(<PayrollPage />);
       fireEvent.click(screen.getByText('Mark as Paid'));
       fireEvent.click(screen.getByText('Confirm Payment'));
       const alert = await screen.findByRole('alert');
       expect(alert.textContent).toBe('One of these nights has already been paid. The list has been refreshed.');
+      expect(screen.queryByText('Pay Nick')).not.toBeInTheDocument();
+
+      // Later data giving Nick a night to pay again must not pop the closed box back open.
+      useData.mockReturnValue(pageData());
+      rerender(<PayrollPage />);
+      expect(await screen.findByText('Mark as Paid')).toBeInTheDocument();
       expect(screen.queryByText('Pay Nick')).not.toBeInTheDocument();
     });
 
@@ -208,6 +217,7 @@ describe('REQ-041: Mark as Paid (#370)', () => {
       fireEvent.click(screen.getAllByRole('button', { name: 'Delete' }).at(-1));
       await waitFor(() => expect(deletePayment).toHaveBeenCalledWith('p1'));
       expect((await screen.findByRole('alert')).textContent).toBe('The payment was not deleted: network down');
+      expect(screen.queryByText('Delete Payment Record')).not.toBeInTheDocument();
     });
   });
 
