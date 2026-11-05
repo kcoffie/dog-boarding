@@ -7,7 +7,7 @@
 
 ## Context
 
-The dog boarding business manages all bookings through [agirlandyourdog.com](https://agirlandyourdog.com), a third-party platform. Qboard needs to display those bookings, track revenue, manage forms, and send daily roster notifications.
+The dog boarding business manages all bookings through a third-party booking site. The app needs to display those bookings, track revenue, manage forms, and send daily roster notifications.
 
 The central engineering question: **how do we get the data?**
 
@@ -16,7 +16,7 @@ The central engineering question: **how do we get the data?**
 ## Options considered
 
 ### Option 1: Official API
-agirlandyourdog.com provides no public API. No OAuth flow, no webhooks, no data export endpoint. This option does not exist.
+The booking site provides no public API. No OAuth flow, no webhooks, no data export endpoint. This option does not exist.
 
 ### Option 2: CSV/manual export
 The platform offers CSV exports, but only through manual user action in the UI. This requires a human to export and upload data every day. Not suitable for an autonomous system.

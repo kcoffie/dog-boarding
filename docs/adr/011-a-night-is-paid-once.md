@@ -7,7 +7,7 @@
 ---
 
 ## Context
-- UAT dry-run 2 (`docs/UAT_SCRIPT.md` Part D) confirmed three Mark as Paid bugs:
+- A test run of the Payroll page confirmed three Mark as Paid bugs:
   - A partial payment paid an average per night ($159.25 where $139.75 was owed).
   - A double-click saved two payments for one night, 283 ms apart.
   - A failed save closed the box as if it had worked.
