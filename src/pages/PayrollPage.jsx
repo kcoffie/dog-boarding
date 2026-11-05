@@ -244,11 +244,12 @@ export default function PayrollPage() {
         </div>
 
         {notices.length > 0 && (
-          <ul className="mb-4 space-y-2" aria-label="Nights paid to someone else">
-            {notices.map(({ night, assignedTo, paidTo }) => (
-              <li key={night} className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
-                {formatNoticeDate(night)} is assigned to {assignedTo} but was paid to {paidTo || 'a removed employee'}.
-                {' '}Delete {paidTo ? `${paidTo}’s` : 'that'} payment to change it.
+          <ul className="mb-4 space-y-2" aria-label="Nights that can't be paid here">
+            {notices.map((notice) => (
+              <li key={notice.night} className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+                {notice.kind === 'no-amount'
+                  ? `${formatNoticeDate(notice.night)} (${notice.assignedTo}) can't be paid yet: a dog boarded that night has no rate. Fix the rate on the booking site.`
+                  : `${formatNoticeDate(notice.night)} is assigned to ${notice.assignedTo} but was paid to ${notice.paidTo || 'a removed employee'}. Delete ${notice.paidTo ? `${notice.paidTo}’s` : 'that'} payment to change it.`}
               </li>
             ))}
           </ul>

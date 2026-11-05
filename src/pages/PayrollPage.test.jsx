@@ -187,9 +187,11 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
       });
 
       render(<PayrollPage />);
-      // Kate's dates are paid, so Kate shouldn't appear in outstanding
-      // Nick should still appear
-      expect(screen.getByText('Nick')).toBeInTheDocument();
+      // Kate's only nights (day1, day2) are paid: no card for her, only Nick's (day3)
+      const outstandingSection = screen.getByText('Outstanding Payments').closest('div').parentElement;
+      expect(outstandingSection.textContent).toContain('Nick');
+      expect(outstandingSection.textContent).not.toContain('Kate');
+      expect(screen.getAllByText('Mark as Paid')).toHaveLength(1);
     });
   });
 

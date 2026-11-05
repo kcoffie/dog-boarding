@@ -73,6 +73,19 @@ describe('REQ-041: Mark as Paid (#370)', () => {
       await act(async () => finish());
     });
 
+    it('Confirm is disabled and the backdrop does nothing during the save', async () => {
+      let finish;
+      const onCancel = vi.fn();
+      const onConfirm = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+      const { container } = render(dialog({ onConfirm, onCancel }));
+      fireEvent.click(screen.getByText('Confirm Payment'));
+      expect(screen.getByText('Saving…').closest('button')).toBeDisabled();
+      fireEvent.click(container.querySelector('.backdrop-blur-sm'));
+      expect(onCancel).not.toHaveBeenCalled();
+      await act(async () => finish());
+      expect(screen.getByText('Confirm Payment').closest('button')).not.toBeDisabled();
+    });
+
     it('Cancel is disabled during the save', async () => {
       let finish;
       const onConfirm = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
@@ -90,6 +103,15 @@ describe('REQ-041: Mark as Paid (#370)', () => {
       fireEvent.click(screen.getByText('Confirm Payment'));
       expect(await screen.findByText('One of these nights has already been paid.')).toBeInTheDocument();
       expect(screen.getByText('Pay Kate')).toBeInTheDocument();
+    });
+
+    it('a night paid elsewhere while the box is open drops out of the ticks and the amount', () => {
+      const { rerender } = render(dialog());
+      expect(screen.getByText('$318.50')).toBeInTheDocument();
+      rerender(dialog({ outstandingData: { nights: 1, amount: 139.75, dates: [FRI], nightCents: { [FRI]: 13975 } } }));
+      expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+      expect(screen.getByText('1 of 1')).toBeInTheDocument();
+      expect(screen.getAllByText('$139.75')).toHaveLength(2); // the row and the payment amount
     });
 
     it('a re-render with fresh data doesn’t re-tick a night left out', () => {
@@ -156,17 +178,35 @@ describe('REQ-041: Mark as Paid (#370)', () => {
       useData.mockReturnValue(pageData({ payments: [paidToKate] }));
       render(<PayrollPage />);
       expect(screen.queryByText('Mark as Paid')).not.toBeInTheDocument();
-      const line = screen.getByRole('list', { name: 'Nights paid to someone else' });
+      const line = screen.getByRole('list', { name: "Nights that can't be paid here" });
       expect(line.textContent).toContain('is assigned to Nick but was paid to Kate');
       // Starts with the night as a short date, e.g. "Oct 31 is assigned…"
       expect(line.textContent).toMatch(/^[A-Z][a-z]{2} \d{1,2} is assigned/);
       expect(line.textContent).toContain('Delete Kate’s payment to change it.');
     });
 
+    it('a night with a dog that has no rate is not payable as $0; a line says why', () => {
+      // useDogs reads a blank rate as parseFloat(null) = NaN
+      useData.mockReturnValue(pageData({
+        dogs: [{ id: '1', name: 'Luna', nightRate: NaN, dayRate: 0, active: true }],
+      }));
+      render(<PayrollPage />);
+      expect(screen.queryByText('Mark as Paid')).not.toBeInTheDocument();
+      const line = screen.getByRole('list', { name: "Nights that can't be paid here" });
+      expect(line.textContent).toMatch(/^[A-Z][a-z]{2} \d{1,2} \(Nick\) can't be paid yet: a dog boarded that night has no rate\./);
+    });
+
+    it('a night paid to a removed employee says so', () => {
+      useData.mockReturnValue(pageData({ payments: [{ ...paidToKate, employeeName: '' }] }));
+      render(<PayrollPage />);
+      const line = screen.getByRole('list', { name: "Nights that can't be paid here" });
+      expect(line.textContent).toContain('is assigned to Nick but was paid to a removed employee. Delete that payment to change it.');
+    });
+
     it('a night paid to the person it is assigned to shows no line', () => {
       useData.mockReturnValue(pageData({ payments: [{ ...paidToKate, employeeName: 'Nick' }] }));
       render(<PayrollPage />);
-      expect(screen.queryByRole('list', { name: 'Nights paid to someone else' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('list', { name: "Nights that can't be paid here" })).not.toBeInTheDocument();
       expect(screen.queryByText('Mark as Paid')).not.toBeInTheDocument();
     });
 

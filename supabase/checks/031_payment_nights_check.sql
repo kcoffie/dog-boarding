@@ -1,10 +1,13 @@
--- Check for migration 031 (#370). Run it in the Supabase SQL editor AFTER the migration.
--- It runs as a signed-in user (the SQL editor is `postgres`, which skips RLS), on 2099 dates, and
--- ROLLS BACK at the end: nothing is left behind. Expect every row in the result to say PASS.
+-- Check for migration 031 (#370). Run it in the Supabase SQL editor AFTER the migration, as one run.
+-- It runs as a signed-in user (the SQL editor is `postgres`, which skips RLS), on 2099 nights.
+--
+-- It ALWAYS ends in an error, on purpose: the error rolls everything back (nothing is left behind)
+-- and its message is the result, since the editor shows only the last statement. Expect:
+--   ERROR: check 031: ALL PASS (rolled back)
+-- followed by one line per case. "SOME FAILED" means stop: don't merge. There is no BEGIN: the
+-- editor runs the script as one implicit transaction, which an error rolls back whole.
 --
 -- @requirements REQ-041
-
-BEGIN;
 
 CREATE TEMP TABLE check_031 (n serial, name text, outcome text) ON COMMIT DROP;
 GRANT ALL ON check_031 TO authenticated, anon;
@@ -25,29 +28,29 @@ BEGIN
 
   -- 1. A valid two-night payment writes two nights with their own amounts.
   INSERT INTO payments (employee_id, amount, start_date, end_date, nights, dates, paid_date, night_amounts)
-  VALUES (emp, 318.50, '2099-01-15', '2099-01-16', 2, ARRAY['2099-01-15', '2099-01-16']::date[], '2099-01-20',
-          '{"2099-01-15": 139.75, "2099-01-16": 178.75}')
+  VALUES (emp, 318.50, '2099-06-15', '2099-06-16', 2, ARRAY['2099-06-15', '2099-06-16']::date[], '2099-06-20',
+          '{"2099-06-15": 139.75, "2099-06-16": 178.75}')
   RETURNING id INTO pay;
   SELECT count(*) INTO rows_now FROM payment_nights WHERE payment_id = pay;
   INSERT INTO check_031 (name, outcome) VALUES ('1 valid payment writes its 2 nights',
-    CASE WHEN rows_now = 2 AND (SELECT amount FROM payment_nights WHERE night = '2099-01-16') = 178.75
+    CASE WHEN rows_now = 2 AND (SELECT amount FROM payment_nights WHERE night = '2099-06-16') = 178.75
          THEN 'PASS' ELSE 'FAIL: ' || rows_now || ' nights' END);
 
   -- 2. A second payment for a paid night is refused with 23505, and no payment row survives.
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
-    VALUES (emp, 139.75, 1, ARRAY['2099-01-16']::date[], '2099-01-20', '{"2099-01-16": 139.75}');
+    VALUES (emp, 139.75, 1, ARRAY['2099-06-16']::date[], '2099-06-20', '{"2099-06-16": 139.75}');
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
-  SELECT count(*) INTO rows_now FROM payments WHERE '2099-01-16' = ANY (dates);
+  SELECT count(*) INTO rows_now FROM payments WHERE '2099-06-16' = ANY (dates);
   INSERT INTO check_031 (name, outcome) VALUES ('2 a paid night cannot be paid again (23505)',
     CASE WHEN state = '23505' AND rows_now = 1 THEN 'PASS' ELSE 'FAIL: ' || state || ', rows ' || rows_now END);
 
   -- 3. No night_amounts is refused.
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date)
-    VALUES (emp, 10, 1, ARRAY['2099-02-01']::date[], '2099-02-02');
+    VALUES (emp, 10, 1, ARRAY['2099-07-01']::date[], '2099-07-02');
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -57,7 +60,7 @@ BEGIN
   -- 4. Night amounts that don't add up to the payment are refused.
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
-    VALUES (emp, 100, 1, ARRAY['2099-02-01']::date[], '2099-02-02', '{"2099-02-01": 99.99}');
+    VALUES (emp, 100, 1, ARRAY['2099-07-01']::date[], '2099-07-02', '{"2099-07-01": 99.99}');
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -67,7 +70,7 @@ BEGIN
   -- 5. A night listed twice is refused.
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
-    VALUES (emp, 20, 2, ARRAY['2099-02-01', '2099-02-01']::date[], '2099-02-02', '{"2099-02-01": 20}');
+    VALUES (emp, 20, 2, ARRAY['2099-07-01', '2099-07-01']::date[], '2099-07-02', '{"2099-07-01": 20}');
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -77,7 +80,7 @@ BEGIN
   -- 6. Amounts must be whole cents, and keys must be the payment's nights.
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
-    VALUES (emp, 10.005, 1, ARRAY['2099-02-01']::date[], '2099-02-02', '{"2099-02-01": 10.005}');
+    VALUES (emp, 10.005, 1, ARRAY['2099-07-01']::date[], '2099-07-02', '{"2099-07-01": 10.005}');
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -85,7 +88,7 @@ BEGIN
     CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
-    VALUES (emp, 10, 1, ARRAY['2099-02-01']::date[], '2099-02-02', '{"2099-02-02": 10}');
+    VALUES (emp, 10, 1, ARRAY['2099-07-01']::date[], '2099-07-02', '{"2099-07-02": 10}');
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -93,11 +96,11 @@ BEGIN
     CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
 
   -- 7. A signed-in user can read nights but not write them.
-  SELECT count(*) INTO rows_now FROM payment_nights WHERE night BETWEEN '2099-01-01' AND '2099-12-31';
+  SELECT count(*) INTO rows_now FROM payment_nights WHERE night BETWEEN '2099-06-01' AND '2099-08-31';
   INSERT INTO check_031 (name, outcome) VALUES ('7a signed-in user reads payment_nights',
     CASE WHEN rows_now = 2 THEN 'PASS' ELSE 'FAIL: ' || rows_now END);
   BEGIN
-    INSERT INTO payment_nights (night, payment_id, amount) VALUES ('2099-03-01', pay, 1);
+    INSERT INTO payment_nights (night, payment_id, amount) VALUES ('2099-08-01', pay, 1);
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -113,7 +116,7 @@ BEGIN
 
   -- 8. A payment's nights and amounts can't be changed.
   BEGIN
-    UPDATE payments SET dates = ARRAY['2099-01-15']::date[] WHERE id = pay;
+    UPDATE payments SET dates = ARRAY['2099-06-15']::date[] WHERE id = pay;
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -125,6 +128,55 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
   INSERT INTO check_031 (name, outcome) VALUES ('8b update of amount refused',
+    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+
+  BEGIN
+    UPDATE payments SET night_amounts = '{"2099-06-15": 1, "2099-06-16": 317.50}' WHERE id = pay;
+    state := 'no error';
+  EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
+  END;
+  INSERT INTO check_031 (name, outcome) VALUES ('8c update of night_amounts refused',
+    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+  BEGIN
+    UPDATE payments SET nights = 5 WHERE id = pay;
+    state := 'no error';
+  EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
+  END;
+  INSERT INTO check_031 (name, outcome) VALUES ('8d update of nights refused',
+    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+
+  -- 8e. More shapes the trigger must refuse.
+  BEGIN
+    INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
+    VALUES (emp, 10, 2, ARRAY['2099-07-01']::date[], '2099-07-02', '{"2099-07-01": 10}');
+    state := 'no error';
+  EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
+  END;
+  INSERT INTO check_031 (name, outcome) VALUES ('8e nights not matching the dates refused',
+    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+  BEGIN
+    INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
+    VALUES (emp, 10, 1, ARRAY['2099-07-01']::date[], '2099-07-02', '[10]');
+    state := 'no error';
+  EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
+  END;
+  INSERT INTO check_031 (name, outcome) VALUES ('8f night_amounts that is not an object refused',
+    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+  BEGIN
+    INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
+    VALUES (emp, 0, 2, ARRAY['2099-07-01', '2099-07-02']::date[], '2099-07-03', '{"2099-07-01": -5, "2099-07-02": 5}');
+    state := 'no error';
+  EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
+  END;
+  INSERT INTO check_031 (name, outcome) VALUES ('8g negative night amount refused',
+    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+  BEGIN
+    INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
+    VALUES (emp, 10, 1, ARRAY['2099-07-01']::date[], '2099-07-02', '{"2099-07-01": "10"}');
+    state := 'no error';
+  EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
+  END;
+  INSERT INTO check_031 (name, outcome) VALUES ('8h night amount given as text refused',
     CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
 
   -- 9. Deleting the employee keeps the payment and its nights (employee_id goes NULL).
@@ -139,7 +191,7 @@ BEGIN
   SELECT count(*) INTO rows_now FROM payment_nights WHERE payment_id = pay;
   BEGIN
     INSERT INTO payments (amount, nights, dates, paid_date, night_amounts)
-    VALUES (139.75, 1, ARRAY['2099-01-16']::date[], '2099-01-21', '{"2099-01-16": 139.75}');
+    VALUES (139.75, 1, ARRAY['2099-06-16']::date[], '2099-06-21', '{"2099-06-16": 139.75}');
     state := 'ok';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -163,7 +215,17 @@ BEGIN
 END;
 $$;
 
+-- The result, as an error, so it shows in the editor and rolls everything back.
 RESET ROLE;
-SELECT n, name, outcome FROM check_031 ORDER BY n;
-
-ROLLBACK;
+DO $$
+DECLARE
+  failed integer;
+  report text;
+BEGIN
+  SELECT count(*) FILTER (WHERE outcome <> 'PASS'),
+         string_agg(n || '. ' || name || ': ' || outcome, E'\n' ORDER BY n)
+  INTO failed, report FROM check_031;
+  RAISE EXCEPTION E'check 031: % (rolled back)\n%',
+    CASE WHEN failed = 0 THEN 'ALL PASS' ELSE 'SOME FAILED (' || failed || ')' END, report;
+END;
+$$;

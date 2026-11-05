@@ -37,7 +37,8 @@ export function paidNightOwners(payments) {
 /**
  * What each employee is owed in a date range, in whole cents per night. Night pay and the daytime
  * credit are each rounded to the cent, then added (Kate, Q2). A night paid to someone else is left
- * out and reported as a notice (Q1, until #389 locks paid nights).
+ * out and reported as a notice (Q1, until #389 locks paid nights). So is a night whose amount isn't
+ * a number (a dog with no rate): it must never be payable as $0.
  * @param {{
  *   dates: string[],
  *   assigneeFor: (night: string) => string,
@@ -48,7 +49,8 @@ export function paidNightOwners(payments) {
  * @returns {{
  *   outstanding: Record<string, { nights: number, amount: number, daytimeAmount: number,
  *     dates: string[], nightCents: Record<string, number>, amountCents: number, daytimeCents: number }>,
- *   notices: Array<{ night: string, assignedTo: string, paidTo: string }>,
+ *   notices: Array<{ kind: 'paid-elsewhere', night: string, assignedTo: string, paidTo: string }
+ *     | { kind: 'no-amount', night: string, assignedTo: string }>,
  * }}
  */
 export function buildOutstanding({ dates, assigneeFor, nightNet, daytimeNet, payments }) {
@@ -60,12 +62,21 @@ export function buildOutstanding({ dates, assigneeFor, nightNet, daytimeNet, pay
     const employee = assigneeFor(night);
     if (!employee || employee === 'N/A') continue;
     if (Object.hasOwn(owners, night)) {
-      if (owners[night] !== employee) notices.push({ night, assignedTo: employee, paidTo: owners[night] });
+      if (owners[night] !== employee) {
+        notices.push({ kind: 'paid-elsewhere', night, assignedTo: employee, paidTo: owners[night] });
+      }
       continue;
     }
 
-    const daytime = toCents(daytimeNet(night));
-    const cents = toCents(nightNet(night)) + daytime;
+    const nightDollars = nightNet(night);
+    const daytimeDollars = daytimeNet(night);
+    if (!Number.isFinite(nightDollars) || !Number.isFinite(daytimeDollars)) {
+      notices.push({ kind: 'no-amount', night, assignedTo: employee });
+      continue;
+    }
+
+    const daytime = toCents(daytimeDollars);
+    const cents = toCents(nightDollars) + daytime;
     const row = outstanding[employee] ??= {
       nights: 0, dates: [], nightCents: {}, amountCents: 0, daytimeCents: 0,
     };

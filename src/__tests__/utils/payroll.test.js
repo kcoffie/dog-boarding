@@ -103,7 +103,7 @@ describe('REQ-041: payroll money rules (#370)', () => {
       });
       expect(outstanding.Nick).toBeUndefined();
       expect(outstanding.Kate.dates).toEqual([SAT, SUN]);
-      expect(notices).toEqual([{ night: FRI, assignedTo: 'Nick', paidTo: 'Kate' }]);
+      expect(notices).toEqual([{ kind: 'paid-elsewhere', night: FRI, assignedTo: 'Nick', paidTo: 'Kate' }]);
     });
 
     it('a night paid to a removed employee stays paid', () => {
@@ -113,7 +113,27 @@ describe('REQ-041: payroll money rules (#370)', () => {
         payments: [{ employeeName: '', dates: [FRI] }],
       });
       expect(outstanding).toEqual({});
-      expect(notices).toEqual([{ night: FRI, assignedTo: 'Kate', paidTo: '' }]);
+      expect(notices).toEqual([{ kind: 'paid-elsewhere', night: FRI, assignedTo: 'Kate', paidTo: '' }]);
+    });
+
+    it('a night whose amount is not a number (a dog with no rate) is never payable as $0', () => {
+      const { outstanding, notices } = buildOutstanding({
+        ...base,
+        nightNet: (d) => (d === SAT ? NaN : base.nightNet(d)),
+      });
+      expect(outstanding.Kate.dates).toEqual([FRI, SUN]);
+      expect(outstanding.Kate.amountCents).toBe(13975 + 3576);
+      expect(notices).toEqual([{ kind: 'no-amount', night: SAT, assignedTo: 'Kate' }]);
+    });
+
+    it('a daytime credit that is not a number blocks the night too', () => {
+      const { outstanding, notices } = buildOutstanding({
+        ...base,
+        dates: [SUN],
+        daytimeNet: () => NaN,
+      });
+      expect(outstanding).toEqual({});
+      expect(notices).toEqual([{ kind: 'no-amount', night: SUN, assignedTo: 'Kate' }]);
     });
 
     it('skips nights with no one assigned or N/A', () => {

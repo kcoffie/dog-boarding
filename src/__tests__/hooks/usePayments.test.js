@@ -50,7 +50,7 @@ vi.mock('../../lib/supabase', () => ({
   },
 }));
 
-import { usePayments, ALREADY_PAID_MESSAGE } from '../../hooks/usePayments';
+import { usePayments, ALREADY_PAID_MESSAGE, ALREADY_PAID_NO_REFRESH } from '../../hooks/usePayments';
 import { paidNightOwners } from '../../utils/payroll';
 
 const mockEmployees = [
@@ -430,6 +430,19 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       expect(thrown?.message).toBe(ALREADY_PAID_MESSAGE);
       expect(ALREADY_PAID_MESSAGE).toBe('One of these nights has already been paid. The list has been refreshed.');
       expect(result.current.payments.map((p) => p.id)).toContain('payment-other-tab');
+    });
+
+    it('if the refresh after an already-paid night fails, the message says to reload instead', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      mockData.error = { message: 'network down' };
+      mockInsertData.error = { code: '23505', message: 'duplicate key' };
+      let thrown;
+      await act(async () => {
+        try { await result.current.addPayment(pay); } catch (err) { thrown = err; }
+      });
+      expect(thrown?.message).toBe(ALREADY_PAID_NO_REFRESH);
+      expect(ALREADY_PAID_NO_REFRESH).toBe('One of these nights has already been paid. Reload the page to see it.');
     });
 
     it('any other database error is thrown as it is and nothing is added', async () => {

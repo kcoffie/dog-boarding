@@ -16,10 +16,18 @@
 --   WHERE table_schema = 'public' AND table_name = 'payments' AND column_name = 'dates';
 --                                                                     -- expect ARRAY, _date
 --
--- Undo (then revert the code):
+-- Undo (then revert the code). Only safe while no real payment depends on it:
 --   DROP TRIGGER payments_fill_nights ON payments;
 --   DROP TRIGGER payments_amounts_fixed ON payments;
---   ALTER TABLE payments ALTER COLUMN night_amounts DROP NOT NULL;
+--   DROP FUNCTION payment_fill_nights(); DROP FUNCTION payment_amounts_fixed();
+--   DROP TABLE payment_nights;
+--   ALTER TABLE payments DROP COLUMN night_amounts;
+--
+-- Drift check, any time after (expect 0 rows): a payment whose nights don't match payment_nights.
+--   SELECT p.id FROM payments p
+--   LEFT JOIN (SELECT payment_id, count(*) AS n, sum(amount) AS total FROM payment_nights GROUP BY payment_id) pn
+--     ON pn.payment_id = p.id
+--   WHERE pn.payment_id IS NULL OR pn.n <> cardinality(p.dates) OR pn.total <> p.amount;
 --
 -- @requirements REQ-041
 
@@ -77,11 +85,13 @@ BEGIN
     RAISE EXCEPTION 'payment %: night_amounts nights do not match the dates', NEW.id;
   END IF;
 
+  -- CASE, not OR: SQL doesn't promise OR stops early, and casting a non-number would raise a
+  -- less helpful error.
   SELECT count(*) INTO bad_values
   FROM jsonb_each(NEW.night_amounts) AS e(k, v)
-  WHERE jsonb_typeof(v) IS DISTINCT FROM 'number'
-     OR (v #>> '{}')::numeric < 0
-     OR (v #>> '{}')::numeric <> round((v #>> '{}')::numeric, 2);
+  WHERE CASE WHEN jsonb_typeof(v) = 'number'
+             THEN (v #>> '{}')::numeric < 0 OR (v #>> '{}')::numeric <> round((v #>> '{}')::numeric, 2)
+             ELSE true END;
   IF bad_values > 0 THEN
     RAISE EXCEPTION 'payment %: each night amount must be a whole number of cents, not negative', NEW.id;
   END IF;

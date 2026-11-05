@@ -164,6 +164,13 @@ async function runSmokeTests() {
   console.log('\n💰 Payment Operations');
 
   let testPayment;
+  // A run that died before cleanup leaves its 2099 payment behind; since #370 a paid night can't be
+  // paid again, so clear those nights first or every later run fails with 23505.
+  await test('Clear leftover 2099 test payments', async () => {
+    const { error } = await supabase.from('payments').delete().overlaps('dates', ['2099-01-15', '2099-01-16', '2099-01-17']);
+    if (error) throw error;
+  });
+
   await test('Create payment with user_id (REQ-041 bug fix)', async () => {
     const { data, error } = await supabase
       .from('payments')
@@ -277,19 +284,23 @@ async function runSmokeTests() {
   // ============================================
   console.log('\n🧹 Cleanup');
 
-  // Delete in reverse order of dependencies
-  for (const id of cleanup.payments) {
-    await supabase.from('payments').delete().eq('id', id);
-  }
-  for (const id of cleanup.boardings) {
-    await supabase.from('boardings').delete().eq('id', id);
-  }
-  for (const id of cleanup.dogs) {
-    await supabase.from('dogs').delete().eq('id', id);
-  }
-  await supabase.from('night_assignments').delete().eq('date', '2099-12-31');
+  // Delete in reverse order of dependencies; a failed delete is reported, not hidden.
+  const cleanupErrors = [];
+  const remove = async (table, column, value) => {
+    const { error } = await supabase.from(table).delete().eq(column, value);
+    if (error) cleanupErrors.push(`${table} ${value}: ${error.message}`);
+  };
+  for (const id of cleanup.payments) await remove('payments', 'id', id);
+  for (const id of cleanup.boardings) await remove('boardings', 'id', id);
+  for (const id of cleanup.dogs) await remove('dogs', 'id', id);
+  await remove('night_assignments', 'date', '2099-12-31');
 
-  console.log('  ✅ Test data cleaned up');
+  if (cleanupErrors.length > 0) {
+    testsFailed++;
+    console.log(`  ❌ Cleanup failed:\n    ${cleanupErrors.join('\n    ')}`);
+  } else {
+    console.log('  ✅ Test data cleaned up');
+  }
 
   // ============================================
   // SUMMARY

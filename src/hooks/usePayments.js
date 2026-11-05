@@ -7,6 +7,7 @@ import { businessToday } from '../utils/dateUtils';
 /** Postgres unique violation: payment_nights refuses a night that's already paid (#370). */
 const UNIQUE_VIOLATION = '23505';
 export const ALREADY_PAID_MESSAGE = 'One of these nights has already been paid. The list has been refreshed.';
+export const ALREADY_PAID_NO_REFRESH = 'One of these nights has already been paid. Reload the page to see it.';
 
 const toAppPayment = (p, employeeName) => ({
   id: p.id,
@@ -46,9 +47,11 @@ export function usePayments(employees = []) {
 
       // Transform from DB format to app format
       setPayments(data.map(p => toAppPayment(p, getEmployeeNameById(employees, p.employee_id))));
+      return true;
     } catch (err) {
       console.error('Error fetching payments:', err);
       setError(err.message);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -99,8 +102,8 @@ export function usePayments(employees = []) {
         .single();
 
       if (error?.code === UNIQUE_VIOLATION) {
-        await fetchPayments();
-        throw new Error(ALREADY_PAID_MESSAGE);
+        const refreshed = await fetchPayments();
+        throw new Error(refreshed ? ALREADY_PAID_MESSAGE : ALREADY_PAID_NO_REFRESH);
       }
       if (error) throw error;
 

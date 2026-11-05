@@ -57,8 +57,7 @@ describe.skipIf(!existsSync(MIGRATION))('migration 031: a night is paid once', (
       'cardinality(new.dates) <> (select count(distinct d) from unnest(new.dates) as d)',
       'new.nights is distinct from cardinality(new.dates)',
       'night_keys is distinct from night_dates',
-      "<> round((v #>> '{}')::numeric, 2)",
-      "(v #>> '{}')::numeric < 0",
+      "case when jsonb_typeof(v) = 'number' then (v #>> '{}')::numeric < 0 or (v #>> '{}')::numeric <> round((v #>> '{}')::numeric, 2) else true end",
       'total is distinct from new.amount',
     ]) expect(body).toContain(rule);
     // Every check raises before the insert.
@@ -86,11 +85,19 @@ describe.skipIf(!existsSync(MIGRATION))('migration 031: a night is paid once', (
 describe.skipIf(!existsSync(CHECK))('check script for 031', () => {
   const sql = existsSync(CHECK) ? code(CHECK) : '';
 
-  it('runs as a signed-in user and leaves nothing behind', () => {
-    expect(sql.trim().startsWith('begin;')).toBe(true);
+  it('runs as a signed-in user and always ends in an error that shows the result and rolls back', () => {
     expect(sql).toContain('set local role authenticated;');
-    expect(sql.trim().endsWith('rollback;')).toBe(true);
-    expect(sql).not.toContain('commit;');
+    expect(sql).not.toMatch(/\b(begin|commit|rollback);/);
+    expect(sql.trim()).toMatch(/raise exception e'check 031: % \(rolled back\)\\n%', case when failed = 0 then 'all pass' else 'some failed \(' \|\| failed \|\| '\)' end, report; end; \$\$;$/);
+  });
+
+  it('covers every rule the trigger enforces', () => {
+    for (const name of ['valid payment', '23505', 'missing night_amounts', 'sum mismatch', 'repeated night',
+      'part-cent', 'another night', 'reads payment_nights', 'direct payment_nights insert', 'direct payment_nights delete',
+      'update of dates', 'update of amount', 'update of night_amounts', 'update of nights', 'nights not matching',
+      'not an object', 'negative', 'as text', 'deleting the employee', 'delete frees', 'anon cannot read']) {
+      expect(sql).toContain(name);
+    }
   });
 
   it('only uses 2099 dates', () => {
