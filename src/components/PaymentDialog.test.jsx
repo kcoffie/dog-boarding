@@ -17,6 +17,7 @@ describe('REQ-041: PaymentDialog', () => {
       nights: 3,
       amount: 90, // $30 per night
       dates: ['2025-01-15', '2025-01-16', '2025-01-17'],
+      nightCents: { '2025-01-15': 3000, '2025-01-16': 3000, '2025-01-17': 3000 },
     },
     onConfirm: mockOnConfirm,
     onCancel: mockOnCancel,
@@ -229,7 +230,8 @@ describe('REQ-041: PaymentDialog', () => {
 
       expect(mockOnConfirm).toHaveBeenCalledWith(
         ['2025-01-15', '2025-01-16', '2025-01-17'],
-        90
+        90,
+        { '2025-01-15': 30, '2025-01-16': 30, '2025-01-17': 30 },
       );
     });
 
@@ -241,8 +243,9 @@ describe('REQ-041: PaymentDialog', () => {
       fireEvent.click(screen.getByText('Confirm Payment'));
 
       expect(mockOnConfirm).toHaveBeenCalledWith(
-        expect.arrayContaining(['2025-01-16', '2025-01-17']),
-        60
+        ['2025-01-16', '2025-01-17'],
+        60,
+        { '2025-01-16': 30, '2025-01-17': 30 },
       );
       expect(mockOnConfirm.mock.calls[0][0]).not.toContain('2025-01-15');
     });

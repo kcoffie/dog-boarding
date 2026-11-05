@@ -193,7 +193,6 @@ describe('REQ-064: screens use San Francisco today', () => {
       getNightAssignment: () => '',
       addPayment: vi.fn(),
       deletePayment: vi.fn(),
-      getPaidDatesForEmployee: () => [],
     });
   });
 

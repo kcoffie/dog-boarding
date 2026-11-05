@@ -198,7 +198,9 @@ Anything that writes data needs Kate's OK first and is put back afterwards. Don'
 - [ ] Reload in the middle of "Pay [name]": nothing is saved.
 - [ ] Send a Question shows **Sent!** only when it's delivered (it returns an error otherwise; REQ-700).
 
-**Code to confirm in the dry-run** (found while writing this script):
+**Fixed by #370 (ADR-011); re-check in step 7:** a partial payment pays each ticked night's own amount; a double-click saves once (the database also refuses a second payment for a paid night); a failed save keeps the box open with the error. A night assigned to one person but paid to another, or with a dog that has no rate, shows a line above the cards instead of being payable.
+
+**Found while writing this script (confirmed in dry-run 2, fixed by #370):**
 - **Unticking nights in "Pay [name]"** pays an average per-night amount × the ticked nights, not the sum of those nights (`src/components/PaymentDialog.jsx`). If nights pay different amounts, a partial payment is wrong.
 - **A double-click on "Confirm Payment"** may record two payments: nothing disables the button while it saves (`PaymentDialog.jsx`, `handleConfirm`).
 - **A failed save in "Confirm Payment"** only logs to the browser console; the box closes as if it worked (`src/pages/PayrollPage.jsx`, `confirmPayment`).

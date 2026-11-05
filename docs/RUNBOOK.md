@@ -249,6 +249,26 @@ WHERE status = 'processing'
 **Drain it by hand** (sends no WhatsApp): load `.env.local`, then `node scripts/drain-queue.js [maxItems]`. It runs the crons' own `runDetailSync()` until the queue is idle, one item every ~7–10 s. On 2026-10-16 it drained 880 → 0 in about 2 h (835 skipped as daycare/same-day, 39 boardings created).
 ---
 
+### Payroll: "One of these nights has already been paid" or a line above the Outstanding cards (#370)
+- **"One of these nights has already been paid. The list has been refreshed."** Someone else (another tab, a double-click, a retry) paid one of the ticked nights first. The database refused the second payment and nothing was saved. Check Payment History: the night is there under the first payment.
+- **"[date] is assigned to B but was paid to A."** The night was reassigned after it was paid. To pay B instead, delete A's payment (all its nights return to Outstanding) and pay again. Locking paid nights is #389.
+- **"[date] (name) can't be paid yet: a dog boarded that night has no rate."** Fix the rate on the booking site; the next sync brings it in. The app is never edited by hand.
+- **Any other error in the Pay box** (for example "night amounts add up to…" or "cannot be changed"): the database refused a malformed payment. Nothing was saved. Note the text and report it as a bug.
+- **Drift check** (expect 0 rows; Kate runs it in the SQL editor), from `supabase/migrations/031_payment_nights.sql`:
+  ```sql
+  SELECT p.id FROM payments p
+  LEFT JOIN (SELECT payment_id, count(*) AS n, sum(amount) AS total FROM payment_nights GROUP BY payment_id) pn
+    ON pn.payment_id = p.id
+  WHERE pn.payment_id IS NULL OR pn.n <> cardinality(p.dates) OR pn.total <> p.amount;
+  ```
+
+### Deploying #370 (migration 031), once
+1. Kate runs `supabase/migrations/031_payment_nights.sql` (after its two pre-checks: 0 payments, `dates` is `date[]`).
+2. Kate runs `supabase/checks/031_payment_nights_check.sql` as one run. It ends in an error by design; the text must start `check 031: ALL PASS (rolled back)`.
+3. Merge, then `npm run check:deploy`.
+4. Reload every open Payroll tab before paying anyone: an old tab's save is refused (no night amounts) and, on the old code, looks saved.
+5. Re-run UAT step 7.
+
 ## Manual operations
 
 ### Force a full sync (browser)
