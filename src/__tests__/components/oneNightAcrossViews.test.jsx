@@ -32,7 +32,6 @@ const data = (overrides = {}) => ({
   payments: [],
   addPayment: vi.fn(),
   deletePayment: vi.fn(),
-  getPaidDatesForEmployee: () => [],
   queryDaytimePetNames: vi.fn().mockResolvedValue({}),
   ...overrides,
 });

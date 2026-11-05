@@ -61,7 +61,6 @@ export function DataProvider({ children }) {
     loading: paymentsLoading,
     addPayment: addSupabasePayment,
     deletePayment: deleteSupabasePayment,
-    getPaidDatesForEmployee: getSupabasePaidDatesForEmployee,
   } = useSupabasePayments(supabaseEmployees);
 
   // Combine Supabase settings with employees into unified settings object
@@ -182,10 +181,6 @@ export function DataProvider({ children }) {
     }
   };
 
-  const getPaidDatesForEmployee = (employeeName) => {
-    return getSupabasePaidDatesForEmployee(employeeName);
-  };
-
   // Returns a map of { [dateStr]: string[] } of unique DC/PG pet names for each requested date.
   const queryDaytimePetNames = async (datesToQuery) => {
     if (!datesToQuery || datesToQuery.length === 0) return {};
@@ -240,7 +235,6 @@ export function DataProvider({ children }) {
     // Payment operations
     addPayment,
     deletePayment,
-    getPaidDatesForEmployee,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

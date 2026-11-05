@@ -5,6 +5,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import PaymentDialog from '../components/PaymentDialog';
 import { getDateRange, businessTodayDate, daysBetween, toDateStr } from '../utils/dateUtils';
 import { calculateDaytimeGross, calculateGross, calculateNet } from '../utils/calculations';
+import { buildOutstanding } from '../utils/payroll';
 
 export default function PayrollPage() {
   const {
@@ -16,7 +17,6 @@ export default function PayrollPage() {
     nightAssignments,
     addPayment,
     deletePayment,
-    getPaidDatesForEmployee,
   } = useData();
 
   // Default to last 30 days, but restore from localStorage if available
@@ -51,6 +51,7 @@ export default function PayrollPage() {
 
   const [payConfirm, setPayConfirm] = useState({ isOpen: false, employee: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, payment: null });
+  const [pageError, setPageError] = useState(null);
 
   const daysDiff = daysBetween(startDate, endDate) + 1;
   const dates = getDateRange(startDate, daysDiff);
@@ -107,34 +108,18 @@ export default function PayrollPage() {
     }).join(', ');
   };
 
-  // Calculate outstanding amounts per employee
-  const calculateOutstanding = () => {
-    const outstanding = {};
-
-    for (const dateStr of dates) {
-      const employeeName = getNightAssignment(dateStr);
-      if (employeeName && employeeName !== 'N/A') {
-        const paidDates = getPaidDatesForEmployee(employeeName);
-        if (paidDates.includes(dateStr)) continue;
-
-        const nightNet = calculateDayNet(dateStr);
-        const daytimeNet = computeDaytimeNet(dateStr);
-
-        if (!outstanding[employeeName]) {
-          outstanding[employeeName] = { nights: 0, amount: 0, daytimeAmount: 0, dates: [] };
-        }
-        outstanding[employeeName].nights += 1;
-        outstanding[employeeName].amount += nightNet + daytimeNet;
-        outstanding[employeeName].daytimeAmount += daytimeNet;
-        outstanding[employeeName].dates.push(dateStr);
-      }
-    }
-
-    return outstanding;
-  };
-
-  const outstanding = calculateOutstanding();
+  // What each employee is owed, in whole cents per night; a night paid to anyone is left out (#370)
+  const { outstanding, notices } = buildOutstanding({
+    dates,
+    assigneeFor: getNightAssignment,
+    nightNet: calculateDayNet,
+    daytimeNet: computeDaytimeNet,
+    payments,
+  });
   const outstandingEmployees = Object.keys(outstanding).sort();
+
+  const formatNoticeDate = (dateStr) =>
+    new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
@@ -146,38 +131,56 @@ export default function PayrollPage() {
   };
 
   const handleMarkAsPaid = (employeeName) => {
+    setPageError(null);
     setPayConfirm({ isOpen: true, employee: employeeName });
   };
 
-  const confirmPayment = async (selectedDates, amount) => {
-    if (selectedDates && selectedDates.length > 0) {
-      const sortedDates = [...selectedDates].sort();
-      try {
-        await addPayment({
-          employeeName: payConfirm.employee,
-          startDate: sortedDates[0],
-          endDate: sortedDates[sortedDates.length - 1],
-          amount: amount,
-          nights: selectedDates.length,
-          dates: selectedDates,
-        });
-      } catch (err) {
-        console.error('Failed to add payment:', err);
-      }
+  const payData = payConfirm.employee ? outstanding[payConfirm.employee] : null;
+
+  // A refresh after a refused save can leave the employee with nothing to pay: close the box,
+  // and the page shows the error instead.
+  useEffect(() => {
+    if (payConfirm.isOpen && !payData) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPayConfirm({ isOpen: false, employee: null });
     }
+  }, [payConfirm.isOpen, payData]);
+
+  // Throws on a failed save so the box stays open with the error (#370).
+  const confirmPayment = async (selectedDates, amount, nightAmounts) => {
+    const sortedDates = [...selectedDates].sort();
+    try {
+      await addPayment({
+        employeeName: payConfirm.employee,
+        startDate: sortedDates[0],
+        endDate: sortedDates[sortedDates.length - 1],
+        amount,
+        nights: sortedDates.length,
+        dates: sortedDates,
+        nightAmounts,
+      });
+    } catch (err) {
+      console.error('Failed to add payment:', err);
+      setPageError(err?.message || 'The payment was not saved.');
+      throw err;
+    }
+    setPageError(null);
     setPayConfirm({ isOpen: false, employee: null });
   };
 
   const handleDeletePayment = (payment) => {
+    setPageError(null);
     setDeleteConfirm({ isOpen: true, payment });
   };
 
+  // Delete is the way to fix a payment, so a failed delete must show (#370).
   const confirmDelete = async () => {
     if (deleteConfirm.payment) {
       try {
         await deletePayment(deleteConfirm.payment.id);
       } catch (err) {
         console.error('Failed to delete payment:', err);
+        setPageError(`The payment was not deleted: ${err?.message || 'unknown error'}`);
       }
     }
     setDeleteConfirm({ isOpen: false, payment: null });
@@ -188,7 +191,7 @@ export default function PayrollPage() {
     b.paidDate.localeCompare(a.paidDate)
   );
 
-  const totalOutstanding = Object.values(outstanding).reduce((sum, emp) => sum + emp.amount, 0);
+  const totalOutstanding = Object.values(outstanding).reduce((sum, emp) => sum + emp.amountCents, 0) / 100;
 
   return (
     <div className="space-y-6">
@@ -205,6 +208,12 @@ export default function PayrollPage() {
         onStartDateChange={setStartDate}
         onEndDateChange={setEndDate}
       />
+
+      {pageError && !(payConfirm.isOpen && payData) && (
+        <div role="alert" className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 text-sm text-red-700">
+          {pageError}
+        </div>
+      )}
 
       {/* Outstanding Summary Card */}
       {totalOutstanding > 0 && (
@@ -233,6 +242,18 @@ export default function PayrollPage() {
           </div>
           <h2 className="text-lg font-semibold text-slate-900">Outstanding Payments</h2>
         </div>
+
+        {notices.length > 0 && (
+          <ul className="mb-4 space-y-2" aria-label="Nights that can't be paid here">
+            {notices.map((notice) => (
+              <li key={notice.night} className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+                {notice.kind === 'no-amount'
+                  ? `${formatNoticeDate(notice.night)} (${notice.assignedTo}) can't be paid yet: a dog boarded that night has no rate. Fix the rate on the booking site.`
+                  : `${formatNoticeDate(notice.night)} is assigned to ${notice.assignedTo} but was paid to ${notice.paidTo || 'a removed employee'}. Delete ${notice.paidTo ? `${notice.paidTo}’s` : 'that'} payment to change it.`}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {outstandingEmployees.length === 0 ? (
           <div className="text-center py-8">
@@ -263,7 +284,7 @@ export default function PayrollPage() {
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500">Night pay</span>
-                      <span className="font-semibold text-slate-700">{formatCurrency(emp.amount - emp.daytimeAmount)}</span>
+                      <span className="font-semibold text-slate-700">{formatCurrency((emp.amountCents - emp.daytimeCents) / 100)}</span>
                     </div>
                     {emp.daytimeAmount > 0 && (
                       <div className="flex justify-between items-center">
@@ -402,7 +423,7 @@ export default function PayrollPage() {
       <PaymentDialog
         isOpen={payConfirm.isOpen}
         employee={payConfirm.employee}
-        outstandingData={payConfirm.employee ? outstanding[payConfirm.employee] : null}
+        outstandingData={payData}
         onConfirm={confirmPayment}
         onCancel={() => setPayConfirm({ isOpen: false, employee: null })}
         formatCurrency={formatCurrency}

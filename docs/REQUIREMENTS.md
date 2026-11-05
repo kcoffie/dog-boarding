@@ -425,8 +425,14 @@ Users can record payments to employees.
 - Select All / Deselect All buttons available
 - Payment records date, employee, and amount
 - Paid dates no longer show in outstanding
+- Each night shows its own amount; a payment is the sum of the ticked nights, in whole cents (#370)
+- Night pay and the daytime credit are each rounded to the cent (as displayed), then added (#370, Q2)
+- A night is paid once: the database refuses a second payment for a paid night, whoever it's for, and a payment's nights and amounts can't be updated (#370, ADR-011, migration 031)
+- A night assigned to one person but paid to another is left out of Outstanding, with a line saying who it was paid to (#370, Q1; locking paid nights is #389)
+- One click saves once: Confirm and Cancel are disabled while saving
+- A failed save keeps the box open and shows the error; a failed delete shows an error
 
-**Tests:** `src/components/PaymentDialog.test.jsx`, `src/pages/PayrollPage.test.jsx`
+**Tests:** `src/components/PaymentDialog.test.jsx`, `src/pages/PayrollPage.test.jsx`, `src/__tests__/markAsPaid.test.jsx`, `src/__tests__/utils/payroll.test.js`, `src/__tests__/hooks/usePayments.test.js`, `src/__tests__/paymentNightsMigration.test.js`
 
 ---
 
