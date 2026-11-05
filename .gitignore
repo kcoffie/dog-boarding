@@ -47,3 +47,6 @@ WHOHOW.md
 # Stryker
 out/
 .stryker-tmp/
+
+# Private working notes (separate private repo, kcoffie/dog-boarding-notes)
+notes/

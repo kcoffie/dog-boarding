@@ -4,12 +4,12 @@
  * Pre-Deploy Smoke Test
  *
  * Tests critical database operations against a real database before deploying.
- * Run this against your staging/UAT database before deploying to production.
+ * Run this against a test database before deploying to production.
  *
  * Usage:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run test:smoke
  *
- * Or use the UAT database:
+ * Or use the test database:
  *   npm run test:smoke:uat
  */
 

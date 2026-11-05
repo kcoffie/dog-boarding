@@ -4,7 +4,7 @@ dog-boarding is built by one person directing an AI coding agent, for a real cli
 
 | Role | Gate (when) | Mechanism | Blocks |
 |---|---|---|---|
-| TPM | Start of every session | `docs/SESSION_HANDOFF.md` ("▶ START HERE"), `docs/SPRINT_PLAN.md`, `docs/REQUIREMENTS.md` | Scope creep, lost decisions, starting on a stale baseline |
+| TPM | Start of every session | the handoff and sprint plan in the private working notes (`notes/`, a separate private repo, git-ignored here), and `docs/REQUIREMENTS.md` | Scope creep, lost decisions, starting on a stale baseline |
 | Architect | Before a new scheduled job, a new external service or secret, a new table, or a change to what gets sent to WhatsApp | A design note (below), then the `architect` agent (`.claude/agents/architect.md`) challenges it with fresh context | Choices that are expensive to undo; jobs that can fail silently |
 | Reviewer | Before every PR is opened | The `reviewer` agent (fresh context, didn't write the code): correctness against REQUIREMENTS, then a **separate test audit**, then ops and security | Bugs, tests that test nothing, failures nobody hears about |
 | QA | Every push and PR | CI (`ci.yml`): lint, `check:requirements`, tests, build. `npm run mutate` (Stryker, `mutation.yml` on main) measures whether the tests would notice a bug (below). After each merge, `npm run check:deploy` confirms production changed (REQ-654) | Regressions, weak tests, a merge that never reached production |

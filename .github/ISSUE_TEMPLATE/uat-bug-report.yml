@@ -1,7 +1,7 @@
-name: UAT Bug Report
-description: Report a bug found during UAT testing
-title: "[UAT Bug]: "
-labels: ["bug", "uat"]
+name: Bug Report
+description: Report a bug
+title: "[Bug]: "
+labels: ["bug"]
 body:
   - type: markdown
     attributes:

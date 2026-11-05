@@ -41,7 +41,7 @@ The repo is public, so every GitHub Actions run log is public too: anyone can re
 5. **What stays public:** booking IDs (e.g. `C63QhMFU`), counts, step names, pass/fail, the error's class, and **"alert delivered: yes/no"** (the entry script prints it, since `alertAndLog`'s "alert NOT delivered" and `sendAlert`'s errors, `alertKate.js:43, 60, 66, 94`, go private; Telegram is unaffected). Private: pet names, appointment titles, pet or client IDs, prices, HTML, boarding UUIDs, the final report (`integration-check.js:572`) and Playwright's error text (`:535`, it carries URLs and selectors) (Q1). The workflow never sets `DEBUG=pw:*`.
 6. **30-day delete:** after its last flush, each run deletes `job_logs` rows older than 30 days **for every job**, so a job that stops or is retired (#318 step 6) doesn't leave rows behind (Q2). One query per run, no new scheduler.
 7. **If saving fails** (Supabase down, a bad key): the job carries on and prints one public line, "detail log not saved: <error code>"; it doesn't fail the run (the job's own outcome is what Kate depends on). ops-watch catches it (below).
-8. **Docs:** REQ-662 (new), RUNBOOK "where a job's detailed log is", `docs/SESSION_HANDOFF.md` reading recipe, ADR-011.
+8. **Docs:** REQ-662 (new), RUNBOOK "where a job's detailed log is", the handoff's reading recipe (private notes), ADR-011.
 
 **Not changed:** Vercel functions (`api/`), Sync Now in the browser, Telegram alerts, `cron_health`, `sync_logs`. Their logs aren't public.
 
