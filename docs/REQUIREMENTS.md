@@ -1026,7 +1026,7 @@ page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hob
 ### REQ-402: Code Review & Hardening
 **Added:** v2.4 | **Status:** Complete
 
-Audit and harden the application before wider use.
+Audit and harden the application.
 
 **Acceptance Criteria:**
 **Security audit complete (March 2, 2026). Full findings are in the private working notes.**

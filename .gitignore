@@ -48,5 +48,5 @@ WHOHOW.md
 out/
 .stryker-tmp/
 
-# Private working notes (separate private repo, kcoffie/dog-boarding-notes)
+# Private working notes (separate private repo)
 notes/

@@ -266,7 +266,7 @@ WHERE status = 'processing'
 1. Kate runs `supabase/migrations/031_payment_nights.sql` (after its two pre-checks: 0 payments, `dates` is `date[]`).
 2. Kate runs `supabase/checks/031_payment_nights_check.sql` as one run. It ends in an error by design; the text must start `check 031: ALL PASS (rolled back)`.
 3. Merge, then `npm run check:deploy`.
-4. Reload every open Payroll tab before paying anyone: an old tab's save is refused (no night amounts) and, on the old code, looks saved.
+4. Reload every open Payroll tab before recording a payment: an old tab's save is refused (no night amounts) and, on the old code, looks saved.
 5. Re-run the Payroll step of the Phase 1 script (private notes).
 
 ## Manual operations

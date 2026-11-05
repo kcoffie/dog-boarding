@@ -1,4 +1,4 @@
-name: Bug Report
+name: Bug Report (detailed)
 description: Report a bug
 title: "[Bug]: "
 labels: ["bug"]
@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for testing! Please fill out this form to report a bug.
+        Please fill out this form to report a bug.
 
   - type: dropdown
     id: feature-area
@@ -58,7 +58,7 @@ body:
       description: How can we reproduce this bug?
       placeholder: |
         1. Go to Payroll page
-        2. Click 'Mark as Paid' for Kate
+        2. Click 'Mark as Paid' for an employee
         3. Select all dates
         4. Click 'Confirm Payment'
         5. Nothing happens

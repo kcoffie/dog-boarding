@@ -7,7 +7,7 @@ import { useData } from '../context/DataContext';
 vi.mock('../context/DataContext', () => ({ useData: vi.fn() }));
 
 /**
- * #370: expected amounts are worked out by hand from UAT dry-run 2:
+ * #370: expected amounts are worked out by hand from a test run of the Payroll page:
  * Fri 10-16 nets $139.75 and Sat 10-17 nets $178.75, so paying 10-16 alone is $139.75.
  * @requirements REQ-041
  */
