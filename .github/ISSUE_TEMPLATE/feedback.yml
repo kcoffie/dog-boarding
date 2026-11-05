@@ -1,7 +1,7 @@
-name: UAT Feedback
-description: General feedback or suggestions from UAT testing
-title: "[UAT Feedback]: "
-labels: ["feedback", "uat"]
+name: Feedback
+description: General feedback or suggestions
+title: "[Feedback]: "
+labels: ["feedback"]
 body:
   - type: markdown
     attributes:

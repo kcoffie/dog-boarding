@@ -1,10 +1,10 @@
 # Engineering process: team gates
 
-dog-boarding is built by one person directing an AI coding agent, for a real client who relies on it running unattended. A persona prompt ("you are a senior engineer") doesn't add expertise. A team works because the reviewer didn't write the code, checks happen at fixed moments, and rules are enforced by machines. This repo copies that structure (from the dash and dos projects, 2026-10). Each role is a **gate**: a moment, a mechanism, and what it blocks.
+dog-boarding is built by one person directing an AI coding agent, and it has to run unattended. A persona prompt ("you are a senior engineer") doesn't add expertise. A team works because the reviewer didn't write the code, checks happen at fixed moments, and rules are enforced by machines. This repo copies that structure (from the dash and dos projects, 2026-10). Each role is a **gate**: a moment, a mechanism, and what it blocks.
 
 | Role | Gate (when) | Mechanism | Blocks |
 |---|---|---|---|
-| TPM | Start of every session | `docs/SESSION_HANDOFF.md` ("▶ START HERE"), `docs/SPRINT_PLAN.md`, `docs/REQUIREMENTS.md` | Scope creep, lost decisions, starting on a stale baseline |
+| TPM | Start of every session | the handoff and sprint plan in the private working notes (`notes/`, a separate private repo, git-ignored here; if `notes/` is missing, as in a fresh clone or a worktree, clone it before starting), and `docs/REQUIREMENTS.md` | Scope creep, lost decisions, starting on a stale baseline |
 | Architect | Before a new scheduled job, a new external service or secret, a new table, or a change to what gets sent to WhatsApp | A design note (below), then the `architect` agent (`.claude/agents/architect.md`) challenges it with fresh context | Choices that are expensive to undo; jobs that can fail silently |
 | Reviewer | Before every PR is opened | The `reviewer` agent (fresh context, didn't write the code): correctness against REQUIREMENTS, then a **separate test audit**, then ops and security | Bugs, tests that test nothing, failures nobody hears about |
 | QA | Every push and PR | CI (`ci.yml`): lint, `check:requirements`, tests, build. `npm run mutate` (Stryker, `mutation.yml` on main) measures whether the tests would notice a bug (below). After each merge, `npm run check:deploy` confirms production changed (REQ-654) | Regressions, weak tests, a merge that never reached production |

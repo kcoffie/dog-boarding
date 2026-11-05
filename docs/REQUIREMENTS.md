@@ -1026,10 +1026,10 @@ page. Replaces reliance on ephemeral Vercel logs (which expire in ~1 hour on Hob
 ### REQ-402: Code Review & Hardening
 **Added:** v2.4 | **Status:** Complete
 
-Audit and harden the application before wider use.
+Audit and harden the application.
 
 **Acceptance Criteria:**
-**Security audit complete (March 2, 2026). See `docs/archive/REQ-402-security-audit.md` for full findings.**
+**Security audit complete (March 2, 2026). Full findings are in the private working notes.**
 
 MUST-FIX:
 - [x] MUST-1: Remove VITE_ prefix from `EXTERNAL_SITE_USERNAME` / `EXTERNAL_SITE_PASSWORD`; move credential reading to server-side proxy only (affects sync-proxy.js, auth.js, sync.js, cron-auth.js) — commit 80ff992. ⚠️ **Rename env vars in Vercel dashboard before next deploy.**
