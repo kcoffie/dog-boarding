@@ -4,7 +4,9 @@
 -- It ALWAYS ends in an error, on purpose: the error rolls everything back (nothing is left behind)
 -- and its message is the result, since the editor shows only the last statement. Expect:
 --   ERROR: check 031: ALL PASS (rolled back)
--- followed by one line per case. "SOME FAILED" means stop: don't merge. There is no BEGIN: the
+-- followed by one line per case. "SOME FAILED" means stop: don't merge.
+-- Updated for migration 032 (#389): payments need an assignment for each night, updates are refused
+-- with QB003, an employee with a payment can't be deleted, and a payment is deleted softly. There is no BEGIN: the
 -- editor runs the script as one implicit transaction, which an error rolls back whole.
 --
 -- @requirements REQ-041
@@ -25,6 +27,8 @@ DECLARE
   state text;
 BEGIN
   INSERT INTO employees (name, active) VALUES ('zz-check-031', true) RETURNING id INTO emp;
+  -- 032: each paid night must be assigned to the person paid.
+  INSERT INTO night_assignments (date, employee_id) VALUES ('2099-06-15', emp), ('2099-06-16', emp);
 
   -- 1. A valid two-night payment writes two nights with their own amounts.
   INSERT INTO payments (employee_id, amount, start_date, end_date, nights, dates, paid_date, night_amounts)
@@ -121,14 +125,14 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
   INSERT INTO check_031 (name, outcome) VALUES ('8a update of dates refused',
-    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+    CASE WHEN state = 'QB003' THEN 'PASS' ELSE 'FAIL: ' || state END);
   BEGIN
     UPDATE payments SET amount = 1 WHERE id = pay;
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
   INSERT INTO check_031 (name, outcome) VALUES ('8b update of amount refused',
-    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+    CASE WHEN state = 'QB003' THEN 'PASS' ELSE 'FAIL: ' || state END);
 
   BEGIN
     UPDATE payments SET night_amounts = '{"2099-06-15": 1, "2099-06-16": 317.50}' WHERE id = pay;
@@ -136,14 +140,14 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
   INSERT INTO check_031 (name, outcome) VALUES ('8c update of night_amounts refused',
-    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+    CASE WHEN state = 'QB003' THEN 'PASS' ELSE 'FAIL: ' || state END);
   BEGIN
     UPDATE payments SET nights = 5 WHERE id = pay;
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
   INSERT INTO check_031 (name, outcome) VALUES ('8d update of nights refused',
-    CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
+    CASE WHEN state = 'QB003' THEN 'PASS' ELSE 'FAIL: ' || state END);
 
   -- 8e. More shapes the trigger must refuse.
   BEGIN
@@ -179,19 +183,24 @@ BEGIN
   INSERT INTO check_031 (name, outcome) VALUES ('8h night amount given as text refused',
     CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
 
-  -- 9. Deleting the employee keeps the payment and its nights (employee_id goes NULL).
-  DELETE FROM employees WHERE id = emp;
+  -- 9. An employee with a payment can't be deleted (032: RESTRICT); the paid nights stay.
+  BEGIN
+    DELETE FROM employees WHERE id = emp;
+    state := 'no error';
+  EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
+  END;
   SELECT count(*) INTO rows_now FROM payment_nights WHERE payment_id = pay;
-  INSERT INTO check_031 (name, outcome) VALUES ('9 deleting the employee keeps the paid nights',
-    CASE WHEN rows_now = 2 AND (SELECT employee_id FROM payments WHERE id = pay) IS NULL
-         THEN 'PASS' ELSE 'FAIL: ' || rows_now || ' nights' END);
+  -- Refused by the paid-night lock (QB001, reached first through the cascade) or by RESTRICT (23503).
+  INSERT INTO check_031 (name, outcome) VALUES ('9 an employee with a payment cannot be deleted',
+    CASE WHEN state IN ('23503', 'QB001') AND rows_now = 2 THEN 'PASS' ELSE 'FAIL: ' || state || ', ' || rows_now || ' nights' END);
 
-  -- 10. Deleting the payment frees its nights, and the night can then be paid again.
-  DELETE FROM payments WHERE id = pay;
+  -- 10. Deleting the payment (soft, 032) frees its nights, and the night can then be paid again.
+  -- No user id in this check's claims, so it names who deleted it, as the SQL editor must.
+  UPDATE payments SET deleted_at = now(), deleted_by_email = 'check@example.invalid' WHERE id = pay;
   SELECT count(*) INTO rows_now FROM payment_nights WHERE payment_id = pay;
   BEGIN
-    INSERT INTO payments (amount, nights, dates, paid_date, night_amounts)
-    VALUES (139.75, 1, ARRAY['2099-06-16']::date[], '2099-06-21', '{"2099-06-16": 139.75}');
+    INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
+    VALUES (emp, 139.75, 1, ARRAY['2099-06-16']::date[], '2099-06-21', '{"2099-06-16": 139.75}');
     state := 'ok';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
