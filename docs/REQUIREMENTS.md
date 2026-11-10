@@ -341,9 +341,11 @@ Users can assign employees to overnight shifts.
 - Dropdown shows only active employees
 - "N/A" option for nights with no employee needed
 - Selection persists after page refresh
-- Error feedback shown if save fails
+- Error feedback shown if save fails, for the employee and for "worked following day" alike, with the reason in words
+- One assignment per night: a second row for a night is refused by the database (#389, migration 032)
+- A paid night is locked: shown as the employee with "Paid <date>" and no dropdown or checkbox; the database refuses changing its employee, its "worked following day" or its date, or clearing it, while a live payment covers it (#389, ADR-012)
 
-**Tests:** `src/components/EmployeeDropdown.test.jsx`, `src/__tests__/hooks/useNightAssignments.test.js`
+**Tests:** `src/components/EmployeeDropdown.test.jsx`, `src/__tests__/hooks/useNightAssignments.test.js`, `src/__tests__/paidNightsUi.test.jsx`, `src/__tests__/context/DataContext.paidNights.test.jsx`, `src/__tests__/paidNightsMigration.test.js`
 
 ---
 
@@ -428,11 +430,12 @@ Users can record payments to employees.
 - Each night shows its own amount; a payment is the sum of the ticked nights, in whole cents (#370)
 - Night pay and the daytime credit are each rounded to the cent (as displayed), then added (#370, Q2)
 - A night is paid once: the database refuses a second payment for a paid night, whoever it's for, and a payment's nights and amounts can't be updated (#370, ADR-011, migration 031)
-- A night assigned to one person but paid to another is left out of Outstanding, with a line saying who it was paid to (#370, Q1; locking paid nights is #389)
+- A night assigned to one person but paid to another is left out of Outstanding, with a line saying who it was paid to (#370, Q1). Since #389 this can't arise for a new payment; the line stays as a guard
+- A payment is refused unless each night is assigned to the person paid, with the same "worked following day" ticks the page priced it with; the page then refreshes and says a night changed (#389, Q3, migration 032)
 - One click saves once: Confirm and Cancel are disabled while saving
 - A failed save keeps the box open and shows the error; a failed delete shows an error
 
-**Tests:** `src/components/PaymentDialog.test.jsx`, `src/pages/PayrollPage.test.jsx`, `src/__tests__/markAsPaid.test.jsx`, `src/__tests__/utils/payroll.test.js`, `src/__tests__/hooks/usePayments.test.js`, `src/__tests__/paymentNightsMigration.test.js`
+**Tests:** `src/components/PaymentDialog.test.jsx`, `src/pages/PayrollPage.test.jsx`, `src/__tests__/markAsPaid.test.jsx`, `src/__tests__/utils/payroll.test.js`, `src/__tests__/hooks/usePayments.test.js`, `src/__tests__/paymentNightsMigration.test.js`, `src/__tests__/utils/paidNights.test.js`, `src/__tests__/paidNightsUi.test.jsx`, `src/__tests__/paidNightsMigration.test.js`
 
 ---
 
@@ -446,8 +449,14 @@ Users can view and manage payment history.
 - Each payment shows date, employee, amount
 - Can delete payment records
 - Deletion confirmation required
+- Deleting is a soft delete with an optional note: the payment stays, marked deleted with when and who (the signed-in email, set by the database), and its nights become unpaid and payable again (#389, ADR-012)
+- A hard delete of a payment is refused by the database, for every role (#389)
+- A deleted payment can't be restored or changed; to undo, pay again (#389)
+- Anyone signed in can delete a payment until roles exist (#6)
+- "Show deleted (n)" shows deleted payments struck through, with "Deleted <date, time> by <email>: <note>" in San Francisco time; they have no Delete
+- Every reader of payments skips deleted ones: Outstanding, totals, the history and the paid-night lock (#389)
 
-**Tests:** `src/pages/PayrollPage.test.jsx`
+**Tests:** `src/pages/PayrollPage.test.jsx`, `src/__tests__/hooks/usePayments.test.js`, `src/__tests__/paidNightsUi.test.jsx`, `src/__tests__/utils/paidNights.test.js`, `src/__tests__/context/DataContext.paidNights.test.jsx`, `src/__tests__/paidNightsMigration.test.js`
 
 ---
 
@@ -504,13 +513,15 @@ Users can manage the employee list.
 
 **Acceptance Criteria:**
 - Can add new employees by name
-- Can delete employees
+- Can delete employees who have never been paid; deleting one removes their (unpaid) night assignments in the same step (#389, Q4)
+- An employee with any payment, live or deleted, can't be deleted, only deactivated: no Delete, "Has payments: deactivate instead", and the database refuses it (#389, Q1)
+- A refused delete is shown, not just logged
 - Can toggle employee active status
 - No duplicate names allowed
 - Active employees appear in matrix dropdown
 - Inactive employees hidden from dropdown but shown if currently selected
 
-**Tests:** `src/pages/SettingsPage.test.jsx`
+**Tests:** `src/pages/SettingsPage.test.jsx`, `src/__tests__/paidNightsUi.test.jsx`, `src/__tests__/context/DataContext.paidNights.test.jsx`, `src/__tests__/utils/paidNights.test.js`, `src/__tests__/paidNightsMigration.test.js`
 
 ---
 

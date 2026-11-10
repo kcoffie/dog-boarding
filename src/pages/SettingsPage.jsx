@@ -128,7 +128,7 @@ function CronHealthCard({ cronHealth, loading }) {
 }
 
 export default function SettingsPage() {
-  const { settings, settingsLoading, sortEmployees, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
+  const { settings, settingsLoading, sortEmployees, setNetPercentage: saveNetPercentage, addEmployee, deleteEmployee, employeeHasPayments, toggleEmployeeActive, reorderEmployees, nightAssignments } = useData();
   const { updatePassword } = useAuth();
   const { cronHealth, loading: cronHealthLoading } = useCronHealth();
 
@@ -146,6 +146,7 @@ export default function SettingsPage() {
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [employeeError, setEmployeeError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, employeeName: '', hasAssignments: false });
+  const [deleteError, setDeleteError] = useState('');
   const [draggedIndex, setDraggedIndex] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -208,13 +209,16 @@ export default function SettingsPage() {
     setDeleteConfirm({ isOpen: true, employeeName, hasAssignments });
   };
 
+  // A refused delete (the employee has payments, #389) is shown, not just logged.
   const handleConfirmDelete = async () => {
+    setDeleteError('');
     try {
       await deleteEmployee(deleteConfirm.employeeName);
-      setDeleteConfirm({ isOpen: false, employeeName: '', hasAssignments: false });
     } catch (err) {
       console.error('Failed to delete employee:', err);
+      setDeleteError(err?.message || 'The employee was not deleted.');
     }
+    setDeleteConfirm({ isOpen: false, employeeName: '', hasAssignments: false });
   };
 
   const handleCancelDelete = () => {
@@ -421,6 +425,12 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {deleteError && (
+          <div role="alert" className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+            {deleteError}
+          </div>
+        )}
+
         {/* Employee List */}
         {settings.employees.length === 0 ? (
           <div className="text-center py-8">
@@ -467,12 +477,17 @@ export default function SettingsPage() {
                     >
                       {active ? 'Deactivate' : 'Activate'}
                     </button>
-                    <button
-                      onClick={() => handleDeleteClick(name)}
-                      className="text-sm font-medium text-red-600 hover:text-red-800 transition-colors"
-                    >
-                      Delete
-                    </button>
+                    {/* Any payment, live or deleted, keeps the employee: deactivate only (#389, Q1) */}
+                    {employeeHasPayments?.(name) ? (
+                      <span className="text-xs text-slate-500">Has payments: deactivate instead</span>
+                    ) : (
+                      <button
+                        onClick={() => handleDeleteClick(name)}
+                        className="text-sm font-medium text-red-600 hover:text-red-800 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </li>
               );

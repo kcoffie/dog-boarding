@@ -6,6 +6,15 @@ import { useBoardings as useSupabaseBoardings } from '../hooks/useBoardings';
 import { useNightAssignments as useSupabaseNightAssignments } from '../hooks/useNightAssignments';
 import { usePayments as useSupabasePayments } from '../hooks/usePayments';
 import { logger } from '../utils/logger';
+import {
+  paidNightsByDate,
+  employeeHasPayments as hasPayments,
+  nightWriteMessage,
+  paymentSaveMessage,
+  employeeDeleteMessage,
+  NIGHT_PAID_CODE,
+  NIGHT_CHANGED_CODE,
+} from '../utils/paidNights';
 import { supabase } from '../lib/supabase';
 
 const DataContext = createContext(null);
@@ -52,16 +61,23 @@ export function DataProvider({ children }) {
     getNightAssignment: getSupabaseNightAssignment,
     getWorkedFollowingDay: getSupabaseWorkedFollowingDay,
     setWorkedFollowingDay: setSupabaseWorkedFollowingDay,
-    deleteAssignmentsForEmployee: deleteSupabaseAssignmentsForEmployee,
+    refresh: refreshNightAssignments,
   } = useSupabaseNightAssignments(supabaseEmployees);
 
   // Use Supabase for payments (needs employees for name<->ID conversion)
   const {
     payments,
+    deletedPayments,
     loading: paymentsLoading,
     addPayment: addSupabasePayment,
     deletePayment: deleteSupabasePayment,
+    refresh: refreshPayments,
   } = useSupabasePayments(supabaseEmployees);
+
+  // A refused write means this page's picture is stale: reload nights and payments (#389).
+  const refreshNightsAndPayments = async () => {
+    await Promise.allSettled([refreshNightAssignments(), refreshPayments()]);
+  };
 
   // Combine Supabase settings with employees into unified settings object
   const settings = useMemo(() => ({
@@ -109,15 +125,23 @@ export function DataProvider({ children }) {
     }
   };
 
+  // One delete: the database removes their (unpaid) nights with them, or refuses the whole thing
+  // when they have any payment (#389, Q1, Q4).
   const deleteEmployee = async (name) => {
     try {
-      await deleteSupabaseAssignmentsForEmployee(name);
       await deleteSupabaseEmployee(name);
       logger.settings('Deleted employee', name);
     } catch (err) {
       console.error('Failed to delete employee:', err);
-      throw err;
+      await refreshNightsAndPayments();
+      throw new Error(employeeDeleteMessage(err), { cause: err });
     }
+    await refreshNightAssignments();
+  };
+
+  const employeeHasPayments = (name) => {
+    const employee = supabaseEmployees.find((e) => e.name === name);
+    return hasPayments(employee?.id, payments, deletedPayments);
   };
 
   const toggleEmployeeActive = async (name) => {
@@ -148,13 +172,32 @@ export function DataProvider({ children }) {
       }
     } catch (err) {
       console.error('Failed to set night assignment:', err);
-      throw err;
+      throw await nightWriteError(err);
     }
+  };
+
+  const setWorkedFollowingDay = async (date, value) => {
+    try {
+      await setSupabaseWorkedFollowingDay(date, value);
+    } catch (err) {
+      console.error('Failed to set worked_following_day:', err);
+      throw await nightWriteError(err);
+    }
+  };
+
+  // A paid night (QB001) or a night another tab just set (23505): refresh, then say so in words.
+  const nightWriteError = async (err) => {
+    if (err?.code === NIGHT_PAID_CODE || err?.code === '23505') await refreshNightsAndPayments();
+    return new Error(nightWriteMessage(err), { cause: err });
   };
 
   const getNightAssignment = (date) => {
     return getSupabaseNightAssignment(date);
   };
+
+  const paidNights = useMemo(() => paidNightsByDate(payments), [payments]);
+  /** Who a live payment paid for this night, and when; null when the night isn't paid (#389). */
+  const getNightPayment = (date) => paidNights[date] ?? null;
 
   // Payment operations (using Supabase)
   const addPayment = async (payment) => {
@@ -164,14 +207,19 @@ export function DataProvider({ children }) {
       return newPayment;
     } catch (err) {
       console.error('Failed to add payment:', err);
+      if (err?.code === NIGHT_CHANGED_CODE) {
+        await refreshNightsAndPayments();
+        throw new Error(paymentSaveMessage(err), { cause: err });
+      }
       throw err;
     }
   };
 
-  const deletePayment = async (id) => {
+  // Soft delete with an optional note (#389).
+  const deletePayment = async (id, note = '') => {
     const payment = payments.find(p => p.id === id);
     try {
-      await deleteSupabasePayment(id);
+      await deleteSupabasePayment(id, note);
       if (payment) {
         logger.settings('Payment deleted', `${payment.employeeName}: $${payment.amount.toFixed(2)}`);
       }
@@ -216,6 +264,7 @@ export function DataProvider({ children }) {
     paymentsLoading,
     nightAssignments,
     payments,
+    deletedPayments,
     // Dogs and boardings come only from the booking site's sync: no add, edit, delete or deactivate here (#342, #351)
     // Settings operations
     updateSettings,
@@ -223,14 +272,16 @@ export function DataProvider({ children }) {
     setNetPercentage,
     addEmployee,
     deleteEmployee,
+    employeeHasPayments,
     toggleEmployeeActive,
     reorderEmployees,
     sortEmployees,
     // Night assignment operations
     setNightAssignment,
     getNightAssignment,
+    getNightPayment,
     getWorkedFollowingDay: getSupabaseWorkedFollowingDay,
-    setWorkedFollowingDay: setSupabaseWorkedFollowingDay,
+    setWorkedFollowingDay,
     queryDaytimePetNames,
     // Payment operations
     addPayment,

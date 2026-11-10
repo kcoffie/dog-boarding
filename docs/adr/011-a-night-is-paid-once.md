@@ -2,7 +2,7 @@
 
 **Status:** Accepted (Kate, 2026-10-31; Q1 and Q2 answered 2026-11-05)
 **Date:** 2026-11-05 (#370)
-**Supersedes:** nothing. #389 extends it: paid nights locked, and deleted payments kept as history.
+**Supersedes:** nothing. Extended by ADR-012 (#389): paid nights locked, and deleted payments kept as history.
 
 ---
 
@@ -30,4 +30,4 @@
 ## Consequences
 - The migration (031) runs before the deploy. An old tab's insert is refused because it has no `night_amounts`, and it looks saved, so nobody pays until the page has been reloaded on the new code.
 - Moving one night out of a several-night payment means deleting the whole payment and paying again at current rates.
-- Locking paid nights against edits, and keeping deleted payments as history, is #389 (due 11-12).
+- Locking paid nights against edits, and keeping deleted payments as history: ADR-012 (#389).

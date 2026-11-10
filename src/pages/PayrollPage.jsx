@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import DateNavigator from '../components/DateNavigator';
-import ConfirmDialog from '../components/ConfirmDialog';
+import DeletePaymentDialog from '../components/DeletePaymentDialog';
 import PaymentDialog from '../components/PaymentDialog';
 import { getDateRange, businessTodayDate, daysBetween, toDateStr } from '../utils/dateUtils';
 import { calculateDaytimeGross, calculateGross, calculateNet } from '../utils/calculations';
 import { buildOutstanding } from '../utils/payroll';
+import { deletedLine } from '../utils/paidNights';
 
 export default function PayrollPage() {
   const {
     dogs,
     boardings,
     payments,
+    deletedPayments = [],
     getNetPercentageForDate,
     getNightAssignment,
     nightAssignments,
@@ -52,6 +54,7 @@ export default function PayrollPage() {
   const [payConfirm, setPayConfirm] = useState({ isOpen: false, employee: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, payment: null });
   const [pageError, setPageError] = useState(null);
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const daysDiff = daysBetween(startDate, endDate) + 1;
   const dates = getDateRange(startDate, daysDiff);
@@ -114,6 +117,7 @@ export default function PayrollPage() {
     assigneeFor: getNightAssignment,
     nightNet: calculateDayNet,
     daytimeNet: computeDaytimeNet,
+    followingDayFor: (night) => !!nightAssignments.find((x) => x.date === night)?.workedFollowingDay,
     payments,
   });
   const outstandingEmployees = Object.keys(outstanding).sort();
@@ -158,6 +162,9 @@ export default function PayrollPage() {
         nights: sortedDates.length,
         dates: sortedDates,
         nightAmounts,
+        // What this page priced with "worked following day": the database refuses the payment if
+        // a tick changed since (#389, Q3).
+        followingDayNights: (payData?.followingDayNights || []).filter((d) => sortedDates.includes(d)),
       });
     } catch (err) {
       console.error('Failed to add payment:', err);
@@ -173,11 +180,12 @@ export default function PayrollPage() {
     setDeleteConfirm({ isOpen: true, payment });
   };
 
-  // Delete is the way to fix a payment, so a failed delete must show (#370).
-  const confirmDelete = async () => {
+  // Delete is the way to fix a payment, so a failed delete must show (#370). It's a soft delete
+  // with an optional note: the payment stays in the history (#389).
+  const confirmDelete = async (note = '') => {
     if (deleteConfirm.payment) {
       try {
-        await deletePayment(deleteConfirm.payment.id);
+        await deletePayment(deleteConfirm.payment.id, note);
       } catch (err) {
         console.error('Failed to delete payment:', err);
         setPageError(`The payment was not deleted: ${err?.message || 'unknown error'}`);
@@ -323,6 +331,17 @@ export default function PayrollPage() {
             </svg>
           </div>
           <h2 className="text-lg font-semibold text-slate-900">Payment History</h2>
+          {deletedPayments.length > 0 && (
+            <label className="ml-auto flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showDeleted}
+                onChange={(e) => setShowDeleted(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Show deleted ({deletedPayments.length})
+            </label>
+          )}
         </div>
 
         {sortedPayments.length === 0 ? (
@@ -419,6 +438,26 @@ export default function PayrollPage() {
         )}
       </div>
 
+      {/* Deleted payments: history only, never counted (#389) */}
+      {showDeleted && deletedPayments.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200/60 shadow-sm p-6">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Deleted payments</h2>
+          <ul className="divide-y divide-slate-100" aria-label="Deleted payments">
+            {deletedPayments.map((payment) => (
+              <li key={payment.id} data-testid="deleted-payment" className="py-3 text-sm">
+                <div className="line-through text-slate-400 flex flex-wrap gap-x-3">
+                  <span className="font-medium">{payment.employeeName || 'Removed employee'}</span>
+                  <span className="tabular-nums">{formatCurrency(payment.amount)}</span>
+                  <span>{payment.nights} {payment.nights === 1 ? 'night' : 'nights'}: {formatDateRanges(payment.dates)}</span>
+                  <span>Paid {new Date(payment.paidDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{deletedLine(payment)}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Payment Dialog */}
       <PaymentDialog
         isOpen={payConfirm.isOpen}
@@ -429,11 +468,11 @@ export default function PayrollPage() {
         formatCurrency={formatCurrency}
       />
 
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
+      {/* Delete Confirmation Dialog: a soft delete with an optional note (#389) */}
+      <DeletePaymentDialog
+        key={deleteConfirm.payment?.id ?? 'none'}
         isOpen={deleteConfirm.isOpen}
-        title="Delete Payment Record"
-        message={deleteConfirm.payment ? `Delete payment of ${formatCurrency(deleteConfirm.payment.amount)} to ${deleteConfirm.payment.employeeName}? This will mark those dates as unpaid.` : ''}
+        message={deleteConfirm.payment ? `Delete payment of ${formatCurrency(deleteConfirm.payment.amount)} to ${deleteConfirm.payment.employeeName}? Its nights become unpaid and can be paid again. The payment stays in the history, marked deleted.` : ''}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteConfirm({ isOpen: false, payment: null })}
       />

@@ -56,17 +56,30 @@ async function getTestUser() {
   return users[0];
 }
 
+// A fixed synthetic employee, found or made once: since #389 an employee with a payment can't be
+// deleted, so the smoke test must never pay a real one (it would be stuck with the history).
+const SMOKE_EMPLOYEE = 'zz-smoke-test';
+// The service key has no signed-in user, so a soft delete names who did it (#389, migration 032).
+const SMOKE_DELETED_BY = 'smoke-test@example.com';
+const SMOKE_NIGHTS = ['2099-01-15', '2099-01-16', '2099-01-17'];
+
 async function getTestEmployee() {
-  const { data: employees, error } = await supabase
+  const { data: found, error } = await supabase
     .from('employees')
     .select('*')
+    .eq('name', SMOKE_EMPLOYEE)
     .limit(1);
 
   if (error) throw error;
-  if (!employees || employees.length === 0) {
-    throw new Error('No employees found in database');
-  }
-  return employees[0];
+  if (found && found.length > 0) return found[0];
+
+  const { data: made, error: insertError } = await supabase
+    .from('employees')
+    .insert([{ name: SMOKE_EMPLOYEE, active: false }])
+    .select()
+    .single();
+  if (insertError) throw insertError;
+  return made;
 }
 
 async function runSmokeTests() {
@@ -164,9 +177,23 @@ async function runSmokeTests() {
 
   let testPayment;
   // A run that died before cleanup leaves its 2099 payment behind; since #370 a paid night can't be
-  // paid again, so clear those nights first or every later run fails with 23505.
+  // paid again, so release those nights first (a soft delete since #389) or every later run fails.
   await test('Clear leftover 2099 test payments', async () => {
-    const { error } = await supabase.from('payments').delete().overlaps('dates', ['2099-01-15', '2099-01-16', '2099-01-17']);
+    const { error } = await supabase
+      .from('payments')
+      .update({ deleted_at: new Date().toISOString(), deleted_by_email: SMOKE_DELETED_BY, delete_note: 'smoke test leftover' })
+      .overlaps('dates', SMOKE_NIGHTS)
+      .is('deleted_at', null);
+    if (error) throw error;
+  });
+
+  // Since #389 each paid night must be assigned to the person paid.
+  await test('Assign the 2099 test nights to the smoke-test employee', async () => {
+    const { error: clearError } = await supabase.from('night_assignments').delete().in('date', SMOKE_NIGHTS);
+    if (clearError) throw clearError;
+    const { error } = await supabase
+      .from('night_assignments')
+      .insert(SMOKE_NIGHTS.map((date) => ({ date, employee_id: employee.id, user_id: user.id })));
     if (error) throw error;
   });
 
@@ -230,6 +257,21 @@ async function runSmokeTests() {
     if (error.code !== '23505') throw new Error(`Expected 23505, got ${error.code}: ${error.message}`);
   });
 
+  await test('A paid night cannot be changed (#389, QB001)', async () => {
+    const { error } = await supabase
+      .from('night_assignments')
+      .update({ worked_following_day: true })
+      .eq('date', '2099-01-16');
+    if (!error) throw new Error('A paid night was changed');
+    if (error.code !== 'QB001') throw new Error(`Expected QB001, got ${error.code}: ${error.message}`);
+  });
+
+  await test('A payment cannot be hard-deleted (#389, QB003)', async () => {
+    const { error } = await supabase.from('payments').delete().eq('id', testPayment.id);
+    if (!error) throw new Error('A payment was hard-deleted');
+    if (error.code !== 'QB003') throw new Error(`Expected QB003, got ${error.code}: ${error.message}`);
+  });
+
   await test('Payment appears in list query', async () => {
     const { data, error } = await supabase
       .from('payments')
@@ -289,7 +331,18 @@ async function runSmokeTests() {
     const { error } = await supabase.from(table).delete().eq(column, value);
     if (error) cleanupErrors.push(`${table} ${value}: ${error.message}`);
   };
-  for (const id of cleanup.payments) await remove('payments', 'id', id);
+  // Payments are never hard-deleted (#389): soft-delete them, which releases their nights, then
+  // remove the nights. The soft-deleted rows and the smoke-test employee stay (one row per run,
+  // test database only).
+  for (const id of cleanup.payments) {
+    const { error } = await supabase
+      .from('payments')
+      .update({ deleted_at: new Date().toISOString(), deleted_by_email: SMOKE_DELETED_BY, delete_note: 'smoke test cleanup' })
+      .eq('id', id)
+      .is('deleted_at', null);
+    if (error) cleanupErrors.push(`payments ${id}: ${error.message}`);
+  }
+  for (const date of SMOKE_NIGHTS) await remove('night_assignments', 'date', date);
   for (const id of cleanup.boardings) await remove('boardings', 'id', id);
   for (const id of cleanup.dogs) await remove('dogs', 'id', id);
   await remove('night_assignments', 'date', '2099-12-31');

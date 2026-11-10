@@ -251,16 +251,32 @@ WHERE status = 'processing'
 
 ### Payroll: "One of these nights has already been paid" or a line above the Outstanding cards (#370)
 - **"One of these nights has already been paid. The list has been refreshed."** Someone else (another tab, a double-click, a retry) paid one of the ticked nights first. The database refused the second payment and nothing was saved. Check Payment History: the night is there under the first payment.
-- **"[date] is assigned to B but was paid to A."** The night was reassigned after it was paid. To pay B instead, delete A's payment (all its nights return to Outstanding) and pay again. Locking paid nights is #389.
+- **"[date] is assigned to B but was paid to A."** The night was reassigned after it was paid. Since #389 a paid night can't be reassigned, so this only shows for data from before migration 032. To pay B instead, delete A's payment (all its nights return to Outstanding) and pay again.
+- **"A night changed since this page loaded (reassigned, or "worked following day" changed)…"** (#389) Someone changed one of the nights in another tab after this page loaded. Nothing was saved; the page has refreshed. Check the amounts and pay again.
 - **"[date] (name) can't be paid yet: a dog boarded that night has no rate."** Fix the rate on the booking site; the next sync brings it in. The app is never edited by hand.
 - **Any other error in the Pay box** (for example "night amounts add up to…" or "cannot be changed"): the database refused a malformed payment. Nothing was saved. Note the text and report it as a bug.
-- **Drift check** (expect 0 rows; Kate runs it in the SQL editor), from `supabase/migrations/031_payment_nights.sql`:
+- **Drift check** (expect 0 rows; Kate runs it in the SQL editor), from `supabase/migrations/032_paid_nights_locked.sql`. Since #389 a deleted payment holds no nights on purpose, so 031's older check would list every deleted payment; use this one:
   ```sql
   SELECT p.id FROM payments p
   LEFT JOIN (SELECT payment_id, count(*) AS n, sum(amount) AS total FROM payment_nights GROUP BY payment_id) pn
     ON pn.payment_id = p.id
-  WHERE pn.payment_id IS NULL OR pn.n <> cardinality(p.dates) OR pn.total <> p.amount;
+  WHERE (p.deleted_at IS NULL AND (pn.payment_id IS NULL OR pn.n <> cardinality(p.dates) OR pn.total <> p.amount))
+     OR (p.deleted_at IS NOT NULL AND pn.payment_id IS NOT NULL);
   ```
+
+### Payroll: a paid night needs changing, or an employee can't be deleted (#389)
+- **"This night is paid. Delete the payment to change it."** A night covered by a live payment is locked: its employee, its "worked following day" and clearing it are all refused by the database. To change it: Payroll → Payment History → Delete that payment (add a note saying why), change the night, then pay again. The payment is kept in the history, struck through, under "Show deleted". A payment can't be restored; paying again is the undo. Moving one night out of a several-night payment means re-paying all of them at current rates.
+- **A night still shows "Paid" after its payment was deleted in another tab:** this tab hasn't heard about the delete. Reload the page.
+- **"Someone else just set this night. The page has been refreshed."** Another tab set the same night first (one assignment per night). Look at what it now says and change it if needed.
+- **"This employee has payments, so they can only be deactivated."** Anyone ever paid, even by a payment since deleted, stays in the list so the history keeps their name. Use Deactivate.
+- **A booking-site change to a paid night** (cancelled, moved, repriced): the night stays paid at its stored amount. The sync never writes night assignments, so it isn't blocked; #326 is the alert for it.
+- **Deleting a payment by hand** (Kate, SQL editor; there's no signed-in user there, so name yourself or it is refused):
+  ```sql
+  UPDATE payments SET deleted_at = now(), deleted_by_email = 'you@…', delete_note = 'why'
+  WHERE id = '…';
+  ```
+  A plain `DELETE FROM payments` is refused for every role. The emergency hard delete (test data only, never a real payment) is in the migration's comments.
+- **After any migration that touches `payments`, `payment_nights`, `night_assignments` or `employees`:** re-run both `supabase/checks/031_payment_nights_check.sql` and `supabase/checks/032_paid_nights_locked_check.sql`. Each must read `ALL PASS (rolled back)`. A later migration that drops or replaces one of these triggers would otherwise switch a rule off silently.
 
 ### Deploying #370 (migration 031), once
 1. Kate runs `supabase/migrations/031_payment_nights.sql` (after its two pre-checks: 0 payments, `dates` is `date[]`).
@@ -268,6 +284,14 @@ WHERE status = 'processing'
 3. Merge, then `npm run check:deploy`.
 4. Reload every open Payroll tab before recording a payment: an old tab's save is refused (no night amounts) and, on the old code, looks saved.
 5. Re-run the Payroll step of the Phase 1 script (private notes).
+
+### Deploying #389 (migration 032), once
+1. Kate runs `supabase/migrations/032_paid_nights_locked.sql`. It stops itself, changing nothing, if a night has two assignments or a payment's night is assigned to someone else (the queries are at the top of the file).
+2. Kate runs `supabase/checks/032_paid_nights_locked_check.sql`, then `supabase/checks/031_payment_nights_check.sql` (updated for 032), each as one run. Both must start `check 03x: ALL PASS (rolled back)`.
+   **From step 1 until every tab is reloaded in step 4, don't pay anyone, delete a payment or delete an employee.** The old code doesn't send the "worked following day" nights, so its payment for a ticked night is refused with a raw database message; and its employee delete removes the person's unpaid nights before the database refuses the delete (the old Settings page doesn't show that error).
+3. Merge, then `npm run check:deploy`.
+4. Reload every open tab of the app, whatever page it's on (it's one app: a Settings tab runs the old code too). An old tab also shows deleted payments as live, and hides their freed nights from Outstanding, until reloaded. It can't pay a night twice.
+5. Re-run the Payroll step of the Phase 1 script (private notes): pay a night, see it locked, delete the payment with a note, see it under "Show deleted", pay the night again.
 
 ## Manual operations
 

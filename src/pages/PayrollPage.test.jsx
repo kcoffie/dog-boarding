@@ -351,7 +351,8 @@ describe('REQ-041, REQ-042, REQ-043: PayrollPage', () => {
       );
       fireEvent.click(confirmDeleteButton);
 
-      expect(mockDeletePayment).toHaveBeenCalledWith('payment-1');
+      // Soft delete with the optional note, empty here (#389)
+      expect(mockDeletePayment).toHaveBeenCalledWith('payment-1', '');
     });
   });
 

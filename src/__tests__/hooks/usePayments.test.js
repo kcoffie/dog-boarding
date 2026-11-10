@@ -38,6 +38,27 @@ const mockDelete = vi.fn(() => ({
   eq: vi.fn(() => Promise.resolve({ error: null })),
 }));
 
+// Soft delete (#389): update(...).eq('id', id).is('deleted_at', null).select()
+const mockUpdateData = { captured: null, eqArgs: null, isArgs: null, rows: null, error: null };
+const mockUpdate = vi.fn((data) => {
+  mockUpdateData.captured = data;
+  return {
+    eq: vi.fn((...eqArgs) => {
+      mockUpdateData.eqArgs = eqArgs;
+      return {
+        is: vi.fn((...isArgs) => {
+          mockUpdateData.isArgs = isArgs;
+          return {
+            select: vi.fn(() => Promise.resolve(mockUpdateData.error
+              ? { data: null, error: mockUpdateData.error }
+              : { data: mockUpdateData.rows, error: null })),
+          };
+        }),
+      };
+    }),
+  };
+});
+
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: vi.fn(() => ({
@@ -46,11 +67,12 @@ vi.mock('../../lib/supabase', () => ({
       })),
       insert: mockInsert,
       delete: mockDelete,
+      update: mockUpdate,
     })),
   },
 }));
 
-import { usePayments, ALREADY_PAID_MESSAGE, ALREADY_PAID_NO_REFRESH } from '../../hooks/usePayments';
+import { usePayments, ALREADY_PAID_MESSAGE, ALREADY_PAID_NO_REFRESH, ALREADY_DELETED_MESSAGE } from '../../hooks/usePayments';
 import { paidNightOwners } from '../../utils/payroll';
 
 const mockEmployees = [
@@ -77,6 +99,16 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       },
     ];
     mockData.error = null;
+    // The row the database returns for a soft delete of payment-1: who and when are its own.
+    mockUpdateData.rows = [{
+      ...mockData.payments[0],
+      deleted_at: '2026-11-10T03:30:00+00:00',
+      deleted_by: 'user-123',
+      deleted_by_email: 'test@test.com',
+      delete_note: 'wrong night',
+    }];
+    mockUpdateData.error = null;
+    mockUpdateData.captured = null;
     mockInsertData.capturedData = null;
     mockInsertData.error = null;
     mockAuth.user = mockUser;
@@ -471,6 +503,194 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       const { result } = renderHook(() => usePayments(mockEmployees));
       await waitFor(() => expect(result.current.loading).toBe(false));
       expect(result.current.payments[0].nightAmounts).toEqual({ '2025-01-01': 50, '2025-01-02': 50, '2025-01-03': 50 });
+    });
+  });
+  describe('#389: a deleted payment is kept as history, and readers skip it', () => {
+    const deletedRow = {
+      id: 'payment-deleted', employee_id: 'emp-2', amount: 80, nights: 1,
+      dates: ['2025-01-10'], paid_date: '2025-01-11',
+      deleted_at: '2025-01-12T18:00:00+00:00', deleted_by: 'user-9',
+      deleted_by_email: 'admin@example.com', delete_note: 'paid the wrong person',
+    };
+
+    it('payments holds only live payments; deleted ones are in deletedPayments', async () => {
+      mockData.payments = [...mockData.payments, deletedRow];
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.payments.map((p) => p.id)).toEqual(['payment-1']);
+      expect(result.current.deletedPayments.map((p) => p.id)).toEqual(['payment-deleted']);
+    });
+
+    it('deleted payments are listed newest deletion first, whatever order they arrive in', async () => {
+      mockData.payments = [
+        { ...deletedRow, id: 'deleted-older', deleted_at: '2025-01-12T18:00:00+00:00' },
+        { ...deletedRow, id: 'deleted-newest', deleted_at: '2025-03-01T08:00:00+00:00' },
+        { ...deletedRow, id: 'deleted-middle', deleted_at: '2025-02-01T08:00:00+00:00' },
+      ];
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.deletedPayments.map((p) => p.id)).toEqual(['deleted-newest', 'deleted-middle', 'deleted-older']);
+    });
+
+    it('a payment deleted now goes to the top of the deleted list', async () => {
+      mockData.payments = [...mockData.payments, deletedRow];
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      // deletedRow was deleted 2025-01-12; payment-1 is deleted 2026-11-10 (mockUpdateData.rows).
+      await act(async () => { await result.current.deletePayment('payment-1', ''); });
+      expect(result.current.deletedPayments.map((p) => p.id)).toEqual(['payment-1', 'payment-deleted']);
+    });
+
+    it('reads the nights a payment was priced with "worked following day"', async () => {
+      mockData.payments[0].following_day_nights = ['2025-01-02'];
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.payments[0].followingDayNights).toEqual(['2025-01-02']);
+    });
+
+    it('a payment saved before #389 reads as priced with no ticks', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.payments[0].followingDayNights).toEqual([]);
+    });
+
+    it('a deleted payment\'s nights are not paid', async () => {
+      mockData.payments = [...mockData.payments, deletedRow];
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(Object.keys(paidNightOwners(result.current.payments))).not.toContain('2025-01-10');
+    });
+
+    it('a deleted payment carries who deleted it, when, the note, and the person paid', async () => {
+      mockData.payments = [...mockData.payments, deletedRow];
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      const d = result.current.deletedPayments[0];
+      expect(d.deletedAt).toBe('2025-01-12T18:00:00+00:00');
+      expect(d.deletedByEmail).toBe('admin@example.com');
+      expect(d.deleteNote).toBe('paid the wrong person');
+      expect(d.employeeName).toBe('Nick');
+    });
+
+    it('delete is an update of that live payment, never a DELETE', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => { await result.current.deletePayment('payment-1', '  wrong night  '); });
+      expect(mockDelete).not.toHaveBeenCalled();
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+      expect(mockUpdateData.eqArgs).toEqual(['id', 'payment-1']);
+      expect(mockUpdateData.isArgs).toEqual(['deleted_at', null]);
+      expect(typeof mockUpdateData.captured.deleted_at).toBe('string');
+      expect(mockUpdateData.captured.delete_note).toBe('wrong night');
+    });
+
+    it('an empty note is sent as no note', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => { await result.current.deletePayment('payment-1', '   '); });
+      expect(mockUpdateData.captured.delete_note).toBeNull();
+    });
+
+    it('the client never sends who deleted it (the database sets it)', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => { await result.current.deletePayment('payment-1', 'x'); });
+      expect(Object.keys(mockUpdateData.captured).sort()).toEqual(['delete_note', 'deleted_at']);
+    });
+
+    it('after a delete, the payment moves from payments to deletedPayments as the database returned it', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => { await result.current.deletePayment('payment-1', 'wrong night'); });
+      expect(result.current.payments).toEqual([]);
+      expect(result.current.deletedPayments.map((p) => p.id)).toEqual(['payment-1']);
+      expect(result.current.deletedPayments[0].deletedByEmail).toBe('test@test.com');
+    });
+
+    it('a refused delete throws the database message and changes nothing', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      mockUpdateData.error = { code: 'QB003', message: 'payment x was deleted' };
+      let thrown;
+      await act(async () => {
+        try { await result.current.deletePayment('payment-1', ''); } catch (err) { thrown = err; }
+      });
+      expect(thrown?.message).toBe('payment x was deleted');
+      expect(result.current.payments.map((p) => p.id)).toEqual(['payment-1']);
+      expect(result.current.deletedPayments).toEqual([]);
+    });
+
+    it('a delete that matched no live payment (deleted in another tab) refreshes and says so', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      mockUpdateData.rows = [];
+      mockData.payments = [{ ...mockData.payments[0], ...deletedRow, id: 'payment-1' }];
+      let thrown;
+      await act(async () => {
+        try { await result.current.deletePayment('payment-1', ''); } catch (err) { thrown = err; }
+      });
+      expect(thrown?.message).toBe(ALREADY_DELETED_MESSAGE);
+      expect(ALREADY_DELETED_MESSAGE).toBe('This payment was already deleted. The list has been refreshed.');
+      expect(result.current.payments).toEqual([]);
+      expect(result.current.deletedPayments.map((p) => p.id)).toEqual(['payment-1']);
+    });
+
+    it('with no signed-in user, delete throws instead of looking done', async () => {
+      mockAuth.user = null;
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await expect(result.current.deletePayment('payment-1', '')).rejects.toThrow('Not signed in');
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('sends the nights priced with "worked following day"', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => {
+        await result.current.addPayment({
+          employeeName: 'Kate', startDate: '2026-10-16', endDate: '2026-10-17', amount: 318.5, nights: 2,
+          dates: ['2026-10-16', '2026-10-17'], nightAmounts: { '2026-10-16': 139.75, '2026-10-17': 178.75 },
+          followingDayNights: ['2026-10-17'],
+        });
+      });
+      expect(mockInsertData.capturedData[0].following_day_nights).toEqual(['2026-10-17']);
+    });
+
+    it('a payment priced with no ticks sends an empty list, not nothing', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => {
+        await result.current.addPayment({
+          employeeName: 'Kate', startDate: '2026-10-16', endDate: '2026-10-16', amount: 10, nights: 1,
+          dates: ['2026-10-16'], nightAmounts: { '2026-10-16': 10 },
+        });
+      });
+      expect(mockInsertData.capturedData[0].following_day_nights).toEqual([]);
+    });
+
+    it('a refused payment keeps the database error code, so the page can name it', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      mockInsertData.error = { code: 'QB002', message: 'the night is no longer assigned to this employee' };
+      let thrown;
+      await act(async () => {
+        try {
+          await result.current.addPayment({
+            employeeName: 'Kate', amount: 10, nights: 1, dates: ['2026-10-16'], nightAmounts: { '2026-10-16': 10 },
+          });
+        } catch (err) { thrown = err; }
+      });
+      expect(thrown?.code).toBe('QB002');
+    });
+
+    it('renaming an employee renames them in deleted payments too', async () => {
+      mockData.payments = [...mockData.payments, deletedRow];
+      let employees = mockEmployees;
+      const { result, rerender } = renderHook(() => usePayments(employees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      employees = [mockEmployees[0], { id: 'emp-2', name: 'Nicholas', active: true }];
+      rerender();
+      await waitFor(() => expect(result.current.deletedPayments[0]?.employeeName).toBe('Nicholas'));
     });
   });
 });

@@ -5,6 +5,10 @@
  *
  * Removes seeded test data from a database.
  * Uses service role key for admin operations.
+ *
+ * Since migration 032 (#389) payments are only soft-deleted, so a test employee who was ever paid
+ * can't be deleted (only deactivated). Wiping those needs the SQL editor with the payments
+ * triggers disabled, on a test database only (see the migration's comments).
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -49,6 +53,23 @@ async function cleanupTestData() {
       console.log(`  ✓ Deleted ${count || 0} boardings`);
     }
 
+    // Payments first: a paid night can't be deleted (#389). Payments are never hard-deleted, so
+    // they're soft-deleted (kept, marked deleted), which releases their nights.
+    console.log('\nSoft-deleting payments created by test users...');
+    const { error: paymentsError, count: payCount } = await supabase
+      .from('payments')
+      .update(
+        { deleted_at: new Date().toISOString(), deleted_by_email: 'cleanup-script@example.com', delete_note: 'test data cleanup' },
+        { count: 'exact' },
+      )
+      .in('user_id', testUserIds)
+      .is('deleted_at', null);
+    if (paymentsError) {
+      console.error(`  ✗ ${paymentsError.message}`);
+    } else {
+      console.log(`  ✓ Soft-deleted ${payCount || 0} payments`);
+    }
+
     // Delete night assignments created by test users
     console.log('\nDeleting night assignments created by test users...');
     const { error: assignmentsError, count: assignCount } = await supabase
@@ -59,18 +80,6 @@ async function cleanupTestData() {
       console.error(`  ✗ ${assignmentsError.message}`);
     } else {
       console.log(`  ✓ Deleted ${assignCount || 0} night assignments`);
-    }
-
-    // Delete payments created by test users
-    console.log('\nDeleting payments created by test users...');
-    const { error: paymentsError, count: payCount } = await supabase
-      .from('payments')
-      .delete({ count: 'exact' })
-      .in('user_id', testUserIds);
-    if (paymentsError) {
-      console.error(`  ✗ ${paymentsError.message}`);
-    } else {
-      console.log(`  ✓ Deleted ${payCount || 0} payments`);
     }
 
     // Delete settings created by test users
