@@ -60,7 +60,7 @@ async function getTestUser() {
 // deleted, so the smoke test must never pay a real one (it would be stuck with the history).
 const SMOKE_EMPLOYEE = 'zz-smoke-test';
 // The service key has no signed-in user, so a soft delete names who did it (#389, migration 032).
-const SMOKE_DELETED_BY = 'smoke-test@example.invalid';
+const SMOKE_DELETED_BY = 'smoke-test@example.com';
 const SMOKE_NIGHTS = ['2099-01-15', '2099-01-16', '2099-01-17'];
 
 async function getTestEmployee() {

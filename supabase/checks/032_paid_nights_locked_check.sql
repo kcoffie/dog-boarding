@@ -16,7 +16,7 @@ GRANT ALL ON check_032 TO authenticated, anon;
 GRANT USAGE ON SEQUENCE check_032_n_seq TO authenticated, anon;
 
 SELECT set_config('request.jwt.claims',
-  '{"role":"authenticated","sub":"00000000-0000-4000-8000-000000000032","email":"check@example.invalid"}', true);
+  '{"role":"authenticated","sub":"00000000-0000-4000-8000-000000000032","email":"check@example.com"}', true);
 SELECT set_config('request.jwt.claim.role', 'authenticated', true);
 SET LOCAL ROLE authenticated;
 
@@ -150,7 +150,7 @@ BEGIN
     CASE WHEN state = 'P0001' THEN 'PASS' ELSE 'FAIL: ' || state END);
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts, deleted_at, deleted_by_email)
-    VALUES (emp4, 50, 1, ARRAY['2099-06-21']::date[], '2099-06-22', '{"2099-06-21": 50}', now(), 'x@example.invalid');
+    VALUES (emp4, 50, 1, ARRAY['2099-06-21']::date[], '2099-06-22', '{"2099-06-21": 50}', now(), 'x@example.com');
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -183,7 +183,7 @@ BEGIN
   -- 7. Soft delete: time and who come from the database, the note is trimmed, the nights are freed.
   BEGIN
     UPDATE payments
-    SET deleted_at = '2000-01-01', deleted_by = gen_random_uuid(), deleted_by_email = 'forged@example.invalid',
+    SET deleted_at = '2000-01-01', deleted_by = gen_random_uuid(), deleted_by_email = 'forged@example.com',
         delete_note = '  wrong night  '
     WHERE id = pay;
     state := 'ok';
@@ -199,7 +199,7 @@ BEGIN
   INSERT INTO check_032 (name, outcome) VALUES ('7b deleted_at is the database''s time, not the client''s',
     CASE WHEN p.deleted_at > '2026-01-01' THEN 'PASS' ELSE 'FAIL: ' || p.deleted_at END);
   INSERT INTO check_032 (name, outcome) VALUES ('7c who is the signed-in user, not what the client sent',
-    CASE WHEN p.deleted_by = '00000000-0000-4000-8000-000000000032' AND p.deleted_by_email = 'check@example.invalid'
+    CASE WHEN p.deleted_by = '00000000-0000-4000-8000-000000000032' AND p.deleted_by_email = 'check@example.com'
          THEN 'PASS' ELSE 'FAIL: ' || coalesce(p.deleted_by::text, 'null') || ' ' || coalesce(p.deleted_by_email, 'null') END);
   INSERT INTO check_032 (name, outcome) VALUES ('7d the note is kept, trimmed',
     CASE WHEN p.delete_note = 'wrong night' THEN 'PASS' ELSE 'FAIL: ' || coalesce(p.delete_note, 'null') END);
@@ -309,9 +309,9 @@ BEGIN
   INSERT INTO check_032 (name, outcome) VALUES ('12b a SQL-editor delete without an email is refused (QB003)',
     CASE WHEN state = 'QB003' THEN 'PASS' ELSE 'FAIL: ' || state END);
 
-  UPDATE payments SET deleted_at = now(), deleted_by_email = 'check@example.invalid' WHERE id = pay;
+  UPDATE payments SET deleted_at = now(), deleted_by_email = 'check@example.com' WHERE id = pay;
   INSERT INTO check_032 (name, outcome) VALUES ('12c a SQL-editor delete that names who works',
-    CASE WHEN (SELECT deleted_by_email FROM payments WHERE id = pay) = 'check@example.invalid'
+    CASE WHEN (SELECT deleted_by_email FROM payments WHERE id = pay) = 'check@example.com'
           AND (SELECT deleted_by FROM payments WHERE id = pay) IS NULL
           AND NOT EXISTS (SELECT 1 FROM payment_nights WHERE payment_id = pay)
          THEN 'PASS' ELSE 'FAIL' END);

@@ -59,7 +59,7 @@ async function cleanupTestData() {
     const { error: paymentsError, count: payCount } = await supabase
       .from('payments')
       .update(
-        { deleted_at: new Date().toISOString(), deleted_by_email: 'cleanup-script@example.invalid', delete_note: 'test data cleanup' },
+        { deleted_at: new Date().toISOString(), deleted_by_email: 'cleanup-script@example.com', delete_note: 'test data cleanup' },
         { count: 'exact' },
       )
       .in('user_id', testUserIds)

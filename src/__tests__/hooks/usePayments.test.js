@@ -510,7 +510,7 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       id: 'payment-deleted', employee_id: 'emp-2', amount: 80, nights: 1,
       dates: ['2025-01-10'], paid_date: '2025-01-11',
       deleted_at: '2025-01-12T18:00:00+00:00', deleted_by: 'user-9',
-      deleted_by_email: 'admin@example.invalid', delete_note: 'paid the wrong person',
+      deleted_by_email: 'admin@example.com', delete_note: 'paid the wrong person',
     };
 
     it('payments holds only live payments; deleted ones are in deletedPayments', async () => {
@@ -567,7 +567,7 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       await waitFor(() => expect(result.current.loading).toBe(false));
       const d = result.current.deletedPayments[0];
       expect(d.deletedAt).toBe('2025-01-12T18:00:00+00:00');
-      expect(d.deletedByEmail).toBe('admin@example.invalid');
+      expect(d.deletedByEmail).toBe('admin@example.com');
       expect(d.deleteNote).toBe('paid the wrong person');
       expect(d.employeeName).toBe('Nick');
     });

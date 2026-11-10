@@ -134,7 +134,7 @@ describe('REQ-033, REQ-041, REQ-042, REQ-051: paid nights on screen (#389)', () 
     const deleted = {
       id: 'p2', employeeId: 'e2', employeeName: 'Blake', amount: 40, nights: 1, dates: ['2026-11-04'], paidDate: '2026-11-05',
       // 01:00 UTC on 11-07 is 5:00 PM on 11-06 in San Francisco.
-      deletedAt: '2026-11-07T01:00:00Z', deletedByEmail: 'admin@example.invalid', deleteNote: 'paid the wrong person',
+      deletedAt: '2026-11-07T01:00:00Z', deletedByEmail: 'admin@example.com', deleteNote: 'paid the wrong person',
     };
     const data = (over = {}) => ({
       dogs: [],
@@ -154,7 +154,7 @@ describe('REQ-033, REQ-041, REQ-042, REQ-051: paid nights on screen (#389)', () 
       render(<PayrollPage />);
       expect(screen.queryByText(/admin@example\.invalid/)).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('checkbox', { name: 'Show deleted (1)' }));
-      expect(screen.getAllByText('Deleted Nov 6, 5:00 PM by admin@example.invalid: paid the wrong person').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Deleted Nov 6, 5:00 PM by admin@example.com: paid the wrong person').length).toBeGreaterThan(0);
     });
 
     it('a deleted payment is struck through and has no Delete', () => {
@@ -173,7 +173,7 @@ describe('REQ-033, REQ-041, REQ-042, REQ-051: paid nights on screen (#389)', () 
       useData.mockReturnValue(data({ deletedPayments: [{ ...deleted, deleteNote: null }] }));
       render(<PayrollPage />);
       fireEvent.click(screen.getByRole('checkbox', { name: 'Show deleted (1)' }));
-      expect(screen.getAllByText('Deleted Nov 6, 5:00 PM by admin@example.invalid').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Deleted Nov 6, 5:00 PM by admin@example.com').length).toBeGreaterThan(0);
     });
 
     it('with no deleted payments there is no toggle', () => {

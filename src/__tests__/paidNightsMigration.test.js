@@ -137,7 +137,7 @@ describe.skipIf(!existsSync(CHECK))('check script for 032', () => {
 
   it('runs as a signed-in user with a synthetic id and email, and always ends in an error that rolls back', () => {
     expect(sql).toContain('set local role authenticated;');
-    expect(sql).toContain('check@example.invalid');
+    expect(sql).toContain('check@example.com');
     expect(sql).not.toMatch(/\b(begin|commit|rollback);/);
     expect(sql.trim()).toMatch(/raise exception e'check 032: % \(rolled back\)\\n%', case when failed = 0 then 'all pass' else 'some failed \(' \|\| failed \|\| '\)' end, report; end; \$\$;$/);
   });

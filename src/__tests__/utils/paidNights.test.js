@@ -142,13 +142,13 @@ describe('REQ-041, REQ-042, REQ-051: paid nights (#389)', () => {
     });
 
     it('the history line says when, who and why', () => {
-      expect(deletedLine({ deletedAt: '2026-11-07T01:00:00Z', deletedByEmail: 'a@example.invalid', deleteNote: 'wrong night' }))
-        .toBe('Deleted Nov 6, 5:00 PM by a@example.invalid: wrong night');
+      expect(deletedLine({ deletedAt: '2026-11-07T01:00:00Z', deletedByEmail: 'a@example.com', deleteNote: 'wrong night' }))
+        .toBe('Deleted Nov 6, 5:00 PM by a@example.com: wrong night');
     });
 
     it('no note: when and who only', () => {
-      expect(deletedLine({ deletedAt: '2026-11-07T01:00:00Z', deletedByEmail: 'a@example.invalid', deleteNote: null }))
-        .toBe('Deleted Nov 6, 5:00 PM by a@example.invalid');
+      expect(deletedLine({ deletedAt: '2026-11-07T01:00:00Z', deletedByEmail: 'a@example.com', deleteNote: null }))
+        .toBe('Deleted Nov 6, 5:00 PM by a@example.com');
     });
 
     it('no email (should not happen; the database requires one): says unknown', () => {

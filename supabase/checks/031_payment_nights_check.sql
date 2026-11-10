@@ -196,7 +196,7 @@ BEGIN
 
   -- 10. Deleting the payment (soft, 032) frees its nights, and the night can then be paid again.
   -- No user id in this check's claims, so it names who deleted it, as the SQL editor must.
-  UPDATE payments SET deleted_at = now(), deleted_by_email = 'check@example.invalid' WHERE id = pay;
+  UPDATE payments SET deleted_at = now(), deleted_by_email = 'check@example.com' WHERE id = pay;
   SELECT count(*) INTO rows_now FROM payment_nights WHERE payment_id = pay;
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
