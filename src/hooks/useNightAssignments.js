@@ -145,29 +145,6 @@ export function useNightAssignments(employees = []) {
     ));
   }, [user, nightAssignments]);
 
-  // For deleting assignments when an employee is deleted
-  const deleteAssignmentsForEmployee = async (employeeName) => {
-    if (!user) return;
-
-    const employeeId = getEmployeeIdByName(employees, employeeName);
-    if (!employeeId) return;
-
-    try {
-      const { error } = await supabase
-        .from('night_assignments')
-        .delete()
-        .eq('employee_id', employeeId);
-
-      if (error) throw error;
-
-      setNightAssignments(prev => prev.filter(a => a.employeeId !== employeeId));
-    } catch (err) {
-      console.error('Error deleting assignments for employee:', err);
-      setError(err.message);
-      throw err;
-    }
-  };
-
   return {
     nightAssignments,
     loading,
@@ -176,7 +153,6 @@ export function useNightAssignments(employees = []) {
     getNightAssignment,
     getWorkedFollowingDay,
     setWorkedFollowingDay,
-    deleteAssignmentsForEmployee,
     refresh: fetchNightAssignments,
   };
 }

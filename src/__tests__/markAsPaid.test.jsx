@@ -255,7 +255,7 @@ describe('REQ-041: Mark as Paid (#370)', () => {
       expect(screen.getByText('Delete Payment Record')).toBeInTheDocument();
       // The confirm box renders last, so its Delete is the last one on the page.
       fireEvent.click(screen.getAllByRole('button', { name: 'Delete' }).at(-1));
-      await waitFor(() => expect(deletePayment).toHaveBeenCalledWith('p1'));
+      await waitFor(() => expect(deletePayment).toHaveBeenCalledWith('p1', ''));
       expect((await screen.findByRole('alert')).textContent).toBe('The payment was not deleted: network down');
       expect(screen.queryByText('Delete Payment Record')).not.toBeInTheDocument();
     });

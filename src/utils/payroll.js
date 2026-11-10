@@ -44,16 +44,18 @@ export function paidNightOwners(payments) {
  *   assigneeFor: (night: string) => string,
  *   nightNet: (night: string) => number,
  *   daytimeNet: (night: string) => number,
+ *   followingDayFor?: (night: string) => boolean,
  *   payments: Array<{ dates?: string[], employeeName?: string }>,
  * }} input
  * @returns {{
  *   outstanding: Record<string, { nights: number, amount: number, daytimeAmount: number,
- *     dates: string[], nightCents: Record<string, number>, amountCents: number, daytimeCents: number }>,
+ *     dates: string[], nightCents: Record<string, number>, amountCents: number, daytimeCents: number,
+ *     followingDayNights: string[] }>,
  *   notices: Array<{ kind: 'paid-elsewhere', night: string, assignedTo: string, paidTo: string }
  *     | { kind: 'no-amount', night: string, assignedTo: string }>,
  * }}
  */
-export function buildOutstanding({ dates, assigneeFor, nightNet, daytimeNet, payments }) {
+export function buildOutstanding({ dates, assigneeFor, nightNet, daytimeNet, followingDayFor = () => false, payments }) {
   const owners = paidNightOwners(payments);
   const outstanding = {};
   const notices = [];
@@ -78,13 +80,16 @@ export function buildOutstanding({ dates, assigneeFor, nightNet, daytimeNet, pay
     const daytime = toCents(daytimeDollars);
     const cents = toCents(nightDollars) + daytime;
     const row = outstanding[employee] ??= {
-      nights: 0, dates: [], nightCents: {}, amountCents: 0, daytimeCents: 0,
+      nights: 0, dates: [], nightCents: {}, amountCents: 0, daytimeCents: 0, followingDayNights: [],
     };
     row.nights += 1;
     row.dates.push(night);
     row.nightCents[night] = cents;
     row.amountCents += cents;
     row.daytimeCents += daytime;
+    // The nights priced with "worked following day": the payment sends them, and the database
+    // refuses it if a tick changed since the page loaded (#389, Q3).
+    if (followingDayFor(night)) row.followingDayNights.push(night);
   }
 
   for (const row of Object.values(outstanding)) {

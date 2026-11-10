@@ -95,7 +95,7 @@ describe.skipIf(!existsSync(CHECK))('check script for 031', () => {
     for (const name of ['valid payment', '23505', 'missing night_amounts', 'sum mismatch', 'repeated night',
       'part-cent', 'another night', 'reads payment_nights', 'direct payment_nights insert', 'direct payment_nights delete',
       'update of dates', 'update of amount', 'update of night_amounts', 'update of nights', 'nights not matching',
-      'not an object', 'negative', 'as text', 'deleting the employee', 'delete frees', 'anon cannot read']) {
+      'not an object', 'negative', 'as text', 'employee with a payment cannot be deleted', 'delete frees', 'anon cannot read']) {
       expect(sql).toContain(name);
     }
   });

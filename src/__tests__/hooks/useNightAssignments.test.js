@@ -66,7 +66,6 @@ describe('REQ-033: useNightAssignments Hook', () => {
     expect(result.current).toHaveProperty('error');
     expect(result.current).toHaveProperty('setNightAssignment');
     expect(result.current).toHaveProperty('getNightAssignment');
-    expect(result.current).toHaveProperty('deleteAssignmentsForEmployee');
     expect(result.current).toHaveProperty('refresh');
   });
 
@@ -80,9 +79,9 @@ describe('REQ-033: useNightAssignments Hook', () => {
     expect(typeof result.current.getNightAssignment).toBe('function');
   });
 
-  it('provides deleteAssignmentsForEmployee as a function', () => {
+  it('offers no separate delete of an employee\'s nights: the database removes them with the employee (#389)', () => {
     const { result } = renderHook(() => useNightAssignments(mockEmployees));
-    expect(typeof result.current.deleteAssignmentsForEmployee).toBe('function');
+    expect(result.current).not.toHaveProperty('deleteAssignmentsForEmployee');
   });
 
   it('provides refresh as a function', () => {
