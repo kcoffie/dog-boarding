@@ -1,6 +1,6 @@
 # #389 design note: paid nights are locked, and deleted payments are kept as history
 
-**Status:** architect: proceed with changes (2026-11-09, all folded in below). Kate answered Q1–Q4 (2026-11-09). Build waits on her go-ahead. Fix due Thu 11-12. Issue #389 (`priority: high`). Extends ADR-011 (#370).
+**Status:** architect: proceed with changes (2026-11-09, all folded in below). Kate answered Q1–Q4 (2026-11-09). Built 2026-11-09 (ADR-012); migration 032 and both check scripts run green on a local Postgres. Fix due Thu 11-12. Issue #389 (`priority: high`). Extends ADR-011 (#370).
 
 ## Problem
 After #370, a night is paid once, but a paid night can still change underneath its payment, and deleting a payment erases it:

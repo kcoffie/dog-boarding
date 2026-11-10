@@ -42,10 +42,11 @@
 -- Drift check, any time after (expect 0 rows): a live payment whose nights don't match
 -- payment_nights, or a deleted one that still holds nights.
 --   SELECT p.id FROM payments p
---   LEFT JOIN (SELECT payment_id, count(*) AS n FROM payment_nights GROUP BY payment_id) pn
+--   LEFT JOIN (SELECT payment_id, count(*) AS n, sum(amount) AS total FROM payment_nights GROUP BY payment_id) pn
 --     ON pn.payment_id = p.id
---   WHERE (p.deleted_at IS NULL AND coalesce(pn.n, 0) <> cardinality(p.dates))
---      OR (p.deleted_at IS NOT NULL AND pn.n IS NOT NULL);
+--   WHERE (p.deleted_at IS NULL AND (pn.payment_id IS NULL OR pn.n <> cardinality(p.dates) OR pn.total <> p.amount))
+--      OR (p.deleted_at IS NOT NULL AND pn.payment_id IS NOT NULL);
+-- (031's own drift check would list every deleted payment, which holds no nights on purpose.)
 --
 -- Undo (then revert the code). Only safe while no payment has been soft-deleted:
 --   DROP TRIGGER night_assignments_paid_lock ON night_assignments; DROP FUNCTION night_paid_lock();
