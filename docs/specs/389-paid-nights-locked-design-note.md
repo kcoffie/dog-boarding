@@ -1,6 +1,6 @@
 # #389 design note: paid nights are locked, and deleted payments are kept as history
 
-**Status:** architect: proceed with changes (2026-11-09, all folded in below). Waiting on Kate's answers (Q1–Q4). Fix due Thu 11-12. Issue #389 (`priority: high`). Extends ADR-011 (#370).
+**Status:** architect: proceed with changes (2026-11-09, all folded in below). Kate answered Q1–Q4 (2026-11-09). Build waits on her go-ahead. Fix due Thu 11-12. Issue #389 (`priority: high`). Extends ADR-011 (#370).
 
 ## Problem
 After #370, a night is paid once, but a paid night can still change underneath its payment, and deleting a payment erases it:
@@ -67,6 +67,12 @@ Kate's rules are on #389 (7 rules). "Not covered": a booking-site change to a pa
 - **Q2. "Who" shows as the signed-in email** (there's no names table until roles, #6). Recommended: yes.
 - **Q3. "Worked following day" ticked after the Payroll page loaded** (another tab, before Pay is clicked): the payment saves the old, lower amount and every check passes. Close it (the payment also stores which nights were priced with the tick, and the trigger compares them with the assignments; a mismatch is refused and the page refreshes), or accept it as a known gap in ADR-012? Recommended: close it; it's small and it's pay.
 - **Q4. Deleting an employee with no payments** still removes their unpaid night assignments (today's behaviour, now in one step). Keep? Recommended: yes.
+
+## Kate's answers (2026-11-09)
+- **Q1:** yes, any payment (live or deleted) blocks deleting the employee.
+- **Q2:** yes, the signed-in email.
+- **Q3:** close it. `payments` gains `following_day_nights date[] NOT NULL DEFAULT '{}'`: the nights the page priced with "worked following day" ticked. `payment_fill_nights` refuses the payment unless it is a subset of `dates` and equals exactly the nights whose locked assignment has `worked_following_day = true` (own SQLSTATE; the page refreshes and says the night changed). Covered by the same `FOR SHARE` lock, and by the soft-delete trigger's "nothing else changes" rule.
+- **Q4:** keep (deleting an employee with no payments removes their unpaid nights, now in one step).
 
 ## Deploy order
 032 with its pre-checks → `031` and `032` check scripts both "ALL PASS (rolled back)" → merge → `check:deploy` → reload open Payroll and calendar tabs → Phase 1 Payroll step.
