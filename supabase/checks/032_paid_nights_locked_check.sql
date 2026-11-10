@@ -38,7 +38,7 @@ BEGIN
   INSERT INTO employees (name, active) VALUES ('zz-check-032-d', true) RETURNING id INTO emp4;
   INSERT INTO night_assignments (date, employee_id, worked_following_day) VALUES
     ('2099-06-15', emp, NULL), ('2099-06-16', emp, NULL), ('2099-06-17', emp, true),
-    ('2099-06-18', emp2, NULL), ('2099-06-20', emp3, NULL), ('2099-06-21', emp4, NULL);
+    ('2099-06-18', emp2, NULL), ('2099-06-19', emp, NULL), ('2099-06-20', emp3, NULL), ('2099-06-21', emp4, NULL);
 
   -- 1. A payment that matches its nights saves.
   INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
@@ -109,7 +109,7 @@ BEGIN
     CASE WHEN state = 'QB002' THEN 'PASS' ELSE 'FAIL: ' || state END);
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts)
-    VALUES (emp, 50, 1, ARRAY['2099-06-19']::date[], '2099-06-22', '{"2099-06-19": 50}');
+    VALUES (emp, 50, 1, ARRAY['2099-06-24']::date[], '2099-06-22', '{"2099-06-24": 50}');
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
@@ -125,12 +125,13 @@ BEGIN
     CASE WHEN state = 'QB002' THEN 'PASS' ELSE 'FAIL: ' || state END);
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts, following_day_nights)
-    VALUES (emp, 50, 1, ARRAY['2099-06-18']::date[], '2099-06-22', '{"2099-06-18": 50}', ARRAY['2099-06-18']::date[]);
+    VALUES (emp, 50, 1, ARRAY['2099-06-19']::date[], '2099-06-22', '{"2099-06-19": 50}', ARRAY['2099-06-19']::date[]);
     state := 'no error';
   EXCEPTION WHEN OTHERS THEN state := SQLSTATE;
   END;
-  INSERT INTO check_032 (name, outcome) VALUES ('5d priced with a tick the night does not have: refused',
-    CASE WHEN state IN ('QB002') THEN 'PASS' ELSE 'FAIL: ' || state END);
+  -- 06-19 is the payee's own night with no tick, so only the tick comparison can refuse it.
+  INSERT INTO check_032 (name, outcome) VALUES ('5d priced with a tick the night does not have: refused (QB002)',
+    CASE WHEN state = 'QB002' THEN 'PASS' ELSE 'FAIL: ' || state END);
   BEGIN
     INSERT INTO payments (employee_id, amount, nights, dates, paid_date, night_amounts, following_day_nights)
     VALUES (emp, 50, 1, ARRAY['2099-06-17']::date[], '2099-06-22', '{"2099-06-17": 50}', ARRAY['2099-06-17']::date[]);

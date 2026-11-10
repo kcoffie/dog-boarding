@@ -133,6 +133,7 @@ export function DataProvider({ children }) {
       logger.settings('Deleted employee', name);
     } catch (err) {
       console.error('Failed to delete employee:', err);
+      await refreshNightsAndPayments();
       throw new Error(employeeDeleteMessage(err), { cause: err });
     }
     await refreshNightAssignments();

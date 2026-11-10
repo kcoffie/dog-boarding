@@ -84,8 +84,10 @@ BEGIN
 END;
 $$;
 
--- 1. One assignment per night.
-CREATE UNIQUE INDEX night_assignments_one_per_night ON night_assignments (date);
+-- 1. One assignment per night. Migration 003 declared UNIQUE(date), but production's table has no
+-- such rule (the #370 evidence), so it is added here by name; where 003's exists this is a second,
+-- identical index, which is harmless.
+CREATE UNIQUE INDEX IF NOT EXISTS night_assignments_one_per_night ON night_assignments (date);
 
 -- 5. Employee delete: RESTRICT on payments, CASCADE on night assignments. Production's current
 -- constraint names and actions aren't known for sure, so drop whatever FKs point at employees from
@@ -335,7 +337,7 @@ BEGIN
   END IF;
   IF NEW.date IS DISTINCT FROM OLD.date
      OR NEW.employee_id IS DISTINCT FROM OLD.employee_id
-     OR NEW.worked_following_day IS DISTINCT FROM OLD.worked_following_day THEN
+     OR coalesce(NEW.worked_following_day, false) IS DISTINCT FROM coalesce(OLD.worked_following_day, false) THEN
     RAISE EXCEPTION USING ERRCODE = 'QB001',
       MESSAGE = format('The night %s is paid. Delete the payment to change it.', OLD.date);
   END IF;

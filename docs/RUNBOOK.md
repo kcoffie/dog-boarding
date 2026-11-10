@@ -266,6 +266,7 @@ WHERE status = 'processing'
 
 ### Payroll: a paid night needs changing, or an employee can't be deleted (#389)
 - **"This night is paid. Delete the payment to change it."** A night covered by a live payment is locked: its employee, its "worked following day" and clearing it are all refused by the database. To change it: Payroll → Payment History → Delete that payment (add a note saying why), change the night, then pay again. The payment is kept in the history, struck through, under "Show deleted". A payment can't be restored; paying again is the undo. Moving one night out of a several-night payment means re-paying all of them at current rates.
+- **A night still shows "Paid" after its payment was deleted in another tab:** this tab hasn't heard about the delete. Reload the page.
 - **"Someone else just set this night. The page has been refreshed."** Another tab set the same night first (one assignment per night). Look at what it now says and change it if needed.
 - **"This employee has payments, so they can only be deactivated."** Anyone ever paid, even by a payment since deleted, stays in the list so the history keeps their name. Use Deactivate.
 - **A booking-site change to a paid night** (cancelled, moved, repriced): the night stays paid at its stored amount. The sync never writes night assignments, so it isn't blocked; #326 is the alert for it.
@@ -287,8 +288,9 @@ WHERE status = 'processing'
 ### Deploying #389 (migration 032), once
 1. Kate runs `supabase/migrations/032_paid_nights_locked.sql`. It stops itself, changing nothing, if a night has two assignments or a payment's night is assigned to someone else (the queries are at the top of the file).
 2. Kate runs `supabase/checks/032_paid_nights_locked_check.sql`, then `supabase/checks/031_payment_nights_check.sql` (updated for 032), each as one run. Both must start `check 03x: ALL PASS (rolled back)`.
+   **From step 1 until every tab is reloaded in step 4, don't pay anyone, delete a payment or delete an employee.** The old code doesn't send the "worked following day" nights, so its payment for a ticked night is refused with a raw database message; and its employee delete removes the person's unpaid nights before the database refuses the delete (the old Settings page doesn't show that error).
 3. Merge, then `npm run check:deploy`.
-4. Reload every open Payroll and calendar tab: an old tab shows deleted payments as live (and hides their freed nights from Outstanding) until reloaded. It can't pay a night twice.
+4. Reload every open tab of the app, whatever page it's on (it's one app: a Settings tab runs the old code too). An old tab also shows deleted payments as live, and hides their freed nights from Outstanding, until reloaded. It can't pay a night twice.
 5. Re-run the Payroll step of the Phase 1 script (private notes): pay a night, see it locked, delete the payment with a note, see it under "Show deleted", pay the night again.
 
 ## Manual operations

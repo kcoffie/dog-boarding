@@ -201,6 +201,14 @@ describe('REQ-041, REQ-042, REQ-051: DataContext and paid nights (#389)', () => 
       expect(err?.message).toBe(EMPLOYEE_HAS_PAYMENTS_MESSAGE);
     });
 
+    it('a refused delete refreshes payments and nights, so Settings stops offering Delete', async () => {
+      h.deleteEmployee.mockRejectedValue(dbError('23503'));
+      const data = render();
+      await act(async () => { await caught(() => data.current.deleteEmployee('Avery')); });
+      expect(h.refreshPayments).toHaveBeenCalledTimes(1);
+      expect(h.refreshNights).toHaveBeenCalledTimes(1);
+    });
+
     it('an employee with only a deleted payment has payments', () => {
       expect(render().current.employeeHasPayments('Blake')).toBe(true);
     });

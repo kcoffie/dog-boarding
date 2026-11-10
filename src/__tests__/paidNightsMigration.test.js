@@ -35,7 +35,7 @@ describe.skipIf(!existsSync(MIGRATION))('migration 032: paid nights locked, paym
   });
 
   it('one assignment per night', () => {
-    expect(sql).toContain('create unique index night_assignments_one_per_night on night_assignments (date);');
+    expect(sql).toContain('create unique index if not exists night_assignments_one_per_night on night_assignments (date);');
   });
 
   it('an employee with any payment cannot be deleted; one without takes their nights along', () => {
@@ -109,9 +109,11 @@ describe.skipIf(!existsSync(MIGRATION))('migration 032: paid nights locked, paym
     expect(sql).toMatch(/create function night_paid_lock\(\) returns trigger language plpgsql volatile security definer set search_path = public, pg_temp/);
     const body = fn(sql, 'night_paid_lock');
     expect(body).toContain('select 1 from payment_nights where night = old.date');
-    for (const col of ['date', 'employee_id', 'worked_following_day']) {
+    for (const col of ['date', 'employee_id']) {
       expect(body).toContain(`new.${col} is distinct from old.${col}`);
     }
+    // null and false pay the same, as payment_fill_nights reads them
+    expect(body).toContain('coalesce(new.worked_following_day, false) is distinct from coalesce(old.worked_following_day, false)');
     expect(body.match(/errcode = 'qb001'/g)).toHaveLength(2);
   });
 
