@@ -6,6 +6,11 @@
  * Wipes all data and re-seeds the database.
  * Only works on development/staging environments.
  *
+ * Since migration 032 (#389) this can't wipe a database that has payments: a paid night can't be
+ * deleted, a payment is never hard-deleted, and an employee with a payment can't be deleted. Wipe
+ * such a test database from the SQL editor with the payments and night_assignments triggers
+ * disabled inside a transaction (see the migration's comments). Never on production.
+ *
  * Usage:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/reset-test-data.js
  *
