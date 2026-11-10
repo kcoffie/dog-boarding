@@ -160,6 +160,9 @@ describe('REQ-041, REQ-042, REQ-051: DataContext and paid nights (#389)', () => 
         err = await caught(() => data.current.addPayment({ employeeName: 'Avery', amount: 10, dates: ['2026-11-03'] }));
       });
       expect(err?.message).toBe('One of these nights has already been paid. The list has been refreshed.');
+      // The hook already refreshed payments; only a changed night (QB002) refreshes here.
+      expect(h.refreshNights).not.toHaveBeenCalled();
+      expect(h.refreshPayments).not.toHaveBeenCalled();
     });
   });
 
@@ -168,6 +171,12 @@ describe('REQ-041, REQ-042, REQ-051: DataContext and paid nights (#389)', () => 
       const data = render();
       await act(async () => { await data.current.deletePayment('p1', 'wrong night'); });
       expect(h.deletePayment).toHaveBeenCalledWith('p1', 'wrong night');
+    });
+
+    it('with no note given, an empty note is sent', async () => {
+      const data = render();
+      await act(async () => { await data.current.deletePayment('p1'); });
+      expect(h.deletePayment).toHaveBeenCalledWith('p1', '');
     });
 
     it('deleted payments are offered for the history', () => {
@@ -198,6 +207,10 @@ describe('REQ-041, REQ-042, REQ-051: DataContext and paid nights (#389)', () => 
 
     it('an employee with a live payment has payments', () => {
       expect(render().current.employeeHasPayments('Avery')).toBe(true);
+    });
+
+    it('a name not in the list has no payments', () => {
+      expect(render().current.employeeHasPayments('Nobody')).toBe(false);
     });
 
     it('an employee with none can be deleted', () => {

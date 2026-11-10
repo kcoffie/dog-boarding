@@ -521,6 +521,39 @@ describe('REQ-041, REQ-044: usePayments Hook - Mark as Paid & Payment Flow', () 
       expect(result.current.deletedPayments.map((p) => p.id)).toEqual(['payment-deleted']);
     });
 
+    it('deleted payments are listed newest deletion first, whatever order they arrive in', async () => {
+      mockData.payments = [
+        { ...deletedRow, id: 'deleted-older', deleted_at: '2025-01-12T18:00:00+00:00' },
+        { ...deletedRow, id: 'deleted-newest', deleted_at: '2025-03-01T08:00:00+00:00' },
+        { ...deletedRow, id: 'deleted-middle', deleted_at: '2025-02-01T08:00:00+00:00' },
+      ];
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.deletedPayments.map((p) => p.id)).toEqual(['deleted-newest', 'deleted-middle', 'deleted-older']);
+    });
+
+    it('a payment deleted now goes to the top of the deleted list', async () => {
+      mockData.payments = [...mockData.payments, deletedRow];
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      // deletedRow was deleted 2025-01-12; payment-1 is deleted 2026-11-10 (mockUpdateData.rows).
+      await act(async () => { await result.current.deletePayment('payment-1', ''); });
+      expect(result.current.deletedPayments.map((p) => p.id)).toEqual(['payment-1', 'payment-deleted']);
+    });
+
+    it('reads the nights a payment was priced with "worked following day"', async () => {
+      mockData.payments[0].following_day_nights = ['2025-01-02'];
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.payments[0].followingDayNights).toEqual(['2025-01-02']);
+    });
+
+    it('a payment saved before #389 reads as priced with no ticks', async () => {
+      const { result } = renderHook(() => usePayments(mockEmployees));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.payments[0].followingDayNights).toEqual([]);
+    });
+
     it('a deleted payment\'s nights are not paid', async () => {
       mockData.payments = [...mockData.payments, deletedRow];
       const { result } = renderHook(() => usePayments(mockEmployees));

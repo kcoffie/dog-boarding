@@ -42,6 +42,15 @@ describe('REQ-041, REQ-042, REQ-051: paid nights (#389)', () => {
       expect(paidNightsByDate([])).toEqual({});
       expect(paidNightsByDate(undefined)).toEqual({});
     });
+
+    it('a payment with no dates pays no night', () => {
+      expect(paidNightsByDate([{ id: 'p9', employeeName: 'Avery', paidDate: '2026-11-06' }])).toEqual({});
+    });
+
+    it('a night paid to a removed employee is still paid, with no name', () => {
+      expect(paidNightsByDate([{ dates: ['2026-11-05'], employeeName: undefined, paidDate: '2026-11-06' }]))
+        .toEqual({ '2026-11-05': { employeeName: '', paidDate: '2026-11-06' } });
+    });
   });
 
   describe('an employee with any payment, live or deleted, can only be deactivated (Q1)', () => {
@@ -59,6 +68,16 @@ describe('REQ-041, REQ-042, REQ-051: paid nights (#389)', () => {
 
     it('an unknown employee has no payments', () => {
       expect(employeeHasPayments(undefined, live, deleted)).toBe(false);
+    });
+
+    it('an unknown employee is not matched to a payment whose employee is gone', () => {
+      expect(employeeHasPayments(undefined, [{ id: 'p0', employeeId: undefined, dates: [] }], [])).toBe(false);
+    });
+
+    it('missing lists count as no payments', () => {
+      expect(employeeHasPayments('e1', undefined, undefined)).toBe(false);
+      expect(employeeHasPayments('e2', undefined, deleted)).toBe(true);
+      expect(employeeHasPayments('e1', live, undefined)).toBe(true);
     });
   });
 
@@ -101,6 +120,8 @@ describe('REQ-041, REQ-042, REQ-051: paid nights (#389)', () => {
 
     it('an error with no message still says something', () => {
       expect(nightWriteMessage({})).toBe('The change was not saved.');
+      expect(nightWriteMessage(undefined)).toBe('The change was not saved.');
+      expect(paymentSaveMessage({})).toBe('The payment was not saved.');
       expect(paymentSaveMessage(undefined)).toBe('The payment was not saved.');
       expect(employeeDeleteMessage(null)).toBe('The employee was not deleted.');
     });
@@ -148,6 +169,11 @@ describe('REQ-041, REQ-042, REQ-051: paid nights (#389)', () => {
     it('lists only the ticked nights', () => {
       const { outstanding } = buildOutstanding({ ...base, followingDayFor: (night) => night === '2026-11-03' });
       expect(outstanding.Avery.followingDayNights).toEqual(['2026-11-03']);
+    });
+
+    it('no "worked following day" reader given: no night is listed', () => {
+      const { outstanding } = buildOutstanding(base);
+      expect(outstanding.Avery.followingDayNights).toEqual([]);
     });
 
     it('no ticks: an empty list', () => {

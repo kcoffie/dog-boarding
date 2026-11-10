@@ -76,7 +76,7 @@ export function DataProvider({ children }) {
 
   // A refused write means this page's picture is stale: reload nights and payments (#389).
   const refreshNightsAndPayments = async () => {
-    await Promise.allSettled([refreshNightAssignments?.(), refreshPayments?.()]);
+    await Promise.allSettled([refreshNightAssignments(), refreshPayments()]);
   };
 
   // Combine Supabase settings with employees into unified settings object
@@ -135,7 +135,7 @@ export function DataProvider({ children }) {
       console.error('Failed to delete employee:', err);
       throw new Error(employeeDeleteMessage(err), { cause: err });
     }
-    await refreshNightAssignments?.();
+    await refreshNightAssignments();
   };
 
   const employeeHasPayments = (name) => {

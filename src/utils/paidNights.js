@@ -9,7 +9,6 @@ import { BUSINESS_TIME_ZONE } from './siteClock';
 // SQLSTATEs raised by migration 032's triggers (not `PT…`, which PostgREST reads as HTTP statuses).
 export const NIGHT_PAID_CODE = 'QB001';
 export const NIGHT_CHANGED_CODE = 'QB002';
-export const PAYMENT_FIXED_CODE = 'QB003';
 const UNIQUE_VIOLATION = '23505';
 const FOREIGN_KEY_VIOLATION = '23503';
 

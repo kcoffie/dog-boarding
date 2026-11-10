@@ -17,6 +17,8 @@ export default function DeletePaymentDialog({ isOpen, message, onConfirm, onCanc
     setSaving(true);
     try {
       await onConfirm(note);
+    } catch {
+      // The page shows the error (PayrollPage.confirmDelete); here the buttons just come back.
     } finally {
       setSaving(false);
     }
